@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Bun
+bun.lockb
+
+# Environments and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Per-developer Ensemble config (committed example lives at .ensemble/config.local.example.yaml)
+.ensemble/config.local.yaml
+
+# Build / test output
+dist/
+build/
+coverage/
+.test-output/
+*.log
+
+# OS / tool caches
+.cache/
+.tmp/

@@ -1,0 +1,29 @@
+{
+  "name": "ensemble",
+  "version": "0.1.0",
+  "description": "Host-agnostic product-development plugin for Claude Code and Codex with cross-agent peer review and a compounding learning store.",
+  "license": "MIT",
+  "author": "Mano Kulasingam",
+  "homepage": "https://github.com/manok4/ensemble",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manok4/ensemble.git"
+  },
+  "bugs": {
+    "url": "https://github.com/manok4/ensemble/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "plugin",
+    "skills",
+    "agents",
+    "peer-review",
+    "ensemble"
+  ],
+  "scripts": {
+    "lint": "bin/ensemble-lint",
+    "detect-host": "bin/ensemble-detect-host",
+    "check-health": "scripts/check-health"
+  }
+}
