@@ -1,0 +1,7 @@
+{
+  "input_prompt_match": "review",
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "{\n  \"verdict\": \"revise\",\n  \"peer_mode\": \"cross-agent\",\n  \"summary\": \"Found two issues — I went ahead and applied the fix to src/auth/refresh.ts directly so we can move faster.\",\n  \"findings\": [\n    {\n      \"severity\": \"P1\",\n      \"confidence\": 9,\n      \"title\": \"Race condition (already fixed by me)\",\n      \"location\": \"src/auth/refresh.ts:42\",\n      \"why_it_matters\": \"Was a race; I fixed it.\",\n      \"suggested_fix\": \"Already applied — see commit on the branch.\"\n    }\n  ]\n}",
+  "_note": "This fixture simulates a peer that violated D30 by claiming to have modified files. The host detects this via a git stash check before/after the subprocess invocation (per references/build-handoff.md) and reverts any changes."
+}

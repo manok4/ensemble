@@ -1,0 +1,6 @@
+{
+  "input_prompt_match": "review",
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "{\n  \"verdict\": \"reject\",\n  \"peer_mode\": \"cross-agent\",\n  \"summary\": \"Plan misses the documented compliance requirement (R7); cannot proceed without resolving.\",\n  \"findings\": [\n    {\n      \"severity\": \"P0\",\n      \"confidence\": 10,\n      \"title\": \"Plan does not address R7 (data-residency)\",\n      \"location\": \"global\",\n      \"why_it_matters\": \"R7 is a compliance requirement; the plan ships data through us-east-1 only.\",\n      \"suggested_fix\": \"Add a unit covering EU-region routing or explicitly defer with rationale and product sign-off.\",\n      \"autofix_class\": \"manual\"\n    }\n  ]\n}"
+}

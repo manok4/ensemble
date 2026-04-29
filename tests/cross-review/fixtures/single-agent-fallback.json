@@ -1,0 +1,6 @@
+{
+  "input_prompt_match": "single-agent",
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "{\n  \"verdict\": \"revise\",\n  \"peer_mode\": \"single-agent-fallback\",\n  \"summary\": \"Fresh-context pass found one correctness gap that the implementing instance had rationalized.\",\n  \"findings\": [\n    {\n      \"severity\": \"P1\",\n      \"confidence\": 8,\n      \"title\": \"Test passes against the fix because the mock returns the post-fix shape\",\n      \"location\": \"tests/auth/refresh.test.ts:88\",\n      \"why_it_matters\": \"The mock is too generous; the test would pass against the broken implementation too.\",\n      \"suggested_fix\": \"Tighten the mock to return only what the production API would return; add a test that simulates concurrent rotation.\",\n      \"autofix_class\": \"manual\"\n    }\n  ]\n}"
+}

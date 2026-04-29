@@ -1,0 +1,6 @@
+{
+  "input_prompt_match": "review",
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "Sure! Here's my review:\n\nThis plan looks great overall. {verdict: 'approve'} but I have a few concerns... [findings dropped due to truncation]"
+}

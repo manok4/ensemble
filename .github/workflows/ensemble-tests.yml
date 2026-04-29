@@ -1,0 +1,40 @@
+# Hermetic test runner. Does NOT interpolate any github.event.* fields into
+# shell commands — no commit-message / PR-title / branch-name injection vectors.
+# (See https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+# for the pattern this workflow intentionally avoids.)
+
+name: ensemble-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify required tools
+        run: |
+          for cmd in bash jq git; do
+            if ! command -v "$cmd" >/dev/null 2>&1; then
+              echo "ERROR: $cmd is required but not on PATH" >&2
+              exit 1
+            fi
+            echo "  ✓ $cmd: $(command -v "$cmd")"
+          done
+
+      - name: Run lint on docs/
+        run: bin/ensemble-lint --scope docs/
+
+      - name: Run test suite
+        run: ./tests/run.sh
+
+      - name: Smoke-test ./setup --verify-only
+        run: ./setup --verify-only --quiet

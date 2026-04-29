@@ -1,0 +1,6 @@
+{
+  "input_prompt_match": "review",
+  "exit_code": 124,
+  "stderr": "Subprocess timed out after 600 seconds.\n",
+  "stdout": ""
+}

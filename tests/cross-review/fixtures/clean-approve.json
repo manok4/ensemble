@@ -1,0 +1,6 @@
+{
+  "input_prompt_match": "review.*plan",
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "{\n  \"verdict\": \"approve\",\n  \"peer_mode\": \"cross-agent\",\n  \"summary\": \"Plan is well-scoped and the U-IDs are consistent. No findings.\",\n  \"findings\": []\n}"
+}

@@ -1,0 +1,6 @@
+{
+  "input_prompt_match": "review.*plan",
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "{\n  \"verdict\": \"revise\",\n  \"peer_mode\": \"cross-agent\",\n  \"summary\": \"Two correctness concerns and one missing test scenario.\",\n  \"findings\": [\n    {\n      \"severity\": \"P1\",\n      \"confidence\": 9,\n      \"title\": \"Refresh token race when two requests arrive within rotation window\",\n      \"location\": \"src/auth/refresh.ts:42\",\n      \"why_it_matters\": \"Rotation invalidates the prior token; concurrent refresh produces a 401 for the second caller.\",\n      \"suggested_fix\": \"Serialize refresh per-user with a singleFlight cache keyed on user_id.\",\n      \"autofix_class\": \"manual\",\n      \"u_id\": \"U4\"\n    },\n    {\n      \"severity\": \"P2\",\n      \"confidence\": 7,\n      \"title\": \"Missing test for expired-token path\",\n      \"location\": \"tests/auth/refresh.test.ts\",\n      \"why_it_matters\": \"Coverage gap on the most-likely production path.\",\n      \"suggested_fix\": \"Add a test simulating a 6-minute clock skew against a 5-minute-TTL token.\",\n      \"autofix_class\": \"manual\",\n      \"u_id\": \"U4\"\n    }\n  ]\n}"
+}

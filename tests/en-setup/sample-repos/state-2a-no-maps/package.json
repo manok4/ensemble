@@ -1,0 +1,9 @@
+{
+  "name": "state-2a-fixture",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "echo build",
+    "test": "echo test",
+    "lint": "echo lint"
+  }
+}
