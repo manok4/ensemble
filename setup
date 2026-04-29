@@ -114,23 +114,80 @@ install_into() {
   log "Installing into $target_root ($label)..."
   mkdir -p "$target_root/skills" "$target_root/agents"
 
-  for kind in skills agents; do
-    local src="$SOURCE_DIR/$kind"
-    local dst="$target_root/$kind/ensemble"
+  # Per-target manifest tracks what this install owns (one path per line).
+  # Truncated at start of each run so it always reflects the current install.
+  # Lets us cleanly remove Ensemble's prior links on re-run without touching
+  # any unrelated user-installed skills or agents.
+  local manifest_dir="$HOME/.ensemble"
+  mkdir -p "$manifest_dir"
+  local target_slug
+  target_slug="$(basename "$target_root")"  # ".claude" -> "claude" after stripping leading dot below
+  target_slug="${target_slug#.}"
+  local manifest_file="$manifest_dir/install-manifest-$target_slug.txt"
+
+  # Sweep prior install (per the previous manifest), then start fresh.
+  if [ -f "$manifest_file" ]; then
+    while IFS= read -r prior_path; do
+      [ -n "$prior_path" ] || continue
+      # Only remove symlinks (if symlink mode) or paths the manifest claims;
+      # never recurse into directories that aren't ours.
+      if [ -L "$prior_path" ]; then
+        rm -f "$prior_path"
+      elif [ -e "$prior_path" ] && [ "$COPY_MODE" = "copy" ]; then
+        rm -rf "$prior_path"
+      fi
+    done < "$manifest_file"
+  fi
+  : > "$manifest_file"
+
+  # Skills: one symlink (or copy) per skill folder, placed directly under
+  # ~/.<host>/skills/<skill-name>/. Hosts discover skills as <skills-root>/<skill>/SKILL.md;
+  # nesting under .../ensemble/ would hide them from discovery.
+  local skill_count=0
+  for skill_path in "$SOURCE_DIR/skills"/*/; do
+    [ -d "$skill_path" ] || continue
+    local skill_name
+    skill_name="$(basename "$skill_path")"
+    local dst="$target_root/skills/$skill_name"
 
     if [ -e "$dst" ] || [ -L "$dst" ]; then
-      log "  Removing existing $dst"
-      rm -rf "$dst"
+      log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping. Rename or remove it manually to install."
+      continue
     fi
 
     if [ "$COPY_MODE" = "copy" ]; then
-      cp -R "$src" "$dst"
-      log "  Copied $kind/ -> $dst"
+      cp -R "$skill_path" "$dst"
     else
-      ln -s "$src" "$dst"
-      log "  Symlinked $kind/ -> $dst"
+      ln -s "${skill_path%/}" "$dst"
     fi
+    echo "$dst" >> "$manifest_file"
+    skill_count=$((skill_count + 1))
   done
+  log "  Installed $skill_count skill(s) into $target_root/skills/ ($COPY_MODE)"
+
+  # Agents: one symlink (or copy) per .md file, placed directly under
+  # ~/.<host>/agents/<agent>.md. Same rationale as skills.
+  local agent_count=0
+  for agent_file in "$SOURCE_DIR/agents"/*.md; do
+    [ -f "$agent_file" ] || continue
+    local agent_name
+    agent_name="$(basename "$agent_file")"
+    local dst="$target_root/agents/$agent_name"
+
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+      log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."
+      continue
+    fi
+
+    if [ "$COPY_MODE" = "copy" ]; then
+      cp "$agent_file" "$dst"
+    else
+      ln -s "$agent_file" "$dst"
+    fi
+    echo "$dst" >> "$manifest_file"
+    agent_count=$((agent_count + 1))
+  done
+  log "  Installed $agent_count agent(s) into $target_root/agents/ ($COPY_MODE)"
 
   log ""
 }

@@ -89,17 +89,25 @@ case "$PEER_OVERRIDE" in
     ;;
 esac
 
-# Emit machine-readable variables
+# Emit machine-readable variables.
+# Values are single-quoted (POSIX shell-escape) so consumers can `eval` or `source`
+# the output safely — values with spaces (e.g., HOST_CMD='claude -p') and special
+# characters round-trip correctly. Embedded single quotes get escaped via
+# the standard '"'"' pattern.
+shellesc() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"
+}
+
 cat <<EOF
-HOST=$HOST
-HOST_CMD=$HOST_CMD
-HOST_FORMAT=$HOST_FORMAT
-PEER=$PEER
-PEER_MODE=$PEER_MODE
-PEER_CMD=$PEER_CMD
-PEER_FORMAT=$PEER_FORMAT
-PEER_AVAILABLE=$PEER_AVAILABLE
-PEER_OVERRIDE=$PEER_OVERRIDE
+HOST=$(shellesc "$HOST")
+HOST_CMD=$(shellesc "$HOST_CMD")
+HOST_FORMAT=$(shellesc "$HOST_FORMAT")
+PEER=$(shellesc "$PEER")
+PEER_MODE=$(shellesc "$PEER_MODE")
+PEER_CMD=$(shellesc "$PEER_CMD")
+PEER_FORMAT=$(shellesc "$PEER_FORMAT")
+PEER_AVAILABLE=$(shellesc "$PEER_AVAILABLE")
+PEER_OVERRIDE=$(shellesc "$PEER_OVERRIDE")
 EOF
 
 if [ "$VERBOSE" = "true" ]; then

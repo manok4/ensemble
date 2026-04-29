@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # sync-to-codex — symlink (or copy on Windows) Ensemble's skills/agents into ~/.codex/.
 # Used by ./setup; can also be run standalone.
+#
+# Installs each skill folder and each agent file directly at the discovery root
+# (~/.codex/skills/<skill>/SKILL.md, ~/.codex/agents/<agent>.md) — NOT nested
+# under .../ensemble/, which would hide them from host discovery.
 
 set -eu
 
@@ -15,30 +19,61 @@ fi
 
 mkdir -p "$TARGET_DIR/skills" "$TARGET_DIR/agents"
 
-install_one() {
-  local kind="$1"  # skills or agents
-  local src="$SOURCE_DIR/$kind"
-  local dst="$TARGET_DIR/$kind/ensemble"
+manifest_dir="$HOME/.ensemble"
+mkdir -p "$manifest_dir"
+manifest_file="$manifest_dir/install-manifest-codex.txt"
 
+# Sweep prior install entries, then re-create.
+if [ -f "$manifest_file" ]; then
+  while IFS= read -r prior_path; do
+    [ -n "$prior_path" ] || continue
+    if [ -L "$prior_path" ]; then
+      rm -f "$prior_path"
+    elif [ -e "$prior_path" ] && [ "$MODE" = "copy" ]; then
+      rm -rf "$prior_path"
+    fi
+  done < "$manifest_file"
+fi
+: > "$manifest_file"
+
+skill_count=0
+for skill_path in "$SOURCE_DIR/skills"/*/; do
+  [ -d "$skill_path" ] || continue
+  skill_name="$(basename "$skill_path")"
+  dst="$TARGET_DIR/skills/$skill_name"
   if [ -e "$dst" ] || [ -L "$dst" ]; then
-    rm -rf "$dst"
+    echo "  ⚠ $dst already exists (not from a prior Ensemble install); skipping" >&2
+    continue
   fi
-
   if [ "$MODE" = "copy" ]; then
-    cp -R "$src" "$dst"
-    echo "  Copied $kind/ -> $dst"
+    cp -R "$skill_path" "$dst"
   else
-    ln -s "$src" "$dst"
-    echo "  Symlinked $kind/ -> $dst"
+    ln -s "${skill_path%/}" "$dst"
   fi
-}
+  echo "$dst" >> "$manifest_file"
+  skill_count=$((skill_count + 1))
+done
 
-echo "Syncing Ensemble to Codex (~/.codex/) using $MODE mode..."
-install_one skills
-install_one agents
-echo "Done."
+agent_count=0
+for agent_file in "$SOURCE_DIR/agents"/*.md; do
+  [ -f "$agent_file" ] || continue
+  agent_name="$(basename "$agent_file")"
+  dst="$TARGET_DIR/agents/$agent_name"
+  if [ -e "$dst" ] || [ -L "$dst" ]; then
+    echo "  ⚠ $dst already exists; skipping" >&2
+    continue
+  fi
+  if [ "$MODE" = "copy" ]; then
+    cp "$agent_file" "$dst"
+  else
+    ln -s "$agent_file" "$dst"
+  fi
+  echo "$dst" >> "$manifest_file"
+  agent_count=$((agent_count + 1))
+done
 
-# Surface a hint if Codex CLI is not installed
+echo "Synced to $TARGET_DIR ($MODE): $skill_count skill(s), $agent_count agent(s)"
+
 if ! command -v codex >/dev/null 2>&1; then
   echo ""
   echo "Note: codex CLI not found on PATH. Skills and agents are in place; install codex when ready." >&2

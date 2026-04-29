@@ -223,6 +223,248 @@ check_learning_required_fields() {
   done
 }
 
+# --- Rule: frontmatter.invalid-enum + frontmatter.date-format ---
+# Per references/doc-lints.md. Validates that enum-typed fields hold known values
+# and that date fields follow YYYY-MM-DD.
+check_frontmatter_enums_and_dates() {
+  local file="$1"
+  local fm
+  fm=$(extract_frontmatter "$file")
+  [ -z "$fm" ] && return 0
+
+  # Date fields — strict YYYY-MM-DD where present.
+  for date_field in created updated date fetched shipped deepened last_drift_check; do
+    local val
+    val=$(printf '%s\n' "$fm" | awk -v f="$date_field" '$0 ~ "^"f":" { sub("^"f":[ \t]*", ""); gsub(/^["'\''`]|["'\''`]$/, ""); print; exit }')
+    if [ -n "$val" ] && [ "$val" != "null" ] && [ "$val" != "<unset>" ]; then
+      if ! printf '%s' "$val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+        emit "frontmatter.date-format" "$file" "" "P1" \
+          "Field '$date_field' is '$val'; expected YYYY-MM-DD" \
+          "Set '$date_field' to a date in YYYY-MM-DD format"
+      fi
+    fi
+  done
+
+  # Enum fields — by file type.
+  case "$file" in
+    docs/foundation.md)
+      local s; s=$(get_field "$file" status)
+      if [ -n "$s" ] && [ "$s" != "draft" ] && [ "$s" != "active" ] && [ "$s" != "archived" ]; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "foundation.md status: $s" "Use one of: draft, active, archived"
+      fi
+      local d; d=$(get_field "$file" depth)
+      if [ -n "$d" ] && [ "$d" != "lightweight" ] && [ "$d" != "standard" ] && [ "$d" != "deep" ]; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "foundation.md depth: $d" "Use one of: lightweight, standard, deep"
+      fi
+      ;;
+    docs/architecture.md)
+      local s; s=$(get_field "$file" status)
+      if [ -n "$s" ] && [ "$s" != "seed" ] && [ "$s" != "active" ]; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "architecture.md status: $s" "Use one of: seed, active"
+      fi
+      ;;
+    docs/plans/active/*.md|docs/plans/completed/*.md)
+      local s; s=$(get_field "$file" status)
+      case "$s" in ""|draft|active|completed|abandoned) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "plan status: $s" "Use one of: draft, active, completed, abandoned" ;;
+      esac
+      local rp; rp=$(get_field "$file" requirements_pending)
+      case "$rp" in ""|true|false) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "requirements_pending: $rp" "Use boolean true or false" ;;
+      esac
+      ;;
+    docs/learnings/*/*.md)
+      local cat; cat=$(get_field "$file" category)
+      case "$cat" in ""|bugs|patterns|decisions|sources) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "learning category: $cat" "Use one of: bugs, patterns, decisions, sources" ;;
+      esac
+      local s; s=$(get_field "$file" status)
+      case "$s" in ""|active|deprecated|superseded) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "learning status: $s" "Use one of: active, deprecated, superseded" ;;
+      esac
+      local conf; conf=$(get_field "$file" confidence)
+      if [ -n "$conf" ] && ! printf '%s' "$conf" | grep -qE '^([1-9]|10)$'; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "confidence: $conf" "Use an integer 1-10"
+      fi
+      ;;
+    docs/designs/*.md)
+      local s; s=$(get_field "$file" status)
+      case "$s" in ""|open|accepted|superseded) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "design status: $s" "Use one of: open, accepted, superseded" ;;
+      esac
+      ;;
+  esac
+}
+
+# --- Rule: id-stability.fr-collision + fr-format ---
+# Single pass over all plan files; detects duplicate FR<NN> across active/ + completed/.
+# Run once at end of file collection (see runner below).
+check_fr_id_collisions() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  local seen_fr_file=$(mktemp)
+  trap "rm -f $seen_fr_file" RETURN
+  for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
+    [ -f "$plan" ] || continue
+    local fr
+    fr=$(get_field "$plan" fr_id)
+    [ -z "$fr" ] && continue
+    if ! printf '%s' "$fr" | grep -qE '^FR[0-9]{2,3}$'; then
+      emit "id-stability.fr-format" "$plan" "" "P2" "fr_id '$fr' is not zero-padded FR<NN>" "Use FR01, FR02, ... up to FR99 (FR100+ uses three digits)"
+    fi
+    if grep -qxF "$fr" "$seen_fr_file" 2>/dev/null; then
+      emit "id-stability.fr-collision" "$plan" "" "P1" "fr_id '$fr' is duplicated across plans" "Renumber the newer plan to the next free FRXX"
+    else
+      echo "$fr" >> "$seen_fr_file"
+    fi
+  done
+  rm -f "$seen_fr_file"
+}
+
+# --- Rule: cross-link.broken-r / broken-u / broken-fr / broken-td ---
+# Walks markdown bodies for citations like "(see R3)", "(see U5)", "FR07", "TD11"
+# and verifies they resolve. R-IDs resolve to lines/sections in foundation.md;
+# U-IDs resolve within the cited plan; FR-IDs resolve to a plan filename;
+# TD-IDs resolve to docs/plans/tech-debt-tracker.md.
+check_cross_links() {
+  local file="$1"
+
+  # R-IDs: foundation must have a line declaring the R-ID (e.g., "**R3.**" or "## R3")
+  if [ -f docs/foundation.md ]; then
+    local r_ids
+    r_ids=$(grep -oE '\bR[0-9]+\b' "$file" | sort -u || true)
+    while IFS= read -r rid; do
+      [ -z "$rid" ] && continue
+      # Skip self-references inside foundation.md
+      [ "$file" = "docs/foundation.md" ] && continue
+      if ! grep -qE "(\*\*${rid}\.|## ${rid}\b|^- \*\*${rid}\.|^${rid}\.)" docs/foundation.md; then
+        emit "cross-link.broken-r" "$file" "" "P1" "Citation of $rid not found in docs/foundation.md" "Either add $rid to foundation.md §5 or remove the citation"
+      fi
+    done <<< "$r_ids"
+  fi
+
+  # U-IDs: only meaningful within a plan; skip if file isn't a plan.
+  case "$file" in docs/plans/active/*.md|docs/plans/completed/*.md)
+    local u_ids
+    u_ids=$(grep -oE '\bU[0-9]+\b' "$file" | sort -u || true)
+    while IFS= read -r uid; do
+      [ -z "$uid" ] && continue
+      # U-ID must have a declaring line in the same plan ("### U3." pattern)
+      if ! grep -qE "^#{2,4} ${uid}\." "$file"; then
+        emit "cross-link.broken-u" "$file" "" "P1" "$uid cited but no '### $uid.' declaration in same plan" "Add a unit heading or remove the citation"
+      fi
+    done <<< "$u_ids"
+    ;;
+  esac
+
+  # FR-IDs: must resolve to an existing plan filename.
+  local fr_ids
+  fr_ids=$(grep -oE '\bFR[0-9]{2,3}\b' "$file" | sort -u || true)
+  while IFS= read -r frid; do
+    [ -z "$frid" ] && continue
+    if ! ls docs/plans/active/${frid}-*.md 2>/dev/null 1>&2 \
+       && ! ls docs/plans/completed/${frid}-*.md 2>/dev/null 1>&2; then
+      # Skip if this is foundation.md or a generated index — those reference all FR-IDs in narrative
+      case "$file" in
+        docs/foundation.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md) ;;
+        *)
+          emit "cross-link.broken-fr" "$file" "" "P1" "$frid cited but no plan file matches docs/plans/{active,completed}/$frid-*.md" "Create the plan or remove the citation"
+          ;;
+      esac
+    fi
+  done <<< "$fr_ids"
+
+  # TD-IDs: must resolve to an entry in tech-debt-tracker.md
+  if [ -f docs/plans/tech-debt-tracker.md ]; then
+    local td_ids
+    td_ids=$(grep -oE '\bTD[0-9]+\b' "$file" | sort -u || true)
+    while IFS= read -r tdid; do
+      [ -z "$tdid" ] && continue
+      [ "$file" = "docs/plans/tech-debt-tracker.md" ] && continue
+      if ! grep -qE "^### ${tdid}\." docs/plans/tech-debt-tracker.md; then
+        emit "cross-link.broken-td" "$file" "" "P1" "$tdid cited but no '### $tdid.' entry in tech-debt-tracker.md" "Add the TD entry or remove the citation"
+      fi
+    done <<< "$td_ids"
+  fi
+}
+
+# --- Rule: index-coverage.* ---
+# Plans must appear in docs/generated/plan-index.md; learnings in docs/generated/learning-index.md.
+# Stub indexes (zero entries) are OK for empty projects.
+check_index_coverage() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+
+  # Plans
+  if [ -f docs/generated/plan-index.md ]; then
+    for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
+      [ -f "$plan" ] || continue
+      [ "$(basename "$plan")" = "tech-debt-tracker.md" ] && continue
+      local plan_basename
+      plan_basename=$(basename "$plan")
+      if ! grep -qF "$plan_basename" docs/generated/plan-index.md; then
+        emit "index-coverage.plan-missing" "docs/generated/plan-index.md" "" "P1" \
+          "$plan exists but is not listed in plan-index.md" \
+          "Run /en-learn to regenerate the index"
+      fi
+    done
+  fi
+
+  # Learnings
+  if [ -f docs/generated/learning-index.md ]; then
+    for learning in docs/learnings/bugs/*.md docs/learnings/patterns/*.md docs/learnings/decisions/*.md docs/learnings/sources/*.md; do
+      [ -f "$learning" ] || continue
+      local learning_basename
+      learning_basename=$(basename "$learning")
+      if ! grep -qF "$learning_basename" docs/generated/learning-index.md; then
+        emit "index-coverage.learning-missing" "docs/generated/learning-index.md" "" "P1" \
+          "$learning exists but is not listed in learning-index.md" \
+          "Run /en-learn --lint --fix to regenerate the index"
+      fi
+    done
+  fi
+}
+
+# --- Rule: freshness.architecture-* ---
+# docs/architecture.md updated: field within configurable freshness window.
+# 0-30 days: green; 31-90 days: P2 advisory; 91+ days: P1.
+check_architecture_freshness() {
+  [ "$1" = "docs/architecture.md" ] || return 0
+  local updated
+  updated=$(get_field "$1" updated)
+  [ -z "$updated" ] && return 0
+  printf '%s' "$updated" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || return 0
+
+  # Compute days since updated using the system `date` (cross-platform fallback).
+  local now_epoch updated_epoch days
+  now_epoch=$(date +%s)
+  if updated_epoch=$(date -j -f "%Y-%m-%d" "$updated" +%s 2>/dev/null); then :
+  elif updated_epoch=$(date -d "$updated" +%s 2>/dev/null); then :
+  else return 0; fi
+  days=$(( (now_epoch - updated_epoch) / 86400 ))
+
+  if [ "$days" -gt 90 ]; then
+    emit "freshness.architecture-90" "$1" "" "P1" \
+      "architecture.md updated $days days ago (>90 days)" \
+      "Run /en-learn or /en-garden to refresh against current code"
+  elif [ "$days" -gt 30 ]; then
+    emit "freshness.architecture-30" "$1" "" "P2" \
+      "architecture.md updated $days days ago (>30 days)" \
+      "Verify it still reflects current code; refresh if not"
+  fi
+}
+
+# --- Rule: generated.missing-marker ---
+# Files in docs/generated/ must carry `generated: true` frontmatter.
+check_generated_marker() {
+  case "$1" in docs/generated/*.md) ;; *) return 0 ;; esac
+  local g
+  g=$(get_field "$1" generated)
+  if [ "$g" != "true" ]; then
+    emit "generated.missing-marker" "$1" "" "P1" \
+      "File in docs/generated/ lacks 'generated: true' frontmatter" \
+      "Add 'generated: true' and a 'generator: <skill>' field; do not hand-edit generated files"
+  fi
+}
+
 # --- Run lints ---
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -233,7 +475,15 @@ while IFS= read -r file; do
   check_length_budget "$file"
   check_plan_required_fields "$file"
   check_learning_required_fields "$file"
+  check_frontmatter_enums_and_dates "$file"
+  check_cross_links "$file"
+  check_architecture_freshness "$file"
+  check_generated_marker "$file"
 done < <(collect_files)
+
+# Project-wide checks (run once; not per-file)
+check_fr_id_collisions
+check_index_coverage
 
 # --- Report ---
 if [ "$VIOLATIONS" -gt 0 ]; then
