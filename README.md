@@ -4,7 +4,7 @@
 
 Ensemble is an 11-skill, 11-agent toolkit that takes work from rough idea to shipped, peer-reviewed code. Every skill detects whether it's running under Claude Code or Codex and adapts tool names, peer-review CLI invocations, and platform-specific behaviors accordingly.
 
-**Status: Phase 0 + Phase 1 (early development).** The foundation document is complete; references and the first four skills (`en-setup`, `en-brainstorm`, `en-foundation`, `en-plan`) are landing now. See [`docs/foundation.md`](./docs/foundation.md) for the full design.
+**Status: Phases 0–6 complete.** Foundation document, all 11 skills, all 11 agents, all cross-cutting references, plugin manifests, install script, and CI tooling are in place. See [`docs/foundation.md`](./docs/foundation.md) for the full design and [`CHANGELOG.md`](./CHANGELOG.md) for what landed.
 
 ---
 
