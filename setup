@@ -62,7 +62,14 @@ case "$HOST_PREF" in
     INSTALL_CLAUDE=$($HAS_CLAUDE_DIR && echo true || echo false)
     INSTALL_CODEX=$($HAS_CODEX_DIR && echo true || echo false)
     if [ "$INSTALL_CLAUDE" = "false" ] && [ "$INSTALL_CODEX" = "false" ]; then
-      err "No host CLI directories found (~/.claude or ~/.codex). Install at least one CLI first."
+      # In --verify-only mode, fall through with a warning so dependency checks
+      # still run. CI environments and bare installers commonly hit this.
+      if [ "$VERIFY_ONLY" = "true" ]; then
+        log "  ⚠ No host CLI directories found (~/.claude or ~/.codex)."
+        log "    Verify-only mode continues to check dependencies; install will be a no-op."
+      else
+        err "No host CLI directories found (~/.claude or ~/.codex). Install at least one CLI first."
+      fi
     fi
     ;;
   claude) INSTALL_CLAUDE=true; INSTALL_CODEX=false ;;
