@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# ensemble-doc-only-check — runtime allowlist enforcement for en-garden PRs.
+# Verifies that every staged path is under docs/, AGENTS.md, CLAUDE.md, or .github/workflows/en-garden.yml.
+# Exits non-zero (and lists offenders) if any path falls outside the allowlist.
+
+set -eu
+
+CHANGED_PATHS=$(git diff --cached --name-only 2>/dev/null || true)
+
+if [ -z "$CHANGED_PATHS" ]; then
+  echo "ensemble-doc-only-check: nothing staged" >&2
+  exit 0
+fi
+
+ALLOW_REGEX='^(docs/|AGENTS\.md$|CLAUDE\.md$|\.github/workflows/en-garden\.yml$|\.ensemble/garden-summary\.md$)'
+
+OFFENDERS=$(printf '%s\n' "$CHANGED_PATHS" | grep -vE "$ALLOW_REGEX" || true)
+
+if [ -n "$OFFENDERS" ]; then
+  echo "ERROR: en-garden is doc-only but the following paths fall outside the allowlist:" >&2
+  printf '  - %s\n' $OFFENDERS >&2
+  echo "" >&2
+  echo "If a code-level pattern needs fixing, file it as a TD-entry in docs/plans/tech-debt-tracker.md" >&2
+  echo "and let /en-plan + /en-build handle it. Garden never touches source code." >&2
+  exit 1
+fi
+
+echo "ensemble-doc-only-check: ✓ all staged paths under docs/ allowlist"
+exit 0

@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# ensemble-detect-host — host detection helper used by every cross-host skill.
+#
+# Sources the canonical detection logic, prints variables as KEY=VALUE lines on stdout.
+# Exit code: 0 if detection succeeded; non-zero on internal errors.
+#
+# See references/host-detect.md for the variable catalog and detection logic.
+
+set -u
+
+VERBOSE="${ENSEMBLE_DETECT_VERBOSE:-false}"
+SMOKE_TEST="${ENSEMBLE_DETECT_SMOKE_TEST:-false}"
+
+# 1. Identify HOST
+if [ -n "${CLAUDE_CODE_VERSION:-}" ] || [ -n "${CLAUDE_AGENT_NAME:-}" ]; then
+  HOST="claude-code"
+  HOST_CMD="claude -p"
+  HOST_FORMAT="--output-format json"
+  OTHER="codex"
+  OTHER_CMD="codex exec"
+  OTHER_FORMAT="--json"
+elif [ -n "${CODEX_HOME:-}" ] || [ -n "${CODEX_VERSION:-}" ]; then
+  HOST="codex"
+  HOST_CMD="codex exec"
+  HOST_FORMAT="--json"
+  OTHER="claude"
+  OTHER_CMD="claude -p"
+  OTHER_FORMAT="--output-format json"
+elif [ -n "${ENSEMBLE_HOST:-}" ]; then
+  HOST="${ENSEMBLE_HOST}"
+  case "$HOST" in
+    claude-code|claude)
+      HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"
+      OTHER="codex"; OTHER_CMD="codex exec"; OTHER_FORMAT="--json"
+      ;;
+    codex)
+      HOST_CMD="codex exec"; HOST_FORMAT="--json"
+      OTHER="claude"; OTHER_CMD="claude -p"; OTHER_FORMAT="--output-format json"
+      ;;
+    *)
+      echo "ENSEMBLE_HOST=$HOST not recognized; falling back to claude-code" >&2
+      HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"
+      OTHER="codex"; OTHER_CMD="codex exec"; OTHER_FORMAT="--json"
+      ;;
+  esac
+else
+  if command -v codex >/dev/null 2>&1 && ! command -v claude >/dev/null 2>&1; then
+    HOST="codex"; HOST_CMD="codex exec"; HOST_FORMAT="--json"
+    OTHER="claude"; OTHER_CMD="claude -p"; OTHER_FORMAT="--output-format json"
+  else
+    HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"
+    OTHER="codex"; OTHER_CMD="codex exec"; OTHER_FORMAT="--json"
+  fi
+fi
+
+# 2. Read user override
+PEER_OVERRIDE="auto"
+if command -v jq >/dev/null 2>&1 && [ -f "$HOME/.ensemble/config.json" ]; then
+  PEER_OVERRIDE=$(jq -r '.peer_mode_override // "auto"' "$HOME/.ensemble/config.json" 2>/dev/null || echo "auto")
+fi
+
+# 3. Resolve peer mode
+PEER=""
+PEER_CMD=""
+PEER_FORMAT=""
+case "$PEER_OVERRIDE" in
+  off)
+    PEER_MODE="off"
+    PEER_AVAILABLE="false"
+    ;;
+  *)
+    if command -v "${OTHER_CMD%% *}" >/dev/null 2>&1 && [ "$PEER_OVERRIDE" != "single-agent-only" ]; then
+      PEER_MODE="cross-agent"
+      PEER="$OTHER"
+      PEER_CMD="$OTHER_CMD"
+      PEER_FORMAT="$OTHER_FORMAT"
+      PEER_AVAILABLE="true"
+    elif [ "$PEER_OVERRIDE" = "cross-agent-only" ]; then
+      PEER_MODE="off"
+      PEER_AVAILABLE="false"
+      echo "WARNING: peer_mode_override=cross-agent-only but $OTHER CLI is not installed. Skipping cross-review." >&2
+    else
+      PEER_MODE="single-agent-fallback"
+      PEER="$HOST"
+      PEER_CMD="$HOST_CMD"
+      PEER_FORMAT="$HOST_FORMAT"
+      PEER_AVAILABLE="true"
+    fi
+    ;;
+esac
+
+# Emit machine-readable variables
+cat <<EOF
+HOST=$HOST
+HOST_CMD=$HOST_CMD
+HOST_FORMAT=$HOST_FORMAT
+PEER=$PEER
+PEER_MODE=$PEER_MODE
+PEER_CMD=$PEER_CMD
+PEER_FORMAT=$PEER_FORMAT
+PEER_AVAILABLE=$PEER_AVAILABLE
+PEER_OVERRIDE=$PEER_OVERRIDE
+EOF
+
+if [ "$VERBOSE" = "true" ]; then
+  {
+    echo "---"
+    echo "Host detection — verbose"
+    echo "  Detected HOST: $HOST"
+    echo "  Other CLI installed: $(command -v "${OTHER_CMD%% *}" >/dev/null 2>&1 && echo yes || echo no)"
+    echo "  PEER_OVERRIDE: $PEER_OVERRIDE"
+    echo "  Resolved PEER_MODE: $PEER_MODE"
+  } >&2
+fi
+
+if [ "$SMOKE_TEST" = "true" ]; then
+  echo "" >&2
+  echo "Smoke testing CLI flags (ensures references/cli-wrappers.md matches reality)..." >&2
+  if command -v claude >/dev/null 2>&1; then
+    if echo "ping" | claude -p --output-format json --max-turns 1 >/dev/null 2>&1; then
+      echo "  Claude CLI: ✓ flags accepted" >&2
+    else
+      echo "  Claude CLI: ⚠ flag mismatch — check references/cli-wrappers.md" >&2
+    fi
+  fi
+  if command -v codex >/dev/null 2>&1; then
+    if echo "ping" | codex exec --json --max-turns 1 >/dev/null 2>&1; then
+      echo "  Codex CLI: ✓ flags accepted" >&2
+    else
+      echo "  Codex CLI: ⚠ flag mismatch — check references/cli-wrappers.md" >&2
+    fi
+  fi
+fi
+
+exit 0

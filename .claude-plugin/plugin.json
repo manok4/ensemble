@@ -1,0 +1,23 @@
+{
+  "name": "ensemble",
+  "version": "0.1.0",
+  "description": "Host-agnostic product-development toolkit: 11 skills + 11 agents covering brainstorm → foundation → plan → build → review → qa → learn → ship, with cross-agent peer review (Claude Code ↔ Codex) and a compounding learning store.",
+  "author": {
+    "name": "Mano Kulasingam",
+    "url": "https://github.com/manok4"
+  },
+  "homepage": "https://github.com/manok4/ensemble",
+  "repository": "https://github.com/manok4/ensemble",
+  "license": "MIT",
+  "keywords": [
+    "product-development",
+    "peer-review",
+    "skills",
+    "agents",
+    "compounding-knowledge",
+    "ensemble"
+  ],
+  "skills": "./skills",
+  "agents": "./agents",
+  "hooks": "./hooks/hooks.json"
+}

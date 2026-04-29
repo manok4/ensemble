@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+# ensemble-lint — file-shape doc lints (frontmatter, IDs, cross-links, status, freshness, paths).
+#
+# Usage:
+#   ensemble-lint [--scope <path>] [--fix] [--json] [--quiet]
+#
+# Distinct from `learn --lint` which audits wiki-graph health (orphans, missing back-refs, etc).
+# See references/doc-lints.md for the full rule catalog.
+
+set -u
+
+SCOPE="${ENSEMBLE_LINT_SCOPE:-docs/}"
+FIX="false"
+JSON="false"
+QUIET="false"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --scope) SCOPE="$2"; shift 2 ;;
+    --fix) FIX="true"; shift ;;
+    --json) JSON="true"; shift ;;
+    --quiet) QUIET="true"; shift ;;
+    -h|--help)
+      cat <<EOF
+Usage: ensemble-lint [--scope <path>] [--fix] [--json] [--quiet]
+
+  --scope <path>  Limit to files under <path> (default: docs/)
+  --fix           Apply mechanical fixes
+  --json          Emit JSON-lines output (one violation per line)
+  --quiet         Suppress non-error output
+
+Exit codes:
+  0  No violations
+  1  Violations found
+  2  Lint runner error
+EOF
+      exit 0
+      ;;
+    *) echo "Unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Sanity: must run from a repo root (parent of docs/) or pass --scope to a valid path
+if [ ! -e "$SCOPE" ] && [ "$SCOPE" != "docs/" ]; then
+  echo "ensemble-lint: scope '$SCOPE' does not exist" >&2
+  exit 2
+fi
+
+VIOLATIONS=0
+P1=0
+P2=0
+P3=0
+TMP_FINDINGS=$(mktemp)
+trap 'rm -f "$TMP_FINDINGS"' EXIT
+
+emit() {
+  local rule="$1" file="$2" line="$3" sev="$4" msg="$5" remediation="$6"
+  case "$sev" in
+    P1) P1=$((P1+1));;
+    P2) P2=$((P2+1));;
+    P3) P3=$((P3+1));;
+  esac
+  VIOLATIONS=$((VIOLATIONS+1))
+  if [ "$JSON" = "true" ]; then
+    printf '{"rule":"%s","file":"%s","line":%s,"severity":"%s","message":"%s","remediation":"%s"}\n' \
+      "$rule" "$file" "${line:-null}" "$sev" "$(printf '%s' "$msg" | sed 's/"/\\"/g')" "$(printf '%s' "$remediation" | sed 's/"/\\"/g')" \
+      >> "$TMP_FINDINGS"
+  else
+    printf '[%s] %s %s — %s\n' "$sev" "$rule" "$file" "$msg" >> "$TMP_FINDINGS"
+    printf '       remediation: %s\n' "$remediation" >> "$TMP_FINDINGS"
+  fi
+}
+
+# --- Helper: extract YAML frontmatter from a markdown file ---
+extract_frontmatter() {
+  local file="$1"
+  awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print} n==2{exit}' "$file"
+}
+
+# --- Helper: get a frontmatter field value (very small YAML reader) ---
+get_field() {
+  local file="$1" field="$2"
+  extract_frontmatter "$file" | awk -v f="$field" '
+    $0 ~ "^"f":" {
+      sub("^"f":[ \t]*", "")
+      gsub(/^["'\''`]|["'\''`]$/, "")
+      print
+      exit
+    }
+  '
+}
+
+# --- Helper: list relevant files under SCOPE ---
+collect_files() {
+  if [ -d "$SCOPE" ]; then
+    find "$SCOPE" -type f -name '*.md' 2>/dev/null
+  elif [ -f "$SCOPE" ]; then
+    echo "$SCOPE"
+  fi
+  # Always include AGENTS.md and CLAUDE.md at repo root if scope is docs/
+  if [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ]; then
+    [ -f "AGENTS.md" ] && echo "AGENTS.md"
+    [ -f "CLAUDE.md" ] && echo "CLAUDE.md"
+  fi
+}
+
+# --- Rule: frontmatter.parse-error / frontmatter.missing ---
+check_frontmatter_present() {
+  local file="$1"
+  local first_two
+  first_two=$(head -2 "$file" 2>/dev/null)
+  if ! printf '%s' "$first_two" | grep -q '^---'; then
+    case "$file" in
+      docs/foundation.md|docs/architecture.md|AGENTS.md|CLAUDE.md|docs/learnings/*/*.md|docs/plans/active/*.md|docs/plans/completed/*.md|docs/designs/*.md|docs/generated/*.md)
+        emit "frontmatter.missing" "$file" "" "P1" "File requires YAML frontmatter" "Add a frontmatter block at the top of the file"
+        ;;
+    esac
+  fi
+}
+
+# --- Rule: path.absolute ---
+# Flags absolute paths that are NOT inside backtick code spans (which are doc examples / lint rule text).
+check_no_absolute_paths() {
+  local file="$1"
+  local lineno=0
+  while IFS= read -r line; do
+    lineno=$((lineno+1))
+    # Strip everything inside backticks (single or triple) for the check
+    local stripped
+    stripped=$(printf '%s' "$line" | sed -e 's/`[^`]*`//g' -e 's/```[^`]*```//g')
+    if printf '%s' "$stripped" | grep -qE '(/Users/[A-Za-z]|^/home/[A-Za-z]|[A-Z]:\\)'; then
+      emit "path.absolute" "$file" "$lineno" "P1" "Absolute path detected outside code span" "Convert to a repo-relative path or wrap in backticks if it's a documentation example"
+    fi
+  done < "$file"
+}
+
+# --- Rule: status.location-mismatch (plans only) ---
+check_plan_status_location() {
+  local file="$1"
+  case "$file" in
+    docs/plans/active/*.md)
+      local status
+      status=$(get_field "$file" "status")
+      local location
+      location=$(get_field "$file" "location")
+      if [ -n "$status" ] && [ "$status" != "active" ] && [ "$status" != "draft" ]; then
+        emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has status: $status" "Set status: active or move file to docs/plans/completed/"
+      fi
+      if [ -n "$location" ] && [ "$location" != "active" ]; then
+        emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has location: $location" "Set location: active to match directory"
+      fi
+      ;;
+    docs/plans/completed/*.md)
+      local status
+      status=$(get_field "$file" "status")
+      if [ -n "$status" ] && [ "$status" != "completed" ]; then
+        emit "status.location-mismatch" "$file" "" "P1" "Plan in completed/ has status: $status" "Set status: completed or move file back to docs/plans/active/"
+      fi
+      ;;
+  esac
+}
+
+# --- Rule: claude-md.no-cross-ref-line ---
+check_claude_md_cross_ref() {
+  [ "$1" = "CLAUDE.md" ] || return 0
+  local first_body_line
+  first_body_line=$(awk 'BEGIN{n=0} /^---$/{n++; next} n>=2 && NF{print; exit}' "$1")
+  if ! printf '%s' "$first_body_line" | grep -qF "[AGENTS.md](./AGENTS.md)"; then
+    emit "claude-md.no-cross-ref-line" "$1" "" "P1" \
+      "First non-frontmatter line of CLAUDE.md must cross-reference AGENTS.md" \
+      "Prepend: > See [AGENTS.md](./AGENTS.md) for the project map and shared agent guidance."
+  fi
+}
+
+# --- Rule: length.* ---
+check_length_budget() {
+  local file="$1"
+  local body_lines
+  body_lines=$(awk 'BEGIN{n=0} /^---$/{n++; next} n>=2{count++} END{print count+0}' "$file")
+  case "$file" in
+    AGENTS.md)
+      if [ "$body_lines" -gt 150 ]; then
+        emit "length.agents-md-over-150" "$file" "" "P2" \
+          "AGENTS.md body is $body_lines lines (target 100, ceiling 150)" \
+          "Move detail into docs/foundation.md or docs/learnings/"
+      fi
+      ;;
+    CLAUDE.md)
+      if [ "$body_lines" -gt 80 ]; then
+        emit "length.claude-md-over-80" "$file" "" "P2" \
+          "CLAUDE.md body is $body_lines lines (target 60, ceiling 80)" \
+          "Move detail into AGENTS.md or remove duplication"
+      fi
+      ;;
+  esac
+}
+
+# --- Rule: frontmatter.required-field-missing for plans ---
+check_plan_required_fields() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  for f in type fr_id title status location created covers_requirements requirements_pending; do
+    local val
+    val=$(get_field "$file" "$f")
+    if [ -z "$val" ] && ! grep -q "^$f:" <(extract_frontmatter "$file"); then
+      emit "frontmatter.required-field-missing" "$file" "" "P1" \
+        "Plan missing required frontmatter field: $f" \
+        "Add '$f: <value>' per references/templates/plan-template.md"
+    fi
+  done
+}
+
+# --- Rule: frontmatter.required-field-missing for learnings ---
+check_learning_required_fields() {
+  case "$1" in docs/learnings/bugs/*.md|docs/learnings/patterns/*.md|docs/learnings/decisions/*.md|docs/learnings/sources/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  for f in title date category problem_type component applies_when tags related confidence status; do
+    if ! grep -q "^$f:" <(extract_frontmatter "$file"); then
+      emit "frontmatter.required-field-missing" "$file" "" "P1" \
+        "Learning missing required frontmatter field: $f" \
+        "Add '$f: <value>' per references/learning-frontmatter-schema.md"
+    fi
+  done
+}
+
+# --- Run lints ---
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  check_frontmatter_present "$file"
+  check_no_absolute_paths "$file"
+  check_plan_status_location "$file"
+  check_claude_md_cross_ref "$file"
+  check_length_budget "$file"
+  check_plan_required_fields "$file"
+  check_learning_required_fields "$file"
+done < <(collect_files)
+
+# --- Report ---
+if [ "$VIOLATIONS" -gt 0 ]; then
+  if [ "$JSON" = "true" ]; then
+    cat "$TMP_FINDINGS"
+  else
+    cat "$TMP_FINDINGS"
+    if [ "$QUIET" != "true" ]; then
+      echo ""
+      echo "## Lint summary"
+      echo ""
+      echo "- **High (P1):** $P1"
+      echo "- **Medium (P2):** $P2"
+      echo "- **Advisory (P3):** $P3"
+      echo "- **Total:** $VIOLATIONS"
+      echo ""
+      if [ "$P1" -gt 0 ]; then
+        echo "Run \`bin/ensemble-lint --fix\` to auto-apply mechanical fixes (not yet implemented for all rules)."
+      fi
+    fi
+  fi
+  exit 1
+fi
+
+[ "$QUIET" != "true" ] && echo "ensemble-lint: clean (scope: $SCOPE)"
+exit 0

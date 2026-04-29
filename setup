@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# setup — machine-level install for Ensemble.
+# Detects which host CLIs are present (~/.claude/, ~/.codex/), then symlinks or copies
+# skills and agents into each detected host's directory.
+#
+# Usage: ./setup [--host claude|codex|both|auto] [--symlink|--copy] [--verify-only] [--quiet]
+
+set -eu
+
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOST_PREF="auto"
+COPY_MODE="symlink"
+VERIFY_ONLY="false"
+QUIET="false"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --host) HOST_PREF="$2"; shift 2 ;;
+    --symlink) COPY_MODE="symlink"; shift ;;
+    --copy) COPY_MODE="copy"; shift ;;
+    --verify-only) VERIFY_ONLY="true"; shift ;;
+    --quiet) QUIET="true"; shift ;;
+    -h|--help)
+      cat <<EOF
+Usage: ./setup [--host claude|codex|both|auto] [--symlink|--copy] [--verify-only] [--quiet]
+
+  --host          Override host detection (default: auto)
+  --symlink       Force symlink (default on macOS/Linux)
+  --copy          Force copy (default on Windows or when symlink unavailable)
+  --verify-only   Run dependency + install checks without making changes
+  --quiet         Suppress non-error output
+EOF
+      exit 0
+      ;;
+    *) echo "Unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+log() {
+  [ "$QUIET" = "true" ] || echo "$@"
+}
+
+err() {
+  echo "ERROR: $*" >&2
+  exit 2
+}
+
+# Detect platform — Windows-style env (Git Bash, WSL) prefers copy mode by default
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW*|MSYS*|CYGWIN*) [ "$COPY_MODE" = "symlink" ] && COPY_MODE="copy" ;;
+esac
+
+# Detect host CLIs
+HAS_CLAUDE_CLI=false; command -v claude >/dev/null 2>&1 && HAS_CLAUDE_CLI=true
+HAS_CODEX_CLI=false;  command -v codex  >/dev/null 2>&1 && HAS_CODEX_CLI=true
+HAS_CLAUDE_DIR=false; [ -d "$HOME/.claude" ] && HAS_CLAUDE_DIR=true
+HAS_CODEX_DIR=false;  [ -d "$HOME/.codex" ]  && HAS_CODEX_DIR=true
+
+# Resolve host preference
+case "$HOST_PREF" in
+  auto)
+    INSTALL_CLAUDE=$($HAS_CLAUDE_DIR && echo true || echo false)
+    INSTALL_CODEX=$($HAS_CODEX_DIR && echo true || echo false)
+    if [ "$INSTALL_CLAUDE" = "false" ] && [ "$INSTALL_CODEX" = "false" ]; then
+      err "No host CLI directories found (~/.claude or ~/.codex). Install at least one CLI first."
+    fi
+    ;;
+  claude) INSTALL_CLAUDE=true; INSTALL_CODEX=false ;;
+  codex)  INSTALL_CLAUDE=false; INSTALL_CODEX=true ;;
+  both)   INSTALL_CLAUDE=true; INSTALL_CODEX=true ;;
+  *) err "Invalid --host value: $HOST_PREF (use claude, codex, both, auto)" ;;
+esac
+
+log "Ensemble installer"
+log "  Source:        $SOURCE_DIR"
+log "  Mode:          $COPY_MODE"
+log "  Install Claude: $INSTALL_CLAUDE"
+log "  Install Codex:  $INSTALL_CODEX"
+log ""
+
+# Verify dependencies
+log "Checking dependencies..."
+command -v git >/dev/null 2>&1 && log "  git: ✓" || err "git is required"
+command -v gh  >/dev/null 2>&1 && log "  gh: ✓"  || log "  gh: ⚠ (optional but recommended for /en-ship)"
+command -v jq  >/dev/null 2>&1 && log "  jq: ✓"  || log "  jq: ⚠ (optional but recommended for config parsing)"
+log ""
+
+# Single-agent fallback notice
+if $HAS_CLAUDE_CLI && $HAS_CODEX_CLI; then
+  log "Both Claude Code and Codex CLIs detected. Full cross-agent peer review available."
+elif $HAS_CLAUDE_CLI || $HAS_CODEX_CLI; then
+  ONE=$($HAS_CLAUDE_CLI && echo claude || echo codex)
+  OTHER=$($HAS_CLAUDE_CLI && echo codex || echo claude)
+  log "Only $ONE CLI detected."
+  log "Ensemble will run cross-review as single-agent fallback (fresh instance of $ONE)."
+  log "For full cross-agent peer review, install $OTHER as well — it's not required, but recommended."
+  log ""
+else
+  log "Neither claude nor codex CLI detected on PATH."
+  log "Skills and agents will be installed in directories detected (~/.claude/, ~/.codex/),"
+  log "but you'll need to install at least one CLI to actually use them."
+  log ""
+fi
+
+if [ "$VERIFY_ONLY" = "true" ]; then
+  log "--verify-only: stopping after checks. No files written."
+  exit 0
+fi
+
+install_into() {
+  local target_root="$1"  # e.g., $HOME/.claude
+  local label="$2"
+
+  log "Installing into $target_root ($label)..."
+  mkdir -p "$target_root/skills" "$target_root/agents"
+
+  for kind in skills agents; do
+    local src="$SOURCE_DIR/$kind"
+    local dst="$target_root/$kind/ensemble"
+
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+      log "  Removing existing $dst"
+      rm -rf "$dst"
+    fi
+
+    if [ "$COPY_MODE" = "copy" ]; then
+      cp -R "$src" "$dst"
+      log "  Copied $kind/ -> $dst"
+    else
+      ln -s "$src" "$dst"
+      log "  Symlinked $kind/ -> $dst"
+    fi
+  done
+
+  log ""
+}
+
+[ "$INSTALL_CLAUDE" = "true" ] && install_into "$HOME/.claude" "Claude Code"
+[ "$INSTALL_CODEX"  = "true" ] && install_into "$HOME/.codex"  "Codex"
+
+# Ensure ~/.ensemble/config.json exists with defaults
+if [ ! -f "$HOME/.ensemble/config.json" ]; then
+  mkdir -p "$HOME/.ensemble"
+  cat > "$HOME/.ensemble/config.json" <<'EOF'
+{
+  "peer_mode_override": "auto",
+  "peer_reject_behavior": "pause",
+  "peer_timeout_seconds": 600,
+  "skip_peer_below_lines": 50,
+  "skip_peer_on_lightweight": true,
+  "default_branch_fallback": "main",
+  "learnings_cross_project": false
+}
+EOF
+  log "Created $HOME/.ensemble/config.json with defaults"
+fi
+
+# Smoke-test CLI flags if CLIs are present
+if [ "$QUIET" != "true" ]; then
+  log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
+  if $HAS_CLAUDE_CLI; then
+    if echo "ping" | claude -p --output-format json --max-turns 1 >/dev/null 2>&1; then
+      log "  Claude CLI: ✓ flags accepted"
+    else
+      log "  Claude CLI: ⚠ flag mismatch — check references/cli-wrappers.md"
+    fi
+  fi
+  if $HAS_CODEX_CLI; then
+    if echo "ping" | codex exec --json --max-turns 1 >/dev/null 2>&1; then
+      log "  Codex CLI: ✓ flags accepted"
+    else
+      log "  Codex CLI: ⚠ flag mismatch — check references/cli-wrappers.md"
+    fi
+  fi
+  log ""
+fi
+
+log "Done. Next steps:"
+log "  1. Open a project in your host CLI"
+log "  2. Run /en-setup to bootstrap Ensemble for that project"

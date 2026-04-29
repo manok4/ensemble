@@ -1,0 +1,64 @@
+# Per-developer per-repo Ensemble configuration.
+# Copy to .ensemble/config.local.yaml (gitignored) and edit for your preferences.
+# Repo-level overrides take precedence over the global ~/.ensemble/config.json.
+
+# --- Cross-review behavior ---
+
+# How peer cross-review is performed. One of:
+#   auto                 - use cross-agent if both CLIs are installed; else fall back to single-agent
+#   cross-agent-only     - require cross-agent; fail (don't fall back) if other CLI not installed
+#   single-agent-only    - always use single-agent fallback even if both CLIs are installed
+#   off                  - disable cross-review across all skills
+peer_mode_override: auto
+
+# Models the peer subprocess uses (passed to the peer CLI; verify these are valid in your install).
+# These are config defaults — see references/cli-wrappers.md.
+# peer_model_codex: gpt-5-codex-mini
+# peer_model_claude: claude-sonnet-4-6
+
+# What to do when peer review returns verdict: reject.
+#   pause - pause and ask the user (default)
+#   apply - apply findings the host agrees with anyway, surface the rejection in the progress report
+peer_reject_behavior: pause
+
+# Hard timeout per peer-review subprocess.
+peer_timeout_seconds: 600
+
+# Skip peer review on artifacts smaller than this (line count).
+skip_peer_below_lines: 50
+
+# Skip peer review on Lightweight depth.
+skip_peer_on_lightweight: true
+
+# --- Build behavior ---
+
+# Default branch (used when the repo doesn't have a clear default).
+default_branch_fallback: main
+
+# Whether the code-simplifier agent runs per unit during en-build.
+# simplifier:
+#   enabled_default: true
+#   skip_on_trivial: true
+#   max_lines_to_run: 2000
+
+# --- Learnings ---
+
+# Whether to share learnings across projects (default: false; per-project store).
+learnings_cross_project: false
+
+# Off-topic threshold for `/en-learn ingest` (0–1; LLM-judged relevance against foundation.md).
+# Below this, the source is silently skipped unless --force.
+# learn_ingest_off_topic_threshold: 0.3
+
+# --- Lint ---
+
+# lint:
+#   freshness_target_days: 30
+#   scope_default: docs/
+#   fix_skip_rules: []
+
+# --- Garden ---
+
+# garden:
+#   ci_timeout_minutes: 30
+#   max_prs_per_run: 6

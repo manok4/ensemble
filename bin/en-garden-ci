@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# en-garden-ci — wrapper used by .github/workflows/en-garden.yml.
+# Resolves which CLI is available in the runner and invokes it headlessly.
+#
+# Both CLIs accept --skill / -p so the skill can run without an interactive host.
+
+set -eu
+
+if command -v claude >/dev/null 2>&1; then
+  exec claude -p \
+    --output-format json \
+    --max-turns 50 \
+    --skill en-garden \
+    "$@"
+elif command -v codex >/dev/null 2>&1; then
+  exec codex exec --json --skill en-garden "$@"
+else
+  echo "ERROR: en-garden requires claude or codex CLI in the CI runner." >&2
+  echo "Install one and retry. See docs/foundation.md §5.2.10 for details." >&2
+  exit 1
+fi

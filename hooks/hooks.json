@@ -1,0 +1,3 @@
+{
+  "comment": "Ensemble keeps SessionStart hooks intentionally light. Auto-update polling, telemetry, and heavy bootstrap are explicit non-goals (foundation §19.6). Add project-scoped hooks via .claude/settings.json or by editing this file in your install."
+}

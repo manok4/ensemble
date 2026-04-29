@@ -1,0 +1,21 @@
+{
+  "name": "ensemble",
+  "version": "0.1.0",
+  "description": "Host-agnostic product-development toolkit for Codex: 11 skills + 11 agents with cross-agent peer review against Claude Code via subprocess CLI.",
+  "author": {
+    "name": "Mano Kulasingam",
+    "url": "https://github.com/manok4"
+  },
+  "homepage": "https://github.com/manok4/ensemble",
+  "repository": "https://github.com/manok4/ensemble",
+  "license": "MIT",
+  "keywords": [
+    "product-development",
+    "peer-review",
+    "skills",
+    "agents",
+    "ensemble"
+  ],
+  "skills": "./skills",
+  "agents": "./agents"
+}

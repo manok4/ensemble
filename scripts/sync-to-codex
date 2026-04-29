@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# sync-to-codex — symlink (or copy on Windows) Ensemble's skills/agents into ~/.codex/.
+# Used by ./setup; can also be run standalone.
+
+set -eu
+
+SOURCE_DIR="${ENSEMBLE_SOURCE:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+TARGET_DIR="${HOME}/.codex"
+MODE="${1:-symlink}"  # symlink or copy
+
+if [ ! -d "$SOURCE_DIR/skills" ] || [ ! -d "$SOURCE_DIR/agents" ]; then
+  echo "ERROR: $SOURCE_DIR doesn't look like an Ensemble checkout (missing skills/ or agents/)" >&2
+  exit 2
+fi
+
+mkdir -p "$TARGET_DIR/skills" "$TARGET_DIR/agents"
+
+install_one() {
+  local kind="$1"  # skills or agents
+  local src="$SOURCE_DIR/$kind"
+  local dst="$TARGET_DIR/$kind/ensemble"
+
+  if [ -e "$dst" ] || [ -L "$dst" ]; then
+    rm -rf "$dst"
+  fi
+
+  if [ "$MODE" = "copy" ]; then
+    cp -R "$src" "$dst"
+    echo "  Copied $kind/ -> $dst"
+  else
+    ln -s "$src" "$dst"
+    echo "  Symlinked $kind/ -> $dst"
+  fi
+}
+
+echo "Syncing Ensemble to Codex (~/.codex/) using $MODE mode..."
+install_one skills
+install_one agents
+echo "Done."
+
+# Surface a hint if Codex CLI is not installed
+if ! command -v codex >/dev/null 2>&1; then
+  echo ""
+  echo "Note: codex CLI not found on PATH. Skills and agents are in place; install codex when ready." >&2
+fi

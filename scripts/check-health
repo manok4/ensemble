@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# check-health — diagnostic runner for /en-setup State 3.
+# Walks the project's Ensemble integration and reports per-check status.
+
+set -u
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$repo_root"
+
+GREEN=0
+YELLOW=0
+RED=0
+
+check() {
+  local label="$1" status="$2" detail="${3:-}"
+  case "$status" in
+    green)  echo "🟢 $label"; [ -n "$detail" ] && echo "     $detail"; GREEN=$((GREEN+1)) ;;
+    yellow) echo "🟡 $label"; [ -n "$detail" ] && echo "     $detail"; YELLOW=$((YELLOW+1)) ;;
+    red)    echo "🔴 $label"; [ -n "$detail" ] && echo "     $detail"; RED=$((RED+1)) ;;
+  esac
+}
+
+echo "Ensemble health check — $(pwd)"
+echo ""
+
+# Required artifacts
+[ -f AGENTS.md ] && check "AGENTS.md present" green || check "AGENTS.md present" red "Run /en-setup to generate"
+[ -f CLAUDE.md ] && check "CLAUDE.md present" green || check "CLAUDE.md present" red "Run /en-setup to generate"
+
+if [ -f CLAUDE.md ]; then
+  if grep -qF "[AGENTS.md](./AGENTS.md)" CLAUDE.md; then
+    check "CLAUDE.md cross-references AGENTS.md" green
+  else
+    check "CLAUDE.md cross-references AGENTS.md" yellow "Prepend the cross-reference line"
+  fi
+fi
+
+[ -f docs/foundation.md ]        && check "docs/foundation.md present" green        || check "docs/foundation.md present" yellow "Run /en-foundation"
+[ -f docs/architecture.md ]      && check "docs/architecture.md present" green      || check "docs/architecture.md present" yellow "Run /en-foundation"
+[ -d docs/plans/active ]         && check "docs/plans/active/ present" green        || check "docs/plans/active/ present" yellow "Run /en-setup"
+[ -d docs/plans/completed ]      && check "docs/plans/completed/ present" green     || check "docs/plans/completed/ present" yellow "Run /en-setup"
+[ -d docs/learnings ]            && check "docs/learnings/ present" green           || check "docs/learnings/ present" yellow "Run /en-setup"
+[ -f docs/learnings/index.md ]   && check "docs/learnings/index.md present" green   || check "docs/learnings/index.md present" yellow "Run /en-setup"
+[ -f docs/learnings/log.md ]     && check "docs/learnings/log.md present" green     || check "docs/learnings/log.md present" yellow "Run /en-setup"
+[ -d docs/generated ]            && check "docs/generated/ present" green           || check "docs/generated/ present" yellow "Run /en-setup"
+
+# Garden workflow
+[ -f .github/workflows/en-garden.yml ] && check ".github/workflows/en-garden.yml installed" green || check ".github/workflows/en-garden.yml installed" yellow "Install via /en-setup"
+
+# Config
+[ -f .ensemble/config.local.example.yaml ] && check ".ensemble/config.local.example.yaml present" green || check ".ensemble/config.local.example.yaml present" yellow "Run /en-setup"
+
+# Required CLIs
+command -v git >/dev/null 2>&1 && check "git on PATH" green || check "git on PATH" red "Install git >= 2.30"
+command -v gh >/dev/null 2>&1 && check "gh on PATH" green || check "gh on PATH" yellow "Install GitHub CLI"
+command -v jq >/dev/null 2>&1 && check "jq on PATH" green || check "jq on PATH" yellow "Install jq for config parsing"
+
+# At least one host CLI
+HAS_CLAUDE=false; HAS_CODEX=false
+command -v claude >/dev/null 2>&1 && HAS_CLAUDE=true
+command -v codex  >/dev/null 2>&1 && HAS_CODEX=true
+if $HAS_CLAUDE && $HAS_CODEX; then
+  check "Both Claude Code and Codex CLIs on PATH" green "Full cross-agent peer review available"
+elif $HAS_CLAUDE || $HAS_CODEX; then
+  check "Host CLI on PATH" yellow "Only one CLI; cross-review will use single-agent fallback. Install the other for full cross-agent."
+else
+  check "Host CLI on PATH" red "Install at least one of claude or codex"
+fi
+
+# Lint
+if [ -x bin/ensemble-lint ] || [ -f bin/ensemble-lint ]; then
+  if (cd "$repo_root" && bin/ensemble-lint --quiet --scope docs/ 2>/dev/null); then
+    check "bin/ensemble-lint --scope docs/ runs clean" green
+  else
+    check "bin/ensemble-lint --scope docs/ runs clean" yellow "Run bin/ensemble-lint --scope docs/ for details"
+  fi
+else
+  check "bin/ensemble-lint available" red "Reinstall the plugin"
+fi
+
+echo ""
+echo "Summary: 🟢 $GREEN  🟡 $YELLOW  🔴 $RED"
+
+[ "$RED" -gt 0 ] && exit 2
+[ "$YELLOW" -gt 0 ] && exit 1
+exit 0
