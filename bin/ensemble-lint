@@ -363,9 +363,10 @@ check_cross_links() {
     [ -z "$frid" ] && continue
     if ! ls docs/plans/active/${frid}-*.md 2>/dev/null 1>&2 \
        && ! ls docs/plans/completed/${frid}-*.md 2>/dev/null 1>&2; then
-      # Skip if this is foundation.md or a generated index — those reference all FR-IDs in narrative
+      # Skip if this is a system-describing reference doc — those reference FR-IDs in narrative,
+      # not as citations to real plans in this repo.
       case "$file" in
-        docs/foundation.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md) ;;
+        docs/foundation.md|docs/workflow-and-catalog.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md) ;;
         *)
           emit "cross-link.broken-fr" "$file" "" "P1" "$frid cited but no plan file matches docs/plans/{active,completed}/$frid-*.md" "Create the plan or remove the citation"
           ;;
