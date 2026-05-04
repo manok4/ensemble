@@ -1,6 +1,6 @@
 ---
 name: en-guardrail
-description: "Always-on safety guardrail. PreToolUse hook on every Bash call inspects the command for destructive patterns (recursive rm, DROP TABLE, DROP DATABASE, TRUNCATE, DELETE-without-WHERE, force-push, git reset --hard, git branch/tag -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud … delete) and forces a permission prompt. Safe targets (build artifacts, localhost+test/dev databases) pass without prompting. Use to inspect what's protected, view recent fires, or temporarily disable for one shell. Trigger phrases: 'guardrail', 'careful mode', 'safety mode', 'check guardrail', 'what's protected'."
+description: "Always-on safety guardrail. PreToolUse hook on Bash inspects each command for destructive patterns (recursive rm, DROP TABLE, DELETE-without-WHERE, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and forces a permission prompt. Build artifacts and localhost+test/dev databases pass without prompting. Per-command bypass via ENSEMBLE_GUARDRAIL=off. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
 ---
 
 # `/en-guardrail`

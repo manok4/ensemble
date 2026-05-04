@@ -1,6 +1,6 @@
 ---
 name: en-plan
-description: "Turn a feature, component, or refactor into a concrete implementation plan with stable U-IDs (never renumbered). Reads docs/foundation.md and any related brainstorm design doc, runs research agents (repo-research + learnings-research, web-research conditionally), breaks the work into implementation units with files / dependencies / test scenarios / execution notes (test-first vs characterization-first vs pragmatic), then runs cross-agent peer review on the draft. Outputs to docs/plans/active/FRXX-<name>.md with auto-incremented FRXX. Use whenever the user is about to implement something non-trivial: new feature, refactor, migration, multi-file change. Trigger phrases: 'plan this', 'plan a feature', 'implementation plan', 'break this down', 'before I build', 'plan FR'."
+description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs and plan_type (feature | improvement | bug). Reads foundation, runs research agents (repo-research + learnings-research; web-research conditional), breaks work into units with files / tests / execution notes; runs cross-agent peer review on the draft. Modes: --resume <plan> (promote a draft); --from-legacy <path> (migrate legacy plan). Outputs docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'."
 ---
 
 # `/en-plan`

@@ -1,6 +1,6 @@
 ---
 name: en-learn
-description: "Compounding wiki maintainer for docs/learnings/. Five modes: 'capture' (default — file a learning after a feature ships, a bug is fixed, or a synthesis emerges; sync architecture.md / foundation / plans; move plan from active to completed); 'ingest <path-or-url>' (proactive — read external source, write summary, walk 5-15 related pages and add back-refs); '--refresh' (audit content staleness; keep/update/replace/archive entries); '--pack <library>' (flatten library docs to docs/references/<lib>-llms.txt); '--lint' (wiki-graph health: orphans, missing back-refs, broken links, contradictions, missing pages). Always-on cross-reference maintenance after every write. Use after building/QA, after a bug fix, when reading external engineering material, when curating library references, or to audit wiki health. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs for', 'audit learnings', 'lint learnings', 'wiki health'."
+description: "Compounding wiki maintainer for docs/learnings/. Six modes: capture (default; file a learning post-build/qa, sync architecture/foundation/plan, move plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
 ---
 
 # `/en-learn`

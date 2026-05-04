@@ -1,6 +1,6 @@
 ---
 name: en-resolve-pr
-description: "Address review comments on the current PR. Fetches inline review threads, top-level PR comments, and review-submission bodies; triages new vs already-handled and silent-drops bot wrappers; per comment evaluates with a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes with targeted tests; runs combined validation; commits + pushes; replies (per feedback type) and resolves threads (except needs-human); loops up to 2 cycles. Cite Ensemble conventions (CLAUDE.md, AGENTS.md, docs/learnings/) when declining. Optionally captures recurring anti-patterns as learnings (D21 reflex). Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
+description: "Address review comments on the current PR. Fetches inline review threads + top-level PR comments + review-submission bodies; triages new vs already-handled, silent-drops bot wrappers; per comment applies a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes, replies, resolves threads (except needs-human). Up to 2 cycles. --enable-auto-merge flag. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
 ---
 
 # `/en-resolve-pr`
