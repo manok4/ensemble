@@ -1,6 +1,6 @@
 ---
 name: learnings-research
-description: "Queries docs/learnings/ for entries relevant to a planning, review, or analysis task. Reads the curated index.md first (Karpathy's pattern), then drills into the most-relevant pages. Read-only research agent. Returns matched learnings with citations and one-line applicability summaries. Dispatched by en-plan, en-review, en-brainstorm, en-foundation."
+description: "Queries docs/learnings/ for entries relevant to a planning, review, or analysis task. Reads index.md first (Karpathy's pattern), then drills into the most-relevant pages. Read-only. Returns matched learnings with citations and one-line applicability summaries. Dispatched by en-plan, en-review, en-brainstorm, en-foundation."
 model: sonnet
 ---
 

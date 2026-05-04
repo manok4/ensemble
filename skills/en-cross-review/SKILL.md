@@ -1,6 +1,6 @@
 ---
 name: en-cross-review
-description: "Ad-hoc Outside Voice peer review of any artifact — file, git diff, branch, or current uncommitted work. Wraps the target in the Outside Voice prompt template, ships it to the peer agent (Codex if host is Claude; Claude if host is Codex; same-CLI fresh subprocess in single-agent fallback), parses findings JSON, presents grouped by severity. Optional --focus flag (security, performance, tests, all). The skill IS the peer call. Use whenever the user wants an independent second pair of eyes on something specific without going through the full review skill. Trigger phrases: 'cross-review this', 'second opinion', 'peer review', 'have the other agent look', 'outside voice on'."
+description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, branch, uncommitted work). Ships the target to the peer agent (Codex if host is Claude; Claude if Codex; same-CLI fresh subprocess as single-agent fallback) and returns findings grouped by severity. Optional --focus (security | performance | tests | all). Trigger phrases: 'cross-review', 'second opinion', 'peer review this', 'outside voice on'."
 ---
 
 # `/en-cross-review`

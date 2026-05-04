@@ -1,6 +1,6 @@
 ---
 name: testing-reviewer
-description: "Reviews a code diff or unit for test quality — coverage gaps, weak assertions, brittle tests, missing test categories (happy path, edge cases, error paths), missing regression tests for fixed bugs. Read-only. Returns structured findings JSON. Dispatched by en-review and en-build (per unit). Always-on persona; never skipped based on diff content."
+description: "Reviews a code diff or unit for test quality — coverage gaps, weak assertions, brittle tests, missing categories (happy path, edge cases, error paths), missing regression tests for fixed bugs. Read-only. Returns findings JSON. Always-on persona; dispatched by en-review and en-build per unit."
 model: sonnet
 ---
 

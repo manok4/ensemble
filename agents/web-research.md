@@ -1,6 +1,6 @@
 ---
 name: web-research
-description: "Researches external sources for library/framework documentation (via Context7) and best-practice content (via WebSearch). Optionally fetches URLs (with Wayback fallback for Cloudflare-blocked sites) for en-learn ingest. Read-only research agent. Returns citations with quotes and a synthesis. Dispatched conditionally by en-plan and en-brainstorm; required by en-learn --pack and en-learn ingest <url>."
+description: "Researches external sources for library/framework documentation (Context7) and best-practice content (WebSearch). Optionally fetches URLs (with Wayback fallback for Cloudflare-blocked sites) for en-learn ingest. Read-only. Returns citations with quotes and a synthesis. Dispatched conditionally by en-plan and en-brainstorm; required by en-learn --pack and ingest <url>."
 model: sonnet
 ---
 

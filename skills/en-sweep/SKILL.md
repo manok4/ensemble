@@ -1,6 +1,6 @@
 ---
 name: en-sweep
-description: "Doc-drift cleanup that runs automatically after every PR merge to main (event-driven, not scheduled). Runs lint, wiki-graph health checks, architecture-doc drift detection, plan-lifecycle drift, and pointer-map drift. Opens small targeted doc-only PRs that auto-merge after en-review (in mode:report-only) clears them. Strictly doc-only — code-level findings file to docs/plans/tech-debt-tracker.md instead. Five loop guards prevent self-trigger cascades. Default-safe security model (GITHUB_TOKEN least-privilege, no fork triggers, branch protection respected). Use when invoked manually for ad-hoc doc cleanup. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep', 'update architecture doc'."
+description: "Doc-drift cleanup that auto-fires after every PR merge to main (event-driven, not scheduled). Runs file-shape lint + wiki-graph health + architecture/plan-lifecycle/pointer-map drift. Opens auto-merging doc-only PRs after /en-review (mode:report-only) clears them. Code-level findings file to tech-debt-tracker.md. Optional continuous monitoring (dead-code + dep-vuln) → TD or draft plan. Five loop guards. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
 ---
 
 # `/en-sweep`

@@ -1,6 +1,6 @@
 ---
 name: en-qa
-description: "Test the work like a real user. Phase 1 system checks (lint + typecheck + test suite); Phase 2 browser end-to-end via Playwright MCP (golden-path flows + edge cases like empty states, error states, slow network, double-click, navigate-mid-action, keyboard-only, mobile viewport). For each bug found: reproduce, identify root cause, fix, add regression test, atomic commit, re-verify. Outputs a QA report with screenshots. Use whenever the user wants to verify a feature behaves correctly end-to-end before shipping. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it', 'make sure nothing broke'."
+description: "Test the work like a real user. Phase 1: lint + typecheck + test suite. Phase 2: Playwright browser end-to-end (golden path + edge cases — empty/error states, slow network, double-click, navigate-mid-action, keyboard, mobile). Per bug: reproduce → root cause → fix → regression test → atomic commit → re-verify. Outputs a QA report with screenshots. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
 ---
 
 # `/en-qa`
