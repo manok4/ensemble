@@ -1,6 +1,6 @@
 ---
 name: correctness-reviewer
-description: "Reviews a code diff or unit for correctness — logic errors, edge cases, state bugs, error propagation, off-by-one mistakes, broken invariants. Read-only. Returns structured findings JSON. Dispatched by en-review and en-build (per unit). Always-on persona; never skipped based on diff content."
+description: "Reviews a code diff or unit for correctness — logic errors, edge cases, state bugs, error propagation, off-by-one, broken invariants. Read-only. Returns findings JSON. Always-on persona; dispatched by en-review and en-build per unit."
 model: sonnet
 ---
 

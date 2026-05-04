@@ -1,6 +1,6 @@
 ---
 name: en-foundation
-description: "Produce the foundational artifact set for a new product or retrofit one for an existing project: docs/foundation.md (combined PRD + technical direction + architecture intent), docs/architecture.md (initial seed), AGENTS.md and CLAUDE.md (project-level pointer maps). Walks the user through depth-scaled discovery (product identity, users, requirements with R-IDs, UX, stack, data, architecture, API, deployment, security, risks), runs cross-agent peer review on the draft, then writes everything. Use whenever the user is starting a new product, retrofitting an existing project to Ensemble, or revising the foundation document. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'set up foundation', 'PRD and architecture'."
+description: "Produce or retrofit the foundational artifact set: docs/foundation.md (PRD + tech direction + architecture intent), docs/architecture.md (seed), AGENTS.md, CLAUDE.md. Walks depth-scaled discovery (product, users, R-IDs, stack, data, architecture, deployment, risks), asks for plan_id_prefix (2-3 uppercase letters; default FR), runs cross-agent peer review on the draft. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'PRD and architecture'."
 ---
 
 # `/en-foundation`

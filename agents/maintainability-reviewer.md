@@ -1,6 +1,6 @@
 ---
 name: maintainability-reviewer
-description: "Reviews a code diff or unit for maintainability — coupling, complexity, naming, dead code, abstraction debt, premature abstraction, hidden duplication. Read-only. Returns structured findings JSON. Dispatched by en-review. Always-on persona for en-review (not en-build per unit, where code-simplifier handles refinement)."
+description: "Reviews a code diff or unit for maintainability — coupling, complexity, naming, dead code, premature abstraction, hidden duplication. Read-only. Returns findings JSON. Always-on persona for en-review (not en-build per unit, where code-simplifier handles refinement)."
 model: sonnet
 ---
 

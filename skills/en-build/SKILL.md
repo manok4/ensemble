@@ -1,6 +1,6 @@
 ---
 name: en-build
-description: "Execute an implementation plan unit-by-unit on a feature branch (or worktree). Picks one of two flavors based on host detection: build-by-orchestration (Claude host dispatches Codex as worker) or build-handoff (Codex host implements natively, dispatches Claude as peer-reviewer). Each unit goes through verification gate 1 (tests + lint), code-simplifier pass, verification gate 2, per-unit Outside Voice peer review, host applies findings, re-verify, commit. Auto-invokes /en-learn at the end. Use whenever the user has a plan in docs/plans/active/ ready to implement. Trigger phrases: 'build this plan', 'implement FRXX', 'start building', 'execute the plan', 'build /en-plan output'."
+description: "Execute an implementation plan unit-by-unit on a feature branch. Picks build-by-orchestration (Claude host dispatches Codex worker) or build-handoff (Codex host with Claude peer reviewer) per host detection. Each unit: tests + lint → simplifier → re-verify → peer review → host applies → commit. Auto-invokes /en-learn at the end. Trigger phrases: 'build this plan', 'implement <plan_id>', 'start building', 'execute the plan'."
 ---
 
 # `/en-build`

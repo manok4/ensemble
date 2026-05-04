@@ -1,6 +1,6 @@
 ---
 name: standards-reviewer
-description: "Reviews a code diff or unit for project-standards compliance — CLAUDE.md / AGENTS.md conventions, repo file naming, commit message conventions, frontmatter validity, structural conventions. Read-only. Returns structured findings JSON. Dispatched by en-review. Always-on persona; never skipped."
+description: "Reviews a code diff or unit for project-standards compliance — CLAUDE.md / AGENTS.md conventions, file naming, commit messages, frontmatter validity, structural conventions. Read-only. Returns findings JSON. Always-on persona; dispatched by en-review."
 model: sonnet
 ---
 

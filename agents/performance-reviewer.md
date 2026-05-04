@@ -1,6 +1,6 @@
 ---
 name: performance-reviewer
-description: "Reviews a code diff for performance concerns — database query patterns (N+1, full scans, unindexed lookups), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms. Read-only. Returns structured findings JSON. Conditional persona; fires when the diff touches DB queries, request handlers, async code, or caching layers."
+description: "Reviews a code diff for performance — DB query patterns (N+1, full scans, unindexed lookups), hot paths (handlers, render loops), async/concurrency, caching, large data transforms. Read-only. Returns findings JSON. Conditional persona; fires when the diff touches DB queries, handlers, async code, or caching."
 model: sonnet
 ---
 

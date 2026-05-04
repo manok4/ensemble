@@ -1,6 +1,6 @@
 ---
 name: migrations-reviewer
-description: "Reviews a code diff for migration safety — schema changes (additions, removals, renames, constraint changes), backfills, data isolation, multi-tenancy boundary changes. Read-only. Returns structured findings JSON. Conditional persona; fires when the diff touches migration files, schema definitions, seeds, backfill scripts, or tenant-isolation logic."
+description: "Reviews a code diff for migration safety — schema additions/removals/renames, constraint changes, backfills, data isolation, multi-tenancy boundary changes. Read-only. Returns findings JSON. Conditional persona; fires when the diff touches migration files, schema definitions, seeds, backfill scripts, or tenant-isolation logic."
 model: sonnet
 ---
 

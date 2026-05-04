@@ -1,6 +1,6 @@
 ---
 name: en-brainstorm
-description: "Explore an idea, problem, or design choice through Q&A, research, and 2-3 trade-off-aware approaches with a recommendation and devil's-advocate stress test. Outputs a design doc to docs/designs/. Use whenever the user wants to think through something before committing to a plan: a new feature shape, an architectural choice, a refactor strategy, an exploratory technical decision, or a 'should we even build this?' question. Trigger phrases: 'brainstorm', 'explore', 'think through', 'help me decide', 'what would it look like if we', 'I'm trying to figure out', 'design doc for'."
+description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-aware approaches with a recommendation and devil's-advocate pass. Outputs a design doc to docs/designs/. Use before committing to a plan. Trigger phrases: 'brainstorm', 'explore options', 'think through', 'help me decide', 'what would it look like if', 'design doc for'."
 ---
 
 # `/en-brainstorm`

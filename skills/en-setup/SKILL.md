@@ -1,6 +1,6 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Detects whether a repo is greenfield (State 1), an existing project without Ensemble (State 2 with sub-variants 2a/2b/2c/2d), or already integrated (State 3). Creates the docs/ skeleton, generates or append-merges AGENTS.md and CLAUDE.md, installs the en-sweep GitHub Action, sets up .ensemble/ config files, and runs health checks. Use whenever the user wants to install Ensemble in a project, bootstrap a new repo, retrofit an existing repo, or diagnose Ensemble integration. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble in this project', 'install Ensemble here', 'check my Ensemble setup', 'diagnose Ensemble', 'retrofit this project'."
+description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 ---
 
 # `/en-setup`

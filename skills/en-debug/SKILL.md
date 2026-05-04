@@ -1,6 +1,6 @@
 ---
 name: en-debug
-description: "Reproduce a bug from telemetry. Reads structured logs from the configured source, correlates by trace_id / request_id / timestamp, identifies the failing code path, and surfaces a hypothesis with file:line. Pairs with /en-resolve-pr (when reviewer comments reference a runtime error) and /en-build (when a test or QA run fails with a real-world trace). Trigger phrases: 'debug this trace', 'reproduce this error', 'walk this log', 'why did this fail in prod'."
+description: "Reproduce a bug from telemetry. Reads structured logs from the configured source, correlates by trace_id / request_id / event field, surfaces a hypothesis with file:line and confidence 1-10. Read-only. Pairs with /en-resolve-pr (when reviewer comments reference a runtime error) and /en-build (when a test or QA run fails with a real-world trace). Trigger phrases: 'debug this trace', 'reproduce this error', 'walk this log', 'why did this fail in prod'."
 ---
 
 # `/en-debug`

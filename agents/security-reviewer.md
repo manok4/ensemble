@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: "Reviews a code diff for security concerns — auth bypass, broken authorization, input handling (injection, XSS, SSRF), secret/token handling, permission boundaries, CORS, CSP, cookie config, OAuth flows. Read-only. Returns structured findings JSON. Conditional persona; fires when the diff touches auth code, public endpoints, user-input handling, or secret handling."
+description: "Reviews a code diff for security — auth bypass, broken authorization, input handling (injection, XSS, SSRF), secret/token handling, permission boundaries, CORS, CSP, cookie config, OAuth flows. Read-only. Returns findings JSON. Conditional persona; fires when the diff touches auth, public endpoints, user-input handling, or secret handling."
 model: sonnet
 ---
 

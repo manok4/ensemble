@@ -1,6 +1,6 @@
 ---
 name: code-simplifier
-description: "Simplifies and refines recently modified code for clarity, consistency, and project-standards compliance while preserving exact functionality. Reduces nesting, eliminates redundancy, applies CLAUDE.md / AGENTS.md conventions. Avoids over-simplification — no nested ternaries, no clever-at-cost-of-readable. Distinct from reviewer agents: this agent MAY modify files. Two verification gates protect against breakage. Dispatched by en-build per unit (between gate 1 and peer review)."
+description: "Refines recently modified code for clarity and project-standards compliance while preserving exact functionality. Reduces nesting, removes redundancy, applies CLAUDE.md / AGENTS.md conventions; avoids nested ternaries and clever-at-cost-of-readable. MAY modify files (distinct from reviewer agents). Dispatched by en-build per unit between gate 1 and peer review; two verification gates protect against breakage."
 model: opus
 ---
 

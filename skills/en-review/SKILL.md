@@ -1,6 +1,6 @@
 ---
 name: en-review
-description: "Multi-persona code review of the current branch's changes against the plan and project conventions. Always-on personas (correctness, testing, maintainability, standards) plus conditional personas (security, performance, migrations) that fire when the diff matches. Synthesizes findings, applies safe_auto fixes, surfaces gated_auto/manual/advisory findings to the user. Three modes: interactive (default for direct user invocation), headless (default for skill-to-skill), report-only (mandatory when invoked from CI like en-sweep). Use whenever the user wants the current branch reviewed before shipping. Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR', 'review before ship'."
+description: "Multi-persona code review of the current branch. Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
 ---
 
 # `/en-review`
