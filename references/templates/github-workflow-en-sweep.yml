@@ -82,8 +82,13 @@ jobs:
       - name: Install dependencies
         if: steps.skip-self.outputs.skip == 'false' && steps.skip-label.outputs.skip == 'false'
         run: |
-          # CLI auth: the runner needs ANTHROPIC_API_KEY or CODEX_API_KEY in repo secrets,
-          # plus claude or codex CLI on PATH. Customize this step for your install method.
+          # CLI auth: the runner needs claude or codex CLI on PATH plus a matching
+          # auth secret in repo Settings → Secrets and variables → Actions:
+          #   - claude CLI: CLAUDE_CODE_OAUTH_TOKEN (Pro/Max subscription;
+          #     generate via `claude setup-token`) OR ANTHROPIC_API_KEY (pay-per-use API)
+          #   - codex CLI:  OPENAI_API_KEY
+          # Provide whichever matches the CLI you install. Customize this step for
+          # your install method.
           if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
             echo "ERROR: en-sweep requires claude or codex CLI in the runner. See docs/foundation.md §5.2.10."
             exit 1
@@ -92,6 +97,13 @@ jobs:
       - name: Run en-sweep
         if: steps.skip-self.outputs.skip == 'false' && steps.skip-label.outputs.skip == 'false'
         env:
+          # Subscription auth (Pro/Max): preferred when available — claude CLI honors
+          # this token and bills against the subscription's rate limit instead of
+          # pay-per-use API tokens. Generate via `claude setup-token` and store as
+          # CLAUDE_CODE_OAUTH_TOKEN in repo secrets.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # API-key auth fallbacks. Whichever CLI is on PATH picks up the matching
+          # variable; the others can be empty/missing.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

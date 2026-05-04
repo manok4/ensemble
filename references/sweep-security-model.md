@@ -89,12 +89,25 @@ If any of these fail, the PR stays open for human resolution.
 
 ## Required setup secrets
 
-The repo needs (in Settings → Secrets):
+The repo needs (in Settings → Secrets and variables → Actions) **at least one** of the following, matching whichever CLI the runner installs:
 
-- `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) for the LLM provider that runs sweep's checks. The workflow expects whichever the host CLI uses.
-- `GITHUB_TOKEN` is auto-provided; no manual setup.
+| CLI in runner | Preferred secret | Alternative secret |
+|---|---|---|
+| `claude` | `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; generate with `claude setup-token`) — bills against subscription rate limit, no pay-per-use API charges | `ANTHROPIC_API_KEY` (pay-per-use API) |
+| `codex` | `OPENAI_API_KEY` | (no subscription path; API key only) |
 
-If the secret is missing, sweep fails at the LLM step with a clear error — doesn't auto-merge anything.
+The workflow template passes all three env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) to the sweep step; the CLI on PATH picks up the one that matches it. Set whichever you have; leave the others empty.
+
+`GITHUB_TOKEN` is auto-provided; no manual setup.
+
+If no usable secret is present, sweep fails at the LLM step with a clear error — doesn't auto-merge anything.
+
+**OAuth vs API key — when to pick which:**
+
+- **OAuth** (`CLAUDE_CODE_OAUTH_TOKEN`) — you have a Claude Pro or Max subscription and want sweep to share its rate-limited quota with your local Claude Code usage. No surprise API bills. Risk: if you hit rate limits during a busy day, sweep can't fire on subsequent merges until the limit resets.
+- **API key** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) — pay-per-use, no rate cap, predictable in CI. Best for high-volume repos or teams where the subscription would be a bottleneck.
+
+You can set both. If `CLAUDE_CODE_OAUTH_TOKEN` is set, `claude` CLI uses it; if not, it falls back to `ANTHROPIC_API_KEY`.
 
 ## What sweep never does
 
