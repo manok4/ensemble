@@ -1,6 +1,6 @@
 # When to update `docs/architecture.md`
 
-`docs/architecture.md` is the **living architectural reality** of the project. `en-learn` updates it after every material structural change ships; `en-garden` checks it for drift on every PR-merge run.
+`docs/architecture.md` is the **living architectural reality** of the project. `en-learn` updates it after every material structural change ships; `en-sweep` checks it for drift on every PR-merge run.
 
 This file defines what counts as "material" and how the update happens.
 
@@ -45,7 +45,7 @@ Per `references/architecture-template.md`:
 
 | Section | Maintained by | Contents |
 |---|---|---|
-| Frontmatter | `en-foundation` (seed), `en-learn` (`updated:`), `en-garden` (`last_drift_check:`) | `status`, `created`, `updated`, `last_drift_check`, `freshness_target_days` |
+| Frontmatter | `en-foundation` (seed), `en-learn` (`updated:`), `en-sweep` (`last_drift_check:`) | `status`, `created`, `updated`, `last_drift_check`, `freshness_target_days` |
 | **Components and responsibilities** | `en-learn` after every material change | One entry per top-level component: name, responsibility, key files, owner team if applicable |
 | **Component boundaries and layer rules** | `en-foundation` (seed), `en-learn` (refinements) | Allowed/disallowed import direction, layer hierarchy |
 | **Data flows** | `en-foundation` (seed), `en-learn` after material flow changes | Primary flows: request lifecycle, write paths, async pipelines |
@@ -64,16 +64,16 @@ Per `references/architecture-template.md`:
 
 `en-learn` flips `seed` → `active` after the first successful update following the first feature ship.
 
-## Drift checks (`en-garden`)
+## Drift checks (`en-sweep`)
 
-On every PR-merge run, `en-garden` invokes `repo-research` to compare `docs/architecture.md` against the codebase:
+On every PR-merge run, `en-sweep` invokes `repo-research` to compare `docs/architecture.md` against the codebase:
 
 - **Documented components still present?** If a component was removed but the doc still lists it → P1.
 - **Dependency rules honored?** If layer rules say A → B is forbidden but a recent commit added it → P0 (file as tech debt; don't auto-fix).
 - **Layer boundaries clean?** Cross-layer imports flagged.
 - **Freshness window.** `updated:` field within `freshness_target_days` (default 30) → green; up to 90 → P2 advisory; >90 → P1.
 
-Doc-only fixes (component renames, dependency-direction documentation) go into garden's batch PRs. Code-level findings (a layer rule violation in source) go to `tech-debt-tracker.md`.
+Doc-only fixes (component renames, dependency-direction documentation) go into sweep's batch PRs. Code-level findings (a layer rule violation in source) go to `tech-debt-tracker.md`.
 
 ## When in doubt
 

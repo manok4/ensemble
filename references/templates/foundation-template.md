@@ -13,6 +13,7 @@ Used by `/en-foundation` to seed the foundation document. Combined PRD + technic
 | `{{TODAY}}` | `YYYY-MM-DD` at generation time |
 | `{{OWNER}}` | User name from git config or asked |
 | `{{DEPTH}}` | `lightweight` \| `standard` \| `deep` |
+| `{{PLAN_ID_PREFIX}}` | 2–3 uppercase letters used as the plan-ID prefix (e.g. `EN` for Ensemble). Asked during `/en-foundation`; suggested default derived from project name. Falls back to `FR` if absent. |
 
 ## Template body
 
@@ -25,6 +26,7 @@ created: {{TODAY}}
 updated: {{TODAY}}
 owner: {{OWNER}}
 depth: {{DEPTH}}
+plan_id_prefix: {{PLAN_ID_PREFIX}}
 ---
 
 # {{PROJECT_NAME}} — Foundation
@@ -222,7 +224,7 @@ Top-level UX flows. Each flow has a stable F-ID and a brief description with scr
   - **Standard** — keep §1–§10, §14. Drop §11–§13 unless explicitly relevant.
   - **Deep** — full template.
 - `D1`, `R1`, `A1`, etc. are seeded only when the user provides content for them. Empty IDs aren't auto-generated.
-- For State-1 (greenfield) projects, the template emits the foundation **and** an `FR01-project-setup` plan in `docs/plans/active/` (per A1/D24).
+- For State-1 (greenfield) projects, the template emits the foundation **and** a bootstrap `<PREFIX>01-feature_project-setup` plan in `docs/plans/active/` (per A1/D24). `<PREFIX>` is the resolved `plan_id_prefix` (default `FR`).
 - For State-2 (retrofit) projects, the template emits the foundation only; existing source code informs §7 (stack), §8 (data), §9 (architecture intent reverse-engineered).
 
 ## Per-section discovery questions

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# check-merge-status — report PR merge readiness as JSON.
+# Used by /en-resolve-pr's summary step and the --enable-auto-merge flag.
+
+set -e
+
+if [ $# -lt 1 ]; then
+    echo "Usage: check-merge-status PR_NUMBER [OWNER/REPO]"
+    echo "Example: check-merge-status 42"
+    exit 1
+fi
+
+PR_NUMBER=$1
+
+if [ -n "$2" ]; then
+    OWNER=$(echo "$2" | cut -d/ -f1)
+    REPO=$(echo "$2" | cut -d/ -f2)
+else
+    OWNER=$(gh repo view --json owner -q .owner.login 2>/dev/null)
+    REPO=$(gh repo view --json name -q .name 2>/dev/null)
+fi
+
+if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+    echo "Error: Could not detect repository. Pass OWNER/REPO as second argument." >&2
+    exit 1
+fi
+
+# Fetch PR-level + repo-level auto-merge state.
+# Combines gh pr view (PR-level) with gh api repos/... (repo-level).
+PR_JSON=$(gh pr view "$PR_NUMBER" --json autoMergeRequest,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,number,title,headRefName 2>/dev/null || echo '{}')
+REPO_AUTO_MERGE=$(gh api "repos/$OWNER/$REPO" --jq '.allow_auto_merge // false' 2>/dev/null || echo "false")
+
+echo "$PR_JSON" | jq --arg repo_auto "$REPO_AUTO_MERGE" '
+{
+  pr_number: .number,
+  title: .title,
+  branch: .headRefName,
+  repo_allows_auto_merge: ($repo_auto == "true"),
+  auto_merge_enabled: (.autoMergeRequest != null),
+  auto_merge_method: (.autoMergeRequest.mergeMethod // null),
+  enabled_by: (.autoMergeRequest.enabledBy.login // null),
+  mergeable: .mergeable,
+  merge_state_status: .mergeStateStatus,
+  review_decision: .reviewDecision,
+  failing_checks: [.statusCheckRollup[]? | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT")
+                    | { name: (.name // .context), conclusion: .conclusion, url: (.detailsUrl // .targetUrl) }],
+  pending_checks: [.statusCheckRollup[]? | select(.status == "IN_PROGRESS" or .status == "QUEUED" or .status == "PENDING")
+                    | { name: (.name // .context), status: .status }]
+}
+'

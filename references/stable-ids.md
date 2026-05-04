@@ -36,9 +36,9 @@ When two plan units get merged:
 
 ## Renumbering exception
 
-The **only** exception: pre-publication of a plan. Before the plan is committed (still in `draft` state), the user can renumber freely. Once `status: active` and the plan is committed, IDs are frozen.
+The **only** exception: pre-publication of a plan. Before the plan is committed (still in `draft` state), the user can renumber freely. Once the plan moves to `open` (or beyond — `in_progress`, `completed`) and is committed, IDs are frozen.
 
-`bin/ensemble-lint`'s `id-stability.*` rules check the most recent commit's ID set against earlier commits. Renumbering in `active`/`completed` plans triggers `id-stability.u-renumbered` (P1).
+`bin/ensemble-lint`'s `id-stability.*` rules check the most recent commit's ID set against earlier commits. Renumbering in plans at `open` / `in_progress` / `completed` triggers `id-stability.u-renumbered` (P1).
 
 ## FRXX numbering
 
@@ -56,7 +56,7 @@ When `en-plan` creates a new plan, it scans both `docs/plans/active/` and `docs/
 - `en-plan` when filing items deferred from the plan.
 - `en-build` when a peer-review finding is "agree but defer".
 - `en-review` when a finding is `gated_auto`/`manual` but the user defers.
-- `en-garden` when it surfaces a code-level pattern (always defers — garden is doc-only).
+- `en-sweep` when it surfaces a code-level pattern (always defers — sweep is doc-only).
 
 Format: `TD1`, `TD2`, … in `docs/plans/tech-debt-tracker.md`. Append-only.
 

@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# triage-findings — read JSON-lines findings (from continuous-monitor or
+# similar) and partition them into "trivial → TD entry" vs "plan-worthy →
+# draft plan". Output schema:
+#
+# {
+#   "td_entries":   [ <findings> ],     // trivial; file as TD<N>
+#   "draft_plans":  [ {                  // plan-worthy; create draft plan
+#       "title": "...",
+#       "plan_type": "improvement"|"bug",
+#       "depth": "lightweight",
+#       "findings": [ <findings> ],     // grouped by area
+#       "area": "src/utils/"             // common path prefix
+#     } ],
+#   "skipped":      [ <findings with reason> ]
+# }
+#
+# Triage rules (configurable via .ensemble/config.local.yaml sweep.*):
+#   - loc_estimate < auto_plan_threshold_loc                  → TD entry
+#   - loc_estimate >= auto_plan_threshold_loc                 → plan candidate
+#   - check=dep-audit, fix_command non-empty                  → TD entry (mechanical)
+#   - check=dep-audit, P1 severity, no fix_command            → plan candidate
+#   - check=dead-code, single file affected                   → TD entry
+#   - check=dead-code, ≥auto_plan_threshold_locations files  → plan candidate
+#
+# Plans are capped at max_drafts_per_run; overflow goes to TD.
+#
+# Usage:
+#   continuous-monitor | triage-findings > triage.json
+
+set -euo pipefail
+
+# Config defaults; override via env or .ensemble/config.local.yaml.
+LOC_THRESHOLD="${SWEEP_AUTO_PLAN_THRESHOLD_LOC:-50}"
+LOCATIONS_THRESHOLD="${SWEEP_AUTO_PLAN_THRESHOLD_LOCATIONS:-2}"
+MAX_DRAFTS="${SWEEP_MAX_DRAFTS_PER_RUN:-3}"
+
+if [ -f .ensemble/config.local.yaml ]; then
+  v=$(awk '/^[[:space:]]*sweep:[[:space:]]*$/{flag=1; next}
+           /^[[:space:]]*[a-z_]+:[[:space:]]*$/{flag=0}
+           flag && /^[[:space:]]*auto_plan_threshold_loc:[[:space:]]*/{sub(/^[[:space:]]*auto_plan_threshold_loc:[[:space:]]*/, ""); print; exit}' .ensemble/config.local.yaml 2>/dev/null)
+  [ -n "$v" ] && LOC_THRESHOLD="$v"
+  v=$(awk '/^[[:space:]]*sweep:[[:space:]]*$/{flag=1; next}
+           /^[[:space:]]*[a-z_]+:[[:space:]]*$/{flag=0}
+           flag && /^[[:space:]]*auto_plan_threshold_locations:[[:space:]]*/{sub(/^[[:space:]]*auto_plan_threshold_locations:[[:space:]]*/, ""); print; exit}' .ensemble/config.local.yaml 2>/dev/null)
+  [ -n "$v" ] && LOCATIONS_THRESHOLD="$v"
+  v=$(awk '/^[[:space:]]*sweep:[[:space:]]*$/{flag=1; next}
+           /^[[:space:]]*[a-z_]+:[[:space:]]*$/{flag=0}
+           flag && /^[[:space:]]*max_drafts_per_run:[[:space:]]*/{sub(/^[[:space:]]*max_drafts_per_run:[[:space:]]*/, ""); print; exit}' .ensemble/config.local.yaml 2>/dev/null)
+  [ -n "$v" ] && MAX_DRAFTS="$v"
+fi
+
+# Slurp all findings into a single JSON array.
+INPUT=$(cat)
+[ -z "$INPUT" ] && { echo '{"td_entries":[],"draft_plans":[],"skipped":[]}'; exit 0; }
+
+python3 - "$LOC_THRESHOLD" "$LOCATIONS_THRESHOLD" "$MAX_DRAFTS" <<PY
+import json, sys, os
+from collections import defaultdict
+
+loc_threshold = int(sys.argv[1])
+locations_threshold = int(sys.argv[2])
+max_drafts = int(sys.argv[3])
+
+findings = []
+for line in """$INPUT""".splitlines():
+    line = line.strip()
+    if not line or not line.startswith("{"):
+        continue
+    try:
+        findings.append(json.loads(line))
+    except Exception:
+        continue
+
+# Group dead-code findings by directory subtree (to detect "pattern across files").
+by_area = defaultdict(list)
+for f in findings:
+    if f.get("check") != "dead-code":
+        continue
+    file = f.get("file") or ""
+    area = os.path.dirname(file) or "."
+    by_area[area].append(f)
+
+td_entries = []
+draft_plan_groups = []
+skipped = []
+
+# Dead-code triage
+seen = set()
+for area, group in by_area.items():
+    if len(group) >= locations_threshold:
+        # Pattern across files in same area → plan candidate
+        title = f"Remove dead code in {area}/"
+        draft_plan_groups.append({
+            "title": title,
+            "plan_type": "improvement",
+            "depth": "lightweight",
+            "findings": group,
+            "area": area,
+            "reason": f"{len(group)} dead-code findings clustered in {area}",
+        })
+        for f in group:
+            seen.add(id(f))
+    else:
+        # Single occurrence → TD
+        for f in group:
+            td_entries.append(f)
+            seen.add(id(f))
+
+# Dep-audit triage
+for f in findings:
+    if id(f) in seen:
+        continue
+    if f.get("check") != "dep-audit":
+        continue
+    fix_cmd = f.get("fix_command", "")
+    sev = f.get("severity", "P2")
+    if fix_cmd:
+        # Mechanical fix → TD (auto-mergeable PR follows)
+        td_entries.append(f)
+    elif sev in ("P0", "P1") and f.get("loc_estimate", 0) >= loc_threshold:
+        # Severe + non-trivial → standalone plan
+        symbol = f.get("symbol", "dependency")
+        draft_plan_groups.append({
+            "title": f"Address {sev} vulnerability in {symbol}",
+            "plan_type": "bug",
+            "depth": "lightweight",
+            "findings": [f],
+            "area": f.get("file", ""),
+            "reason": f"{sev} CVE in {symbol} with no auto-fix available",
+        })
+    else:
+        td_entries.append(f)
+
+# Cap draft plans; overflow → TD with note.
+# Mutate the original finding (don't copy) so it stays identity-equal to its
+# entry in `findings` — the "uncategorized" check below uses id() to detect
+# leftovers, and a copy would make the original look uncategorized too.
+if len(draft_plan_groups) > max_drafts:
+    overflow = draft_plan_groups[max_drafts:]
+    draft_plan_groups = draft_plan_groups[:max_drafts]
+    for grp in overflow:
+        for f in grp["findings"]:
+            f["note"] = f"Would have been a plan ({grp['title']}) but exceeded max_drafts_per_run={max_drafts}"
+            td_entries.append(f)
+
+# Anything else uncategorized → skipped
+known = {id(x) for x in td_entries}
+for grp in draft_plan_groups:
+    for f in grp["findings"]:
+        known.add(id(f))
+for f in findings:
+    if id(f) not in known:
+        skipped.append({**f, "reason": "uncategorized"})
+
+print(json.dumps({
+    "td_entries": td_entries,
+    "draft_plans": draft_plan_groups,
+    "skipped": skipped,
+    "config": {
+        "loc_threshold": loc_threshold,
+        "locations_threshold": locations_threshold,
+        "max_drafts": max_drafts,
+    }
+}, indent=2))
+PY

@@ -5,7 +5,7 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 ## Where lint runs
 
 - **`en-review`** — pre-flight check on the diff. Lint failures surface as P1 findings.
-- **`en-garden`** — full repo scan on every PR-merge run; opens fix-up PRs.
+- **`en-sweep`** — full repo scan on every PR-merge run; opens fix-up PRs.
 - **CI** — recommended via `references/ci-templates/lint.yml`.
 - **Manually** — `bin/ensemble-lint [--scope docs/]`.
 
@@ -68,7 +68,7 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 | Rule | Severity | Notes |
 |---|---|---|
 | `generated.missing-marker` | P1 | File in `docs/generated/` lacks `generated: true` frontmatter |
-| `generated.human-edit` | P2 | File in `docs/generated/` has commits not authored by `en-learn` or `en-garden` (heuristic; surfaced as advisory) |
+| `generated.human-edit` | P2 | File in `docs/generated/` has commits not authored by `en-learn` or `en-sweep` (heuristic; surfaced as advisory) |
 
 ### `index-coverage.*` — index coverage
 

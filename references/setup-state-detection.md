@@ -79,7 +79,7 @@ Append-merge logic detailed in `references/templates/agents-md-merge-rules.md`.
 > "This looks like a brand-new project. Recommended next steps:
 >
 > 1. Run `/en-brainstorm` to explore what you're building. Outputs a design doc.
-> 2. Run `/en-foundation` to lock down product requirements and technical direction. This will also create `AGENTS.md`, `CLAUDE.md`, `docs/architecture.md`, the `docs/` skeleton, and an `FR01-project-setup` plan.
+> 2. Run `/en-foundation` to lock down product requirements and technical direction. This will also create `AGENTS.md`, `CLAUDE.md`, `docs/architecture.md`, the `docs/` skeleton, and a bootstrap `<PREFIX>01-feature_project-setup` plan (where `<PREFIX>` is the `plan_id_prefix` you choose during foundation, defaulting to `FR`).
 >
 > Run `/en-setup` again later if you want diagnostics on the project's Ensemble integration."
 
@@ -92,7 +92,7 @@ Steps in order (per §5.2.11):
 3. **Generate or merge `AGENTS.md`** per sub-variant.
 4. **Generate or merge `CLAUDE.md`** per sub-variant.
 5. **Add `.gitignore` entries:** `.ensemble/config.local.yaml`. Optionally `docs/learnings/archive/` (ask user).
-6. **Install `.github/workflows/en-garden.yml`** from `references/templates/github-workflow-en-garden.yml`. Surface required permissions/secrets per A20.
+6. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Surface required permissions/secrets per A20.
 7. **Create `.ensemble/config.local.example.yaml`** (committed). Offer to create `.ensemble/config.local.yaml` (gitignored) with most-likely-relevant defaults uncommented.
 8. **Recommend next steps:**
    - "Run `/en-foundation --retrofit` to back-fill `docs/foundation.md` and `docs/architecture.md` from existing code."
@@ -114,7 +114,7 @@ Health checks:
 | `docs/learnings/{bugs,patterns,decisions,sources}/` directories present | 🟢 / 🟡 |
 | `docs/learnings/{index.md,log.md}` present | 🟢 / 🟡 |
 | `docs/generated/{plan-index.md,learning-index.md}` present with `generated: true` | 🟢 / 🟡 |
-| `.github/workflows/en-garden.yml` installed | 🟢 / 🟡 |
+| `.github/workflows/en-sweep.yml` installed | 🟢 / 🟡 |
 | `.ensemble/config.local.example.yaml` present | 🟢 / 🟡 |
 | `bin/ensemble-lint --scope docs/` runs clean | 🟢 / 🔴 / 🟡 |
 | Required CLIs on PATH (`gh`, `git`, `jq`) | 🟢 / 🔴 |
@@ -142,7 +142,7 @@ Created:
   docs/learnings/{index.md,log.md}
   docs/generated/{plan-index.md,learning-index.md}
   CLAUDE.md (from template)
-  .github/workflows/en-garden.yml
+  .github/workflows/en-sweep.yml
   .ensemble/config.local.example.yaml
 
 Modified:

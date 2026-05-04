@@ -50,7 +50,7 @@ Add a leading separator and clear heading:
 <contents from template, starting at "## Where things live">
 ```
 
-The separator (`---` on its own line) makes the boundary obvious to humans and survives any subsequent garden runs.
+The separator (`---` on its own line) makes the boundary obvious to humans and survives any subsequent sweep runs.
 
 ## Frontmatter handling
 
@@ -156,5 +156,5 @@ The user always knows what was modified.
 |---|---|
 | Existing file has malformed frontmatter | Skip frontmatter mutation; surface a warning; ask user to fix manually |
 | Existing file is empty | Treat as 2a (greenfield); generate fully from template |
-| Existing file has Ensemble section but it's stale (older template) | Leave it; do not auto-update. User runs `/en-garden` or manual update |
+| Existing file has Ensemble section but it's stale (older template) | Leave it; do not auto-update. User runs `/en-sweep` or manual update |
 | User-added content matches Ensemble template verbatim | Don't append; treat as already-integrated |

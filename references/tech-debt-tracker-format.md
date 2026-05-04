@@ -44,7 +44,7 @@ updated: YYYY-MM-DD
 
 | Field | Required | Notes |
 |---|---|---|
-| `Source` | yes | Who logged this (e.g., "en-review on FR07-U3", "en-garden architecture drift", "user manual entry") |
+| `Source` | yes | Who logged this (e.g., "en-review on FR07-U3", "en-sweep architecture drift", "user manual entry") |
 | `Severity` | yes | P0–P3 from `references/severity.md` |
 | `Confidence` | yes | 1–10 |
 | `Location` | yes | `<file>:<line>` for code; `<section>` for docs; `global` for cross-cutting |
@@ -70,7 +70,7 @@ TD-IDs are **append-only** (per `references/stable-ids.md`):
 | `/en-plan` | When deferring planning work that came up but is out of scope |
 | `/en-build` | When a peer-review finding is "agree but defer" (per `references/severity.md`) |
 | `/en-review` | When a finding is `gated_auto`/`manual` but the user defers |
-| `/en-garden` | When a code-level finding surfaces (architecture drift, layer violation) — garden never modifies code, so all code-level findings come here |
+| `/en-sweep` | When a code-level finding surfaces (architecture drift, layer violation) — sweep never modifies code, so all code-level findings come here |
 | User | Manual entries are fine; just follow the format |
 
 ## Who resolves
@@ -79,7 +79,7 @@ TD-IDs are **append-only** (per `references/stable-ids.md`):
 |---|---|
 | `/en-build` | Cites `Resolves: TD<n>` in unit metadata; commit body cites the TD-ID |
 | `/en-learn capture` | When the plan that resolves the TD ships, marks it resolved (move to `## Resolved`, add `Resolved: <date> by <sha>` field) |
-| `/en-garden` | Hygiene pass: re-checks resolved TDs match the cited commits; flags mismatches (`tech-debt.resolved-not-found`) |
+| `/en-sweep` | Hygiene pass: re-checks resolved TDs match the cited commits; flags mismatches (`tech-debt.resolved-not-found`) |
 
 ## Heuristics for what qualifies
 
@@ -96,7 +96,7 @@ Doesn't go in tracker:
 - ✗ "Code could be cleaner" without a specific location or fix — too vague.
 - ✗ Style preferences without a project standard backing them.
 - ✗ Speculative refactors ("we might want to extract X someday").
-- ✗ Doc-only items — those are handled by `/en-garden` directly, not tracked here.
+- ✗ Doc-only items — those are handled by `/en-sweep` directly, not tracked here.
 
 When in doubt, surface to user: "Defer to tech-debt-tracker, ignore, or fix now?"
 
@@ -117,7 +117,7 @@ When in doubt, surface to user: "Defer to tech-debt-tracker, ignore, or fix now?
 
 ### TD12. Inconsistent test naming in src/auth/
 
-- **Source:** en-garden lint pass
+- **Source:** en-sweep lint pass
 - **Severity:** P3
 - **Confidence:** 6/10
 - **Location:** `src/auth/*.test.ts` (4 files)

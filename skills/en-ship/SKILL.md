@@ -50,7 +50,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     - Body auto-generated:
       - **Summary** — 1–3 bullets from the commits.
       - **Test plan** — checkbox list of what was tested (from `/en-qa` report if available, otherwise generated from changed files).
-      - Plan reference: `Closes plan: docs/plans/active/FRXX-*.md` if branch name matches FRXX.
+      - Plan reference: `Closes plan: docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` if the branch name carries a recognizable plan ID (`<PREFIX><NN>`).
     - Use HEREDOC for body to preserve formatting.
     - On PR-creation success → return URL.
 11. **Optional auto-merge.** If user confirms AND CI is green AND branch protection allows:
@@ -95,6 +95,9 @@ PR opened: https://github.com/manok4/ensemble/pull/42
 Title: feat(auth): rotate refresh token on every access
 Reviewers requested: <none>
 Auto-merge: disabled (pass --auto-merge to enable)
+
+Next: Run /en-resolve-pr when reviewers leave comments,
+      or `/loop 30m /en-resolve-pr` to poll periodically.
 ```
 
 ## Reference files
@@ -123,4 +126,4 @@ Auto-merge: disabled (pass --auto-merge to enable)
 - **Never amends published commits.** Always creates a new commit.
 - **Never skips hooks** (`--no-verify`). If a pre-commit hook fails, the user investigates.
 - **Never deletes branches.** Cleanup is the user's call.
-- **Never bypasses branch protection.** If the repo requires N reviews, garden-style auto-merge isn't appropriate here either.
+- **Never bypasses branch protection.** If the repo requires N reviews, sweep-style auto-merge isn't appropriate here either.

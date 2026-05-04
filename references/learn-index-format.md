@@ -70,7 +70,7 @@ Sort order within each category: **most recent first** (descending by `date:`).
 - After every `en-learn capture` or `en-learn ingest` (incremental: just append the new entry to its category section, bump `total_entries` and `updated`).
 - After `en-learn --refresh` archives or supersedes entries (incremental: remove the affected line, add an `archive/` link if the page moved).
 - After `en-learn --lint --fix` (full regeneration if drift was detected).
-- After `en-garden` runs and detects drift (full regeneration via `en-learn --lint --fix`).
+- After `en-sweep` runs and detects drift (full regeneration via `en-learn --lint --fix`).
 
 ## Empty-state
 

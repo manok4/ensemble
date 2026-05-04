@@ -90,7 +90,7 @@ The repo is the system of record. Maps are short; encyclopedias are long. Failur
 
 ## Notes on generation
 
-- The template above is the **starting** state. `en-learn` and `en-garden` will refine it as the project evolves (adding entries to "Where things live" if `docs/references/` gains content, dropping rows if a section is empty).
+- The template above is the **starting** state. `en-learn` and `en-sweep` will refine it as the project evolves (adding entries to "Where things live" if `docs/references/` gains content, dropping rows if a section is empty).
 - When the project has no `foundation.md` yet (State 2 retrofit), substitute `{{ONE_LINE_PURPOSE}}` with `<TODO: run /en-foundation to seed this>`.
 - When commands aren't detected, leave the value as `<unset>` rather than guessing.
 - The `host: any` frontmatter is critical — it's how `bin/ensemble-lint` knows this file is the host-agnostic map.

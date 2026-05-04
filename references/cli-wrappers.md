@@ -13,7 +13,7 @@ Headless one-shot prompt mode.
 | `-p <prompt>` or `--prompt <prompt>` | The prompt | Positional after the flag |
 | `--output-format json` | Return structured JSON instead of pretty-printed | Required for parseable peer responses |
 | `--max-turns <N>` | Cap on conversation turns | Use `1` for peer review (single response) |
-| `--skill <name>` | Pre-load a specific skill | Used by `bin/en-garden-ci` |
+| `--skill <name>` | Pre-load a specific skill | Used by `bin/en-sweep-ci` |
 | `--system-prompt <text>` | Override the system prompt | Rare; usually leave default |
 | `--include-partial-messages` | Stream partial responses | Skip for peer review (we want the final JSON) |
 
@@ -27,13 +27,13 @@ ENSEMBLE_PEER_REVIEW=true \
   "$prompt"
 ```
 
-### Canonical CI invocation (used by `bin/en-garden-ci`)
+### Canonical CI invocation (used by `bin/en-sweep-ci`)
 
 ```bash
 claude -p \
   --output-format json \
   --max-turns 50 \
-  --skill en-garden \
+  --skill en-sweep \
   "$@"
 ```
 
@@ -45,7 +45,7 @@ Headless command-execution mode.
 |---|---|---|
 | `<prompt>` | The prompt | Positional |
 | `--json` | Return structured JSON | Required for parseable peer responses |
-| `--skill <name>` | Pre-load a specific skill | Used by `bin/en-garden-ci` |
+| `--skill <name>` | Pre-load a specific skill | Used by `bin/en-sweep-ci` |
 | `--max-turns <N>` | Cap on conversation turns | Use `1` for peer review |
 
 ### Canonical peer-review invocation
@@ -61,7 +61,7 @@ ENSEMBLE_PEER_REVIEW=true \
 ### Canonical CI invocation
 
 ```bash
-codex exec --json --skill en-garden "$@"
+codex exec --json --skill en-sweep "$@"
 ```
 
 ## How skills consume this file

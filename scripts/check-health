@@ -44,8 +44,8 @@ fi
 [ -f docs/learnings/log.md ]     && check "docs/learnings/log.md present" green     || check "docs/learnings/log.md present" yellow "Run /en-setup"
 [ -d docs/generated ]            && check "docs/generated/ present" green           || check "docs/generated/ present" yellow "Run /en-setup"
 
-# Garden workflow
-[ -f .github/workflows/en-garden.yml ] && check ".github/workflows/en-garden.yml installed" green || check ".github/workflows/en-garden.yml installed" yellow "Install via /en-setup"
+# Sweep workflow
+[ -f .github/workflows/en-sweep.yml ] && check ".github/workflows/en-sweep.yml installed" green || check ".github/workflows/en-sweep.yml installed" yellow "Install via /en-setup"
 
 # Config
 [ -f .ensemble/config.local.example.yaml ] && check ".ensemble/config.local.example.yaml present" green || check ".ensemble/config.local.example.yaml present" yellow "Run /en-setup"

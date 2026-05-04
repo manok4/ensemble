@@ -90,6 +90,38 @@ get_field() {
   '
 }
 
+# --- Helper: read a plan's stable ID, accepting `plan_id:` (current) or `fr_id:` (legacy alias) ---
+get_plan_id() {
+  local file="$1"
+  local pid
+  pid=$(get_field "$file" plan_id)
+  if [ -z "$pid" ]; then
+    pid=$(get_field "$file" fr_id)
+  fi
+  printf '%s' "$pid"
+}
+
+# --- Helper: derive the set of plan-ID prefixes in use ---
+# Sources: foundation.md `plan_id_prefix:` + every prefix observed in plans/{active,completed}/ filenames + legacy `FR`.
+# Output: a `|`-separated alternation suitable for use inside an extended-regex bracket group.
+get_plan_prefixes() {
+  local prefixes="FR"
+  if [ -f docs/foundation.md ]; then
+    local p; p=$(get_field docs/foundation.md plan_id_prefix)
+    if [ -n "$p" ]; then
+      prefixes="${prefixes}|${p}"
+    fi
+  fi
+  for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
+    [ -f "$plan" ] || continue
+    local base; base=$(basename "$plan")
+    local pfx; pfx=$(printf '%s' "$base" | grep -oE '^[A-Z]{2,3}' | head -1)
+    [ -z "$pfx" ] && continue
+    case "|$prefixes|" in *"|$pfx|"*) ;; *) prefixes="${prefixes}|${pfx}" ;; esac
+  done
+  printf '%s' "$prefixes"
+}
+
 # --- Helper: list relevant files under SCOPE ---
 collect_files() {
   if [ -d "$SCOPE" ]; then
@@ -143,9 +175,15 @@ check_plan_status_location() {
       status=$(get_field "$file" "status")
       local location
       location=$(get_field "$file" "location")
-      if [ -n "$status" ] && [ "$status" != "active" ] && [ "$status" != "draft" ]; then
-        emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has status: $status" "Set status: active or move file to docs/plans/completed/"
-      fi
+      case "$status" in
+        ""|draft|open|in_progress|abandoned) ;;
+        completed)
+          emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has status: completed" "Move file to docs/plans/completed/ or revert status"
+          ;;
+        *)
+          emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has status: $status" "Use one of: draft, open, in_progress, abandoned (or move to completed/ when done)"
+          ;;
+      esac
       if [ -n "$location" ] && [ "$location" != "active" ]; then
         emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has location: $location" "Set location: active to match directory"
       fi
@@ -199,7 +237,7 @@ check_length_budget() {
 check_plan_required_fields() {
   case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
   local file="$1"
-  for f in type fr_id title status location created covers_requirements requirements_pending; do
+  for f in type plan_type title status location created covers_requirements requirements_pending; do
     local val
     val=$(get_field "$file" "$f")
     if [ -z "$val" ] && ! grep -q "^$f:" <(extract_frontmatter "$file"); then
@@ -208,6 +246,13 @@ check_plan_required_fields() {
         "Add '$f: <value>' per references/templates/plan-template.md"
     fi
   done
+  # plan_id (or legacy fr_id alias) — at least one must be present.
+  local pid; pid=$(get_plan_id "$file")
+  if [ -z "$pid" ] && ! grep -qE "^(plan_id|fr_id):" <(extract_frontmatter "$file"); then
+    emit "frontmatter.required-field-missing" "$file" "" "P1" \
+      "Plan missing required frontmatter field: plan_id" \
+      "Add 'plan_id: <PREFIX><NN>' per references/templates/plan-template.md (legacy 'fr_id:' is also accepted)"
+  fi
 }
 
 # --- Rule: frontmatter.required-field-missing for learnings ---
@@ -265,8 +310,12 @@ check_frontmatter_enums_and_dates() {
       ;;
     docs/plans/active/*.md|docs/plans/completed/*.md)
       local s; s=$(get_field "$file" status)
-      case "$s" in ""|draft|active|completed|abandoned) ;; *)
-        emit "frontmatter.invalid-enum" "$file" "" "P1" "plan status: $s" "Use one of: draft, active, completed, abandoned" ;;
+      case "$s" in ""|draft|open|in_progress|completed|abandoned) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "plan status: $s" "Use one of: draft, open, in_progress, completed, abandoned" ;;
+      esac
+      local pt; pt=$(get_field "$file" plan_type)
+      case "$pt" in ""|feature|improvement|bug) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "plan_type: $pt" "Use one of: feature, improvement, bug" ;;
       esac
       local rp; rp=$(get_field "$file" requirements_pending)
       case "$rp" in ""|true|false) ;; *)
@@ -297,8 +346,9 @@ check_frontmatter_enums_and_dates() {
 }
 
 # --- Rule: id-stability.fr-collision + fr-format ---
-# Single pass over all plan files; detects duplicate FR<NN> across active/ + completed/.
-# Run once at end of file collection (see runner below).
+# Single pass over all plan files; detects duplicate plan IDs across active/ + completed/
+# and validates the format <PREFIX><NN> where <PREFIX> is 2–3 uppercase letters.
+# Rule names retain the `fr-` prefix for back-compat with downstream consumers.
 check_fr_id_collisions() {
   [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
   local seen_fr_file=$(mktemp)
@@ -306,13 +356,13 @@ check_fr_id_collisions() {
   for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
     [ -f "$plan" ] || continue
     local fr
-    fr=$(get_field "$plan" fr_id)
+    fr=$(get_plan_id "$plan")
     [ -z "$fr" ] && continue
-    if ! printf '%s' "$fr" | grep -qE '^FR[0-9]{2,3}$'; then
-      emit "id-stability.fr-format" "$plan" "" "P2" "fr_id '$fr' is not zero-padded FR<NN>" "Use FR01, FR02, ... up to FR99 (FR100+ uses three digits)"
+    if ! printf '%s' "$fr" | grep -qE '^[A-Z]{2,3}[0-9]{2,3}$'; then
+      emit "id-stability.fr-format" "$plan" "" "P2" "plan_id '$fr' is not <PREFIX><NN> with a 2–3 uppercase prefix and 2–3 digit zero-padded number" "Use e.g. FR01, EN03, ABC12 (prefix from foundation.md plan_id_prefix; numbers zero-padded)"
     fi
     if grep -qxF "$fr" "$seen_fr_file" 2>/dev/null; then
-      emit "id-stability.fr-collision" "$plan" "" "P1" "fr_id '$fr' is duplicated across plans" "Renumber the newer plan to the next free FRXX"
+      emit "id-stability.fr-collision" "$plan" "" "P1" "plan_id '$fr' is duplicated across plans" "Renumber the newer plan to the next free <PREFIX><NN>"
     else
       echo "$fr" >> "$seen_fr_file"
     fi
@@ -356,14 +406,18 @@ check_cross_links() {
     ;;
   esac
 
-  # FR-IDs: must resolve to an existing plan filename.
+  # Plan-IDs: must resolve to an existing plan filename. Prefix set comes from
+  # foundation.md `plan_id_prefix:` plus any prefix already in use under plans/
+  # (and legacy `FR`). Rule code retains the `broken-fr` name for back-compat.
+  local plan_prefixes; plan_prefixes=$(get_plan_prefixes)
+  local plan_id_pattern="\\b(${plan_prefixes})[0-9]{2,3}\\b"
   local fr_ids
-  fr_ids=$(grep -oE '\bFR[0-9]{2,3}\b' "$file" | sort -u || true)
+  fr_ids=$(grep -oE "$plan_id_pattern" "$file" | sort -u || true)
   while IFS= read -r frid; do
     [ -z "$frid" ] && continue
     if ! ls docs/plans/active/${frid}-*.md 2>/dev/null 1>&2 \
        && ! ls docs/plans/completed/${frid}-*.md 2>/dev/null 1>&2; then
-      # Skip if this is a system-describing reference doc — those reference FR-IDs in narrative,
+      # Skip if this is a system-describing reference doc — those reference plan-IDs in narrative,
       # not as citations to real plans in this repo.
       case "$file" in
         docs/foundation.md|docs/workflow-and-catalog.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md) ;;
@@ -445,7 +499,7 @@ check_architecture_freshness() {
   if [ "$days" -gt 90 ]; then
     emit "freshness.architecture-90" "$1" "" "P1" \
       "architecture.md updated $days days ago (>90 days)" \
-      "Run /en-learn or /en-garden to refresh against current code"
+      "Run /en-learn or /en-sweep to refresh against current code"
   elif [ "$days" -gt 30 ]; then
     emit "freshness.architecture-30" "$1" "" "P2" \
       "architecture.md updated $days days ago (>30 days)" \
@@ -463,6 +517,184 @@ check_generated_marker() {
     emit "generated.missing-marker" "$1" "" "P1" \
       "File in docs/generated/ lacks 'generated: true' frontmatter" \
       "Add 'generated: true' and a 'generator: <skill>' field; do not hand-edit generated files"
+  fi
+}
+
+# --- Rule: architecture.fitness-violation (project-wide; opt-in) ---
+# When .ensemble/config.local.yaml has fitness.enabled: true AND the project
+# provides a bin/check-fitness executable, ensemble-lint runs it and surfaces
+# its findings. Contract: see references/architecture-fitness.md.
+#
+# bin/check-fitness contract:
+#   stdin:  newline-separated list of changed file paths (from git diff --name-only)
+#   stdout: JSON-lines, one per finding:
+#           {"rule": "<dotted.id>", "file": "<path>", "line": <int|null>,
+#            "severity": "P0|P1|P2|P3", "message": "<msg>", "remediation": "<msg>"}
+#   exit:   0 if no violations; 1 if violations; 2 if error
+check_architecture_fitness() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  [ -f .ensemble/config.local.yaml ] || return 0
+  grep -qE '^[[:space:]]*fitness:[[:space:]]*$' .ensemble/config.local.yaml 2>/dev/null || return 0
+  grep -qE '^[[:space:]]*enabled:[[:space:]]*true' .ensemble/config.local.yaml 2>/dev/null || return 0
+
+  # Resolve check command (default bin/check-fitness; configurable).
+  local cmd="bin/check-fitness"
+  local configured
+  configured=$(awk '/^[[:space:]]*fitness:[[:space:]]*$/{flag=1; next}
+                    /^[[:space:]]*[a-z_]+:[[:space:]]*$/{flag=0}
+                    flag && /^[[:space:]]*check_command:[[:space:]]*/{sub(/^[[:space:]]*check_command:[[:space:]]*/, ""); gsub(/["'\''[:space:]]/, ""); print; exit}' .ensemble/config.local.yaml 2>/dev/null)
+  [ -n "$configured" ] && cmd="$configured"
+
+  if [ ! -x "$cmd" ]; then
+    emit "architecture.fitness-checker-missing" "" "" "P3" \
+      "fitness.enabled is true but $cmd is missing or not executable" \
+      "Either provide $cmd per references/architecture-fitness.md, or set fitness.enabled: false"
+    return 0
+  fi
+
+  # Feed the checker the changed files (or all tracked source files if no git diff base).
+  local changed
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    changed=$(git diff --name-only HEAD 2>/dev/null)
+    [ -z "$changed" ] && changed=$(git ls-files 2>/dev/null)
+  else
+    return 0
+  fi
+  [ -z "$changed" ] && return 0
+
+  # Run the checker; parse JSON-lines output.
+  local output
+  output=$(printf '%s\n' "$changed" | "$cmd" 2>&1 || true)
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    # Only attempt to parse lines that look like JSON.
+    case "$line" in
+      \{*\}) ;;
+      *) continue ;;
+    esac
+    local rule file lineno severity message remediation
+    rule=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("rule", "architecture.fitness-violation"))
+except: pass' 2>/dev/null)
+    file=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("file", ""))
+except: pass' 2>/dev/null)
+    lineno=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: v=json.loads(sys.stdin.read()).get("line"); print(v if v is not None else "")
+except: pass' 2>/dev/null)
+    severity=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("severity", "P2"))
+except: pass' 2>/dev/null)
+    message=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("message", ""))
+except: pass' 2>/dev/null)
+    remediation=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("remediation", ""))
+except: pass' 2>/dev/null)
+    [ -z "$rule" ] && rule="architecture.fitness-violation"
+    emit "$rule" "$file" "$lineno" "$severity" "$message" "$remediation"
+  done <<< "$output"
+}
+
+# --- Rule: logging.unstructured (project-wide; opt-in) ---
+# Flags console.log / print / fmt.Println / println! outside dev paths
+# when observability.structured_logging_required is true in .ensemble/config.local.yaml.
+# Per references/observability-conventions.md.
+check_logging_unstructured() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  [ -f .ensemble/config.local.yaml ] || return 0
+  grep -q '^[[:space:]]*structured_logging_required:[[:space:]]*true' .ensemble/config.local.yaml 2>/dev/null || return 0
+
+  # Collect dev-path globs (files under these paths are exempt).
+  local dev_globs=""
+  if grep -q '^[[:space:]]*logging_dev_paths:' .ensemble/config.local.yaml; then
+    dev_globs=$(awk '/^[[:space:]]*logging_dev_paths:/{flag=1; next}
+                     /^[[:space:]]*[a-z_]+:/{flag=0}
+                     flag && /^[[:space:]]*-[[:space:]]*/{sub(/^[[:space:]]*-[[:space:]]*/, ""); gsub(/["'\'']/, ""); print}' .ensemble/config.local.yaml)
+  fi
+
+  # Determine source files via git ls-files (avoids node_modules/vendor noise).
+  command -v git >/dev/null 2>&1 || return 0
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local matched_count=0
+  while IFS= read -r src; do
+    [ -z "$src" ] && continue
+    # Skip dev paths (simple suffix-glob comparison).
+    local skip="false"
+    if [ -n "$dev_globs" ]; then
+      while IFS= read -r glob; do
+        [ -z "$glob" ] && continue
+        case "$src" in
+          $glob) skip="true"; break ;;
+        esac
+      done <<< "$dev_globs"
+    fi
+    [ "$skip" = "true" ] && continue
+
+    # Per-extension pattern.
+    local pattern=""
+    case "$src" in
+      *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs) pattern='\bconsole\.(log|error|warn|info|debug)[[:space:]]*\(' ;;
+      *.py)                                pattern='^[[:space:]]*print[[:space:]]*\(' ;;
+      *.go)                                pattern='\bfmt\.(Print|Println|Printf)[[:space:]]*\(' ;;
+      *.rs)                                pattern='\b(println|eprintln|print|eprint)![[:space:]]*\(' ;;
+      *)                                    continue ;;
+    esac
+
+    local hits
+    hits=$(grep -nE "$pattern" "$src" 2>/dev/null || true)
+    if [ -n "$hits" ]; then
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        local lineno
+        lineno=$(printf '%s' "$line" | cut -d: -f1)
+        emit "logging.unstructured" "$src" "$lineno" "P2" \
+          "Unstructured log call — use the project's structured logger" \
+          "Replace with logger.<level>(...) per references/observability-conventions.md, or add this path to observability.logging_dev_paths if it's a dev/test path"
+        matched_count=$((matched_count + 1))
+      done <<< "$hits"
+    fi
+  done < <(git ls-files 2>/dev/null | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs)$' 2>/dev/null)
+}
+
+# --- Rule: learnings.bootstrap-unvalidated (project-wide; advisory) ---
+# Counts bootstrapped patterns (source: bootstrap, requires_validation: true)
+# more than 30 days old. P3 — informational reminder, not a blocker.
+check_bootstrap_unvalidated() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  [ -d docs/learnings/patterns ] || return 0
+  local count=0
+  local oldest=""
+  for entry in docs/learnings/patterns/*.md; do
+    [ -f "$entry" ] || continue
+    local source rv date
+    source=$(get_field "$entry" source)
+    rv=$(get_field "$entry" requires_validation)
+    [ "$source" = "bootstrap" ] && [ "$rv" = "true" ] || continue
+    date=$(get_field "$entry" bootstrap_run)
+    [ -z "$date" ] && date=$(get_field "$entry" date)
+    count=$((count + 1))
+    if [ -z "$oldest" ] || [ "$date" \< "$oldest" ]; then
+      oldest="$date"
+    fi
+  done
+  [ "$count" -eq 0 ] && return 0
+  # Only emit if oldest bootstrap is >30 days ago.
+  if [ -n "$oldest" ]; then
+    local now days_ago
+    now=$(date -u +%Y-%m-%d)
+    days_ago=$(python3 -c "
+from datetime import date
+o = date.fromisoformat('$oldest')
+n = date.fromisoformat('$now')
+print((n - o).days)
+" 2>/dev/null || echo 0)
+    if [ "$days_ago" -gt 30 ]; then
+      emit "learnings.bootstrap-unvalidated" "" "" "P3" \
+        "$count bootstrapped pattern(s) still flagged requires_validation: true (oldest: $oldest, $days_ago days)" \
+        "Run /en-learn --refresh to validate, or edit each entry to set requires_validation: false and bump confidence to 8 once verified"
+    fi
   fi
 }
 
@@ -485,6 +717,9 @@ done < <(collect_files)
 # Project-wide checks (run once; not per-file)
 check_fr_id_collisions
 check_index_coverage
+check_logging_unstructured
+check_architecture_fitness
+check_bootstrap_unvalidated
 
 # --- Report ---
 if [ "$VIOLATIONS" -gt 0 ]; then

@@ -1,8 +1,9 @@
 ---
 type: plan
+plan_type: feature
 fr_id: FR42
 title: Test plan
-status: active
+status: open
 location: active
 created: 2026-04-29
 shipped:

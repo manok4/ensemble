@@ -57,8 +57,51 @@ learnings_cross_project: false
 #   scope_default: docs/
 #   fix_skip_rules: []
 
-# --- Garden ---
+# --- Review ---
 
-# garden:
+# Confidence gate for /en-review. Findings rated below this threshold are
+# filtered out of the surfaced output and filed as TD entries in
+# docs/plans/tech-debt-tracker.md (with marker "Filed by /en-review").
+# Range 1-10. Default 7. P0 findings always surface regardless.
+# review:
+#   confidence_threshold: 7
+
+# --- Observability (telemetry harness) ---
+
+# Where /en-debug looks for application logs when reproducing a bug.
+# Supports literal paths, gh-action artifact names, or a shell snippet that
+# emits log lines on stdout. See references/observability-conventions.md.
+# observability:
+#   log_source: stdout                   # one of: stdout | file | command
+#   log_path: ./logs/app.jsonl           # used when log_source: file
+#   log_command: 'docker logs app'       # used when log_source: command
+#   structured_logging_required: true    # if true, ensemble-lint flags console.log/print
+#   logging_dev_paths:                   # paths exempt from the logging.unstructured rule
+#     - "**/*.dev.{ts,js}"
+#     - "scripts/**"
+#     - "tests/**"
+
+# --- Architecture fitness ---
+
+# When present and bin/check-fitness exists in the repo root, ensemble-lint
+# invokes it to check architectural rules (layer boundaries, dependency
+# direction, etc.). Contract documented in references/architecture-fitness.md.
+# fitness:
+#   enabled: true
+#   check_command: bin/check-fitness     # default; override if your project uses a different name
+
+# --- Sweep ---
+
+# sweep:
 #   ci_timeout_minutes: 30
 #   max_prs_per_run: 6
+#   # Dead-code + dep-vuln continuous monitoring.
+#   continuous_monitoring:
+#     dead_code: true
+#     dep_audit: true
+#   # Triage threshold: findings under <auto_plan_threshold_loc> lines of fix
+#   # AND fewer than <auto_plan_threshold_locations> affected files file as TD;
+#   # findings beyond either threshold open a draft plan in docs/plans/active/.
+#   auto_plan_threshold_loc: 50
+#   auto_plan_threshold_locations: 2
+#   max_drafts_per_run: 3

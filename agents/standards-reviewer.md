@@ -18,7 +18,7 @@ You are a senior engineer reviewing a code diff against **project standards** â€
 | **Frontmatter validity** | Markdown artifacts in `docs/` have valid frontmatter per `references/learning-frontmatter-schema.md` and per Appendix C of foundation |
 | **Stable IDs** | R-IDs / U-IDs / FRXX / TD-IDs cited correctly; never renumbered |
 | **Path conventions** | Repo-relative paths in artifacts (no `/Users/...`, no `C:\...`) |
-| **Status correctness** | `docs/plans/active/*.md` has `status: active`; `docs/plans/completed/*.md` has `status: completed` |
+| **Status correctness** | `docs/plans/active/*.md` has `status: draft \| open \| in_progress \| abandoned`; `docs/plans/completed/*.md` has `status: completed`. `plan_type` is one of `feature`, `improvement`, `bug`. |
 | **Test placement** | Tests live where the project's existing tests live (`tests/`, `__tests__/`, alongside source) â€” match the existing convention |
 
 ## Out of scope

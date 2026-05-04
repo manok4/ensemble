@@ -65,7 +65,7 @@ tests/
 │   └── state-detection.test.sh # implements the heuristic from references/setup-state-detection.md
 │                               # in bash; asserts each fixture maps to the expected state + sub-variant.
 │
-├── en-garden/
+├── en-sweep/
 │   └── doc-only-enforcement/
 │       └── doc-only.test.sh    # adversarial: stages doc paths, source files, configs, tests;
 │                               # asserts bin/ensemble-doc-only-check accepts the allowlist
@@ -85,9 +85,9 @@ tests/
 | Host-detection tests | ✅ 25 assertions across 7 scenarios |
 | Cross-review parsing tests | ✅ 7 fixtures + 21 assertions |
 | `en-setup` state-detection tests | ✅ 7 sample repos + 20 assertions |
-| `en-garden` doc-only enforcement | ✅ 16 adversarial assertions |
+| `en-sweep` doc-only enforcement | ✅ 16 adversarial assertions |
 | Stable-ID invariants | ✅ 6 scenarios (U-ID append, FR collision, FR format, broken-U, broken-R) |
-| `en-garden` dry-run batching | ⏭ Deferred — needs live CLI to exercise the skill |
+| `en-sweep` dry-run batching | ⏭ Deferred — needs live CLI to exercise the skill |
 | Auto-merge security | ⏭ Deferred — workflow-level integration test, not unit-testable |
 | Cross-ref reciprocity | ⏭ Deferred — needs `/en-learn` execution |
 

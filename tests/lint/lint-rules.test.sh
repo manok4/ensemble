@@ -86,9 +86,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Path absolute test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -106,9 +107,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Backtick path test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -133,9 +135,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Broken R-ID test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -153,9 +156,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Broken U-ID test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -175,9 +179,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Broken FR test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -209,9 +214,10 @@ EOF
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Broken TD test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -229,9 +235,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR42-a.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR42
 title: First
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -243,6 +250,7 @@ EOF
 cat > "$TMP/docs/plans/completed/FR42-b.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR42
 title: Collision
 status: completed
@@ -261,9 +269,10 @@ setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR50
 title: Test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -357,5 +366,241 @@ EOF
   for i in $(seq 1 100); do echo "Line $i — filler content to exceed the 80-line ceiling."; done
 } > "$TMP/CLAUDE.md"
 assert_rule_fires "length.claude-md-over-80" "CLAUDE.md over 80 lines"
+
+# --- Custom plan_id_prefix: EN -------------------------------------------------
+# Foundation declares plan_id_prefix: EN. A plan named EN01-feature_test.md with
+# plan_id: EN01 should lint clean. A plan citing EN99 (no such file) should fire
+# cross-link.broken-fr (the rule code is preserved for back-compat).
+setup_minimum
+# Override foundation to advertise the EN prefix.
+sed -i.bak 's/^depth: standard$/depth: standard\nplan_id_prefix: EN/' "$TMP/docs/foundation.md" && rm -f "$TMP/docs/foundation.md.bak"
+cat > "$TMP/docs/plans/active/EN01-feature_test.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: EN01
+title: First EN-prefixed plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# EN01
+
+Body. Cites EN99 which doesn't exist.
+EOF
+echo "- [\`EN01-feature_test.md\`](../plans/active/EN01-feature_test.md) — fixture" >> "$TMP/docs/generated/plan-index.md"
+assert_rule_fires "cross-link.broken-fr" "EN-prefix plan citing missing EN99"
+
+# Same plan without the broken cite should NOT fire id-stability.fr-format
+# (regression: plan_id 'EN01' must be accepted as valid 2-letter prefix + 2-digit number).
+setup_minimum
+sed -i.bak 's/^depth: standard$/depth: standard\nplan_id_prefix: EN/' "$TMP/docs/foundation.md" && rm -f "$TMP/docs/foundation.md.bak"
+cat > "$TMP/docs/plans/active/EN01-feature_test.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: EN01
+title: Clean EN-prefixed plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# EN01
+EOF
+echo "- [\`EN01-feature_test.md\`](../plans/active/EN01-feature_test.md) — fixture" >> "$TMP/docs/generated/plan-index.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "id-stability.fr-format"; then
+  fail "EN01 should be accepted as valid plan_id format" "$(echo "$output" | grep id-stability.fr-format)"
+else
+  pass "EN01 accepted as valid <PREFIX><NN> plan_id"
+fi
+
+# --- logging.unstructured: opt-in via .ensemble/config.local.yaml --------------
+# When structured_logging_required is true, console.log in tracked TS source
+# should fire P2 advisory. Logs in dev paths (tests/, scripts/) should not fire.
+setup_minimum
+mkdir -p "$TMP/.ensemble" "$TMP/src" "$TMP/tests"
+cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
+observability:
+  structured_logging_required: true
+  logging_dev_paths:
+    - "tests/**"
+    - "scripts/**"
+EOF
+cat > "$TMP/src/auth.ts" <<'EOF'
+export function login() {
+  console.log("user logged in");
+}
+EOF
+cat > "$TMP/tests/auth.test.ts" <<'EOF'
+console.log("test fixture setup");
+EOF
+# Initialize git so ensemble-lint's `git ls-files` finds the source files
+cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
+cd - >/dev/null
+assert_rule_fires "logging.unstructured" "console.log in src/ when structured_logging_required: true"
+# Verify the dev path didn't fire — re-run and check the output doesn't mention tests/
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q "tests/auth.test.ts" \
+   && echo "$output" | grep -q "logging.unstructured"; then
+  fail "logging.unstructured fired on tests/ path (should be exempt)"
+else
+  pass "logging.unstructured exempts logging_dev_paths"
+fi
+
+# When structured_logging_required is false (or missing), no console.log findings.
+setup_minimum
+mkdir -p "$TMP/.ensemble" "$TMP/src"
+cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
+observability:
+  structured_logging_required: false
+EOF
+cat > "$TMP/src/auth.ts" <<'EOF'
+console.log("nothing wrong with this");
+EOF
+cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
+cd - >/dev/null
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q "logging.unstructured"; then
+  fail "logging.unstructured fired when structured_logging_required: false" "$(echo "$output" | head -3)"
+else
+  pass "logging.unstructured silent when opt-in is off"
+fi
+
+# --- architecture.fitness: invokes bin/check-fitness when present ---------------
+# When fitness.enabled is true, ensemble-lint runs bin/check-fitness and
+# surfaces its JSON-lines output as findings.
+setup_minimum
+mkdir -p "$TMP/.ensemble" "$TMP/bin" "$TMP/src"
+cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
+fitness:
+  enabled: true
+  check_command: bin/check-fitness
+EOF
+cat > "$TMP/bin/check-fitness" <<'CHECKER'
+#!/usr/bin/env bash
+# Mock checker — emits one JSON-lines finding regardless of input.
+cat <<'JSON'
+{"rule": "architecture.layer-violation", "file": "src/types/user.ts", "line": 12, "severity": "P1", "message": "Layer 'Types' imports from 'Service'", "remediation": "Move helper down to a lower layer"}
+JSON
+exit 1
+CHECKER
+chmod +x "$TMP/bin/check-fitness"
+mkdir -p "$TMP/src/types"
+cat > "$TMP/src/types/user.ts" <<'EOF'
+export type User = { id: string };
+EOF
+cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
+cd - >/dev/null
+assert_rule_fires "architecture.layer-violation" "bin/check-fitness output surfaced as lint finding"
+
+# When fitness.enabled is true but checker is missing, surface advisory.
+setup_minimum
+mkdir -p "$TMP/.ensemble"
+cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
+fitness:
+  enabled: true
+EOF
+assert_rule_fires "architecture.fitness-checker-missing" "fitness enabled but checker missing"
+
+# --- learnings.bootstrap-unvalidated: fires for old unvalidated bootstrap entries ----
+# Bootstrapped patterns with requires_validation: true and bootstrap_run > 30 days
+# old surface as P3 advisory.
+setup_minimum
+mkdir -p "$TMP/docs/learnings/patterns"
+# Old bootstrap entry (>30 days)
+cat > "$TMP/docs/learnings/patterns/old-pattern-2026-03-01.md" <<'EOF'
+---
+title: Old bootstrapped pattern
+date: 2026-03-01
+category: patterns
+problem_type: maintainability
+component: utils
+applies_when: forever
+tags: []
+related: []
+confidence: 6
+status: active
+source: bootstrap
+bootstrap_run: 2026-03-01
+requires_validation: true
+---
+
+# Old pattern
+EOF
+echo "- [\`old-pattern-2026-03-01.md\`](../learnings/patterns/old-pattern-2026-03-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
+assert_rule_fires "learnings.bootstrap-unvalidated" "stale unvalidated bootstrap entries"
+
+# Recent bootstrap entry (<30 days) should NOT fire the rule.
+setup_minimum
+mkdir -p "$TMP/docs/learnings/patterns"
+TODAY=$(date -u +%Y-%m-%d)
+cat > "$TMP/docs/learnings/patterns/fresh-pattern-${TODAY}.md" <<EOF
+---
+title: Fresh bootstrapped pattern
+date: ${TODAY}
+category: patterns
+problem_type: maintainability
+component: utils
+applies_when: forever
+tags: []
+related: []
+confidence: 6
+status: active
+source: bootstrap
+bootstrap_run: ${TODAY}
+requires_validation: true
+---
+
+# Fresh pattern
+EOF
+echo "- [\`fresh-pattern-${TODAY}.md\`](../learnings/patterns/fresh-pattern-${TODAY}.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q "learnings.bootstrap-unvalidated"; then
+  fail "bootstrap rule fired on fresh entry (should require >30 days)"
+else
+  pass "bootstrap rule silent on fresh entries"
+fi
+
+# Validated bootstrap entry (requires_validation: false) should NOT fire even if old.
+setup_minimum
+mkdir -p "$TMP/docs/learnings/patterns"
+cat > "$TMP/docs/learnings/patterns/validated-2025-12-01.md" <<'EOF'
+---
+title: Validated bootstrap entry
+date: 2025-12-01
+category: patterns
+problem_type: maintainability
+component: utils
+applies_when: forever
+tags: []
+related: []
+confidence: 8
+status: active
+source: bootstrap
+bootstrap_run: 2025-12-01
+requires_validation: false
+---
+
+# Validated
+EOF
+echo "- [\`validated-2025-12-01.md\`](../learnings/patterns/validated-2025-12-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q "learnings.bootstrap-unvalidated"; then
+  fail "bootstrap rule fired on validated entry"
+else
+  pass "bootstrap rule silent once entry is validated"
+fi
 
 report

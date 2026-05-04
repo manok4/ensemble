@@ -1,6 +1,6 @@
 # Template — `docs/architecture.md`
 
-Used by `/en-foundation` to seed the initial architecture document. After seeding, `en-learn` (event-driven, on every material change) and `en-garden` (drift-driven, on every PR merge) keep it current.
+Used by `/en-foundation` to seed the initial architecture document. After seeding, `en-learn` (event-driven, on every material change) and `en-sweep` (drift-driven, on every PR merge) keep it current.
 
 > **Intent vs reality.** `foundation.md` captures intent (what we set out to build). `architecture.md` captures reality (what the code actually looks like). On a brand-new project, these align; the gap grows as the project diverges from the original plan.
 
@@ -88,7 +88,7 @@ Forbidden cross-cuts:
 
 ---
 
-> **Maintenance.** `en-learn` updates the relevant section after every material structural change ships. `en-garden` checks this file for drift on every PR merge to `main` and opens fix-up PRs when components, dependencies, or boundaries diverge from the documented state. Cosmetic refactors and pure test additions do not trigger updates.
+> **Maintenance.** `en-learn` updates the relevant section after every material structural change ships. `en-sweep` checks this file for drift on every PR merge to `main` and opens fix-up PRs when components, dependencies, or boundaries diverge from the documented state. Cosmetic refactors and pure test additions do not trigger updates.
 >
 > Material changes (per `references/architecture-update-rules.md`):
 > - New / removed component, service, module, package
@@ -125,7 +125,7 @@ When `en-learn` updates this file:
 4. If first material update after seeding → flip `status: seed` to `status: active`.
 5. Append `## [<date>] arch-update | <one-line summary>` to `docs/learnings/log.md`.
 
-When `en-garden` updates this file (drift-driven):
+When `en-sweep` updates this file (drift-driven):
 
 1. Open a doc-only PR with the surgical edit.
 2. PR title: `chore(arch): document <what changed>`.

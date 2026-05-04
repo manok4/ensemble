@@ -7,7 +7,7 @@ description: "Execute an implementation plan unit-by-unit on a feature branch (o
 
 Execute a plan, unit by unit, with cross-agent peer review at every per-unit gate. Two flavors based on host detection — both guarantee implementer ≠ reviewer.
 
-> **Hard preconditions.** A plan in `docs/plans/active/FR<NN>-*.md` with `status: active`, all U-IDs present, no unblocked dependencies. The skill verifies these at start.
+> **Hard preconditions.** A plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`; `<PREFIX>` from foundation's `plan_id_prefix`, default `FR`) with `status: open` (or `in_progress` when resuming), all U-IDs present, no unblocked dependencies. The skill verifies these at start.
 
 ## Process
 
@@ -20,7 +20,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
    - If the dispatched agent's CLI isn't available, fall back gracefully:
      - build-by-orchestration with no Codex → degrade to native implement + peer review (build-handoff with same-agent fallback).
      - build-handoff with no Claude → fall back to single-agent peer review (`codex exec` fresh subprocess).
-4. **Load plan.** Read `<plan-path>`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios. If not, surface and stop.
+4. **Load plan.** Read `<plan-path>`. Verify `status` is `open` or `in_progress`; refuse `draft` (peer review hasn't cleared) and `completed`/`abandoned`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios. If not, surface and stop. If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched).
 5. **Set up branch.**
    - If on default branch → create `<fr-id>-<slug>` feature branch.
    - If on a feature branch → use it.
@@ -146,7 +146,7 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 
 ## What this skill never does
 
-- **Never modifies a plan.** Plan changes are `/en-plan` territory.
+- **Never modifies plan content.** Units, approach, scope, and U-IDs are `/en-plan` territory. The single exception is the lifecycle status flip (`open` → `in_progress`) at step 4 — bookkeeping only, no content changes.
 - **Never opens a PR.** PRs are `/en-ship` territory.
 - **Never deletes files outside the unit's scope.**
 - **Never bypasses verification gates.** A gate failure stops or reverts; never proceeds anyway.

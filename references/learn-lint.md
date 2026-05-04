@@ -5,7 +5,7 @@ Audits the structural health of `docs/learnings/`. Distinct from `--refresh` (co
 > **Division of responsibility:**
 > - `bin/ensemble-lint` → file-shape (frontmatter validity, ID stability, cross-link integrity, status correctness, freshness).
 > - `learn --lint` → wiki-graph (orphans, missing back-refs, contradictions, missing pages, data gaps, index/log drift).
-> - Together they give full coverage. `en-garden` runs both.
+> - Together they give full coverage. `en-sweep` runs both.
 
 ## Check catalog
 
@@ -145,12 +145,12 @@ JSON-lines for machine consumption (one finding per line) plus a markdown summar
 ## Cadence
 
 - On demand: `/en-learn --lint`
-- Invoked by `en-garden`: every PR-merge pass. Auto-fixes go into garden's batch PRs (separate batches per fix category).
+- Invoked by `en-sweep`: every PR-merge pass. Auto-fixes go into sweep's batch PRs (separate batches per fix category).
 
-## When `en-garden` invokes `--lint --fix`
+## When `en-sweep` invokes `--lint --fix`
 
-Garden routes the output through its PR-batching flow:
+Sweep routes the output through its PR-batching flow:
 
 - One PR per fix category (back-refs / broken-links / index-drift / log-drift).
 - Each PR has its own conventional-commit message: `chore(learnings): fix N missing back-refs`, `chore(learnings): regenerate index.md`, etc.
-- Judgment items (orphans, contradictions, missing-pages, data-gaps) → posted as a comment on the source PR for human attention. Garden does not auto-fix these.
+- Judgment items (orphans, contradictions, missing-pages, data-gaps) → posted as a comment on the source PR for human attention. Sweep does not auto-fix these.
