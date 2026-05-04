@@ -1,6 +1,6 @@
 # Ensemble
 
-> A host-agnostic engineering harness for **Claude Code** and **Codex** with cross-agent peer review, structured plans, a compounding learnings wiki, and event-driven doc-drift cleanup.
+> A agnostic engineering harness for **Claude Code** and **Codex** with cross-agent peer review, structured plans, a compounding learnings wiki, and event-driven doc-drift cleanup.
 
 Ensemble is a 14-skill, 11-agent toolkit that turns rough ideas into shipped, peer-reviewed code — and keeps the project's documentation honest as it goes. Every skill detects whether it's running under Claude Code or Codex and adapts tool names, peer-review CLI invocations, and platform-specific behaviors automatically.
 
