@@ -1,6 +1,6 @@
 ---
 name: repo-research
-description: "Scans the project codebase for patterns, conventions, file paths, and existing implementations relevant to a planning or analysis task. Read-only research agent. Returns structured findings (patterns, conventions, file lists, prior art) without modifying anything. Dispatched by en-plan, en-foundation (especially in --retrofit mode), en-garden (architecture drift checks), and en-learn (architecture sync)."
+description: "Scans the project codebase for patterns, conventions, file paths, and existing implementations relevant to a planning or analysis task. Read-only research agent. Returns structured findings (patterns, conventions, file lists, prior art) without modifying anything. Dispatched by en-plan, en-foundation (especially in --retrofit mode), en-sweep (architecture drift checks), and en-learn (architecture sync)."
 model: sonnet
 ---
 
@@ -85,7 +85,7 @@ When in doubt, narrow your scope. The dispatcher can re-invoke you for follow-up
 |---|---|
 | `en-plan` | "What conventions / prior art exist for <area>? What test framework? What file boundaries?" |
 | `en-foundation --retrofit` | "What's the architecture shape? What are top-level components? What's the stack? What's the entity model?" |
-| `en-garden` | "Is the architecture.md still accurate? Did <component> get removed? Did layer rules drift?" |
+| `en-sweep` | "Is the architecture.md still accurate? Did <component> get removed? Did layer rules drift?" |
 | `en-learn` (architecture sync) | "What changed structurally in this branch's commits?" |
 
 ## Hard rules

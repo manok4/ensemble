@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# ensemble-classify-plans — inspect docs/plans/ for non-conforming plan files.
+# Used by /en-setup State 2 step 2a to detect legacy plans before creating
+# the Ensemble plan structure.
+#
+# Output (JSON):
+#   {
+#     "conforming":     [ "<path>", ... ],   # files that pass plan-frontmatter check
+#     "non_conforming": [ "<path>", ... ],   # files with .md extension under plans/ that don't
+#     "subdirs":        [ "<dir>", ... ],    # subdirectories under plans/ (active/ completed/ etc.)
+#     "tech_debt":      "<path>" | null      # docs/plans/tech-debt-tracker.md if present
+#   }
+#
+# Exit code: 0 always (caller reads JSON).
+
+set -eu
+
+PLANS_DIR="${1:-docs/plans}"
+
+if [ ! -d "$PLANS_DIR" ]; then
+  echo '{"conforming":[],"non_conforming":[],"subdirs":[],"tech_debt":null}'
+  exit 0
+fi
+
+# Collect all .md files under docs/plans/ (recursive, but we'll only inspect
+# top-level + active/ + completed/ to avoid false-classifying nested fixtures).
+python3 - "$PLANS_DIR" <<'PY'
+import json, os, re, sys
+
+plans_dir = sys.argv[1]
+conforming = []
+non_conforming = []
+subdirs = []
+tech_debt = None
+
+# Required fields per plan-template.md (mirrors check_plan_required_fields in
+# bin/ensemble-lint). Anything missing here means the plan won't pass lint;
+# the classifier matches lint's contract so /en-setup doesn't leave plans in
+# place that subsequently break lint/build/learn.
+REQUIRED = {"type", "plan_type", "title", "status", "location", "created",
+            "covers_requirements", "requirements_pending"}
+REQUIRED_PLAN_ID = {"plan_id", "fr_id"}  # at least one
+
+def parse_frontmatter(path):
+    """Return dict of frontmatter or None if absent/malformed."""
+    try:
+        with open(path) as f:
+            content = f.read()
+    except Exception:
+        return None
+    if not content.startswith("---"):
+        return None
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return None
+    body = parts[1]
+    fields = {}
+    for line in body.splitlines():
+        m = re.match(r"^([a-z_][a-z0-9_]*):(.*)$", line)
+        if m:
+            fields[m.group(1)] = m.group(2).strip()
+    return fields
+
+def is_conforming(path):
+    fm = parse_frontmatter(path)
+    if fm is None:
+        return False
+    if not REQUIRED.issubset(fm.keys()):
+        return False
+    if not (fm.keys() & REQUIRED_PLAN_ID):
+        return False
+    if fm.get("type") != "plan":
+        return False
+    return True
+
+# Top-level + recognized subdirs only.
+for entry in sorted(os.listdir(plans_dir)):
+    path = os.path.join(plans_dir, entry)
+    if os.path.isdir(path):
+        if entry not in ("active", "completed", "archive", "legacy"):
+            subdirs.append(path)
+        continue
+    if entry == "tech-debt-tracker.md":
+        tech_debt = path
+        continue
+    if entry.endswith(".md"):
+        if is_conforming(path):
+            conforming.append(path)
+        else:
+            non_conforming.append(path)
+
+# Files under active/ and completed/ (Ensemble's standard subdirs).
+for sub in ("active", "completed"):
+    sd = os.path.join(plans_dir, sub)
+    if not os.path.isdir(sd):
+        continue
+    for entry in sorted(os.listdir(sd)):
+        if not entry.endswith(".md"):
+            continue
+        path = os.path.join(sd, entry)
+        if is_conforming(path):
+            conforming.append(path)
+        else:
+            non_conforming.append(path)
+
+print(json.dumps({
+    "conforming": conforming,
+    "non_conforming": non_conforming,
+    "subdirs": subdirs,
+    "tech_debt": tech_debt,
+}, indent=2))
+PY

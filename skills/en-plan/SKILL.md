@@ -13,12 +13,23 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
-3. **Resume or create.** If a plan in `docs/plans/active/` already matches the user's request (by title or `related_design`), offer to resume rather than create a new one.
+3. **Resume or create.**
+   - **`--resume <plan-path>`** (explicit) — load the named plan; preserve its `plan_id`, `plan_type`, `created`, `generator` (if present); apply the rest of the planning flow (research, questions, U-IDs, peer review) to flesh it out. Used to promote auto-generated draft plans (from `/en-sweep`'s continuous monitoring) into full peer-reviewed plans. Status remains `draft` until step 11; only the user can flip to `open`.
+   - **`--from-legacy <path>`** (explicit) — read content from a legacy plan (typically `docs/plans/legacy/<file>.md` archived during `/en-setup` retrofit). The legacy file is **not modified** and **not moved**; this flag uses it as input to mint a *new* Ensemble plan. Steps:
+     - Read the legacy file's full content (no frontmatter assumed; treat all of it as narrative).
+     - Pass it to the user as initial context; ask: *"Migrate this legacy plan into Ensemble. I'll run the normal plan flow (research → questions → U-IDs → peer review). The legacy file stays in `docs/plans/legacy/` untouched. Confirm? (y/n)"*.
+     - On `y`, treat the legacy content as the **rough description** input (per step 4) and proceed normally — agent runs research, asks planning questions, breaks into U-IDs, mints a fresh `<PREFIX><NN>` ID, writes a new plan in `docs/plans/active/`.
+     - The new plan's frontmatter carries `migrated_from: docs/plans/legacy/<file>.md` for traceability. The legacy README's "list of archived files" gets a back-reference: *"Migrated to <new plan path> on <date>."* (handled in step 12).
+     - Use this to bring meaningful legacy plans into the active flow with proper R-ID/U-ID assignment and peer review — never an in-place auto-conversion.
+   - **Auto-resume** (heuristic) — if a plan in `docs/plans/active/` already matches the user's request by title or `related_design`, offer to resume rather than create a new one.
+   - **Create** — no match; mint a new plan.
 4. **Source the request.** Identify input:
    - Brainstorm design doc (`docs/designs/*.md`) — pre-explored, recommendation already on the table.
    - `docs/foundation.md` — pulling a requirement (R-ID) for the next slice of work.
    - Direct rough description from the user.
    - Bug report or tracked debt item (`Resolves: TD<N>`).
+
+   **Infer `plan_type`** from the request — `feature` (net-new behavior), `improvement` (refactor / perf / DX work, including TD), or `bug` (fix). Default `feature` when unclear; confirm with the user when the request is ambiguous.
 5. **Right-size depth.**
    - Lightweight: 1–3 units, single file or two, no architecture changes.
    - Standard: 3–10 units, several files, possible new components.
@@ -50,18 +61,19 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - **Test scenarios:** explicit list.
    - **Verification:** what counts as done (tests passing, lint clean, manual check).
    - **Resolves (optional):** `TD<N>` IDs from `docs/plans/tech-debt-tracker.md`.
-10. **Auto-increment FRXX.** Scan `docs/plans/active/` and `docs/plans/completed/` for the highest existing FRXX. Increment. Zero-pad to 2 digits.
-11. **Write to `docs/plans/active/FR<NN>-<slug>.md`** using `references/templates/plan-template.md`. Substitute fields. Status: `draft` → `active` after user accepts.
-12. **Outside Voice review.** If `PEER_AVAILABLE=true`:
+10. **Resolve `plan_id_prefix`.** Read `plan_id_prefix:` from `docs/foundation.md` frontmatter. If absent (older project, retrofit, or `/en-foundation` not yet run), default to `FR`. Plans inherit the prefix in force at the time they are minted; the prefix is part of the plan's stable ID and never rewritten.
+11. **Auto-increment plan number.** Scan `docs/plans/active/` and `docs/plans/completed/` for the highest existing plan number under the *current* `plan_id_prefix`. Legacy `FR` plans count toward `FR`'s numbering only; a new `EN` project starts at `EN01` even if `FR99` already exists. Zero-pad to 2 digits (3 once `99` is reached).
+12. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`) and `plan_type`. Status starts as `draft`; flip to `open` once the user accepts and peer review (if run) has cleared. The file stays in `active/` across both states. `/en-build` later flips `open` → `in_progress`; `/en-learn capture` flips `in_progress` → `completed` and moves the file to `completed/`.
+13. **Outside Voice review.** If `PEER_AVAILABLE=true`:
     - Build the prompt per `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
     - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
     - Parse JSON; apply, defer, or disagree per `references/severity.md`.
     - Surface verdict + applied changes.
-13. **Confidence check.** Identify low-confidence sections (typically integrations or unfamiliar libraries); offer to deepen with a research dispatch or to leave as-is and resolve during build.
-14. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
-15. **Hand off to `/en-build`.** Suggest the build command:
-    > "Plan written: `docs/plans/active/FR07-auth-rotation.md` (5 units). Ready to build with `/en-build docs/plans/active/FR07-auth-rotation.md`?"
+14. **Confidence check.** Identify low-confidence sections (typically integrations or unfamiliar libraries); offer to deepen with a research dispatch or to leave as-is and resolve during build.
+15. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
+16. **Hand off to `/en-build`.** Suggest the build command:
+    > "Plan written: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units). Ready to build with `/en-build docs/plans/active/EN07-feature_auth-rotation.md`?"
 
 ## Cross-review
 
@@ -97,8 +109,10 @@ If `docs/foundation.md` doesn't exist yet (the user is using `/en-plan` before `
 
 After the run completes:
 
+The reported path is the file actually written this run — substitute the resolved `<PREFIX><NN>` and `<plan_type>_<slug>` values, not the literal example below. Example output for an `EN`-prefixed project planning an auth-rotation feature:
+
 ```
-Plan: docs/plans/active/FR07-auth-rotation.md (5 units, 380 lines)
+Plan: docs/plans/active/EN07-feature_auth-rotation.md (5 units, 380 lines)
 
 Units:
   - U1: Add singleFlight<K, V> helper (test-first)
@@ -109,7 +123,7 @@ Units:
 
 Peer review: cross-agent (codex). Verdict: revise. Applied 2 of 3 findings (1 deferred to TD8).
 
-Next: /en-build docs/plans/active/FR07-auth-rotation.md
+Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 ```
 
 ## Reference files

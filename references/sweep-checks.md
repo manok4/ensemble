@@ -1,8 +1,8 @@
-# Garden checks — what `/en-garden` audits
+# Sweep checks — what `/en-sweep` audits
 
-The catalog of doc-drift checks `/en-garden` runs on every PR-merge pass. Findings within scope (doc-only) become fix-up PRs; findings out of scope (code-level) get filed to `docs/plans/tech-debt-tracker.md`.
+The catalog of doc-drift checks `/en-sweep` runs on every PR-merge pass. Findings within scope (doc-only) become fix-up PRs; findings out of scope (code-level) get filed to `docs/plans/tech-debt-tracker.md`.
 
-> **Strict scope: doc-only.** Garden never modifies source code, configuration, tests, or any non-doc artifact. Anything code-level becomes a tech-debt entry.
+> **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Anything code-level becomes a tech-debt entry.
 
 ## Categories of check
 
@@ -67,7 +67,7 @@ This catches the case where the user shipped without invoking `/en-learn` to fli
 
 ## Code-level findings (out of scope; → tech-debt-tracker)
 
-When `/en-garden`'s checks surface a code-level pattern, **never** open a fix-up PR. Instead, append an entry to `docs/plans/tech-debt-tracker.md` per `references/tech-debt-tracker-format.md`:
+When `/en-sweep`'s checks surface a code-level pattern, **never** open a fix-up PR. Instead, append an entry to `docs/plans/tech-debt-tracker.md` per `references/tech-debt-tracker-format.md`:
 
 | Code-level finding | TD entry |
 |---|---|
@@ -80,39 +80,96 @@ When `/en-garden`'s checks surface a code-level pattern, **never** open a fix-up
 
 ## PR batching
 
-Garden's findings are grouped into batches; one PR per batch. Naming convention:
+Sweep's findings are grouped into batches; one PR per batch. Naming convention:
 
 | Batch | Branch | PR title |
 |---|---|---|
-| Lint fixes | `en-garden/<sha>/lint-fixes` | `chore(docs): fix N lint findings` |
-| Wiki cross-refs | `en-garden/<sha>/learnings-back-refs` | `chore(learnings): add N missing back-refs` |
-| Architecture | `en-garden/<sha>/architecture-update` | `chore(arch): document <X>` |
-| Plans | `en-garden/<sha>/plan-lifecycle` | `chore(plans): move N plans to completed/` |
-| Maps | `en-garden/<sha>/map-update` | `chore(maps): update AGENTS.md pointers` |
-| Tech-debt hygiene | `en-garden/<sha>/td-hygiene` | `chore(plans): tech-debt-tracker hygiene` |
+| Lint fixes | `en-sweep/<sha>/lint-fixes` | `chore(docs): fix N lint findings` |
+| Wiki cross-refs | `en-sweep/<sha>/learnings-back-refs` | `chore(learnings): add N missing back-refs` |
+| Architecture | `en-sweep/<sha>/architecture-update` | `chore(arch): document <X>` |
+| Plans | `en-sweep/<sha>/plan-lifecycle` | `chore(plans): move N plans to completed/` |
+| Maps | `en-sweep/<sha>/map-update` | `chore(maps): update AGENTS.md pointers` |
+| Tech-debt hygiene | `en-sweep/<sha>/td-hygiene` | `chore(plans): tech-debt-tracker hygiene` |
 
-`max_prs_per_run` (default 6) caps the number of PRs garden opens in a single run.
+`max_prs_per_run` (default 6) caps the number of PRs sweep opens in a single run.
 
 ## Branch naming
 
-`en-garden/<source-merge-sha-short>/<batch-name>` (e.g., `en-garden/a3f1b9c/architecture-update`).
+`en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-update`).
 
-The `<source-merge-sha-short>` is the SHA of the merge that triggered the run. Lets the user trace which PR garden was responding to.
+The `<source-merge-sha-short>` is the SHA of the merge that triggered the run. Lets the user trace which PR sweep was responding to.
 
 ## Per-PR review
 
-Each garden PR runs `/en-review` in `mode:report-only`:
+Each sweep PR runs `/en-review` in `mode:report-only`:
 
 - Returns findings JSON without mutating.
-- Garden parses; if no P0/P1, auto-merges.
+- Sweep parses; if no P0/P1, auto-merges.
 - Any P0/P1 → PR stays open for human resolution.
+
+## Continuous monitoring (opt-in, per `sweep.continuous_monitoring.*`)
+
+When enabled in `.ensemble/config.local.yaml`, sweep runs `skills/en-sweep/scripts/continuous-monitor` after the file-shape and wiki-graph checks. The monitor scans for:
+
+- **Dead code** — uses project tools when available (`ts-prune` for TS/JS, `vulture` for Python, `golang.org/x/tools/cmd/deadcode` for Go).
+- **Dependency vulnerabilities** — wraps `npm audit` / `pip-audit` / `cargo audit`.
+
+Output is JSON-lines normalized to a common shape (per the head of `skills/en-sweep/scripts/continuous-monitor`).
+
+### Triage by size
+
+`skills/en-sweep/scripts/triage-findings` partitions monitor output into three buckets:
+
+| Bucket | Criteria | Artifact created |
+|---|---|---|
+| **TD entry** (trivial / mechanical) | Single dead function; dep-vuln with auto-fix; loc_estimate < `auto_plan_threshold_loc`; <`auto_plan_threshold_locations` files affected | Append to `docs/plans/tech-debt-tracker.md` with marker `Filed by /en-sweep (continuous-monitor)` |
+| **Draft plan** (pattern / decision-required) | ≥`auto_plan_threshold_locations` dead-code findings clustered in same dir; severe CVE without auto-fix | Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`, `generator: en-sweep` |
+| **Skipped** | Uncategorizable / under threshold | Logged in summary; not surfaced |
+
+**Caps:** `sweep.max_drafts_per_run` (default 3). Overflow rolls to TD with a "would have been a plan" note. Without this cap, a single sweep run could flood `docs/plans/active/` with stale-symbol plans.
+
+**Idempotency:** before writing a draft plan, sweep checks `docs/plans/active/` for an existing plan with `generator: en-sweep` and matching `area:`. If present, skip — the user is presumably reviewing the existing draft. Prevents duplicate plans on every merge.
+
+### Auto-generated draft plan format
+
+```yaml
+---
+type: plan
+plan_type: improvement | bug
+plan_id: <PREFIX><NN>
+title: Remove dead helpers in src/utils/
+status: draft
+location: active
+created: <YYYY-MM-DD>
+covers_requirements: []
+requirements_pending: true
+peer_review_verdict:
+depth: lightweight
+generator: en-sweep                    # ← marks auto-generated
+generator_run: a3f1b9c                  # ← merge SHA that triggered
+generator_checks: [dead-code]
+area: src/utils/
+---
+```
+
+The `generator` field is informational; lint is lenient on `covers_requirements: []` for plans where `generator` is set, since they originate from automation rather than from a user-driven foundation R-ID.
+
+### User exit paths from a draft plan
+
+| Decision | Action |
+|---|---|
+| Accept as-is | Flip `status: draft → open`. `/en-build` picks it up next. |
+| Flesh out into a real plan | `/en-plan --resume docs/plans/active/<plan>.md` — preserves the plan_id, runs research and peer review, generates U-IDs |
+| Decline | Move file to `docs/plans/archive/` with `status: abandoned` plus a note |
 
 ## Reference files
 
 - `references/doc-lints.md` — file-shape lint rules
 - `references/learn-lint.md` — wiki-graph health checks
 - `references/architecture-update-rules.md` — material vs non-material changes
-- `references/garden-loop-guards.md` — preventing self-trigger cascades
-- `references/garden-security-model.md` — auto-merge safety
+- `references/sweep-loop-guards.md` — preventing self-trigger cascades
+- `references/sweep-security-model.md` — auto-merge safety
 - `references/tech-debt-tracker-format.md` — TD entry schema
 - `bin/ensemble-doc-only-check` — runtime allowlist enforcement
+- `skills/en-sweep/scripts/continuous-monitor` — dead-code + dep-audit scanner
+- `skills/en-sweep/scripts/triage-findings` — partitions findings into TD vs draft plan

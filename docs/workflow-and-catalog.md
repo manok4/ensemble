@@ -16,7 +16,7 @@ A scannable reference for the workflow, every skill, and every agent built into 
 
 - [The workflow](#the-workflow)
 - [Cross-cutting properties](#cross-cutting-properties)
-- [Skills (11 total)](#skills-11-total)
+- [Skills (14 total)](#skills-14-total)
   - [1. `/en-setup`](#1-en-setup--project-bootstrap-and-diagnostics)
   - [2. `/en-brainstorm`](#2-en-brainstorm--exploration-and-design-doc)
   - [3. `/en-foundation`](#3-en-foundation--prd--tech-direction--architecture-seed)
@@ -26,8 +26,11 @@ A scannable reference for the workflow, every skill, and every agent built into 
   - [7. `/en-qa`](#7-en-qa--system-checks--browser-end-to-end)
   - [8. `/en-learn`](#8-en-learn--compounding-wiki-maintainer)
   - [9. `/en-ship`](#9-en-ship--commit-push-and-pr)
-  - [10. `/en-cross-review`](#10-en-cross-review--ad-hoc-peer-review)
-  - [11. `/en-garden`](#11-en-garden--event-driven-doc-drift-cleanup)
+  - [10. `/en-resolve-pr`](#10-en-resolve-pr--address-incoming-review-comments)
+  - [11. `/en-debug`](#11-en-debug--telemetry-driven-debugging)
+  - [12. `/en-cross-review`](#12-en-cross-review--ad-hoc-peer-review)
+  - [13. `/en-sweep`](#13-en-sweep--event-driven-doc-drift-cleanup)
+  - [14. `/en-guardrail`](#14-en-guardrail--always-on-destructive-command-hook)
 - [Agents (11 total)](#agents-11-total)
   - [Always-on reviewers (4)](#always-on-reviewers-4--read-only-return-findings-json)
   - [Conditional reviewers (3)](#conditional-reviewers-3--fire-when-the-diff-matches)
@@ -40,7 +43,7 @@ A scannable reference for the workflow, every skill, and every agent built into 
 
 ## The workflow
 
-The eight-skill lifecycle pipeline plus three orthogonal skills:
+Lifecycle pipeline plus four orthogonal skills:
 
 ```text
                                 ┌──────────────┐
@@ -52,13 +55,13 @@ The eight-skill lifecycle pipeline plus three orthogonal skills:
                        ▼                               ▼
                 ┌──────────────┐                ┌──────────────┐
                 │/en-brainstorm│                │/en-foundation│  PRD + tech direction + initial architecture
-                │  (optional)  │ ─────────────▶ │              │  Outside Voice peer review on draft
+                │  (optional)  │ ─────────────▶ │              │  Asks for plan_id_prefix; Outside Voice review
                 └──────────────┘                └──────┬───────┘
                                                        │
                                                        ▼
                                                 ┌──────────────┐
-                                                │  /en-plan    │  FRXX plan with stable U-IDs
-                                                │              │  Outside Voice peer review on draft
+                                                │  /en-plan    │  <PREFIX><NN> plan with stable U-IDs + plan_type
+                                                │              │  --resume / --from-legacy modes; peer review
                                                 └──────┬───────┘
                                                        │
                                                        ▼
@@ -69,8 +72,9 @@ The eight-skill lifecycle pipeline plus three orthogonal skills:
                                                        │
                                                        ▼
                                                 ┌──────────────┐
-                                                │  /en-review  │  Multi-persona (4 always + 3 conditional)
-                                                │              │  Modes: interactive | headless | report-only
+                                                │  /en-review  │  Multi-persona; confidence-gated
+                                                │              │  Sub-threshold → TD entries; modes: interactive
+                                                │              │  / headless / report-only
                                                 └──────┬───────┘
                                                        │
                                                        ▼
@@ -81,29 +85,53 @@ The eight-skill lifecycle pipeline plus three orthogonal skills:
                                                        │
                                                        ▼
                                                 ┌──────────────┐
-                                                │  /en-learn   │  capture / ingest / refresh / pack / lint
-                                                │              │  Auto-syncs architecture.md; moves plan to completed/
+                                                │  /en-learn   │  capture / ingest / refresh / pack / lint /
+                                                │              │  bootstrap-patterns. Syncs architecture.md;
+                                                │              │  moves plan to completed/
                                                 └──────┬───────┘
                                                        │
                                                        ▼
                                                 ┌──────────────┐
                                                 │   /en-ship   │  Pre-flight + secret scan + conventional commit
-                                                │              │  + push + gh pr create
+                                                │              │  + push + gh pr create (--auto-merge optional)
                                                 └──────┬───────┘
                                                        │
-                                                       │  PR merge to main
+                                                       ▼  [PR opened]
+                                                       │
+                              ┌────────────────────────┴────────────────────────┐
+                              ▼                                                 ▼
+                     Anthropic Claude Code                           Codex review
+                     Review action fires                             (Cloud or self-hosted)
+                     (per anthropic-code-review-                     (per codex-code-review-
+                      action.md)                                      action.md)
+                              │                                                 │
+                              └────────────────────────┬────────────────────────┘
                                                        ▼
                                                 ┌──────────────┐
-                                                │  /en-garden  │  Event-driven; doc-only PRs that auto-merge
-                                                │   (CI-only)  │  after en-review (mode:report-only) clears
-                                                └──────────────┘
-
-   Orthogonal skill, available at any point in the flow:
-
+                                                │/en-resolve-pr│  6-verdict triage on incoming review comments
+                                                │              │  Fixes + replies + resolve threads.
+                                                │              │  --enable-auto-merge optional.
+                                                └──────┬───────┘
+                                                       │
+                                                       │  PR merged to main
+                                                       ▼
                                                 ┌──────────────┐
-                                                │/en-cross-rev │  Ad-hoc Outside Voice peer review of any artifact
-                                                │              │  --focus security|performance|tests|all
+                                                │   /en-sweep  │  Event-driven post-merge; doc-only PRs that
+                                                │              │  auto-merge after en-review (mode:report-only)
+                                                │              │  clears. Continuous monitoring (opt-in):
+                                                │              │  dead-code + dep-vuln → TD or draft plan.
                                                 └──────────────┘
+
+   Orthogonal skills, available at any point in the flow:
+
+                  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
+                  │  /en-cross-review  │  │     /en-debug      │  │    /en-guardrail   │
+                  │  Ad-hoc peer       │  │  Trace-driven      │  │  Always-on         │
+                  │  review of any     │  │  bug repro from    │  │  PreToolUse hook;  │
+                  │  artifact (file,   │  │  structured logs;  │  │  prompts before    │
+                  │  diff, branch)     │  │  read-only         │  │  destructive Bash  │
+                  │  --focus filter    │  │  hypothesis output │  │  commands          │
+                  └────────────────────┘  └────────────────────┘  └────────────────────┘
 ```
 
 ---
@@ -119,7 +147,7 @@ Every skill that runs cross-review enforces these:
 
 ---
 
-## Skills (11 total)
+## Skills (14 total)
 
 ### 1. `/en-setup` — project bootstrap and diagnostics
 
@@ -145,7 +173,7 @@ Every skill that runs cross-review enforces these:
 | | |
 |---|---|
 | **Purpose** | Combined product requirements + technical direction + initial architecture intent. Run once per project. |
-| **Output** | `docs/foundation.md` (with stable R-IDs / A-IDs / F-IDs / AE-IDs / D-IDs / Q-IDs), `docs/architecture.md` (status: seed), `AGENTS.md`, `CLAUDE.md`, plus `FR01-project-setup` plan for greenfield only |
+| **Output** | `docs/foundation.md` (with stable R-IDs / A-IDs / F-IDs / AE-IDs / D-IDs / Q-IDs), `docs/architecture.md` (status: seed), `AGENTS.md`, `CLAUDE.md`, plus a `<PREFIX>01-feature_project-setup` bootstrap plan for greenfield only (prefix per foundation's `plan_id_prefix`; default `FR`) |
 | **Modes** | Fresh (new product) and `--retrofit` (use `repo-research` to back-fill from existing code) |
 | **Cross-review** | On by default; `--no-peer` to disable |
 | **Discovery** | Walks 11 topic groups (identity, goals, users, requirements, UX, stack, data, architecture, API, deploy, security/risks); depth-scaled question count |
@@ -177,7 +205,7 @@ Every skill that runs cross-review enforces these:
 | | |
 |---|---|
 | **Purpose** | Multi-persona, confidence-gated review of the current branch |
-| **Modes** | **interactive** (default for direct user invocation; auto-applies `safe_auto`, surfaces others) / **headless** (skill-to-skill; auto-applies silently, returns JSON) / **report-only** (mandatory for CI/garden; strictly read-only) |
+| **Modes** | **interactive** (default for direct user invocation; auto-applies `safe_auto`, surfaces others) / **headless** (skill-to-skill; auto-applies silently, returns JSON) / **report-only** (mandatory for CI/sweep; strictly read-only) |
 | **Always-on personas** | correctness, testing, maintainability, standards (+ learnings-research) |
 | **Conditional personas** | security, performance, migrations (fire when diff content matches) |
 | **Synthesis** | Parallel dispatch → dedup by location + title-similarity → boost confidence on overlap → severity reorder → unified envelope |
@@ -216,7 +244,34 @@ Every skill that runs cross-review enforces these:
 | **Auto-merge** | Off by default; `--auto-merge` opts in |
 | **Cross-review** | Off — by this point review and QA have passed |
 
-### 10. `/en-cross-review` — ad-hoc peer review
+### 10. `/en-resolve-pr` — address incoming review comments
+
+| | |
+|---|---|
+| **Purpose** | Triage and respond to PR review feedback after `/en-ship` opens the PR |
+| **Argument** | None → current branch's PR; `<PR#>`; `<comment-or-thread-URL>` (targeted) |
+| **Fetches** | Inline review threads + top-level PR comments + review-submission bodies + PR-author replies (for "already-replied" detection), via GraphQL helper scripts under `skills/en-resolve-pr/scripts/` |
+| **Triage** | New / pending-decision / silent-drop (CodeRabbit/Codex/Gemini/Copilot wrappers, "looks good!", CI bot output) |
+| **Verdicts (6)** | `fixed` / `fixed-differently` / `replied` / `not-addressing` / `declined` / `needs-human` |
+| **Default-to-fix** | Apply nits and important fixes alike. `declined` requires citing specific harm + source (`CLAUDE.md`, `AGENTS.md`, `docs/learnings/patterns/*`) |
+| **Reply mechanics** | Thread → GraphQL `addPullRequestReviewThreadReply` + resolve; PR comment / review body → `gh pr comment` (no resolve API) |
+| **Iteration** | Up to 2 fix-verify cycles per invocation; cycle 3 escalates as recurring pattern |
+| **Capture-from-synthesis** | Soft-prompt at end if a `declined`/`needs-human` exposed a learnable anti-pattern → `/en-learn capture` |
+| **Tech-debt routing** | Out-of-scope `replied` items file as `TD<N>` in `docs/plans/tech-debt-tracker.md` |
+
+### 11. `/en-debug` — telemetry-driven debugging
+
+| | |
+|---|---|
+| **Purpose** | Reproduce a bug from structured logs / traces; identify failing code path; surface a hypothesis |
+| **Argument** | `<trace-id>` / `<request-id>` / `"<error>"` / `<file>:<line>` / (none for tail) |
+| **Read-only** | Never writes code, never commits. Output is a hypothesis the user acts on |
+| **Log source** | Configured via `observability.log_source` in `.ensemble/config.local.yaml` (`stdout` / `file` / `command`) |
+| **Allowlist** | `log_command` constrained to `docker`, `kubectl`, `journalctl`, `gh run view`, `datadog-cli`, `aws logs`, `gcloud logging` (override via `observability.allowed_log_commands`) |
+| **Falls back** | Plain-text grep + timestamp clustering when logs aren't structured per `references/observability-conventions.md` (caps confidence at 6/10) |
+| **Pairs with** | `/en-build` (write a fix using the trace as a fixture); `/en-resolve-pr` (when a reviewer comment references a runtime error) |
+
+### 12. `/en-cross-review` — ad-hoc peer review
 
 | | |
 |---|---|
@@ -226,18 +281,31 @@ Every skill that runs cross-review enforces these:
 | **Cross-review** | This skill **is** the cross-review |
 | **D30 violation detection** | Git stash before/after subprocess; revert any peer-introduced changes; do not trust findings |
 
-### 11. `/en-garden` — event-driven doc-drift cleanup
+### 13. `/en-sweep` — event-driven doc-drift cleanup
 
 | | |
 |---|---|
 | **Purpose** | Doc-drift cleanup automatically after every PR merge to `main` |
-| **Trigger** | `push` to `main` (NOT scheduled). Manual `/en-garden` also supported |
+| **Trigger** | `push` to `main` (NOT scheduled). Manual `/en-sweep` also supported |
 | **Strict scope** | **Doc-only.** Never modifies source code, config, or tests. Code-level findings file to `docs/plans/tech-debt-tracker.md` |
 | **Checks** | File-shape lints + wiki-graph lints + architecture drift + plan-lifecycle drift + pointer-map drift + tech-debt hygiene |
-| **PR batching** | One PR per category; up to `max_prs_per_run` (default 6); branch `en-garden/<source-merge-sha>/<batch-name>` |
+| **Continuous monitoring (opt-in)** | Dead-code (`ts-prune` / `vulture` / Go `deadcode`) + dep-vuln (`npm audit` / `pip-audit` / `cargo audit`). Size-based triage: trivial / mechanical → TD entry; pattern / severe → draft plan in `docs/plans/active/` with `generator: en-sweep`. Capped at `sweep.max_drafts_per_run`. Per `references/sweep-checks.md`. |
+| **PR batching** | One PR per category; up to `max_prs_per_run` (default 6); branch `en-sweep/<source-merge-sha>/<batch-name>` |
 | **Auto-merge** | After `/en-review` (in `mode:report-only`) returns no P0/P1 |
-| **Loop guards (5)** | Skip garden-authored commits / concurrency group / garden-PR label match / no-material-diff termination / recursion depth cap |
+| **Loop guards (5)** | Skip sweep-authored commits / concurrency group / sweep-PR label match / no-material-diff termination / recursion depth cap |
 | **Security model** | `GITHUB_TOKEN` least-privilege; no PAT; no fork triggers; branch protection respected; fail-closed on detection error |
+
+### 14. `/en-guardrail` — always-on destructive-command hook
+
+| | |
+|---|---|
+| **Purpose** | Forces a permission prompt before destructive Bash commands. Defends against accidental destruction during agent autonomy. |
+| **Activation** | Globally via `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher); project-scoped fallback via `<repo>/.claude/settings.json`. Installed by `skills/en-guardrail/bin/install-guardrail` (JSON-aware merge, idempotent). |
+| **Patterns flagged** | Recursive `rm`; SQL `DROP TABLE` / `DROP DATABASE` / `TRUNCATE` / `DELETE FROM` without `WHERE`; git `push --force` / `reset --hard` / `branch -D` / `tag -d` / `worktree remove --force`; `kubectl delete`; `docker rm -f` / `system prune`; `terraform destroy`; `aws s3 rm --recursive`; `gcloud … delete`. |
+| **Safe exceptions** | `rm -rf` of build artifacts (`node_modules`, `dist`, `.next`, `.cache`, `build`, `.turbo`, `coverage`, `__pycache__`); DB ops on explicit `localhost` / `127.0.0.1` + DB name containing `test` / `dev` / `local`. |
+| **Per-command bypass** | Prefix command with `ENSEMBLE_GUARDRAIL=off`. Don't `export` it globally. |
+| **Cross-review** | Off — guardrail is a primitive, not a review surface |
+| **Vendoring** | Vendored from `gstack/careful` with extensions; attribution preserved |
 
 ---
 
@@ -264,7 +332,7 @@ Every skill that runs cross-review enforces these:
 
 | Agent | Purpose | Dispatched by |
 |---|---|---|
-| **`repo-research`** | Scan codebase for patterns, conventions, file paths, prior art. Returns `patterns[]`, `conventions[]`, `prior_art[]`, `structure{}`. Token budget tiered by depth (5K-25K) | `en-plan`, `en-foundation` (esp. `--retrofit`), `en-garden` (architecture drift), `en-learn` (architecture sync) |
+| **`repo-research`** | Scan codebase for patterns, conventions, file paths, prior art. Returns `patterns[]`, `conventions[]`, `prior_art[]`, `structure{}`. Token budget tiered by depth (5K-25K) | `en-plan`, `en-foundation` (esp. `--retrofit`), `en-sweep` (architecture drift), `en-learn` (architecture sync) |
 | **`learnings-research`** | Query `docs/learnings/` for relevant past entries via `index.md` first (Karpathy's index-first pattern). Returns top 5-10 matches with relevance scores; full-reads only strong matches to bound token cost | `en-plan`, `en-review`, `en-brainstorm`, `en-foundation` |
 | **`web-research`** | External docs (Context7) and best-practice search (WebSearch); URL fetch with Wayback fallback. Returns `findings[]` with quote-supported claims, `conflicts[]`, `open_questions[]`. Cost-conscious — fires conditionally | `en-plan` (conditional), `en-brainstorm` (on-request), `en-learn --pack` and `ingest <url>` (always) |
 
@@ -298,7 +366,7 @@ Every skill that runs cross-review enforces these:
 | `en-learn` | `repo-research` (architecture sync), `web-research` (`--pack` and `ingest <url>`) |
 | `en-ship` | None — uses git + gh directly |
 | `en-cross-review` | None — pure subprocess wrapper |
-| `en-garden` | `repo-research` + invokes `en-review` per batch PR |
+| `en-sweep` | `repo-research` + invokes `en-review` per batch PR |
 | `en-setup` | None — mechanical setup |
 
 ---

@@ -4,7 +4,7 @@ type: foundation
 status: draft
 created: 2026-04-28
 updated: 2026-04-28
-owner: Mano Kulasingam
+owner: Mano K
 depth: deep
 ---
 
@@ -48,10 +48,10 @@ Ensemble is an **11-skill, 11-agent** product-development toolkit that takes wor
 
 The toolkit has five design pillars:
 
-1. **Document-as-source-of-truth.** Every phase produces a durable artifact (`AGENTS.md`/`CLAUDE.md`, `foundation.md`, `docs/architecture.md`, `docs/designs/*.md`, `docs/plans/active/FRXX-*.md`, `docs/learnings/**/*.md`) and the next phase reads it. The repo is the system of record — anything not in the repo is illegible to the agent.
+1. **Document-as-source-of-truth.** Every phase produces a durable artifact (`AGENTS.md`/`CLAUDE.md`, `foundation.md`, `docs/architecture.md`, `docs/designs/*.md`, `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`, `docs/learnings/**/*.md`) and the next phase reads it. The repo is the system of record — anything not in the repo is illegible to the agent.
 2. **Map, not encyclopedia.** Top-level `AGENTS.md` and `CLAUDE.md` are short pointer indexes (~100 lines) that lead the agent into deeper sources of truth in `docs/`. SKILL.md files follow the same principle — process logic in the file, templates and long checklists in `references/`.
 3. **Cross-agent peer review.** Claude Code and Codex review each other's work via CLI subprocess at high-leverage gates: end of `en-plan`, per unit during `en-build`, and on demand via `en-cross-review`.
-4. **Compounding knowledge.** Every solved problem, pattern, and decision is captured in `docs/learnings/` with frontmatter, queryable by future runs. `en-learn` updates `docs/architecture.md` after material changes; `en-garden` runs event-driven drift cleanup (on every PR merge to `main`) so doc debt gets paid down continuously.
+4. **Compounding knowledge.** Every solved problem, pattern, and decision is captured in `docs/learnings/` with frontmatter, queryable by future runs. `en-learn` updates `docs/architecture.md` after material changes; `en-sweep` runs event-driven drift cleanup (on every PR merge to `main`) so doc debt gets paid down continuously.
 5. **Lean by design.** SKILL.md files target 150–400 lines; agents are short specialist prompts (~40–120 lines). Conditional dispatch, depth-scaled questioning, mid-tier model defaults for peer review.
 
 Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from Superpowers (TDD discipline, worktree isolation, two-stage review), Gstack (live browser QA, confidence-calibrated findings), Compound Engineering (persona-driven review, autofix-class routing, learnings store, stable IDs), and OpenAI's harness-engineering essay (map-not-encyclopedia AGENTS.md, plans split by lifecycle, doc lints, recurring drift cleanup, failure-→-capability-gap operating principle).
@@ -72,7 +72,7 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 - **G8.** Cross-agent peer review (Claude Code ↔ Codex) at high-leverage gates with cost controls and recursion guards.
 - **G9.** Skills work identically across Claude Code and Codex with host-aware adaptations.
 - **G10.** Token-efficient — lean SKILL.md, on-demand reference loading, conditional agent dispatch, depth-scaled questioning.
-- **G11.** A living `docs/architecture.md` that always reflects the current architectural reality of the project, maintained event-driven by `en-learn` and drift-driven by `en-garden`.
+- **G11.** A living `docs/architecture.md` that always reflects the current architectural reality of the project, maintained event-driven by `en-learn` and drift-driven by `en-sweep`.
 - **G12.** Recurring drift cleanup so technical debt gets paid down continuously, not in painful bursts.
 - **G13.** Mechanical doc lints that catch knowledge-base drift before it compounds (frontmatter validity, ID stability, cross-link integrity, freshness).
 
@@ -116,7 +116,7 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 ### 4.1 Key decisions (D-IDs)
 
 - **D1. Foundation captures intent; `docs/architecture.md` captures reality.** `foundation.md` holds product requirements, technical direction, and architectural intent (the vision and rationale at project start, plus durable decisions). `docs/architecture.md` is the living document that reflects the *current* state of the system — components, dependencies, layer rules, data flows. Foundation is the answer to "what did we set out to build and why"; `docs/architecture.md` is the answer to "what does the code actually look like today." Sections scale by depth.
-- **D2. Plans, not feature docs.** Per-feature implementation plans live in `docs/plans/active/FRXX-*.md` while in-flight, then move to `docs/plans/completed/FRXX-*.md` after `en-learn` flips them post-ship. Each plan carries stable U-IDs per implementation unit. They become living documentation after `en-build` completes (per D16).
+- **D2. Plans, not feature docs.** Per-feature implementation plans live in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` while in-flight, then move to `docs/plans/completed/` after `en-learn` flips them post-ship. The lifecycle is `draft → open → in_progress → completed`; `<PREFIX>` comes from foundation's `plan_id_prefix:` (default `FR`); `<plan_type>` is one of `feature` / `improvement` / `bug`. Each plan carries stable U-IDs per implementation unit. They become living documentation after `en-build` completes (per D16).
 - **D3. Multi-persona code review with autofix-class routing.** 4 always-on reviewer personas + 3 conditional. Findings tagged with severity (P0–P3), confidence (1–10), and autofix class (`safe_auto` / `gated_auto` / `manual` / `advisory`).
 - **D4. Cross-agent peer review.** End of `en-plan`, per unit during `en-build`, optionally on `en-foundation` and `en-review`. Implemented via `claude -p` ↔ `codex exec` subprocess calls. Recursion-guarded by `ENSEMBLE_PEER_REVIEW=true` env var.
 - **D5. Live browser QA.** `en-qa` uses Playwright MCP for click-through end-to-end testing, on top of project-native lint/typecheck/test suite checks.
@@ -127,47 +127,50 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 - **D10. Light AskUserQuestion ritual.** Recommendation + 2–4 options + one-line rationale. No decision-brief format; reserved for genuinely opaque trade-offs.
 - **D11. Right-size by depth.** Every skill classifies work into Lightweight / Standard / Deep. Question count, section count, agent dispatch, and review depth all scale.
 - **D12. No iron-law TDD.** Per-unit `Execution note` (test-first, characterization-first, pragmatic) lives in plans. `en-build` honors the note; user can always override.
-- **D13. `docs/architecture.md` as a living, code-accurate document.** Lives in `docs/` alongside other system-of-record artifacts. Pointed to from `AGENTS.md`. Initial draft seeded by `en-foundation` from the architectural intent. Continuously updated by `en-learn` after every material structural change ships (new module, changed boundaries, new infrastructure). Drift-detected and fix-PR'd by `en-garden` on each PR-merge run.
-- **D14. Event-driven doc-drift cleanup as a first-class skill (`en-garden`).** A separate skill that runs on `push` to `main` (i.e., immediately after a PR merges) — not on a recurring schedule. Scans the repo against doc artifacts and lints, opens small doc-only PRs, and auto-merges them after `en-review` clears them. Manual invocation (`/en-garden`) also supported. Continuous payment of doc debt instead of painful bursts.
-- **D15. Project-level `AGENTS.md` and `CLAUDE.md` as map, not encyclopedia.** Two pointer documents at repo root, ~100 lines each. **`AGENTS.md`** is the canonical, host-agnostic map — it orients any agent (Codex, Claude Code, or otherwise) toward deeper sources of truth in `docs/`. **`CLAUDE.md`** opens with a one-line cross-reference to `AGENTS.md` and contains *only* Claude-Code-specific guidance (slash command preferences for this project, skill invocation priority, auto-memory notes, status line / hook references, plugin pointers). No content duplicated from `AGENTS.md`. Doc lint `claude-md.no-shared-content` flags any duplication. Both files created by `en-foundation`, kept current by `en-learn` and `en-garden`.
+- **D13. `docs/architecture.md` as a living, code-accurate document.** Lives in `docs/` alongside other system-of-record artifacts. Pointed to from `AGENTS.md`. Initial draft seeded by `en-foundation` from the architectural intent. Continuously updated by `en-learn` after every material structural change ships (new module, changed boundaries, new infrastructure). Drift-detected and fix-PR'd by `en-sweep` on each PR-merge run.
+- **D14. Event-driven doc-drift cleanup as a first-class skill (`en-sweep`).** A separate skill that runs on `push` to `main` (i.e., immediately after a PR merges) — not on a recurring schedule. Scans the repo against doc artifacts and lints, opens small doc-only PRs, and auto-merges them after `en-review` clears them. Manual invocation (`/en-sweep`) also supported. Continuous payment of doc debt instead of painful bursts.
+- **D15. Project-level `AGENTS.md` and `CLAUDE.md` as map, not encyclopedia.** Two pointer documents at repo root, ~100 lines each. **`AGENTS.md`** is the canonical, host-agnostic map — it orients any agent (Codex, Claude Code, or otherwise) toward deeper sources of truth in `docs/`. **`CLAUDE.md`** opens with a one-line cross-reference to `AGENTS.md` and contains *only* Claude-Code-specific guidance (slash command preferences for this project, skill invocation priority, auto-memory notes, status line / hook references, plugin pointers). No content duplicated from `AGENTS.md`. Doc lint `claude-md.no-shared-content` flags any duplication. Both files created by `en-foundation`, kept current by `en-learn` and `en-sweep`.
 - **D16. Plans split by lifecycle.** `docs/plans/active/` for in-flight plans, `docs/plans/completed/` for shipped ones, `docs/plans/tech-debt-tracker.md` as the canonical place for "noticed but deferred" items. `en-learn` moves plans from active to completed at ship time.
 - **D17. Pack-reference is a mode of `en-learn`, not a separate skill.** `learn --pack <library>` fetches docs once via Context7 + WebSearch and writes a flattened `docs/references/<lib>-llms.txt`. `en-plan`, `en-build`, and `en-brainstorm` consult these local references before falling back to network calls.
 - **D19. Learning store as a wiki, not a flat list.** Adopt Karpathy's "LLM Wiki" pattern: the `docs/learnings/` directory is a structured, interlinked, agent-maintained knowledge base, not a dumb folder of frontmatter files. New entries actively walk related pages and add reciprocal back-links. Two helper artifacts navigate the graph: `docs/learnings/index.md` (content catalog the agent reads first) and `docs/learnings/log.md` (append-only chronological record). `learn --lint` keeps the graph healthy (orphans, missing back-refs, contradictions, missing pages for frequently-cited concepts).
 - **D20. `learn ingest <source>` for proactive knowledge capture.** Distinct from `capture` (which is reactive, post-fix). `ingest` reads any engineering-relevant source — a file path or a URL — and writes a structured summary to `docs/learnings/sources/<slug>-<date>.md`, then walks 10–15 related pages and updates them. Use cases: library evaluation articles, design references from elsewhere, customer-call summaries, best-practice posts. URL inputs use WebFetch; file inputs use Read.
 - **D21. Capture-from-synthesis reflex.** When `en-plan`, `en-review`, or `en-brainstorm` produces a durable synthesis (a comparison, a non-obvious connection, a pattern across multiple files, an extracted lesson), the skill ends with a soft "**Capture this as a learning?**" prompt rather than letting the synthesis disappear into chat. The user accepts → `en-learn capture --from-conversation` files it.
-- **D22. Skill-name prefix `en-`.** All eleven skills use the `en-` prefix consistently across slash commands, directory names, and skill identifiers (`en-brainstorm`, `en-foundation`, `en-plan`, `en-build`, `en-review`, `en-qa`, `en-learn`, `en-ship`, `en-cross-review`, `en-garden`, `en-setup`). Avoids namespace collision with other plugins.
+- **D22. Skill-name prefix `en-`.** All eleven skills use the `en-` prefix consistently across slash commands, directory names, and skill identifiers (`en-brainstorm`, `en-foundation`, `en-plan`, `en-build`, `en-review`, `en-qa`, `en-learn`, `en-ship`, `en-cross-review`, `en-sweep`, `en-setup`). Avoids namespace collision with other plugins.
 - **D23. Cross-review peer is always the *other* agent.** Resolved by host-detect on every invocation. Claude Code → peer is Codex. Codex → peer is Claude. No model-defaults table to maintain; the host *is* the routing.
-- **D24. `en-foundation` emits FR01-project-setup only for new projects.** Detection: `docs/foundation.md` does not yet exist *and* the repo has no source code (or initial-commit state). Existing projects skip FR01 entirely.
+- **D24. `en-foundation` emits a bootstrap `<PREFIX>01-feature_project-setup` plan only for new projects.** `<PREFIX>` is the `plan_id_prefix` resolved during foundation (default `FR`). Detection: `docs/foundation.md` does not yet exist *and* the repo has no source code (or initial-commit state). Existing projects skip the bootstrap plan entirely.
 - **D25. `en-build` batch size is dynamic.** Derived from the feature being implemented — tightly-coupled units batch together, independent units allow larger batches, complex/sensitive units (auth, payments, migrations) batch alone. No fixed default.
 - **D26. `en-learn` auto-runs after `en-build` and `en-qa`.** Soft auto-invoke with a one-line announcement; user can decline. Removes the friction of remembering to capture lessons.
-- **D27. `en-garden` is strictly doc-only and PR-merge-triggered.** Runs as `.github/workflows/en-garden.yml` on `push` to `main`. Opens *doc-only* PRs that auto-merge after `en-review` clears. Code-level findings go to `docs/plans/tech-debt-tracker.md` instead of being acted on.
+- **D27. `en-sweep` is strictly doc-only and PR-merge-triggered.** Runs as `.github/workflows/en-sweep.yml` on `push` to `main`. Opens *doc-only* PRs that auto-merge after `en-review` clears. Code-level findings go to `docs/plans/tech-debt-tracker.md` instead of being acted on.
 - **D28. Worktrees are opt-in per dispatch.** Following Compound Engineering's pattern, skills pass `isolation: "worktree"` on subagent dispatch when isolation is beneficial — primarily `en-build` for per-unit work. Not a repo-wide setting.
 - **D29. Per-unit code simplification before peer review.** During `en-build`, after the unit passes verification gate 1 (tests + lint), the `code-simplifier` agent (Anthropic's official refiner) runs against the unit's diff. Verification gate 2 re-runs unit tests; if anything fails, the simplifier's edits are reverted and the original implementation proceeds. Only after both gates does the unit go to per-unit Outside Voice peer review. Reduces the noise the peer reviewer has to triage and applies project standards (CLAUDE.md / AGENTS.md) consistently. Skipped on trivial units (renames, single-line config tweaks, pure deletions) or with `--no-simplify`.
 - **D30. Peer reports, host applies.** This is the core contract for every Outside Voice cross-review across every skill (`en-foundation`, `en-plan`, `en-build`, `en-cross-review`, optional `--peer` on others). The peer agent **only reports findings** in structured JSON. It does **not** edit files, run commands, modify state, or make commits. The host (the agent running the skill) is the sole code-modifier — it parses the peer's findings, decides which it agrees with, and applies the agreed ones. Peer outputs are advisory; host has agency. This separation keeps the peer's role bounded (cheap, stateless, parallelizable) and prevents the two agents from racing on the same files.
 - **D31. Single-agent fallback when only one CLI is available.** If the user has only Claude Code installed (no Codex), or only Codex (no Claude Code), Outside Voice cross-review degrades to a **fresh-instance fallback**: the host shells out to its own CLI in a clean subprocess (e.g., `claude -p` from within Claude Code, `codex exec` from within Codex). The fresh context still catches things the implementing session has rationalized away — Superpowers' subagent-driven-development pattern relies on exactly this. **The contract from D30 still holds:** the fresh instance only reports findings; the host applies them. The peer's response carries a `peer_mode` field (`cross-agent` vs `single-agent-fallback`) so the user always knows which mode they're in. Same-agent fallback is a degraded mode — same model means same systematic biases — so the prompt is augmented with explicit "be more aggressive, bias toward finding problems" framing to maximize the value of the fresh context. Setup script detects on install and recommends installing the other CLI; doesn't block.
-- **D18. Mechanical doc lints catch drift before it compounds.** A small `bin/ensemble-lint` script + `references/doc-lints.md` enforces frontmatter validity, ID stability (R-IDs, U-IDs, FRXX), cross-link integrity, no-absolute-paths, status correctness on plans, freshness on `docs/architecture.md`. `en-review` runs lint as pre-flight; `en-garden` opens fix-up PRs.
+- **D18. Mechanical doc lints catch drift before it compounds.** A small `bin/ensemble-lint` script + `references/doc-lints.md` enforces frontmatter validity, ID stability (R-IDs, U-IDs, FRXX), cross-link integrity, no-absolute-paths, status correctness on plans, freshness on `docs/architecture.md`. `en-review` runs lint as pre-flight; `en-sweep` opens fix-up PRs.
 
 ---
 
 ## 5. Skill Catalog
 
-Eleven skills total: the ten lifecycle skills plus `en-setup` for project-level bootstrap and diagnostics. All prefixed `en-` to namespace cleanly alongside other plugins.
+Fourteen skills total: the lifecycle skills (brainstorm → foundation → plan → build → review → qa → learn → ship → resolve-pr) plus orthogonal skills (`en-cross-review`, `en-debug`, `en-guardrail`, `en-sweep`, `en-setup`). All prefixed `en-` to namespace cleanly alongside other plugins.
 
 ### 5.1 Skill summary
 
 | # | Skill | One-line purpose | Primary input | Primary output | Cross-review | Host-detect |
 |---|---|---|---|---|---|---|
 | 1 | `en-brainstorm` | Q&A + research + 2–3 approaches with trade-offs | Idea, problem, or rough description | `docs/designs/YYYY-MM-DD-<topic>.md` | Off (default) | Optional |
-| 2 | `en-foundation` | Combined PRD + technical direction + initial architecture for a new product | Brainstorm design doc OR direct invocation | `docs/foundation.md`, `docs/architecture.md`, `AGENTS.md`, `CLAUDE.md` | On (default Yes) | Yes |
-| 3 | `en-plan` | Feature/component/refactor plan with U-IDs | Brainstorm output, foundation, or direct request | `docs/plans/active/FRXX-<name>.md` | On (default Yes) | Yes |
-| 4 | `en-build` | Execute the plan with branch/worktree, batched | Plan path | Code + commits on a feature branch | On (per unit) | Yes |
-| 5 | `en-review` | Multi-persona code review of current branch | Branch with changes | Review report + applied auto-fixes | Off (default), `--peer` to enable | Yes |
+| 2 | `en-foundation` | Combined PRD + technical direction + initial architecture for a new product. Asks for `plan_id_prefix` (2–3 uppercase letters; default `FR`). | Brainstorm design doc OR direct invocation | `docs/foundation.md`, `docs/architecture.md`, `AGENTS.md`, `CLAUDE.md` | On (default Yes) | Yes |
+| 3 | `en-plan` | Feature/component/refactor plan with stable U-IDs and `plan_type` (feature \| improvement \| bug). Modes: default; `--resume <plan>` (promote a draft); `--from-legacy <path>` (migrate legacy plan into Ensemble flow). | Brainstorm output, foundation, direct request, or legacy plan | `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` | On (default Yes) | Yes |
+| 4 | `en-build` | Execute the plan with branch/worktree, batched. Flips `status: open → in_progress` at start. | Plan path | Code + commits on a feature branch | On (per unit) | Yes |
+| 5 | `en-review` | Multi-persona code review of current branch. **Confidence-gated** — sub-threshold findings file as TD entries, not surfaced. | Branch with changes | Review report + applied auto-fixes; sub-threshold → tech-debt-tracker.md | Off (default), `--peer` to enable | Yes |
 | 6 | `en-qa` | System checks + browser end-to-end testing | Branch + optional URL | Bug fixes + new regression tests | Off | Optional |
-| 7 | `en-learn` | Compounding wiki maintainer. **`capture`** (default): file a learning + sync `docs/architecture.md` / foundation / plan + maintain cross-refs. **`ingest <path-or-url>`**: read external source, write summary, update related pages. **`--pack <lib>`**: flatten external docs to `docs/references/<lib>-llms.txt`. **`--refresh`**: audit stale entries. **`--lint`**: structural health (orphans, missing back-refs, contradictions, missing pages). | Commits/branch (capture), file path or URL (ingest), library name (pack), store path (refresh, lint) | Learning doc, doc updates, `index.md` + `log.md` updates, cross-ref edits, source summaries, or library reference | Off | Optional |
-| 8 | `en-ship` | Pre-flight + commit + push + PR | Branch with clean changes | Commit + PR (or merge) | Off | Optional |
-| 9 | `en-cross-review` | Ad-hoc peer review of any artifact | File path or git ref | Critique + applied fixes | Always on (it IS the peer call) | Yes |
-| 10 | `en-garden` | Recurring drift scan against `docs/golden-principles.md`, `docs/architecture.md`, plans, and doc lints. Opens small targeted refactor PRs that auto-merge after `en-review` clears them. | Repo state | Auto-merging cleanup PRs | Off | Yes |
-| 11 | `en-setup` | Project-level bootstrap and diagnostics. Detects state (new / existing-without-Ensemble / existing-with-Ensemble), creates the directory skeleton, generates `AGENTS.md` + `CLAUDE.md` from templates, installs the `en-garden` GitHub Action, sets up `.ensemble/` config files, runs health checks. | Repo state | Project skeleton, config files, GH Action workflow, diagnostic report | Off | Yes |
+| 7 | `en-learn` | Compounding wiki maintainer. **`capture`** (default): file a learning + sync architecture / foundation / plan + maintain cross-refs. **`ingest <path-or-url>`**: read external source. **`--pack <lib>`**: flatten library docs. **`--refresh`**: audit stale entries. **`--lint`**: graph health. **`--bootstrap-patterns`**: seed `patterns/` from existing codebase (one-time, retrofit). | Commits/branch, URL, library, or codebase | Learning doc, doc updates, index/log updates, cross-refs, library reference, or bootstrapped patterns | Off | Optional |
+| 8 | `en-ship` | Pre-flight + commit + push + PR. `--auto-merge` enables `gh pr merge --auto` from the start. | Branch with clean changes | Commit + PR (with optional auto-merge) | Off | Optional |
+| 9 | `en-resolve-pr` | Address incoming PR review feedback. 6-verdict triage (`fixed` / `fixed-differently` / `replied` / `not-addressing` / `declined` / `needs-human`). Vendored GraphQL helpers; reports merge readiness; `--enable-auto-merge` flag. | Current branch's PR (or PR# / comment URL) | Code commits + replies + resolved threads | Off | Yes |
+| 10 | `en-debug` | Telemetry-driven debugging. Reads structured logs per `references/observability-conventions.md`; correlates by trace_id / request_id / event; surfaces hypothesis with file:line + confidence. **Read-only.** | Trace ID, request ID, error message, file:line, or none (tail) | Hypothesis + suggested next-step skill | Off | Yes |
+| 11 | `en-cross-review` | Ad-hoc peer review of any artifact | File path or git ref | Critique + applied fixes | Always on (it IS the peer call) | Yes |
+| 12 | `en-sweep` | Event-driven doc-drift cleanup on every PR merge to `main`. Opens auto-merging doc-only PRs. **Continuous monitoring** (opt-in): dead-code + dep-vuln scans with size-based triage (trivial → TD; pattern/severe → draft plan in `docs/plans/active/`). | Repo state (post-merge) | Auto-merging cleanup PRs + TD entries + draft plans | Off | Yes |
+| 13 | `en-guardrail` | Always-on `PreToolUse` hook that prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, aws s3 rm --recursive, etc.). Localhost+test/dev DB exemption. Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. Installed globally via `~/.claude/settings.json` or project-scoped via `<repo>/.claude/settings.json`. | Bash tool input (intercepted) | Permission prompt or pass-through | Off | Optional |
+| 14 | `en-setup` | Project-level bootstrap and diagnostics. Detects state (1 / 2 / 3); for State 2 retrofit: archives non-conforming legacy plans, creates skeleton, generates `AGENTS.md` + `CLAUDE.md`, installs `.github/workflows/en-sweep.yml`, offers guardrail / Anthropic Code Review action / Codex Code Review action installs, checks repo-level `allow_auto_merge`, surfaces `bootstrap-patterns` offer. | Repo state | Project skeleton, config files, GH Action workflows, diagnostic report | Off | Yes |
 
 ### 5.2 Skill details
 
@@ -241,26 +244,32 @@ Eleven skills total: the ten lifecycle skills plus `en-setup` for project-level 
 
 #### 5.2.3 `en-plan`
 
-- **Purpose.** Turn a feature, component, or refactor into a concrete implementation plan with stable U-IDs. Reads `foundation.md` and any relevant brainstorm design doc.
+- **Purpose.** Turn a feature, component, or refactor into a concrete implementation plan with stable U-IDs and `plan_type`. Reads `foundation.md` and any relevant brainstorm design doc.
+- **Modes.**
+  - **Default** — fresh plan from a request.
+  - **`--resume <plan-path>`** — promote an auto-generated draft (typically from `/en-sweep`'s continuous-monitoring) into a full peer-reviewed plan. Preserves `plan_id`, `plan_type`, `created`, `generator`.
+  - **`--from-legacy <path>`** — read content from a legacy plan (typically `docs/plans/legacy/<file>.md` archived by `/en-setup`'s State 2 step 2). Legacy file is **not modified or moved**; this flag uses it as input to mint a *new* Ensemble plan with frontmatter `migrated_from: <legacy-path>` for traceability.
 - **Process (high-level).**
   1. Detect host. Resolve peer.
-  2. Resume existing plan if one matches, otherwise create fresh.
-  3. Source the request: brainstorm doc, foundation, bug report, or rough description.
+  2. Resume / `--from-legacy` / create fresh.
+  3. Source the request: brainstorm doc, foundation, bug report, legacy plan, or rough description. **Infer `plan_type`** (`feature` / `improvement` / `bug`); confirm if ambiguous.
   4. Right-size depth (Lightweight / Standard / Deep).
-  5. Phase 1 research — dispatch `repo-research` and `learnings-research` agents in parallel. Optionally `web-research` if external best-practice context is needed.
+  5. Phase 1 research — dispatch `repo-research` and `learnings-research` agents in parallel. Optionally `web-research`.
   6. Resolve planning questions (architecture, file boundaries, test strategy, dependencies).
   7. Break the work into implementation units with stable U-IDs (`U1`, `U2`, …).
-  8. For each unit: Goal, Requirements (R-IDs covered), Dependencies (other U-IDs), Files (repo-relative), Approach, optional Execution note, Patterns to follow, Test scenarios, Verification.
-  9. Write to `docs/plans/active/FRXX-<name>.md` with auto-incremented FRXX (continuing from highest existing number across both `active/` and `completed/`).
-  10. **Outside Voice review** — peer agent critiques the plan; user incorporates agreed findings.
-  11. Confidence check — flag low-confidence sections, optionally deepen.
-  12. Hand off to `en-build`.
+  8. For each unit: Goal, Requirements covered, Dependencies, Files, Approach, Execution note, Patterns to follow, Test scenarios, Verification.
+  9. Resolve `plan_id_prefix` from `foundation.md` (default `FR`); auto-increment `<NN>` per-prefix.
+  10. Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`. (User flips to `open` after acceptance; `/en-build` flips to `in_progress`; `/en-learn capture` flips to `completed` and moves the file.)
+  11. **Outside Voice review** — peer agent critiques the plan; user incorporates agreed findings.
+  12. Confidence check; capture-from-synthesis reflex.
+  13. Hand off to `en-build`.
 - **Cross-review.** On by default.
 - **Reference files.**
-  - `references/plan-template.md`
+  - `references/templates/plan-template.md`
   - `references/host-detect.md`
   - `references/outside-voice.md`
   - `references/research-dispatch.md`
+  - `references/stable-ids.md`
 
 #### 5.2.4 `en-build`
 
@@ -314,26 +323,27 @@ Eleven skills total: the ten lifecycle skills plus `en-setup` for project-level 
 
 #### 5.2.5 `en-review`
 
-- **Purpose.** Multi-persona code review of current branch changes against the plan and project conventions.
+- **Purpose.** Multi-persona code review of current branch changes against the plan and project conventions. Confidence-gated — sub-threshold findings are filed as TD entries instead of cluttering review output.
 - **Process (high-level).**
   1. Detect host. Determine diff base (PR target, default branch fallback).
   2. Read plan(s) referenced by the branch.
   3. Always-on personas: `correctness`, `testing`, `maintainability`, `standards`. Plus `learnings-research`.
   4. Conditional personas based on diff content: `security`, `performance`, `migrations`.
-  5. Each persona returns structured JSON. Synthesis merges, dedups, classifies.
-  6. Apply `safe_auto` fixes automatically.
-  7. Present `gated_auto`, `manual`, and `advisory` findings grouped by severity.
-  8. User picks which to apply.
-  9. Optional `--peer` flag enables Outside Voice cross-review on top of personas.
-  10. Output review report (markdown) and a JSON envelope (for programmatic callers).
+  5. Each persona returns structured JSON with `confidence: 1-10`. Synthesis merges, dedups, classifies.
+  6. **Confidence gate.** Findings with `confidence < threshold` (default `7`, configurable via `~/.ensemble/config.json` → `review.confidence_threshold`) are filed as TD entries with marker `Filed by /en-review (confidence <N>)`. P0 findings always surface regardless of confidence (with `low_confidence: true` flag if rated low). Skipped in `report-only` mode (sub-threshold findings returned in `sub_threshold_findings: []` instead). Per `references/review-confidence-gating.md`.
+  7. Apply `safe_auto` fixes automatically.
+  8. Present `gated_auto`, `manual`, and `advisory` findings grouped by severity.
+  9. User picks which to apply.
+  10. Optional `--peer` flag enables Outside Voice cross-review on top of personas.
+  11. Output review report (markdown) and a JSON envelope (for programmatic callers). Both include `sub_threshold_filed_count`.
 - **Modes.** Three modes determine whether `en-review` may modify files:
   - **`interactive`** (default for direct user invocation) — auto-applies `safe_auto` fixes, presents `gated_auto`/`manual` findings to the user. May write to the working tree.
   - **`headless`** (default for skill-to-skill invocation in non-CI contexts) — auto-applies `safe_auto` fixes silently and returns structured JSON for the calling skill. May write to the working tree. Used by `en-build` per-unit and `en-cross-review`.
-  - **`report-only`** — strictly read-only. No file edits, no commits. Returns findings JSON only. **Required mode when `en-review` is invoked from CI** (e.g., by `en-garden`). The reason: mutation in CI would push a commit, which retriggers garden — and more fundamentally, a "verification gate" that mutates is conceptually muddled. Verification and repair are separate steps.
+  - **`report-only`** — strictly read-only. No file edits, no commits. Returns findings JSON only. **Required mode when `en-review` is invoked from CI** (e.g., by `en-sweep`). The reason: mutation in CI would push a commit, which retriggers sweep — and more fundamentally, a "verification gate" that mutates is conceptually muddled. Verification and repair are separate steps.
 
   Mode is selected by the calling skill, with these mandatory rules:
   - When `en-build` invokes `en-review` per-unit → `headless`.
-  - When `en-garden` invokes `en-review` to gate a PR → `report-only` (always; not configurable).
+  - When `en-sweep` invokes `en-review` to gate a PR → `report-only` (always; not configurable).
   - When the user invokes `/en-review` directly → `interactive`.
   - When `en-cross-review` invokes `en-review` against a target → `headless`.
 - **Cross-review.** Off by default; available via `--peer`.
@@ -369,7 +379,7 @@ Eleven skills total: the ten lifecycle skills plus `en-setup` for project-level 
 #### 5.2.7 `en-learn`
 
 - **Purpose.** Maintain `docs/learnings/` as a compounding, interlinked wiki — not a flat folder. Capture engineering events, ingest external sources, keep architecture/foundation/plans honest, curate external library references, and check graph health.
-- **Modes.** `capture` (default), `ingest <path-or-url>`, `--refresh`, `--pack <library>`, `--lint`.
+- **Modes.** `capture` (default), `ingest <path-or-url>`, `--refresh`, `--pack <library>`, `--lint`, `--bootstrap-patterns` (one-time retrofit; seeds `patterns/` from existing codebase via `repo-research`; entries flagged `source: bootstrap` and `requires_validation: true`, default `confidence: 6`).
 - **Always-on behavior across modes that write entries (capture, ingest):**
   - **Active cross-reference maintenance.** After writing the new entry, walk through every page in its `related: []` field and append a reciprocal back-reference to those pages' frontmatter. Forward refs without back-refs make the graph one-directional and orphans accumulate.
   - **Index update.** Append a one-line entry to `docs/learnings/index.md` under the appropriate category, with date and one-line summary.
@@ -390,7 +400,7 @@ Run after a feature ships, after a bug is fixed, or anytime there is a durable i
   5. Apply the always-on behaviors (cross-refs, index update, log append).
   6. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits to drifted sections only — never regenerate the whole doc. Bump `updated: YYYY-MM-DD`.
   7. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-  8. **Move the relevant plan** from `docs/plans/active/FRXX-*.md` to `docs/plans/completed/FRXX-*.md` — flip status from `active` to `completed`, replace plan-tense with documentation-tense. Note any deviations from the plan.
+  8. **Move the relevant plan** from `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` to `docs/plans/completed/<…>.md` — flip status from `in_progress` (or `open`) to `completed`, set `shipped: <date>`, replace plan-tense with documentation-tense. Note any deviations from the plan.
   9. **Sync `AGENTS.md` / `CLAUDE.md`** if the artifact directory or top-level guidance changed (rare).
   10. Update `docs/README.md` index.
 
@@ -443,7 +453,7 @@ Structural health check on the wiki graph. Distinct from `--refresh`, which is c
   - **Log drift** — operations missing from `log.md` (compare against git log of `docs/learnings/`).
   - **Data gaps** — areas where the wiki is thin and would benefit from a `learn ingest` of an external source. Suggest specific search queries.
 - **Output.** A report grouped by check, with severity (P1 = orphan, broken link, missing back-ref; P2 = missing page, data gap, log drift; P3 = contradiction needing human judgment). For mechanical findings (P1, most P2), `learn --lint --fix` auto-applies fixes (add the missing back-ref, repair the broken link, regenerate `index.md`). Contradictions and content-judgment items go to the user.
-- **Cadence.** On demand (`/en-learn --lint`), or invoked by `en-garden` as part of its post-merge pass. `en-garden` invokes `en-learn --lint` and routes the output through its PR-batching flow.
+- **Cadence.** On demand (`/en-learn --lint`), or invoked by `en-sweep` as part of its post-merge pass. `en-sweep` invokes `en-learn --lint` and routes the output through its PR-batching flow.
 
 - **Cross-review.** Off by default in all modes (`--peer` to enable).
 - **Reference files.**
@@ -491,54 +501,58 @@ Structural health check on the wiki graph. Distinct from `--refresh`, which is c
   - `references/host-detect.md`
   - `references/outside-voice.md`
 
-#### 5.2.10 `en-garden`
+#### 5.2.10 `en-sweep`
 
 - **Purpose.** Doc-drift cleanup that runs *automatically after every PR merge to `main`*. Scans the merged code against documentation artifacts, identifies what drifted, opens *doc-only* fix-up PRs, and auto-merges them after `en-review` clears them. Pays down doc debt continuously without ever modifying code.
-- **Strict scope: doc-only.** `en-garden` **never** modifies source code, configuration, tests, or any non-doc artifact. If it notices a code-level pattern that should be refactored (a duplicated helper, a layer-rule violation, a hand-rolled util that has a shared equivalent), it files the observation as an entry in `docs/plans/tech-debt-tracker.md` for `en-plan` / `en-build` to handle later. This separation is non-negotiable: `en-garden` running unattended (auto-triggered, auto-merged) means it must touch only artifacts where the blast radius is bounded to documentation.
-- **Trigger model — event-driven, not scheduled.** Default trigger: **`push` to `main`** (i.e., a PR just merged). Implemented as a GitHub Action workflow installed at `.github/workflows/en-garden.yml` by the setup script. Can also be invoked manually: `/en-garden`.
+- **Strict scope: doc-only.** `en-sweep` **never** modifies source code, configuration, tests, or any non-doc artifact. If it notices a code-level pattern that should be refactored (a duplicated helper, a layer-rule violation, a hand-rolled util that has a shared equivalent), it files the observation as an entry in `docs/plans/tech-debt-tracker.md` for `en-plan` / `en-build` to handle later. This separation is non-negotiable: `en-sweep` running unattended (auto-triggered, auto-merged) means it must touch only artifacts where the blast radius is bounded to documentation.
+- **Trigger model — event-driven, not scheduled.** Default trigger: **`push` to `main`** (i.e., a PR just merged). Implemented as a GitHub Action workflow installed at `.github/workflows/en-sweep.yml` by the setup script. Can also be invoked manually: `/en-sweep`.
 - **Why event-driven beats scheduled.** A PR merge is exactly when doc drift can be introduced. Scheduled runs either miss drift for hours/days or run when nothing has changed.
-- **Why a separate skill from `en-learn`.** `en-learn` captures lessons in conversation, in real time, in the user's working session. `en-garden` runs unattended in CI. Different cadence (event-driven vs invocation-driven), different scope (doc drift vs lesson capture), different blast radius (auto-merge vs human-confirmed).
+- **Why a separate skill from `en-learn`.** `en-learn` captures lessons in conversation, in real time, in the user's working session. `en-sweep` runs unattended in CI. Different cadence (event-driven vs invocation-driven), different scope (doc drift vs lesson capture), different blast radius (auto-merge vs human-confirmed).
 - **Process (high-level).**
-  1. Triggered by `push` to `main`. CI checks out the repo and runs `/en-garden`.
-  2. Detect host (CI runner). Resolve peer for any `en-review` invocations within garden's PRs.
+  1. Triggered by `push` to `main`. CI checks out the repo and runs `/en-sweep`.
+  2. Detect host (CI runner). Resolve peer for any `en-review` invocations within sweep's PRs.
   3. Run doc lints (`bin/ensemble-lint`) — file-shape checks. Capture violations.
   4. Run `en-learn --lint` — wiki-graph checks (orphans, missing back-refs, etc.). Capture violations.
   5. Compare `docs/architecture.md` against current code via `repo-research` agent: are documented components still present? Are dependency rules still honored? Are layer boundaries still clean?
-  6. Cross-check `docs/plans/active/` for plans whose work has shipped on `main` — they should be moved to `completed/`. (`en-learn` handles the move during normal flow, but if the user shipped without invoking `en-learn`, garden catches it.)
+  6. Cross-check `docs/plans/active/` for plans whose work has shipped on `main` — they should be moved to `completed/`. (`en-learn` handles the move during normal flow, but if the user shipped without invoking `en-learn`, sweep catches it.)
   7. Cross-check `AGENTS.md` and `CLAUDE.md` against current `docs/` structure — pointer-map drift.
   8. Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`:
      - `chore(docs): fix broken cross-refs in foundation.md`
      - `chore(arch): document new ProvidersV2 boundary in docs/architecture.md`
-     - `chore(plans): move FR07 to completed/`
+     - `chore(plans): move EN03 to completed/`
      - `chore(learnings): add missing back-refs in patterns/`
      - `chore(learnings): archive 4 superseded entries`
      - `chore(maps): update AGENTS.md pointer to new docs/references/ entry`
+  8a. **Continuous monitoring (opt-in).** When `.ensemble/config.local.yaml` declares `sweep.continuous_monitoring.dead_code: true` or `dep_audit: true`, run `skills/en-sweep/scripts/continuous-monitor` (wraps `ts-prune` / `vulture` / Go `deadcode` / `npm audit` / `pip-audit` / `cargo audit`) and pipe through `skills/en-sweep/scripts/triage-findings`. Output is partitioned by **size**:
+     - Trivial / mechanical (single dead function; dep-vuln with auto-fix; `loc_estimate` < `sweep.auto_plan_threshold_loc`) → append to `tech-debt-tracker.md` with marker `Filed by /en-sweep (continuous-monitor)`.
+     - Pattern / structural / decision-required (≥ `sweep.auto_plan_threshold_locations` dead-code findings clustered in same area; severe CVE without auto-fix) → write a draft plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`, `generator: en-sweep`, `generator_run: <merge-sha>`, `generator_checks: [dead-code|dep-audit]`, `area: <subtree>`. Capped at `sweep.max_drafts_per_run` (default 3); overflow rolls to TD with a "would have been a plan" note.
+     - Idempotency: skip if an existing plan with `generator: en-sweep` and matching `area:` is still open. Per `references/sweep-checks.md`.
   9. For each batch, open a focused PR with a single conventional commit.
   10. Each PR runs `en-review` automatically. If `en-review` returns clean (no P0/P1 findings), the PR auto-merges.
   11. If `en-review` finds anything, the PR stays open for human resolution.
-  12. Summary report posted as a comment on the original triggering PR: what was fixed, what was deferred to `tech-debt-tracker.md`, what needs human judgment.
-- **What goes to `tech-debt-tracker.md` instead of a garden PR.** Anything that requires modifying source code, config, or tests. Examples: "this helper duplicates `formatDate` in `src/utils/`", "Routes module imports from Config layer — violates layer rule", "test coverage gap on payment retry path." These get appended with category, severity, file paths, and date. `en-plan` reads `tech-debt-tracker.md` when planning new work.
-- **Cross-review.** Off by default. Each garden PR goes through `en-review` (in `mode:report-only`), which is the quality gate.
+  12. Summary report posted as a comment on the original triggering PR: what was fixed, what was deferred to `tech-debt-tracker.md`, what was filed as a draft plan, what needs human judgment.
+- **What goes to `tech-debt-tracker.md` instead of a sweep PR.** Anything that requires modifying source code, config, or tests. Examples: "this helper duplicates `formatDate` in `src/utils/`", "Routes module imports from Config layer — violates layer rule", "test coverage gap on payment retry path." These get appended with category, severity, file paths, and date. `en-plan` reads `tech-debt-tracker.md` when planning new work.
+- **Cross-review.** Off by default. Each sweep PR goes through `en-review` (in `mode:report-only`), which is the quality gate.
 
 ##### CI execution model
 
-A slash command is an interactive-host concept, not a CI executable. The GitHub Action workflow doesn't invoke `/en-garden` literally — it runs a wrapper command that maps to the host CLI's headless mode.
+A slash command is an interactive-host concept, not a CI executable. The GitHub Action workflow doesn't invoke `/en-sweep` literally — it runs a wrapper command that maps to the host CLI's headless mode.
 
 **Wrapper resolution (in CI runner):**
 
 ```bash
-# bin/en-garden-ci  (installed by ./setup; lives in the plugin's bin/)
+# bin/en-sweep-ci  (installed by ./setup; lives in the plugin's bin/)
 # Resolves which CLI is available in the runner and invokes it headlessly.
 
 if command -v claude >/dev/null 2>&1; then
   claude -p --output-format json \
     --max-turns 50 \
-    --skill en-garden \
+    --skill en-sweep \
     "$@"
 elif command -v codex >/dev/null 2>&1; then
-  codex exec --json --skill en-garden "$@"
+  codex exec --json --skill en-sweep "$@"
 else
-  echo "ERROR: en-garden requires claude or codex CLI in the CI runner. Install one." >&2
+  echo "ERROR: en-sweep requires claude or codex CLI in the CI runner. Install one." >&2
   exit 1
 fi
 ```
@@ -550,36 +564,36 @@ fi
 - Default timeout: **30 minutes**. Hard cap, configurable via workflow input.
 - Non-interactive — the wrapper passes `-p` (Claude) or `exec` (Codex), and the skill operates without `AskUserQuestion`/`request_user_input` calls.
 
-**Branch naming for garden PRs:** `en-garden/<source-merge-sha-short>/<batch-name>` (e.g., `en-garden/a3f1b9c/architecture-doc-update`).
+**Branch naming for sweep PRs:** `en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-doc-update`).
 
-**Fallback if no CLI is available:** the workflow fails with a clear error and posts a comment on the source PR. Does not block the source PR; just notifies the user that garden is non-operational until a CLI is installed in the runner.
+**Fallback if no CLI is available:** the workflow fails with a clear error and posts a comment on the source PR. Does not block the source PR; just notifies the user that sweep is non-operational until a CLI is installed in the runner.
 
 ##### Loop guards (preventing self-trigger cascades)
 
-Garden runs on `push` to `main`. Its auto-merging PRs are themselves pushes to `main`. Without guards, this creates an infinite loop. Five guards in place:
+Sweep runs on `push` to `main`. Its auto-merging PRs are themselves pushes to `main`. Without guards, this creates an infinite loop. Five guards in place:
 
-1. **Skip garden-authored commits.** The workflow's first step inspects `${{ github.event.head_commit.author.name }}` and `${{ github.event.head_commit.message }}`. If the author is `ensemble-garden[bot]` *or* the message starts with `chore(en-garden):`, exit immediately (status: skipped).
-2. **Concurrency group.** GitHub Actions `concurrency:` keyed on `en-garden-${{ github.ref }}` with `cancel-in-progress: false` — only one garden run per branch at a time. Subsequent triggers queue, not stack.
-3. **Garden PR labeling.** Every garden-opened PR carries the label `en-garden`. The workflow's first step also exits immediately if the merge that just happened was a PR carrying this label (detected via `gh pr view --json labels`).
+1. **Skip sweep-authored commits.** The workflow's first step inspects `${{ github.event.head_commit.author.name }}` and `${{ github.event.head_commit.message }}`. If the author is `ensemble-sweep[bot]` *or* the message starts with `chore(en-sweep):`, exit immediately (status: skipped).
+2. **Concurrency group.** GitHub Actions `concurrency:` keyed on `en-sweep-${{ github.ref }}` with `cancel-in-progress: false` — only one sweep run per branch at a time. Subsequent triggers queue, not stack.
+3. **Sweep PR labeling.** Every sweep-opened PR carries the label `en-sweep`. The workflow's first step also exits immediately if the merge that just happened was a PR carrying this label (detected via `gh pr view --json labels`).
 4. **No-material-diff termination.** After running all checks, if no fix-PR batches were generated, exit silently. No notification, no commit, no PR.
-5. **Recursion depth cap.** The workflow checks `${{ env.ENSEMBLE_GARDEN_DEPTH }}`; defaults to `0`, increments on each spawn. Hard cap at depth 1 — garden never spawns garden. (Defense-in-depth; guards 1+3 should already prevent this.)
+5. **Recursion depth cap.** The workflow checks `${{ env.ENSEMBLE_SWEEP_DEPTH }}`; defaults to `0`, increments on each spawn. Hard cap at depth 1 — sweep never spawns sweep. (Defense-in-depth; guards 1+3 should already prevent this.)
 
 ##### Doc-only enforcement at runtime
 
-Garden is contractually doc-only (D27). Implementation enforces this with a runtime guard:
+Sweep is contractually doc-only (D27). Implementation enforces this with a runtime guard:
 
-- After staging files for a PR, the workflow runs `git diff --cached --name-only` and verifies every changed path is under `docs/`, `AGENTS.md`, `CLAUDE.md`, or `.github/workflows/en-garden.yml`. Any path outside this allowlist → abort the PR creation, fail loudly with the offending path, and post to source PR.
+- After staging files for a PR, the workflow runs `git diff --cached --name-only` and verifies every changed path is under `docs/`, `AGENTS.md`, `CLAUDE.md`, or `.github/workflows/en-sweep.yml`. Any path outside this allowlist → abort the PR creation, fail loudly with the offending path, and post to source PR.
 - The allowlist is enforced in `bin/ensemble-doc-only-check`, called as a workflow step before `gh pr create`.
 
-##### When `en-garden` invokes `en-review`
+##### When `en-sweep` invokes `en-review`
 
-In CI, `en-garden` invokes `en-review` in `mode:report-only` (not the default interactive mode). Why:
+In CI, `en-sweep` invokes `en-review` in `mode:report-only` (not the default interactive mode). Why:
 
-- `en-review` in interactive/headless mode auto-applies `safe_auto` fixes, which would push another commit to the garden PR's branch. That's tolerable but adds noise.
+- `en-review` in interactive/headless mode auto-applies `safe_auto` fixes, which would push another commit to the sweep PR's branch. That's tolerable but adds noise.
 - More importantly, allowing mutation in CI risks the gate making changes that then need re-review — recursive ambiguity.
-- `mode:report-only` makes `en-review` strictly a verifier: it returns findings as JSON, no file edits. Garden parses the JSON and decides whether to auto-merge (clean) or leave open (P0/P1 findings).
+- `mode:report-only` makes `en-review` strictly a verifier: it returns findings as JSON, no file edits. Sweep parses the JSON and decides whether to auto-merge (clean) or leave open (P0/P1 findings).
 
-This is documented in `en-review` (§5.2.5) and reinforced by `en-garden`'s wrapper passing `EN_REVIEW_MODE=report-only` when invoking it.
+This is documented in `en-review` (§5.2.5) and reinforced by `en-sweep`'s wrapper passing `EN_REVIEW_MODE=report-only` when invoking it.
 
 ##### Auto-merge security model
 
@@ -588,19 +602,19 @@ Default-safe configuration:
 - **Use `GITHUB_TOKEN` (auto-provided), not a PAT.** Least-privilege.
 - **Workflow permissions** (declared in workflow YAML): `contents: write`, `pull-requests: write`, `issues: write` (for comments). No `actions: write`, no admin.
 - **No fork-triggered runs.** Workflow uses `on: push: branches: [main]` only — never `pull_request_target` from forks (which would expose credentials to attacker-controlled code).
-- **Branch protection respected.** If the repo's branch protection requires N reviews on PRs to `main`, garden PRs queue for review rather than auto-merge. Garden detects this via `gh api /repos/.../branches/main/protection` and exits gracefully if its PRs can't be auto-merged. Surfaces in the source-PR comment.
+- **Branch protection respected.** If the repo's branch protection requires N reviews on PRs to `main`, sweep PRs queue for review rather than auto-merge. Sweep detects this via `gh api /repos/.../branches/main/protection` and exits gracefully if its PRs can't be auto-merged. Surfaces in the source-PR comment.
 - **Doc-only enforcement** (above) prevents any source-file edit even if a finding mistakenly suggested one.
-- **Auto-merge disabled on detection failure.** If any guard check errors out (rate-limited GitHub API, auth failure, allowlist check throws), garden leaves all PRs open for human review and does not auto-merge.
+- **Auto-merge disabled on detection failure.** If any guard check errors out (rate-limited GitHub API, auth failure, allowlist check throws), sweep leaves all PRs open for human review and does not auto-merge.
 
 - **Reference files.**
   - `references/host-detect.md`
-  - `references/garden-checks.md` (the catalog of doc drift checks)
-  - `references/garden-trigger-workflow.yml` (template `.github/workflows/en-garden.yml` installed by setup)
-  - `references/garden-loop-guards.md` (the five guards above)
-  - `references/garden-security-model.md` (permission model + fork policy)
+  - `references/sweep-checks.md` (the catalog of doc drift checks)
+  - `references/sweep-trigger-workflow.yml` (template `.github/workflows/en-sweep.yml` installed by setup)
+  - `references/sweep-loop-guards.md` (the five guards above)
+  - `references/sweep-security-model.md` (permission model + fork policy)
   - `references/tech-debt-tracker-format.md` (entry schema for code-level findings)
   - `references/doc-lints.md` (shared with `en-review`)
-  - `bin/en-garden-ci` (the CLI wrapper)
+  - `bin/en-sweep-ci` (the CLI wrapper)
   - `bin/ensemble-doc-only-check` (runtime allowlist enforcement)
 
 #### 5.2.11 `en-setup`
@@ -624,19 +638,23 @@ Default-safe configuration:
   | 2d | Both AGENTS.md and CLAUDE.md | Append-merge each: keep existing content; append Ensemble pointer index / Claude-specific section if not present. Never overwrite existing user content. | Same |
 
 - **Process per state.**
-  - **State 1 — Greenfield handoff.** Don't pre-create artifacts. Recommend the user start with `/en-brainstorm` to explore the idea, then proceed to `/en-foundation` to establish the foundation document and emit the `FR01-project-setup` plan (per A1). `en-setup` doesn't own greenfield bootstrap; `/en-foundation` does, with `/en-brainstorm` typically preceding it. Output a one-paragraph guide naming both skills and the order.
+  - **State 1 — Greenfield handoff.** Don't pre-create artifacts. Recommend the user start with `/en-brainstorm` to explore the idea, then proceed to `/en-foundation` to establish the foundation document and emit the bootstrap `<PREFIX>01-feature_project-setup` plan (per A1; `<PREFIX>` is the `plan_id_prefix` chosen during foundation, default `FR`). `en-setup` doesn't own greenfield bootstrap; `/en-foundation` does, with `/en-brainstorm` typically preceding it. Output a one-paragraph guide naming both skills and the order.
   - **State 2 — Retrofit bootstrap.** Run all of these in order:
     1. **Detect State 2 sub-variant** (2a / 2b / 2c / 2d) and stage the `AGENTS.md` / `CLAUDE.md` actions accordingly.
-    2. **Create directory skeleton:** `docs/{plans/{active,completed},learnings/{bugs,patterns,decisions,sources},references,generated,designs}/`. Seed `docs/learnings/index.md` and `docs/learnings/log.md` with empty templates.
-    3. **Generate or merge `AGENTS.md`** per the sub-variant. When merging, never overwrite existing user content — append the Ensemble pointer index as a new section if one isn't already present.
-    4. **Generate or merge `CLAUDE.md`** per the sub-variant. Same merge discipline. The first line must be the cross-reference to `AGENTS.md` (per D15); if an existing `CLAUDE.md` doesn't have it, prepend it. Append-merge any Claude-Code-specific Ensemble guidance into a new section.
-    5. **Add `.gitignore` entries:** `.ensemble/config.local.yaml`. Optionally `docs/learnings/archive/` (ask the user — depends on whether the team wants archived learnings tracked in git).
-    6. **Install `.github/workflows/en-garden.yml`** from `references/templates/github-workflow-en-garden.yml`. Surface required permissions/secrets per A20 in the same step.
-    7. **Create `.ensemble/config.local.example.yaml`** (committed) with the full set of available settings. **Offer to create `.ensemble/config.local.yaml`** (gitignored) — ask the user; if accepted, copy from example and uncomment the most-likely-relevant defaults.
-    8. **Recommend next steps.** Output a one-paragraph guide. Two paths:
-       - "Run `/en-foundation` to retrofit `docs/foundation.md` and `docs/architecture.md` from your existing code." (Recommended for projects that will see continuing development with Ensemble.)
-       - "Or jump straight to `/en-plan` for your next feature — `en-foundation` can be filled in later as you go." (For projects that want to start using Ensemble immediately on a feature without a full retrofit pass.)
-  - **State 3 — Diagnostic mode.** Run health checks: are all required directories present? Are `AGENTS.md` and `CLAUDE.md` current (no doc-lint failures)? Is `.github/workflows/en-garden.yml` installed? Is `bin/ensemble-lint` available? Are required CLIs (`gh`, `git`, `jq`) on PATH? Are MCP servers (Playwright, Context7) configured? Is the plugin version current? Mirrors CE's `scripts/check-health` pattern. Offer repairs for missing pieces.
+    2. **Existing-plans archival.** If `docs/plans/` already exists, run `bin/ensemble-classify-plans` to partition into conforming / non-conforming / subdirs / tech-debt. If non-conforming files exist, prompt to `git mv` them into `docs/plans/legacy/` with a `README.md` explaining the convention. Migrate any later via `/en-plan --from-legacy <path>`.
+    3. **Create directory skeleton:** `docs/{plans/{active,completed},learnings/{bugs,patterns,decisions,sources},references,generated,designs}/`. Seed `docs/learnings/index.md` and `docs/learnings/log.md` with empty templates.
+    4. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries.
+    5. **Generate or merge `AGENTS.md`** per the sub-variant. When merging, never overwrite existing user content — append the Ensemble pointer index as a new section if one isn't already present.
+    6. **Generate or merge `CLAUDE.md`** per the sub-variant. Same merge discipline. The first line must be the cross-reference to `AGENTS.md` (per D15); if an existing `CLAUDE.md` doesn't have it, prepend it. Append-merge any Claude-Code-specific Ensemble guidance into a new section.
+    7. **Add `.gitignore` entries:** `.ensemble/config.local.yaml`. Optionally `docs/learnings/archive/` (ask the user).
+    8. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Surface required permissions/secrets per A20.
+    9. **Create `.ensemble/config.local.example.yaml`** (committed). Offer to create `.ensemble/config.local.yaml` (gitignored).
+    10. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt: install project-scoped now (`p`) / print global one-liner (`g`) / skip (`s`).
+    11. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, offer to install from `references/templates/github-workflow-claude-review.yml` (per `docs/integrations/anthropic-code-review-action.md`). The Codex review path (`docs/integrations/codex-code-review-action.md`) is informational only — user runs it manually if they want a second AI perspective.
+    12. **Auto-merge repo-setting check.** `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. If `false`, surface advisory (manual repo setting; agent doesn't flip it).
+    13. **Bootstrap-patterns offer.** Surface (informational): "Consider `/en-learn --bootstrap-patterns` after `/en-foundation --retrofit` to seed `docs/learnings/patterns/` from the codebase. Optional, opt-in, one-time."
+    14. **Recommend next steps.** Output a one-paragraph guide naming `/en-foundation --retrofit` (recommended) or `/en-plan` (if jumping into a feature first).
+  - **State 3 — Diagnostic mode.** Run health checks: required directories present? `AGENTS.md` / `CLAUDE.md` current (no doc-lint failures)? `.github/workflows/en-sweep.yml` installed? Anthropic Code Review action installed? Guardrail hook registered? Repo-level `allow_auto_merge` enabled? `bin/ensemble-lint` available? Required CLIs (`gh`, `git`, `jq`) on PATH? MCP servers (Playwright, Context7) configured? Plugin version current? Mirrors CE's `scripts/check-health` pattern. Offer repairs for missing pieces.
 
 - **Output.** A diagnostic report with `🟢` / `🟡` / `🔴` per check, plus any artifacts created or repaired. Recommends next-step skill (per state).
 - **Cross-review.** Off — mechanical setup work, no peer review needed.
@@ -645,10 +663,69 @@ Default-safe configuration:
   - `references/templates/agents-md-template.md`
   - `references/templates/claude-md-template.md`
   - `references/templates/agents-md-merge-rules.md` (append-merge logic for variants 2b–2d)
-  - `references/templates/github-workflow-en-garden.yml`
+  - `references/templates/github-workflow-en-sweep.yml`
+  - `references/templates/github-workflow-claude-review.yml`
   - `references/templates/config-local-example.yaml`
   - `references/setup-state-detection.md` (state-1 / state-2 sub-variants / state-3 heuristics)
+  - `references/learn-bootstrap-patterns.md` (informational — surfaced in step 13)
+  - `bin/ensemble-classify-plans` (used in step 2)
+  - `skills/en-guardrail/bin/install-guardrail` (used in step 10)
   - `scripts/check-health` (the diagnostic runner)
+
+#### 5.2.12 `en-resolve-pr`
+
+- **Purpose.** Address incoming PR review feedback systematically — humans, the Anthropic Claude Code Review action, the Codex review, CodeRabbit, etc. all land here. Triages new vs already-handled items, applies fixes, replies on the right comment-type API, resolves threads (except `needs-human`), reports merge readiness, optionally enables auto-merge.
+- **Argument.** `(none)` — current branch's PR; `<PR-number>` — that PR; `<comment-or-thread-URL>` — targeted single thread.
+- **Triage taxonomy.** Three feedback types (`review_threads`, `pr_comments`, `review_bodies`) partitioned into new / pending-decision / silent-drop (CodeRabbit/Codex/Gemini/Copilot wrappers, "looks good!", CI bot output). Per `references/resolve-pr-triage.md`.
+- **6 verdicts.** `fixed` / `fixed-differently` / `replied` / `not-addressing` (cite evidence) / `declined` (cite specific harm + source: `CLAUDE.md`, `AGENTS.md`, `docs/learnings/patterns/`) / `needs-human` (rare; structured `decision_context` for the user). Per `references/resolve-pr-rubric.md`.
+- **Reply mechanics.** Inline review threads → GraphQL `addPullRequestReviewThreadReply` + `resolveReviewThread`. Top-level PR comments / review bodies → `gh pr comment` (no resolve API). Replies always lead with `> [quoted excerpt]` for thread continuity. Per `references/resolve-pr-reply-format.md`.
+- **Iteration.** Up to 2 fix-verify cycles per invocation; cycle 3 escalates as recurring pattern.
+- **Auto-merge integration.** `--enable-auto-merge` flag flips on `gh pr merge --auto --squash` after addressing. Final summary reports `repo_allows_auto_merge` / `auto_merge_enabled` / `merge_state_status` / `review_decision` / failing/pending checks via `scripts/check-merge-status`.
+- **Capture-from-synthesis (D21).** When a `declined` or `needs-human` verdict surfaces a real anti-pattern, soft-prompt to file a learning via `/en-learn capture --from-conversation`.
+- **Tech-debt routing.** Out-of-scope `replied` verdicts file as `TD<N>` in `docs/plans/tech-debt-tracker.md`.
+- **Cross-review.** Off — review feedback already came from a review pass.
+- **Reference files.**
+  - `references/resolve-pr-triage.md`
+  - `references/resolve-pr-rubric.md`
+  - `references/resolve-pr-reply-format.md`
+  - `skills/en-resolve-pr/scripts/{get-pr-comments, get-thread-for-comment, reply-to-pr-thread, resolve-pr-thread, check-merge-status}` — wrappers around GitHub's GraphQL API (`reviewThreads`, `addPullRequestReviewThreadReply`, `resolveReviewThread`)
+
+#### 5.2.13 `en-debug`
+
+- **Purpose.** Telemetry-driven debugging. Reads structured logs per `references/observability-conventions.md`, correlates by `trace_id` / `request_id` / event field, identifies the failing code path, and surfaces a hypothesis with `file:line` and confidence 1–10. **Read-only** — never writes code; suggests next step (typically `/en-build`, `/en-resolve-pr`, `/en-plan`, or `/en-learn capture`).
+- **Argument shapes.** `<trace-id>` (trace mode) / `<request-id>` / `"<error message>"` / `<file>:<line>` / `(none)` (tail mode).
+- **Log source.** `.ensemble/config.local.yaml` `observability.log_source` — `stdout` / `file` / `command`. `log_command` is constrained to an allowlist (`docker`, `kubectl`, `journalctl`, `gh run view`, `datadog-cli`, `aws logs`, `gcloud logging`, plus user-extended). Defends against prompt-injection from log content.
+- **Span → source mapping.** 5-priority algorithm: `error.stack` (highest confidence, 9–10) → structured `event` field heuristic (6–7) → span-name correlation (6) → full-text `msg` search (4–5) → `repo-research` agent dispatch (variable). Per `references/observability-debug-mapping.md`.
+- **Output format.** Per `references/observability-hypothesis-format.md` — Hypothesis (with confidence/10), Anchor log line (with secret + PII redaction), Span timeline, Suggested next step. Plain text by default; `--markdown` for formatted output.
+- **Confidence cap.** Without structured logs (no trace_id, no event field), falls back to plain-text correlation; caps confidence at 6/10. Suggests adopting structured logging as a follow-up.
+- **Cross-review.** Off — analysis only, no code changes.
+- **Reference files.**
+  - `references/observability-conventions.md` (the log shape contract)
+  - `references/observability-debug-mapping.md`
+  - `references/observability-hypothesis-format.md`
+  - `references/secret-patterns.md` (redaction patterns)
+
+#### 5.2.14 `en-guardrail`
+
+- **Purpose.** Always-on safety guardrail. `PreToolUse` hook on every Bash tool call; inspects the command for destructive patterns and forces a permission prompt. Defends against accidental destruction during agent autonomy.
+- **Activation model.** Globally via `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `bin/check-guardrail.sh`). Project-scoped fallback via `<repo>/.claude/settings.json`. The `install-guardrail` helper script handles both via JSON-aware merge that preserves existing hooks.
+- **Patterns flagged.**
+  - Recursive `rm -r` / `rm -rf` / `rm --recursive`
+  - SQL: `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `DELETE FROM ... ;` without `WHERE`
+  - Git: `push --force` / `push -f`, `reset --hard`, `checkout .`, `restore .`, `branch -D`, `tag -d`, `worktree remove --force`
+  - Cluster: `kubectl delete`
+  - Docker: `rm -f`, `system prune`
+  - IaC / cloud: `terraform destroy`, `aws s3 rm --recursive`, `gcloud … delete`
+- **Safe exceptions.**
+  - `rm -rf` of build artifacts (`node_modules`, `.next`, `dist`, `__pycache__`, `.cache`, `build`, `.turbo`, `coverage`)
+  - DB ops against an *explicit local test/dev DB* (both `-h localhost` / `-h 127.0.0.1` AND a DB name containing `test` / `dev` / `local` after `/`, `-d`, `dbname=`, or `database=`)
+- **Per-command bypass.** Prefix with `ENSEMBLE_GUARDRAIL=off`. Don't `export` it globally — defeats the guard for the rest of the session.
+- **Security.** Command extraction uses Python `json.loads` (not grep) — handles escaped quotes inside the command, e.g. `psql -c "DROP TABLE users"`.
+- **Cross-review.** Off — guardrail is a safety primitive, not a review surface.
+- **Reference files.**
+  - `skills/en-guardrail/bin/check-guardrail.sh` — the hook script
+  - `skills/en-guardrail/bin/install-guardrail` — JSON-aware installer (status / install-project / install-global / uninstall-project)
+  - Vendored from `gstack/careful` with extensions; attribution preserved in script headers.
 
 ---
 
@@ -679,7 +756,7 @@ Eleven agents total: 7 reviewers (read-only) + 3 researchers (read-only) + 1 ref
 
 | Agent | Purpose | Dispatched by |
 |---|---|---|
-| `repo-research` | Scan codebase for patterns, conventions, file paths, existing implementations | `en-plan`, `en-foundation`, `en-garden`, `en-learn` (for `docs/architecture.md` sync) |
+| `repo-research` | Scan codebase for patterns, conventions, file paths, existing implementations | `en-plan`, `en-foundation`, `en-sweep`, `en-learn` (for `docs/architecture.md` sync) |
 | `learnings-research` | Query `docs/learnings/` for relevant past bugs, patterns, decisions | `en-plan`, `en-review`, `en-brainstorm`, `en-foundation` |
 | `web-research` | External docs (Context7) and best-practice search (WebSearch); URL fetch for ingested sources. Optional. | `en-plan`, `en-brainstorm`, `learn --pack`, `learn ingest <url>` |
 
@@ -851,7 +928,7 @@ All file references in artifacts use **repo-relative paths** (e.g., `src/auth/mi
 
 ## 9. Architecture
 
-> **Intent vs reality.** This section captures Ensemble's *architectural intent* — what the toolkit was designed to be. The *current architectural reality* of any project that uses Ensemble lives in that project's own `docs/architecture.md`, maintained continuously by `en-learn` (event-driven) and `en-garden` (drift-driven). For Ensemble itself, once we start building, this section becomes the seed; the living architecture moves to `docs/architecture.md` at the repo root.
+> **Intent vs reality.** This section captures Ensemble's *architectural intent* — what the toolkit was designed to be. The *current architectural reality* of any project that uses Ensemble lives in that project's own `docs/architecture.md`, maintained continuously by `en-learn` (event-driven) and `en-sweep` (drift-driven). For Ensemble itself, once we start building, this section becomes the seed; the living architecture moves to `docs/architecture.md` at the repo root.
 
 ### 9.1 High-level component diagram
 
@@ -888,7 +965,7 @@ All file references in artifacts use **repo-relative paths** (e.g., `src/auth/mi
 │  ┌──────────────────────────────────────────────────────────┐    │
 │  │  docs/foundation.md                                      │    │
 │  │  docs/designs/*.md                                       │    │
-│  │  docs/plans/FRXX-*.md                                    │    │
+│  │  docs/plans/<PREFIX><NN>-<plan_type>_<slug>.md          │    │
 │  │  docs/learnings/{bugs,patterns,decisions}/*.md           │    │
 │  │  docs/README.md (auto-index)                             │    │
 │  └──────────────────────────────────────────────────────────┘    │
@@ -902,7 +979,7 @@ brainstorm → docs/designs/*.md
                   │
                   ├──► foundation → docs/foundation.md ────┐
                   │                                        │
-                  └──► plan ─────► docs/plans/FRXX-*.md ◄──┤
+                  └──► plan ─────► docs/plans/<PREFIX><NN>-… ◄──┤
                                           │               │
                                           ▼               │
                                        build ─────► commits + branch
@@ -936,7 +1013,7 @@ brainstorm → docs/designs/*.md
 | `en-learn` | `repo-research` (for `docs/architecture.md` sync), `web-research` (for `--pack` and `ingest <url>` modes), Context Analyzer / Solution Extractor / Related Docs Finder sub-tasks (in-process) |
 | `en-ship` | none; uses git + gh directly |
 | `en-cross-review` | none; pure subprocess wrapper |
-| `en-garden` | `repo-research` + invokes `en-review` on each batch PR (which dispatches its own personas) |
+| `en-sweep` | `repo-research` + invokes `en-review` on each batch PR (which dispatches its own personas) |
 
 ---
 
@@ -951,15 +1028,16 @@ brainstorm → docs/designs/*.md
 ├── README.md                           # traditional human-readable project README (optional)
 ├── docs/
 │   ├── foundation.md                   # product vision, decisions, technical direction, intent
-│   ├── architecture.md                 # living architectural reality; updated by learn + garden
-│   ├── golden-principles.md            # mechanical opinionated rules used by garden (optional)
+│   ├── architecture.md                 # living architectural reality; updated by learn + sweep
+│   ├── golden-principles.md            # mechanical opinionated rules used by sweep (optional)
 │   ├── core-beliefs.md                 # agent-first operating principles (optional, advanced)
 │   ├── quality.md                      # per-domain quality grades, drift tracking (optional)
 │   ├── designs/                        # brainstorm outputs (decision artifacts)
 │   │   └── 2026-04-28-<topic>-design.md
-│   ├── plans/                          # feature/refactor plans (FRXX numbered)
-│   │   ├── active/                     # in-flight; FRXX-<name>.md
-│   │   ├── completed/                  # shipped; FRXX-<name>.md
+│   ├── plans/                          # feature/refactor plans (<PREFIX><NN> numbered)
+│   │   ├── active/                     # draft / open / in_progress; <PREFIX><NN>-<plan_type>_<slug>.md
+│   │   ├── completed/                  # shipped; same filename, status: completed
+│   │   ├── legacy/                     # archived non-Ensemble plans (created on retrofit)
 │   │   └── tech-debt-tracker.md        # noticed-but-deferred items
 │   ├── learnings/                      # compounding wiki — agent-maintained, interlinked
 │   │   ├── index.md                    # content catalog the agent reads first; one-line per page
@@ -984,11 +1062,11 @@ brainstorm → docs/designs/*.md
 │   └── README.md                       # human-readable index of docs/, auto-maintained
 ```
 
-**Why this layout.** Root files are *agent discovery surfaces* — the first thing any agent reads when it joins a session. They are intentionally minimal. Everything else lives in `docs/`, the system-of-record directory, where `en-learn` and `en-garden` curate it continuously.
+**Why this layout.** Root files are *agent discovery surfaces* — the first thing any agent reads when it joins a session. They are intentionally minimal. Everything else lives in `docs/`, the system-of-record directory, where `en-learn` and `en-sweep` curate it continuously.
 
 **Mandatory (every Ensemble project gets these — created by `/en-setup` State 2 or `/en-foundation` State 1):** `AGENTS.md`, `CLAUDE.md`, `docs/foundation.md`, `docs/architecture.md`, `docs/plans/active/`, `docs/plans/completed/`, `docs/learnings/{index.md,log.md,bugs,patterns,decisions,sources}/`, `docs/generated/{plan-index.md,learning-index.md}` (regenerated by `en-learn`), `docs/README.md`.
 
-**Optional (added when valuable):** `docs/golden-principles.md` (recommended once `en-garden` is in regular use), `docs/core-beliefs.md` (Standard/Deep projects), `docs/quality.md` (large projects), `docs/references/` (added on first `en-learn --pack`), `docs/designs/` (added on first `en-brainstorm`).
+**Optional (added when valuable):** `docs/golden-principles.md` (recommended once `en-sweep` is in regular use), `docs/core-beliefs.md` (Standard/Deep projects), `docs/quality.md` (large projects), `docs/references/` (added on first `en-learn --pack`), `docs/designs/` (added on first `en-brainstorm`).
 
 **Note on `docs/generated/`.** Originally listed as optional but is now mandatory because `bin/ensemble-lint` requires `docs/generated/plan-index.md` and `docs/generated/learning-index.md` to exist for index-coverage checks (§18.1). `/en-setup` and `/en-foundation` seed the directory with empty stub indexes (frontmatter `generated: true` + zero entries); `/en-learn` regenerates them on every relevant write.
 
@@ -1000,8 +1078,8 @@ brainstorm → docs/designs/*.md
 | `A<N>` | `foundation.md` Section 3 (Users & Actors) | `A1`, `A2`, … | Append-only. |
 | `F<N>` | `foundation.md` Section 6 (User Experience) | `F1`, `F2`, … | Append-only. |
 | `AE<N>` | `foundation.md` Section 5 (Acceptance Examples) | `AE1`, `AE2`, … | Append-only. |
-| `U<N>` | `docs/plans/FRXX-*.md` Implementation Units | `U1`, `U2`, … per plan | Never renumbered after assignment within a plan. Splitting keeps original ID on original concept. |
-| `FR<NN>` | `docs/plans/FRXX-*.md` filename prefix | `FR01`, `FR02`, … | Auto-incremented from highest existing FRXX. |
+| `U<N>` | Plan files under `docs/plans/{active,completed}/` Implementation Units | `U1`, `U2`, … per plan | Never renumbered after assignment within a plan. Splitting keeps original ID on original concept. |
+| `<PREFIX><NN>` | Plan filename prefix; `plan_id:` field | `EN01`, `FR07`, … (prefix from `foundation.md plan_id_prefix:`; default `FR`) | Auto-incremented per-prefix from highest existing across `active/` + `completed/`. Legacy `fr_id:` accepted as alias for one release. |
 
 ### 10.3 Cross-references
 
@@ -1012,7 +1090,7 @@ brainstorm → docs/designs/*.md
 
 ### 10.4 Protected paths
 
-The following are pipeline artifacts. `en-review`, `en-qa`, `en-learn`, and `en-garden` will never flag them for deletion or gitignore:
+The following are pipeline artifacts. `en-review`, `en-qa`, `en-learn`, and `en-sweep` will never flag them for deletion or gitignore:
 
 - `AGENTS.md`, `CLAUDE.md` (repo root)
 - `docs/foundation.md`, `docs/architecture.md`, `docs/golden-principles.md`, `docs/core-beliefs.md`, `docs/quality.md`
@@ -1023,7 +1101,7 @@ The following are pipeline artifacts. `en-review`, `en-qa`, `en-learn`, and `en-
 - `docs/generated/`
 - `docs/README.md`
 
-Files in `docs/generated/` are auto-derived — doc lints flag any direct human edit and `en-garden` regenerates them.
+Files in `docs/generated/` are auto-derived — doc lints flag any direct human edit and `en-sweep` regenerates them.
 
 ---
 
@@ -1067,7 +1145,7 @@ status: active | deprecated | superseded
 
 ### 11.5 Architecture-doc sync (the second compounding loop)
 
-`en-learn` updates `docs/architecture.md` after material structural change ships. `en-garden` checks `docs/architecture.md` against current code on every PR-merge run and opens fix-up PRs when they drift apart. Together they keep `docs/architecture.md` honest — anything in there is a current claim about the code, not a stale aspirational drawing.
+`en-learn` updates `docs/architecture.md` after material structural change ships. `en-sweep` checks `docs/architecture.md` against current code on every PR-merge run and opens fix-up PRs when they drift apart. Together they keep `docs/architecture.md` honest — anything in there is a current claim about the code, not a stale aspirational drawing.
 
 What counts as material (rules in `references/architecture-update-rules.md`):
 
@@ -1095,7 +1173,7 @@ The learning store is treated as an interlinked wiki, not a flat collection of f
 
 - **`docs/learnings/index.md`** — content catalog. Organized by category (`bugs/`, `patterns/`, `decisions/`, `sources/`). Each entry: link, one-line summary, date, `related-count`. Maintained by `en-learn` on every write. Read first by `learnings-research` agent before drilling into specific pages — keeps token cost bounded at moderate scale (~hundreds of pages) without embedding-based RAG infrastructure. Karpathy's observation: this approach scales surprisingly well; reach for vector search only when the store crosses ~500 entries.
 
-- **`docs/learnings/log.md`** — append-only chronological record. Format: `## [YYYY-MM-DD] <op> | <subject>` (grep-friendly: `grep "^## \[" log.md | tail -5` gives recent activity). Every `en-learn` mode appends one line. Used by `--lint` to detect drift between log and store, and by `en-garden` to see "what's happened recently" without re-scanning.
+- **`docs/learnings/log.md`** — append-only chronological record. Format: `## [YYYY-MM-DD] <op> | <subject>` (grep-friendly: `grep "^## \[" log.md | tail -5` gives recent activity). Every `en-learn` mode appends one line. Used by `--lint` to detect drift between log and store, and by `en-sweep` to see "what's happened recently" without re-scanning.
 
 **Structural health (`learn --lint`).** Distinct from `--refresh` (which is content staleness). Lint audits the wiki *graph*:
 
@@ -1238,7 +1316,7 @@ In dependency order:
 
 ### 14.6 Phase 5 — Maintenance skill
 
-- [ ] `en-garden` (drift scan + cleanup PRs; depends on doc-lints, golden-principles, `docs/architecture.md`, repo-research)
+- [ ] `en-sweep` (drift scan + cleanup PRs; depends on doc-lints, golden-principles, `docs/architecture.md`, repo-research)
 
 ### 14.7 Phase 6 — Agents
 
@@ -1296,20 +1374,20 @@ In dependency order:
 
 All initial open questions have been answered. Resolutions captured here for the decision log; the most architectural ones also propagated into D-IDs in §4.
 
-- **Q1 → A1.** `en-foundation` emits an `FR01-project-setup` plan **only when starting a new project**. Detection: empty repo or no existing `docs/foundation.md`. Existing projects skip FR01 entirely.
+- **Q1 → A1.** `en-foundation` emits a bootstrap `<PREFIX>01-feature_project-setup` plan **only when starting a new project** (`<PREFIX>` is the `plan_id_prefix` resolved during foundation; default `FR`). Detection: empty repo or no existing `docs/foundation.md`. Existing projects skip the bootstrap plan entirely.
 - **Q2 → A2.** `en-build` derives batch size dynamically from the feature: tightly-coupled units batch together, independent units can be larger batches, complex/sensitive units (auth, payments, migrations) batch alone. No fixed default.
 - **Q3 → A3.** `en-learn` runs automatically at the end of `en-build` and `en-qa`. Soft auto-invoke with a one-line announcement; user can decline.
 - **Q4 → A4.** `en-cross-review` does not log prompts/responses to disk. Keep it lean.
 - **Q5 → A5.** One round of cross-review per artifact. No multi-round verify.
-- **Q6 → A6.** All skills prefixed `en-` (e.g., `/en-brainstorm`, `/en-build`, `/en-garden`). Underlying skill identifiers, directory names, and slash commands all use the prefix.
+- **Q6 → A6.** All skills prefixed `en-` (e.g., `/en-brainstorm`, `/en-build`, `/en-sweep`). Underlying skill identifiers, directory names, and slash commands all use the prefix.
 - **Q7 → A7.** Worktrees are opt-in per skill via the dispatching call, mirroring Compound Engineering's pattern (`isolation: "worktree"` on subagent dispatch). `en-build` is the primary user — opt-in when the build benefits from per-unit isolation.
 - **Q8 → A8.** Peer reviewer is always the *other* agent, resolved by host-detect. Running `/en-build` from Claude Code → peer is Codex. Running `/en-build` from Codex → peer is Claude. Same rule for every peer-review invocation across every skill.
-- **Q9 → A9.** `en-garden` triggers on **`push` to `main`** (i.e., right after a PR merges), not on a daily/weekly schedule. Installed as `.github/workflows/en-garden.yml` by the setup script. Manual invocation also supported.
-- **Q10 → A10.** `en-garden` auto-merges its own PRs after `en-review` clears them, **and** `en-garden` is strictly doc-only. It never modifies source code, configuration, or tests. Code-level findings get filed to `docs/plans/tech-debt-tracker.md` for `en-plan`/`en-build` to handle later.
+- **Q9 → A9.** `en-sweep` triggers on **`push` to `main`** (i.e., right after a PR merges), not on a daily/weekly schedule. Installed as `.github/workflows/en-sweep.yml` by the setup script. Manual invocation also supported.
+- **Q10 → A10.** `en-sweep` auto-merges its own PRs after `en-review` clears them, **and** `en-sweep` is strictly doc-only. It never modifies source code, configuration, or tests. Code-level findings get filed to `docs/plans/tech-debt-tracker.md` for `en-plan`/`en-build` to handle later.
 - **Q11 → A11.** `docs/core-beliefs.md` is seeded from a templated starter at `references/core-beliefs-starter.md`. User edits or extends after.
 - **Q12 → A12.** `en-learn --pack <library>` always re-fetches and re-flattens. The user invokes it explicitly, so always-fresh is the right default.
 - **Q13 → A13.** `en-learn ingest <url>` automatically tries the Wayback Machine if the original URL returns 403 / Cloudflare-blocked. Surfaces an error only if both fail.
-- **Q14 → A14.** `en-learn --lint --fix` opens one PR per fix category (back-refs / broken-links / index-drift / etc.), mirroring `en-garden`'s pattern. Each PR is small and reviewable.
+- **Q14 → A14.** `en-learn --lint --fix` opens one PR per fix category (back-refs / broken-links / index-drift / etc.), mirroring `en-sweep`'s pattern. Each PR is small and reviewable.
 - **Q15 → A15.** Capture-from-synthesis is a **soft prompt** at the end of `en-plan`, `en-review`, `en-brainstorm`. Fires only when the final synthesis exceeds a structure/insight threshold; quietly skipped otherwise.
 - **Q16 → A16.** `en-learn ingest` silently skips low-signal / off-topic sources with a one-line note ("This source appears off-topic for an engineering wiki — skipped. Re-run with `--force` to ingest anyway."). No thin summary written.
 
@@ -1318,7 +1396,7 @@ All initial open questions have been answered. Resolutions captured here for the
 - **Q17 → A17.** New-project detection in `en-foundation`: `docs/foundation.md` does not exist *and* repo has no source code outside `node_modules/`/`vendor/`/equivalents (or is in initial-commit state).
 - **Q18 → A18.** Off-topic detector for `en-learn ingest`: LLM-judged relevance score against the project's `foundation.md`. Threshold: **0.3 / 1.0**. Below threshold → silently skip with note (per A16); `--force` overrides.
 - **Q19 → A19.** `docs/plans/tech-debt-tracker.md` carries stable IDs `TD1`, `TD2`, … assigned append-only. `en-plan` cites them as `Resolves: TD7` in unit metadata when a plan addresses tracked debt.
-- **Q20 → A20.** GitHub Action permissions/secrets for `en-garden` are documented during setup. The setup script generates a checklist (`docs/generated/garden-setup-checklist.md`) listing required workflow permissions, optional PAT for cross-repo PRs, and trigger configuration.
+- **Q20 → A20.** GitHub Action permissions/secrets for `en-sweep` are documented during setup. The setup script generates a checklist (`docs/generated/sweep-setup-checklist.md`) listing required workflow permissions, optional PAT for cross-repo PRs, and trigger configuration.
 
 ### 16.3 New questions
 
@@ -1340,7 +1418,7 @@ Concretely, that means one of:
 - A learning is missing → run `learn capture` so future runs catch it.
 - A persona reviewer is missing → add an agent with a focused remit.
 - A lint is missing → add it to `references/doc-lints.md` and `bin/ensemble-lint`.
-- A golden principle is missing → add it to `docs/golden-principles.md` so `en-garden` enforces it.
+- A golden principle is missing → add it to `docs/golden-principles.md` so `en-sweep` enforces it.
 - A plan unit was too coarse → adjust the plan template's unit-granularity guidance.
 
 This is the meta-loop. Every skill failure is feedback; every feedback gets encoded.
@@ -1359,11 +1437,11 @@ When choosing dependencies, frameworks, or patterns: composability, API stabilit
 
 ### 17.5 Enforce boundaries centrally; allow autonomy locally
 
-Mechanical enforcement of architecture, naming, and structural rules via lints, custom error messages, and `en-garden`. Within those boundaries, agents (and humans) get freedom in how they express solutions. The output doesn't have to match human stylistic preference — it has to be correct, maintainable, and legible to future agent runs.
+Mechanical enforcement of architecture, naming, and structural rules via lints, custom error messages, and `en-sweep`. Within those boundaries, agents (and humans) get freedom in how they express solutions. The output doesn't have to match human stylistic preference — it has to be correct, maintainable, and legible to future agent runs.
 
 ### 17.6 Pay technical debt continuously, not in bursts
 
-`en-garden` runs on every PR merge to `main`. Small, focused cleanup PRs. Auto-merge when `en-review` is clean. Never let cleanup become a once-a-quarter project — by then the drift has compounded and the rewrite is the easier-looking option, which is almost always wrong.
+`en-sweep` runs on every PR merge to `main`. Small, focused cleanup PRs. Auto-merge when `en-review` is clean. Never let cleanup become a once-a-quarter project — by then the drift has compounded and the rewrite is the easier-looking option, which is almost always wrong.
 
 ### 17.7 Throughput changes the merge philosophy
 
@@ -1378,21 +1456,24 @@ Mechanical checks on the knowledge store. Catch drift early, before it compounds
 ### 18.1 What gets checked
 
 - **Frontmatter validity.** Every artifact's frontmatter parses, has required fields, uses valid enum values (per `references/learning-frontmatter-schema.md`, etc.).
-- **ID stability.** R-IDs in `foundation.md` are append-only (no renumbering). U-IDs in plans are stable (no renumbering after assignment). FRXX numbers are unique and contiguous-or-gap.
-- **Cross-link integrity.** Every `(see R3)`, `(see U5)`, `(see FR07)`, `(see <path>)` resolves. Broken cross-refs are P1 lints.
-- **Status correctness.** `docs/plans/active/*.md` files have `status: active`. `docs/plans/completed/*.md` files have `status: completed`. Mismatches are P1.
+- **ID stability.** R-IDs in `foundation.md` are append-only (no renumbering). U-IDs in plans are stable (no renumbering after assignment). Plan IDs (`<PREFIX><NN>`) are unique. The `plan_id_prefix:` in foundation drives new plans; legacy `FR` plans are honored alongside.
+- **Cross-link integrity.** Every `(see R3)`, `(see U5)`, `(see EN07)` / `(see FR07)`, `(see <path>)` resolves. Broken cross-refs are P1 lints. The plan-prefix matcher reads `plan_id_prefix:` from foundation plus all prefixes observed in `docs/plans/{active,completed}/`.
+- **Status correctness.** `docs/plans/active/*.md` files have `status: draft | open | in_progress | abandoned`. `docs/plans/completed/*.md` files have `status: completed`. Mismatches are P1. `plan_type` must be one of `feature`, `improvement`, `bug`.
 - **No absolute paths.** No artifact contains `/Users/...`, `C:\...`, or other absolute filesystem paths. Repo-relative only.
 - **Freshness.** `docs/architecture.md` `updated:` field is within the freshness window (30 days by default, configurable). Stale → P2 advisory; very stale (90+ days) → P1.
 - **Generated-file integrity.** Files in `docs/generated/` carry `generated: true` frontmatter and a generator-id; no human edits except via the generator.
 - **Index coverage.** Every plan has an entry in `docs/generated/plan-index.md`; every learning in `docs/generated/learning-index.md`.
 - **`CLAUDE.md` discipline.** First line of `CLAUDE.md` cross-references `AGENTS.md`. No heading or content block in `CLAUDE.md` duplicates `AGENTS.md` (rule: `claude-md.no-shared-content`). P1.
 - **Map length budget.** `AGENTS.md` body ≤ ~150 lines (target 100); `CLAUDE.md` body ≤ ~80 lines (target 60). Soft limit, P2 advisory if exceeded.
+- **Structured logging (opt-in).** When `.ensemble/config.local.yaml` declares `observability.structured_logging_required: true`, the `logging.unstructured` rule (P2 advisory) flags `console.log` / `print` / `fmt.Println` / `println!` outside `observability.logging_dev_paths`. Per `references/observability-conventions.md`.
+- **Architecture fitness (opt-in).** When `.ensemble/config.local.yaml` declares `fitness.enabled: true`, the lint runner invokes the project's `bin/check-fitness` (or configured equivalent) and surfaces its JSON-lines findings as `architecture.layer-violation` / `architecture.fitness-violation` etc. Missing checker → `architecture.fitness-checker-missing` (P3). Per `references/architecture-fitness.md`.
+- **Bootstrap pattern validation (advisory).** `learnings.bootstrap-unvalidated` (P3) — counts entries with `source: bootstrap` and `requires_validation: true` more than 30 days old. Reminds the user to validate via `/en-learn --refresh` or manual edit.
 
 ### 18.2 Where it runs
 
 - `en-review` runs lint as a pre-flight check on the diff. Lint failures surface as P1 findings.
-- `en-garden` runs lint across the whole repo on every PR-merge pass and opens fix-up PRs.
-- `en-garden` also invokes `learn --lint` (wiki-graph health) on the same pass, routing its output through the same PR-batching flow.
+- `en-sweep` runs lint across the whole repo on every PR-merge pass and opens fix-up PRs.
+- `en-sweep` also invokes `learn --lint` (wiki-graph health) on the same pass, routing its output through the same PR-batching flow.
 - Optionally as a CI step (recommended template at `references/ci-templates/lint.yml`).
 - Manually: `bin/ensemble-lint [--scope docs/]`.
 
@@ -1439,7 +1520,7 @@ ensemble/
 │   ├── en-learn/
 │   ├── en-ship/
 │   ├── en-cross-review/
-│   ├── en-garden/
+│   ├── en-sweep/
 │   └── en-setup/
 ├── agents/                         # 11 agent definitions
 ├── references/                     # cross-skill references + templates
@@ -1569,7 +1650,7 @@ Ensemble's failure modes are subtle and high-blast-radius:
 
 - A doc-lint that mis-classifies a finding can fail every PR.
 - A host-detect bug routes peer review to the wrong CLI — quietly misconfigured for weeks.
-- An `en-garden` workflow that doesn't enforce doc-only could push a source-file edit unnoticed in a 3am auto-merge.
+- An `en-sweep` workflow that doesn't enforce doc-only could push a source-file edit unnoticed in a 3am auto-merge.
 - A frontmatter schema regression invalidates every existing learning in `docs/learnings/`.
 
 These aren't catchable by "we'll see if it works." They need explicit tests.
@@ -1583,9 +1664,9 @@ These aren't catchable by "we'll see if it works." They need explicit tests.
 | **Host-detection tests** | Mocked env vars (`CLAUDE_CODE_VERSION`, `CODEX_HOME`, `ENSEMBLE_HOST`) and mocked CLI presence. Verify `HOST` / `PEER` / `PEER_MODE` / `PEER_CMD` resolve correctly across all combinations. | `tests/host-detect/` |
 | **Cross-review parsing tests** | Mock `claude -p` and `codex exec` fixtures (record/replay JSON responses) covering: clean-approve, revise-with-findings, reject, peer-mode-fallback, malformed JSON, timeout. Verify host parses each correctly. | `tests/cross-review/fixtures/` + `tests/cross-review/parser/` |
 | **`en-setup` state-detection tests** | Sample repos for State 1 / State 2 (variants 2a/b/c/d) / State 3. Verify `en-setup` detects state correctly and produces the expected artifacts. | `tests/en-setup/sample-repos/` |
-| **`en-garden` dry-run batching tests** | Run `en-garden` against fixture repos with seeded drift. Verify: correct number of PRs, correct file allocation per PR, no source-file edits, loop guards reject self-triggered runs. | `tests/en-garden/dry-run/` |
-| **Doc-only enforcement** | Adversarial fixture: a `garden` run that *attempts* to edit a source file. Verify `bin/ensemble-doc-only-check` rejects it and the workflow aborts. P0 regression test. | `tests/en-garden/doc-only-enforcement/` |
-| **Auto-merge security** | Simulate fork-PR triggers, missing branch protection, missing GITHUB_TOKEN scope. Verify garden refuses to auto-merge in each unsafe configuration. | `tests/en-garden/security/` |
+| **`en-sweep` dry-run batching tests** | Run `en-sweep` against fixture repos with seeded drift. Verify: correct number of PRs, correct file allocation per PR, no source-file edits, loop guards reject self-triggered runs. | `tests/en-sweep/dry-run/` |
+| **Doc-only enforcement** | Adversarial fixture: a `sweep` run that *attempts* to edit a source file. Verify `bin/ensemble-doc-only-check` rejects it and the workflow aborts. P0 regression test. | `tests/en-sweep/doc-only-enforcement/` |
+| **Auto-merge security** | Simulate fork-PR triggers, missing branch protection, missing GITHUB_TOKEN scope. Verify sweep refuses to auto-merge in each unsafe configuration. | `tests/en-sweep/security/` |
 | **Stable-ID invariants** | Add a unit to a plan; remove a different unit; verify U-IDs do not renumber. Same for R-IDs in foundation, FRXX in plan filenames. | `tests/stable-ids/` |
 | **Cross-ref reciprocity** | Create a learning with `related: [foo]`. Verify `learn capture` adds reciprocal `related: [<new>]` to `foo`'s frontmatter. | `tests/learn/cross-ref/` |
 
@@ -1617,7 +1698,7 @@ Each state gets a fixture repo under `tests/en-setup/sample-repos/`:
 ### 20.5 Test execution
 
 - **Local development:** `bun test` (or `npm test`) runs the full hermetic suite.
-- **CI:** runs on every PR via `.github/workflows/ensemble-tests.yml` (a separate workflow from `en-garden`). Hermetic suite blocks merge; integration suite is opt-in via PR label.
+- **CI:** runs on every PR via `.github/workflows/ensemble-tests.yml` (a separate workflow from `en-sweep`). Hermetic suite blocks merge; integration suite is opt-in via PR label.
 - **Pre-release:** integration suite must pass before bumping the plugin version.
 
 ### 20.6 Golden-test failure protocol
@@ -1633,7 +1714,7 @@ This protocol prevents drift where lints "evolve" silently and the fixtures are 
 - Phase 1 (Shared references) writes the golden fixtures + frontmatter tests in lockstep with the schemas.
 - Phase 2 (Planning skills) writes host-detect tests + sample-repo fixtures.
 - Phase 3 (Execution skills) writes mock cross-review fixtures + parser tests.
-- Phase 5 (Maintenance skill) writes the `en-garden` dry-run + doc-only enforcement + security tests.
+- Phase 5 (Maintenance skill) writes the `en-sweep` dry-run + doc-only enforcement + security tests.
 
 Every skill ships with its tests as part of the same PR. PRs that don't include tests for new behavior fail `en-review` with a P1 finding (`testing-reviewer` agent).
 
@@ -1800,6 +1881,7 @@ created: YYYY-MM-DD
 updated: YYYY-MM-DD
 owner: <name>
 depth: lightweight | standard | deep
+plan_id_prefix: <2-3 uppercase letters>  # e.g. EN, ENS, FR. Used by /en-plan when minting plan IDs. Falls back to FR if absent.
 ---
 ```
 
@@ -1812,7 +1894,7 @@ type: architecture
 status: seed | active
 created: YYYY-MM-DD
 updated: YYYY-MM-DD               # bumped by learn after every material structural change
-last_drift_check: YYYY-MM-DD      # bumped by garden on every PR-merge pass
+last_drift_check: YYYY-MM-DD      # bumped by sweep on every PR-merge pass
 freshness_target_days: 30
 ---
 ```
@@ -1878,15 +1960,16 @@ related_plan: <FRXX or empty>
 ---
 ```
 
-### C.3 `docs/plans/{active,completed}/FRXX-*.md` frontmatter
+### C.3 `docs/plans/{active,completed}/<PREFIX><NN>-<plan_type>_<slug>.md` frontmatter
 
 ```yaml
 ---
 type: plan
-fr_id: FR<NN>
+plan_type: feature | improvement | bug   # the kind of change this plan delivers
+plan_id: <PREFIX><NN>                    # PREFIX from foundation's plan_id_prefix (default FR); e.g. EN03, FR07. Legacy: fr_id: <ID>
 title: <descriptive title>
-status: draft | active | completed | abandoned
-location: active | completed             # mirrors directory; lint enforces match
+status: draft | open | in_progress | completed | abandoned
+location: active | completed             # draft/open/in_progress/abandoned live in active/; completed lives in completed/
 created: YYYY-MM-DD
 shipped: YYYY-MM-DD or empty             # set by learn when moved to completed/
 deepened: YYYY-MM-DD or empty
@@ -1909,14 +1992,14 @@ See [Section 11.2](#112-frontmatter-schema-docslearningscategoryslug-datemd).
 >
 > **Iteration log.**
 > - 2026-04-28 (initial): wrote foundation v0 — 9 skills, 10 agents.
-> - 2026-04-28 (revision 1): added `en-garden` as skill #10; folded `pack-reference` into `learn --pack`; promoted architecture to a first-class living artifact (initially placed at root); added `AGENTS.md`/`CLAUDE.md` as project-level pointer maps; split plans into `active/` and `completed/`; added doc lints (§18); added Operating Philosophy (§17). Sources: harness-engineering essay (OpenAI, Feb 2026).
+> - 2026-04-28 (revision 1): added `en-sweep` as skill #10; folded `pack-reference` into `learn --pack`; promoted architecture to a first-class living artifact (initially placed at root); added `AGENTS.md`/`CLAUDE.md` as project-level pointer maps; split plans into `active/` and `completed/`; added doc lints (§18); added Operating Philosophy (§17). Sources: harness-engineering essay (OpenAI, Feb 2026).
 > - 2026-04-28 (revision 2): moved architecture from `/ARCHITECTURE.md` (root) to `docs/architecture.md` for layout consistency (root keeps only agent-discovery files: `AGENTS.md`, `CLAUDE.md`, `README.md`); added strict CLAUDE.md content rules (cross-reference required, Claude-Code-specific only, no duplication of AGENTS.md content) and matching `claude-md.no-shared-content` lint; added `references/claude-md-template.md`.
 > - 2026-04-28 (revision 3): adopted Karpathy's "LLM Wiki" pattern for `docs/learnings/`. Expanded `en-learn` from 3 modes (`capture` + `--refresh` + `--pack`) to 5 modes (added `ingest <path-or-url>` and `--lint`). Added always-on cross-reference maintenance (reciprocal back-refs after every write) and two new helper artifacts: `docs/learnings/index.md` (content catalog the agent reads first — Karpathy's tip that this scales surprisingly well at moderate scale and avoids embedding-based RAG) and `docs/learnings/log.md` (append-only chronological record, grep-friendly). New subcategory `docs/learnings/sources/` for external material brought in via `ingest`. `en-learn ingest` accepts both file paths and URLs (URLs use WebFetch with Wayback fallback for Cloudflare-blocked sites). Capture-from-synthesis reflex added to `en-plan`, `en-review`, `en-brainstorm`. `en-learn --lint` handles wiki-graph health (orphans, missing back-refs, contradictions, missing pages, data gaps); `bin/ensemble-lint` continues to handle file-shape checks. Added decisions D19–D21 and open questions Q13–Q16. Source: Karpathy gist (`gist.github.com/karpathy/442a6bf555914893e9891c11519de94f`).
-> - 2026-04-28 (revision 4): closed all initial open questions Q1–Q16 and propagated architectural resolutions into new decisions D22–D28. Skill prefix `en-` adopted across all 10 skills. `en-garden` rewritten to be strictly doc-only and PR-merge-triggered (was: scheduled, allowed code refactors). `en-build` batch size is now dynamic per-feature (was: fixed default 3). `en-learn` auto-runs after `en-build` and `en-qa` (soft auto-invoke). `en-foundation` emits `FR01-project-setup` only for new projects. Cross-review peer is always the other agent via host-detect — no model-defaults table. Worktrees opt-in per dispatch (CE pattern). Added 4 new v1-implementation questions Q17–Q20.
+> - 2026-04-28 (revision 4): closed all initial open questions Q1–Q16 and propagated architectural resolutions into new decisions D22–D28. Skill prefix `en-` adopted across all 10 skills. `en-sweep` rewritten to be strictly doc-only and PR-merge-triggered (was: scheduled, allowed code refactors). `en-build` batch size is now dynamic per-feature (was: fixed default 3). `en-learn` auto-runs after `en-build` and `en-qa` (soft auto-invoke). `en-foundation` emits `FR01-project-setup` only for new projects. Cross-review peer is always the other agent via host-detect — no model-defaults table. Worktrees opt-in per dispatch (CE pattern). Added 4 new v1-implementation questions Q17–Q20.
 > - 2026-04-28 (revision 5): closed Q17–Q20. Added `code-simplifier` as the 11th agent, sourced from Anthropic's claude-plugins-official. First refiner agent — modifies code rather than returning findings. New §6.3 Refiner agents category with stricter invariants (orchestrating skill must run verification immediately after, revert on test failure). Added decision D29: per-unit code-simplification pass during `en-build`, between verification-gate-1 (tests+lint) and per-unit Outside Voice review. Two verification gates protect against simplifier breakage. Skipped on trivial units or with `--no-simplify`. New reference `references/code-simplifier-dispatch.md`. Source: `github.com/anthropics/claude-plugins-official/.../code-simplifier.md`.
 > - 2026-04-28 (revision 6): made the "peer reports, host applies" contract explicit and unambiguous (D30). Peer agents in any cross-review never modify files, run commands, or make commits — they only return structured findings. Host (the skill-running agent) is the sole code-modifier and decides per-finding: apply, defer to tracker, or disagree. User is surfaced only on contention (host disagrees with P0; host wants to defer high-confidence security/architecture finding; peer verdict = reject). Updated `en-build` per-unit flow with the three host responses and re-verification after host applies changes. Updated §7.6 Verdict handling. Baked the no-modify constraint into the Outside Voice prompt (Appendix A) so the peer is told its role explicitly. Prevents two-agent race on the same files.
 > - 2026-04-28 (revision 7): clarified the symmetry between `en-build` flavors. Both flavors guarantee implementer ≠ reviewer. **Build-by-orchestration** (host = Claude in Claude Code): Claude dispatches Codex to implement each unit, then Claude reviews the returned diff itself — no separate subprocess for peer review because Codex already implemented and Claude is naturally reviewing. **Build-handoff** (host = Codex in Codex): Codex implements natively, then shells out `claude -p` per unit for peer-review findings; Codex parses JSON and applies what it agrees with. Removed leftover "end-of-batch" wording that conflicted with §7.2's per-unit default. Per-unit step now explicitly describes how peer review is invoked in each flavor.
 > - 2026-04-28 (revision 8): added single-agent fallback for users who only have one CLI installed (D31). When only Claude Code or only Codex is available, cross-review degrades to a fresh-instance subprocess of the host's own CLI. Same model, fresh context — still catches what the implementing session rationalized away (Superpowers' subagent-driven-development pattern). The contract from D30 still holds: peer reports, host applies. Peer's JSON response carries `peer_mode: "cross-agent" | "single-agent-fallback"` so the user always knows which mode they're in. Single-agent prompt is augmented with explicit "be more aggressive, bias toward finding problems" framing. New config option `peer_mode_override: "auto" | "cross-agent-only" | "single-agent-only" | "off"`. Setup script warns when only one CLI is detected; doesn't block. Required dependencies relaxed: at least one of Claude Code or Codex (was: both). Both still strongly recommended for full cross-agent perspective.
 > - 2026-04-28 (revision 9): added installation and project-setup design (§19). Hybrid distribution: Claude Code plugin marketplace as primary (lowest friction); direct git-clone + `./setup` script as universal fallback. Native plugin manifests per host (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) — no Bun-based converter (skipped CE's complexity). Added `en-setup` as the 11th skill — handles project-level bootstrap with three states: new project (defers to `/en-foundation`), existing-without-Ensemble (creates skeleton, generates `AGENTS.md`/`CLAUDE.md` from templates, installs GH Action), existing-with-Ensemble (diagnostic mode mirroring CE's `check-health` pattern). New config files: `~/.ensemble/config.json` (machine-global), `<repo>/.ensemble/config.local.yaml` (per-developer per-repo, gitignored), `<repo>/.ensemble/config.local.example.yaml` (committed template). Skipped: gstack-style auto-update polling, telemetry, cross-machine memory sync, skill prefix toggling. Updated §14 Phase 7 with concrete deliverables for plugin distribution + setup tooling + project bootstrap.
 > - 2026-04-28 (revision 10): three corrections to the install/setup design. (1) Path 1 (direct clone + `./setup`) is now the *preferred* install path; Path 2 (Claude Code marketplace) is the alternative. Direct clone handles multi-host installs in one operation and works regardless of marketplace availability. (2) `/en-setup` State 1 (new project) now recommends `/en-brainstorm` first, then `/en-foundation` — captures the typical greenfield flow rather than jumping straight to foundation. (3) `/en-setup` State 2 (existing without Ensemble) refined to handle four sub-variants based on what's already present: 2a no maps, 2b CLAUDE.md only, 2c AGENTS.md only, 2d both. Append-merge discipline: never overwrite existing user content; append Ensemble pointer index / Claude-specific section as new sections only if missing. The State-2 trigger broadened to "missing `docs/foundation.md` OR missing `docs/learnings/`" regardless of map presence. Added `references/templates/agents-md-merge-rules.md` to the reference list.
-> - 2026-04-28 (revision 11): Codex review pass — addressed nine cleanup items. **Consistency:** added `depth: deep` to foundation frontmatter (was failing the lint schema it was about to ship); D22 fixed from "ten skills" to "eleven"; UC5 prefixed `cross-review` → `/en-cross-review`; D2 paths now point at `docs/plans/active/` and `docs/plans/completed/`; §19.8 contradictory "marketplace primary" wording fixed to align with §19.2 (Path 1 preferred). **`en-garden` trigger normalization:** removed all stale "scheduled / cron / daily / weekly / scheduled pass" language; uniformly described as event-driven on `push` to `main`. **CI execution model for `en-garden`:** added subsection covering wrapper script (`bin/en-garden-ci`) that resolves `claude -p` or `codex exec`, required runner env (auth, timeout, branch naming), fallback when no CLI is available. **`en-garden` loop guards:** added five-guard mechanism (skip garden-authored commits, GH Actions concurrency group, garden-PR labeling, no-material-diff termination, recursion depth cap) preventing self-trigger cascades. **Doc-only enforcement at runtime:** `bin/ensemble-doc-only-check` allowlist enforces non-doc paths can't be staged. **Auto-merge security model:** explicit GITHUB_TOKEN least-privilege, no PAT default, no fork-triggered runs, branch protection respected, fail-closed on detection errors. **`en-review` mode contract:** spelled out three modes and which mode every caller uses — particularly that `en-garden` always uses `mode:report-only` so the gate doesn't mutate. **`en-build` flavor responsibilities:** distinguished WORKER dispatch (build-by-orchestration, may edit) from PEER-REVIEWER dispatch (build-handoff, must not edit per D30). Clarified D30 applies to peer-reviewer dispatch only. **New §20 Verification and Test Strategy:** golden frontmatter tests, doc-lint rule tests, host-detection tests, mock CLI fixtures (record/replay), sample repos for State 1/2a/2b/2c/2d/3, dry-run + doc-only enforcement + auto-merge security tests. Tests ship alongside each artifact, not bolted on at the end. **Design gaps:** `requirements_pending: true` frontmatter field for State-2 plans before foundation retrofit (P3 advisory; upgrades to P1 once foundation has R-IDs). `docs/generated/` promoted to mandatory with `plan-index.md` + `learning-index.md` seeded by setup. New §13.5 marks model names and CLI flags as defaults-to-verify, not promises — isolated to `references/cli-wrappers.md` so flag changes propagate from one update.
+> - 2026-04-28 (revision 11): Codex review pass — addressed nine cleanup items. **Consistency:** added `depth: deep` to foundation frontmatter (was failing the lint schema it was about to ship); D22 fixed from "ten skills" to "eleven"; UC5 prefixed `cross-review` → `/en-cross-review`; D2 paths now point at `docs/plans/active/` and `docs/plans/completed/`; §19.8 contradictory "marketplace primary" wording fixed to align with §19.2 (Path 1 preferred). **`en-sweep` trigger normalization:** removed all stale "scheduled / cron / daily / weekly / scheduled pass" language; uniformly described as event-driven on `push` to `main`. **CI execution model for `en-sweep`:** added subsection covering wrapper script (`bin/en-sweep-ci`) that resolves `claude -p` or `codex exec`, required runner env (auth, timeout, branch naming), fallback when no CLI is available. **`en-sweep` loop guards:** added five-guard mechanism (skip sweep-authored commits, GH Actions concurrency group, sweep-PR labeling, no-material-diff termination, recursion depth cap) preventing self-trigger cascades. **Doc-only enforcement at runtime:** `bin/ensemble-doc-only-check` allowlist enforces non-doc paths can't be staged. **Auto-merge security model:** explicit GITHUB_TOKEN least-privilege, no PAT default, no fork-triggered runs, branch protection respected, fail-closed on detection errors. **`en-review` mode contract:** spelled out three modes and which mode every caller uses — particularly that `en-sweep` always uses `mode:report-only` so the gate doesn't mutate. **`en-build` flavor responsibilities:** distinguished WORKER dispatch (build-by-orchestration, may edit) from PEER-REVIEWER dispatch (build-handoff, must not edit per D30). Clarified D30 applies to peer-reviewer dispatch only. **New §20 Verification and Test Strategy:** golden frontmatter tests, doc-lint rule tests, host-detection tests, mock CLI fixtures (record/replay), sample repos for State 1/2a/2b/2c/2d/3, dry-run + doc-only enforcement + auto-merge security tests. Tests ship alongside each artifact, not bolted on at the end. **Design gaps:** `requirements_pending: true` frontmatter field for State-2 plans before foundation retrofit (P3 advisory; upgrades to P1 once foundation has R-IDs). `docs/generated/` promoted to mandatory with `plan-index.md` + `learning-index.md` seeded by setup. New §13.5 marks model names and CLI flags as defaults-to-verify, not promises — isolated to `references/cli-wrappers.md` so flag changes propagate from one update.

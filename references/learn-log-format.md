@@ -52,7 +52,7 @@ updated: YYYY-MM-DD
 | `lint-fix` | `en-learn --lint --fix` (auto-repair pass) |
 | `archive` | Page moved to `archive/` (during refresh) |
 | `supersede` | Page marked superseded with `replaced_by:` |
-| `garden-update` | `en-garden` invoked `en-learn` for drift cleanup |
+| `sweep-update` | `en-sweep` invoked `en-learn` for drift cleanup |
 
 ## Why this format
 
@@ -65,12 +65,12 @@ updated: YYYY-MM-DD
 
 - Every `en-learn` mode appends one line at the **end** of its run.
 - Multiple ops in a single run (e.g., `--lint --fix` repairs 3 things) → one entry, with the count in the subject (`Repaired 3 missing back-refs`).
-- `en-garden` invocations of `en-learn --lint` → entry includes `garden-update` op.
+- `en-sweep` invocations of `en-learn --lint` → entry includes `sweep-update` op.
 
 ## Used by
 
 - `en-learn --lint` checks for **log drift**: every page's most-recent op (per its `updated:` frontmatter) should have a corresponding line in the log. Mismatches surface as P2 advisories. Auto-fix appends the missing line.
-- `en-garden` reads the last 30 days of log entries to summarize "what's happened recently" without re-scanning the whole wiki.
+- `en-sweep` reads the last 30 days of log entries to summarize "what's happened recently" without re-scanning the whole wiki.
 - Future `en-learn --refresh` may read the log to identify pages overdue for re-evaluation.
 
 ## Empty-state

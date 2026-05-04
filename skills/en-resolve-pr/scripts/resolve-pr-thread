@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# resolve-pr-thread — mark a PR review thread as resolved.
+# Used by /en-resolve-pr after a thread is replied to with a verdict other
+# than `needs-human` (which leaves the thread open for human input).
+#
+# Usage:
+#   resolve-pr-thread <THREAD_ID>
+#
+# Example:
+#   resolve-pr-thread PRRT_kwDOABC123
+
+set -e
+
+if [ $# -lt 1 ]; then
+    cat <<USAGE >&2
+Usage: resolve-pr-thread THREAD_ID
+  THREAD_ID   GraphQL node ID of the review thread (PRRT_…)
+USAGE
+    exit 1
+fi
+
+THREAD_ID="$1"
+
+read -r -d '' MUTATION <<'GRAPHQL' || true
+mutation EnResolvePrResolve($threadId: ID!) {
+  resolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+      id
+      isResolved
+      path
+      line
+    }
+  }
+}
+GRAPHQL
+
+gh api graphql \
+    -f threadId="$THREAD_ID" \
+    -f query="$MUTATION"

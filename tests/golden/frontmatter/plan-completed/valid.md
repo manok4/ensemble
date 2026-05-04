@@ -1,5 +1,6 @@
 ---
 type: plan
+plan_type: feature
 fr_id: FR42
 title: Test plan
 status: completed

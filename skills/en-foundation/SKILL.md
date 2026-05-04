@@ -7,7 +7,7 @@ description: "Produce the foundational artifact set for a new product or retrofi
 
 Combined PRD + technical direction + initial architecture seed for a project. Run **once** at project start (or `--retrofit` for an existing project); thereafter `/en-learn` keeps `docs/architecture.md` and the pointer maps current.
 
-> **Hard gate.** This skill writes documents only — `docs/foundation.md`, `docs/architecture.md`, `AGENTS.md`, `CLAUDE.md`, and (for new projects) the `FR01-project-setup` plan. **No implementation, no PR, no source-code edits.**
+> **Hard gate.** This skill writes documents only — `docs/foundation.md`, `docs/architecture.md`, `AGENTS.md`, `CLAUDE.md`, and (for new projects) the bootstrap plan `docs/plans/active/<PREFIX>01-feature_project-setup.md` where `<PREFIX>` is the resolved `plan_id_prefix` (default `FR`). **No implementation, no PR, no source-code edits.**
 
 ## Process
 
@@ -49,24 +49,27 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    
    Ready to write the foundation? (y / let me revise X)
    ```
-8. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`. Set `status: draft`.
-9. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
-10. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
+8. **Resolve `plan_id_prefix`.** Derive a 2–3 uppercase-letter suggestion from `{{PROJECT_NAME}}` (e.g. `Ensemble` → `EN`; `Ella Website` → `EW`; `User Dashboard Service` → `UDS`). Ask the user to accept or override:
+   > "Plan-ID prefix for this project? Suggested: `EN` (used like `EN03`). Press enter to accept, or type a 2–3 uppercase-letter alternative."
+   Validate: 2–3 chars, `[A-Z]+`, not in the reserved set `{R, U, AE, TD}`. On retrofit (foundation already exists with a `plan_id_prefix:`), keep the existing value — never silently change it after plans have been minted. If the user declines to set one, use `FR` as the fallback.
+9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
+10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
+11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
     - Build the Outside Voice prompt per `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true` env var.
     - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
     - Parse the JSON response (per `references/finding-schema.md`).
     - Apply, defer, or disagree per `references/severity.md`.
     - Surface the verdict + applied changes to the user.
-11. **Seed `docs/architecture.md`** using `references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
-12. **Write `AGENTS.md`** using `references/templates/agents-md-template.md`. Substitute `{{BUILD_CMD}}`, `{{TEST_CMD}}`, etc. detected from the project (or `<unset>` if not detectable).
-13. **Write `CLAUDE.md`** using `references/templates/claude-md-template.md`. Strict structure: first non-frontmatter line is the AGENTS.md cross-reference; body Claude-Code-specific only.
-14. **Detect new vs existing project (per A1 / D24).**
-    - New project: `docs/foundation.md` did not exist before this run AND repo has no source code outside `node_modules/`/`vendor/`/equivalents (or initial-commit state) → emit `docs/plans/active/FR01-project-setup.md` using `references/templates/plan-template.md` with units for repo init, dependencies, CI, baseline tests.
-    - Existing project → skip FR01 entirely.
-15. **Final save.** Flip `docs/foundation.md` `status:` from `draft` to `active` after the user accepts the peer-reviewed version.
-16. **Hand off.** Suggest next step:
-    - New project: "Run `/en-build docs/plans/active/FR01-project-setup.md` to bootstrap the repo."
+12. **Seed `docs/architecture.md`** using `references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
+13. **Write `AGENTS.md`** using `references/templates/agents-md-template.md`. Substitute `{{BUILD_CMD}}`, `{{TEST_CMD}}`, etc. detected from the project (or `<unset>` if not detectable).
+14. **Write `CLAUDE.md`** using `references/templates/claude-md-template.md`. Strict structure: first non-frontmatter line is the AGENTS.md cross-reference; body Claude-Code-specific only.
+15. **Detect new vs existing project (per A1 / D24).**
+    - New project: `docs/foundation.md` did not exist before this run AND repo has no source code outside `node_modules/`/`vendor/`/equivalents (or initial-commit state) → emit `docs/plans/active/<PREFIX>01-feature_project-setup.md` using `references/templates/plan-template.md` with `plan_type: feature`, units for repo init, dependencies, CI, baseline tests. `<PREFIX>` is the resolved `plan_id_prefix`.
+    - Existing project → skip the bootstrap plan entirely.
+16. **Final save.** Flip `docs/foundation.md` `status:` from `draft` to `active` after the user accepts the peer-reviewed version.
+17. **Hand off.** Suggest next step:
+    - New project: "Run `/en-build docs/plans/active/<PREFIX>01-feature_project-setup.md` to bootstrap the repo."
     - Existing project: "Run `/en-plan` for the first feature."
 
 ## Retrofit mode (`--retrofit`)
@@ -76,7 +79,7 @@ Used by `/en-setup` State 2 to back-fill the foundation for an existing project.
 - Heavy use of `repo-research` agent in step 4 — codebase is the source of truth for §7 (stack), §8.1 (entities), §9 (components).
 - Discovery questions tilted toward "what is", not "what should be" — confirm detected values rather than ask open-ended.
 - §5 (Functional requirements) is the trickiest: the agent reads the codebase and infers requirements from observed behavior, then asks the user to confirm/correct.
-- No `FR01-project-setup` (project already exists).
+- No bootstrap `<PREFIX>01-feature_project-setup` plan (project already exists).
 - `docs/architecture.md` `status:` flipped to `active` immediately if the codebase has shipped features.
 
 ## Cross-review
@@ -98,7 +101,7 @@ User accepts → `/en-learn capture --from-conversation` files it as `decisions/
 
 ## Output
 
-After the run completes, output a structured report:
+After the run completes, output a structured report. Substitute the resolved `<PREFIX>` (from `plan_id_prefix:`) into the bootstrap-plan path — the example below uses `EN`:
 
 ```
 Project: {{PROJECT_NAME}}
@@ -110,11 +113,11 @@ Created:
   - docs/architecture.md (status: seed)
   - AGENTS.md (98 lines)
   - CLAUDE.md (52 lines)
-  - docs/plans/active/FR01-project-setup.md (4 units)
+  - docs/plans/active/EN01-feature_project-setup.md (4 units)
 
 Peer review: cross-agent (codex). Verdict: revise. Applied 3 of 5 findings.
 
-Next: Run /en-build docs/plans/active/FR01-project-setup.md to bootstrap the repo.
+Next: Run /en-build docs/plans/active/EN01-feature_project-setup.md to bootstrap the repo.
 ```
 
 ## Reference files
@@ -124,7 +127,7 @@ Next: Run /en-build docs/plans/active/FR01-project-setup.md to bootstrap the rep
 - `references/templates/architecture-template.md` — initial architecture seed
 - `references/templates/agents-md-template.md` — AGENTS.md template
 - `references/templates/claude-md-template.md` — CLAUDE.md template
-- `references/templates/plan-template.md` — for FR01-project-setup
+- `references/templates/plan-template.md` — for the bootstrap `<PREFIX>01-feature_project-setup` plan
 - `references/host-detect.md` — host detection
 - `references/outside-voice.md` — peer-review prompt and verdict handling
 - `references/single-agent-fallback.md` — fallback mode contract

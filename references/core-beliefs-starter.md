@@ -60,7 +60,7 @@ Wait for 4+ duplicates AND non-trivial complexity AND likely-evolves-together.
 
 ### 6. Pay debt continuously
 
-`/en-garden` runs on every PR merge. Small focused cleanup PRs. Auto-merge
+`/en-sweep` runs on every PR merge. Small focused cleanup PRs. Auto-merge
 when `/en-review` is clean. Never let cleanup become a once-a-quarter project.
 
 ### 7. Throughput changes the merge philosophy
@@ -114,7 +114,7 @@ defaults, etc.>
 - This file is **opt-in.** `/en-foundation` asks: "Do you want a `docs/core-beliefs.md` seeded for agent-first operating principles? (yes / skip — recommended for Standard / Deep projects only)".
 - The "What we believe" section reflects Ensemble defaults — the user can edit, expand, or delete sections as they like after seeding.
 - The "What we don't believe" section is meant to be project-specific in style; the seeded list is illustrative.
-- `/en-garden` does **not** edit this file — it's user-owned after seeding.
+- `/en-sweep` does **not** edit this file — it's user-owned after seeding.
 - `bin/ensemble-lint` validates frontmatter only; doesn't enforce content.
 
 ## When to seed

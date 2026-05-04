@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# reply-to-pr-thread — post a reply inside a PR review thread.
+# Body is read from stdin so multi-line markdown (quoted excerpts, code
+# fences, blockquotes) doesn't need to be shell-escaped.
+#
+# Usage:
+#   echo "<reply body>" | reply-to-pr-thread <THREAD_ID>
+#
+# Example:
+#   printf '> Original: needs null check.\n\nAddressed at line 85.\n' \
+#     | reply-to-pr-thread PRRT_kwDOABC123
+
+set -e
+
+if [ $# -lt 1 ]; then
+    cat <<USAGE >&2
+Usage: echo '<reply body>' | reply-to-pr-thread THREAD_ID
+  THREAD_ID   GraphQL node ID of the review thread (PRRT_…)
+USAGE
+    exit 1
+fi
+
+THREAD_ID="$1"
+BODY=$(cat)
+
+if [ -z "$BODY" ]; then
+    echo "Error: no reply body on stdin." >&2
+    exit 1
+fi
+
+read -r -d '' MUTATION <<'GRAPHQL' || true
+mutation EnResolvePrReply($threadId: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {
+    pullRequestReviewThreadId: $threadId
+    body: $body
+  }) {
+    comment {
+      id
+      url
+    }
+  }
+}
+GRAPHQL
+
+gh api graphql \
+    -f threadId="$THREAD_ID" \
+    -f body="$BODY" \
+    -f query="$MUTATION"

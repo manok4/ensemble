@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# install-guardrail — manage the en-guardrail PreToolUse hook in settings.json.
+#
+# Commands:
+#   status                       Report whether the hook is installed (project + global).
+#   install-project              Merge into <cwd>/.claude/settings.json.   Agent-safe.
+#   install-global               Print the one-liner for the user to run from a real shell.
+#   install-global --apply       Actually merge into ~/.claude/settings.json. Run this
+#                                from your terminal — agents are blocked from editing
+#                                their own global config.
+#   uninstall-project            Remove the hook from <cwd>/.claude/settings.json.
+#
+# Env: GUARDRAIL_SETTINGS_FILE=PATH overrides the target file (used by tests).
+#
+# All mutations back up the existing file first as <file>.bak.<unix-ts>.
+
+set -euo pipefail
+
+CMD="${1:-help}"
+
+require_python() {
+  command -v python3 >/dev/null 2>&1 || { echo "error: python3 required" >&2; exit 1; }
+}
+
+# Single source of truth for the hook block. Echoed verbatim into the merge step.
+read -r -d '' HOOK_PY <<'PY' || true
+import json, os, sys
+
+path = sys.argv[1]
+mode = sys.argv[2]  # install | uninstall | status
+
+try:
+    with open(path) as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+except json.JSONDecodeError as e:
+    print(f"error: {path} is not valid JSON: {e}", file=sys.stderr)
+    sys.exit(2)
+
+hooks = data.get("hooks", {}).get("PreToolUse", [])
+
+def is_guardrail_command(cmd):
+    return "en-guardrail" in cmd and "check-guardrail.sh" in cmd
+
+def already_installed():
+    for entry in hooks:
+        if entry.get("matcher") != "Bash":
+            continue
+        for h in entry.get("hooks", []):
+            if is_guardrail_command(h.get("command", "")):
+                return True
+    return False
+
+if mode == "status":
+    print("yes" if already_installed() else "no")
+    sys.exit(0)
+
+if mode == "install":
+    if already_installed():
+        print("noop")
+        sys.exit(0)
+    hook = {
+        "matcher": "Bash",
+        "hooks": [{
+            "type": "command",
+            "command": 'bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"',
+            "statusMessage": "Checking for destructive commands...",
+        }],
+    }
+    data.setdefault("hooks", {}).setdefault("PreToolUse", []).append(hook)
+
+elif mode == "uninstall":
+    pre = data.get("hooks", {}).get("PreToolUse", [])
+    new_pre = []
+    for entry in pre:
+        if entry.get("matcher") == "Bash":
+            kept = [h for h in entry.get("hooks", []) if not is_guardrail_command(h.get("command", ""))]
+            if kept:
+                entry["hooks"] = kept
+                new_pre.append(entry)
+        else:
+            new_pre.append(entry)
+    if new_pre:
+        data["hooks"]["PreToolUse"] = new_pre
+    else:
+        data.get("hooks", {}).pop("PreToolUse", None)
+        if not data.get("hooks"):
+            data.pop("hooks", None)
+
+else:
+    print(f"error: unknown mode {mode}", file=sys.stderr)
+    sys.exit(2)
+
+tmp = path + ".tmp"
+os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+with open(tmp, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+print("ok")
+PY
+
+run_py() {
+  local file="$1" mode="$2"
+  require_python
+  python3 -c "$HOOK_PY" "$file" "$mode"
+}
+
+backup_if_exists() {
+  local file="$1"
+  if [ -f "$file" ]; then
+    cp "$file" "${file}.bak.$(date +%s)"
+  fi
+}
+
+project_settings_path() {
+  printf '%s' "${GUARDRAIL_SETTINGS_FILE:-./.claude/settings.json}"
+}
+
+global_settings_path() {
+  printf '%s' "${HOME}/.claude/settings.json"
+}
+
+case "$CMD" in
+  status)
+    proj=$(project_settings_path)
+    glob=$(global_settings_path)
+    p="no"; g="no"
+    [ -f "$proj" ] && p=$(run_py "$proj" status 2>/dev/null || echo "no")
+    [ -f "$glob" ] && g=$(run_py "$glob" status 2>/dev/null || echo "no")
+    echo "guardrail status:"
+    echo "  project (${proj}): ${p}"
+    echo "  global  (${glob}): ${g}"
+    if [ "$p" = "yes" ] || [ "$g" = "yes" ]; then exit 0; else exit 1; fi
+    ;;
+
+  install-project)
+    file=$(project_settings_path)
+    backup_if_exists "$file"
+    result=$(run_py "$file" install)
+    if [ "$result" = "noop" ]; then
+      echo "guardrail: already installed at $file (no change)"
+    else
+      echo "guardrail: installed at $file"
+    fi
+    ;;
+
+  install-global)
+    apply="${2:-}"
+    if [ "$apply" = "--apply" ]; then
+      file=$(global_settings_path)
+      backup_if_exists "$file"
+      result=$(run_py "$file" install)
+      if [ "$result" = "noop" ]; then
+        echo "guardrail: already installed at $file (no change)"
+      else
+        echo "guardrail: installed at $file"
+      fi
+    else
+      cat <<'EOF'
+The agent cannot modify ~/.claude/settings.json directly (self-modification guardrail).
+To install the guardrail hook globally, run this from your terminal:
+
+  bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/install-guardrail" install-global --apply
+
+Or, equivalent one-liner you can paste:
+
+  python3 - <<'PY'
+  import json, os
+  p = os.path.expanduser("~/.claude/settings.json")
+  d = json.load(open(p)) if os.path.exists(p) else {}
+  hook = {"matcher":"Bash","hooks":[{"type":"command","command":'bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"',"statusMessage":"Checking for destructive commands..."}]}
+  pre = d.setdefault("hooks", {}).setdefault("PreToolUse", [])
+  for e in pre:
+      if e.get("matcher") == "Bash":
+          for h in e.get("hooks", []):
+              if "en-guardrail" in h.get("command",""):
+                  print("already installed"); raise SystemExit(0)
+  pre.append(hook)
+  json.dump(d, open(p, "w"), indent=2); open(p, "a").write("\n")
+  print("installed")
+  PY
+EOF
+    fi
+    ;;
+
+  uninstall-project)
+    file=$(project_settings_path)
+    [ -f "$file" ] || { echo "no settings file at $file"; exit 0; }
+    backup_if_exists "$file"
+    run_py "$file" uninstall >/dev/null
+    echo "guardrail: uninstalled from $file"
+    ;;
+
+  help|--help|-h)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+
+  *)
+    echo "unknown command: $CMD" >&2
+    echo "run '$0 help' for usage" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# get-thread-for-comment — given a review-comment node ID, return the parent
+# thread (id, path, line, comments). Used by /en-resolve-pr's targeted mode
+# when the user passes a specific comment URL instead of a PR number.
+#
+# Usage:
+#   get-thread-for-comment PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
+#
+# Output:
+#   The matching reviewThread node as a JSON object on stdout.
+#
+# Exit:
+#   0 — match found
+#   1 — usage error or owner/repo unresolved
+#   non-zero from jq — when no thread contains the comment
+
+set -e
+
+if [ $# -lt 2 ]; then
+    cat <<USAGE >&2
+Usage: get-thread-for-comment PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
+  PR_NUMBER         Pull request number
+  COMMENT_NODE_ID   GraphQL node ID of the review comment (e.g. PRRC_kwDO…)
+  OWNER/REPO        Optional; defaults to the gh-detected repo
+USAGE
+    exit 1
+fi
+
+PR_NUMBER="$1"
+COMMENT_ID="$2"
+REPO_ARG="${3:-}"
+
+if [ -n "$REPO_ARG" ]; then
+    OWNER="${REPO_ARG%/*}"
+    REPO="${REPO_ARG#*/}"
+else
+    OWNER=$(gh repo view --json owner --jq .owner.login 2>/dev/null || true)
+    REPO=$(gh repo view --json name --jq .name 2>/dev/null || true)
+fi
+
+if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+    echo "Error: could not detect owner/repo. Pass OWNER/REPO as the third argument." >&2
+    exit 1
+fi
+
+read -r -d '' QUERY <<'GRAPHQL' || true
+query EnResolvePrThreadByComment($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          originalLine
+          startLine
+          originalStartLine
+          comments(first: 100) {
+            nodes {
+              id
+              author { login }
+              body
+              createdAt
+              url
+            }
+          }
+        }
+      }
+    }
+  }
+}
+GRAPHQL
+
+gh api graphql \
+    -f owner="$OWNER" \
+    -f repo="$REPO" \
+    -F pr="$PR_NUMBER" \
+    -f query="$QUERY" \
+  | jq -e --arg cid "$COMMENT_ID" '
+      [.data.repository.pullRequest.reviewThreads.nodes[]
+        | select(.comments.nodes | map(.id) | index($cid))]
+      | if length == 0 then error("No thread found for comment \($cid)") else .[0] end
+    '

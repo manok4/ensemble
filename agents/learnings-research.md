@@ -79,7 +79,7 @@ The `no_match_note` is a useful signal — it tells the dispatcher to capture ag
 | `en-review` (during persona dispatch) | "Has this same finding come up before?" |
 | `en-brainstorm` | "Have we explored <topic> before?" |
 | `en-foundation` | "What decisions has this project made about <area>?" |
-| `en-garden` (architecture drift) | "What was the original rationale for the layer rules?" |
+| `en-sweep` (architecture drift) | "What was the original rationale for the layer rules?" |
 
 ## Style
 

@@ -9,7 +9,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
-TEST_NAME="en-garden doc-only enforcement"
+TEST_NAME="en-sweep doc-only enforcement"
 
 CHECK="$REPO_ROOT/bin/ensemble-doc-only-check"
 
@@ -114,16 +114,16 @@ assert_exit_code 1 "$rc" "test-file stage exits non-zero (tests are not doc-only
 assert_contains "$output" "tests/auth/refresh.test.ts" "rejection cites the test path"
 rm -rf "$TMP"
 
-# --- Scenario 8: .github/workflows/en-garden.yml staged → ACCEPTED (allowlisted) ---
+# --- Scenario 8: .github/workflows/en-sweep.yml staged → ACCEPTED (allowlisted) ---
 TMP=$(mktemp -d)
 setup_temp_repo "$TMP"
 pushd "$TMP" >/dev/null
 mkdir -p .github/workflows
-echo "name: en-garden" > .github/workflows/en-garden.yml
-git add .github/workflows/en-garden.yml
+echo "name: en-sweep" > .github/workflows/en-sweep.yml
+git add .github/workflows/en-sweep.yml
 output=$("$CHECK" 2>&1); rc=$?
 popd >/dev/null
-assert_exit_code 0 "$rc" ".github/workflows/en-garden.yml is allowlisted"
+assert_exit_code 0 "$rc" ".github/workflows/en-sweep.yml is allowlisted"
 rm -rf "$TMP"
 
 # --- Scenario 9: empty stage → exit 0 with note ---

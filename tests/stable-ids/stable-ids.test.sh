@@ -73,9 +73,10 @@ setup_repo "$TMP"
 cat > "$TMP/docs/plans/active/FR01-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR01
 title: Test
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -107,9 +108,10 @@ setup_repo "$TMP"
 cat > "$TMP/docs/plans/active/FR42-a.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR42
 title: First
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -121,6 +123,7 @@ EOF
 cat > "$TMP/docs/plans/completed/FR42-b.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR42
 title: Collision
 status: completed
@@ -147,9 +150,10 @@ setup_repo "$TMP"
 cat > "$TMP/docs/plans/active/FR1-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR1
 title: Bad format
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -170,9 +174,10 @@ setup_repo "$TMP"
 cat > "$TMP/docs/plans/active/FR05-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR05
 title: Broken U cite
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R1]
@@ -217,9 +222,10 @@ EOF
 cat > "$TMP/docs/plans/active/FR03-test.md" <<EOF
 ---
 type: plan
+plan_type: feature
 fr_id: FR03
 title: Cites R3 (which was removed)
-status: active
+status: open
 location: active
 created: 2026-04-29
 covers_requirements: [R3]

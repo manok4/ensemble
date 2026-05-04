@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# continuous-monitor — run dead-code and dep-vulnerability scans, output
+# normalized JSON-lines findings for /en-sweep to triage.
+#
+# Output schema (one JSON object per line):
+#   {
+#     "check": "dead-code" | "dep-audit",
+#     "category": "dead_function" | "dead_import" | "vuln" | "outdated",
+#     "file": "<repo-relative path or null>",
+#     "line": <int|null>,
+#     "symbol": "<name>",
+#     "severity": "P0" | "P1" | "P2" | "P3",
+#     "message": "<one-line human description>",
+#     "details": "<multi-line details if any>",
+#     "loc_estimate": <int>,             // estimated lines-of-fix; drives triage
+#     "fix_command": "<single shell command if mechanically fixable>"
+#   }
+#
+# Exit code: 0 always (caller reads stdout regardless of presence of findings).
+
+set -u
+
+DEAD_CODE_ENABLED="${1:-true}"
+DEP_AUDIT_ENABLED="${2:-true}"
+
+# --- Dead code scan ---
+# Generic across languages. Uses project tools where available, falls back to
+# heuristics. Keep findings conservative — false positives erode trust faster
+# than missed findings here, since /en-sweep auto-files them.
+scan_dead_code() {
+  [ "$DEAD_CODE_ENABLED" = "true" ] || return 0
+
+  # TypeScript/JavaScript: use ts-prune if installed
+  if [ -f package.json ] && command -v npx >/dev/null 2>&1; then
+    if npx --no-install ts-prune --version >/dev/null 2>&1; then
+      npx --no-install ts-prune --error 2>/dev/null | while IFS= read -r line; do
+        # ts-prune output: "src/foo.ts:42 - exportName"
+        local file lineno symbol
+        file=$(printf '%s' "$line" | sed -E 's/^([^:]+):.*/\1/')
+        lineno=$(printf '%s' "$line" | sed -E 's/^[^:]+:([0-9]+).*/\1/')
+        symbol=$(printf '%s' "$line" | sed -E 's/^[^-]+ - (.+)$/\1/')
+        [ -z "$file" ] || [ -z "$symbol" ] && continue
+        printf '{"check":"dead-code","category":"dead_function","file":"%s","line":%s,"symbol":"%s","severity":"P3","message":"Unused export: %s","details":"","loc_estimate":5,"fix_command":""}\n' \
+          "$file" "${lineno:-null}" "$symbol" "$symbol"
+      done
+    fi
+  fi
+
+  # Python: use vulture if installed
+  if command -v vulture >/dev/null 2>&1 && [ -d . ] && find . -name "*.py" -type f -print -quit 2>/dev/null | grep -q .; then
+    vulture . --min-confidence 80 2>/dev/null | while IFS= read -r line; do
+      # vulture output: "src/foo.py:42: unused function 'name' (90% confidence)"
+      local file lineno symbol
+      file=$(printf '%s' "$line" | sed -E 's/^([^:]+):.*/\1/')
+      lineno=$(printf '%s' "$line" | sed -E 's/^[^:]+:([0-9]+):.*/\1/')
+      symbol=$(printf '%s' "$line" | sed -E "s/.*'([^']+)'.*/\\1/")
+      [ -z "$file" ] || [ -z "$symbol" ] && continue
+      printf '{"check":"dead-code","category":"dead_function","file":"%s","line":%s,"symbol":"%s","severity":"P3","message":"Unused symbol: %s","details":"","loc_estimate":5,"fix_command":""}\n' \
+        "$file" "${lineno:-null}" "$symbol" "$symbol"
+    done
+  fi
+
+  # Go: use go vet's "deadcode" if available (Go 1.22+)
+  if [ -f go.mod ] && command -v go >/dev/null 2>&1; then
+    if go doc -all golang.org/x/tools/cmd/deadcode >/dev/null 2>&1; then
+      go run golang.org/x/tools/cmd/deadcode ./... 2>/dev/null | while IFS= read -r line; do
+        printf '{"check":"dead-code","category":"dead_function","file":"%s","line":null,"symbol":"%s","severity":"P3","message":"%s","details":"","loc_estimate":5,"fix_command":""}\n' \
+          "$(printf '%s' "$line" | cut -d: -f1)" "$line" "$line"
+      done
+    fi
+  fi
+}
+
+# --- Dependency vulnerability audit ---
+# Wraps the project's native audit tool. Severity mapping:
+#   critical/high → P1 (block PR if unfixed)
+#   moderate     → P2 (advisory)
+#   low/info     → P3 (informational)
+scan_dep_audit() {
+  [ "$DEP_AUDIT_ENABLED" = "true" ] || return 0
+
+  # npm / pnpm / yarn projects
+  if [ -f package-lock.json ] && command -v npm >/dev/null 2>&1; then
+    npm audit --json 2>/dev/null | python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+sev_map = {"critical": "P1", "high": "P1", "moderate": "P2", "low": "P3", "info": "P3"}
+vulns = data.get("vulnerabilities", {})
+for name, v in vulns.items():
+    sev = sev_map.get(v.get("severity", "info"), "P3")
+    via = v.get("via", [])
+    via_str = via[0] if isinstance(via, list) and via and isinstance(via[0], str) else (via[0].get("title", "") if via and isinstance(via[0], dict) else "")
+    fix = v.get("fixAvailable")
+    fix_cmd = "npm audit fix" if fix is True or (isinstance(fix, dict) and fix.get("isSemVerMajor") is False) else ""
+    sev_str = v.get("severity", "unknown")
+    msg = f"{name} has {sev_str} vulnerability: {via_str}"
+    print(json.dumps({
+        "check": "dep-audit",
+        "category": "vuln",
+        "file": "package.json",
+        "line": None,
+        "symbol": name,
+        "severity": sev,
+        "message": msg,
+        "details": json.dumps(v, separators=(",", ":")),
+        "loc_estimate": 1 if fix_cmd else 30,
+        "fix_command": fix_cmd
+    }))
+' 2>/dev/null
+  fi
+
+  # Python: pip-audit if installed
+  if command -v pip-audit >/dev/null 2>&1 && ([ -f requirements.txt ] || [ -f pyproject.toml ]); then
+    # NB: f-string expressions cannot contain backslash-escaped quotes.
+    # We extract values into local variables before formatting the message.
+    pip-audit --format json 2>/dev/null | python3 -c '
+import sys, json, os
+try:
+    data = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+file_path = "requirements.txt" if os.path.exists("requirements.txt") else "pyproject.toml"
+for entry in data.get("dependencies", []):
+    for vuln in entry.get("vulns", []):
+        sev = "P1"  # pip-audit does not categorize by severity by default; treat as P1 to be safe
+        name = entry.get("name", "")
+        version = entry.get("version", "")
+        vuln_id = vuln.get("id", "?")
+        msg = f"{name} {version} has CVE: {vuln_id}"
+        print(json.dumps({
+            "check": "dep-audit",
+            "category": "vuln",
+            "file": file_path,
+            "line": None,
+            "symbol": name,
+            "severity": sev,
+            "message": msg,
+            "details": vuln.get("description", ""),
+            "loc_estimate": 5,
+            "fix_command": ""
+        }))
+' 2>/dev/null
+  fi
+
+  # Cargo
+  if [ -f Cargo.toml ] && command -v cargo >/dev/null 2>&1 && cargo audit --version >/dev/null 2>&1; then
+    cargo audit --json 2>/dev/null | python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+for v in data.get("vulnerabilities", {}).get("list", []):
+    pkg = v.get("package", {}).get("name", "")
+    advisory = v.get("advisory", {})
+    sev_str = advisory.get("severity", "")
+    sev = {"critical": "P1", "high": "P1", "medium": "P2", "low": "P3"}.get(sev_str, "P2")
+    sev_label = sev_str if sev_str else "unknown-severity"
+    title = advisory.get("title", "")
+    msg = f"{pkg} has {sev_label} vulnerability: {title}"
+    print(json.dumps({
+        "check": "dep-audit",
+        "category": "vuln",
+        "file": "Cargo.toml",
+        "line": None,
+        "symbol": pkg,
+        "severity": sev,
+        "message": msg,
+        "details": advisory.get("description", ""),
+        "loc_estimate": 5,
+        "fix_command": ""
+    }))
+' 2>/dev/null
+  fi
+}
+
+scan_dead_code
+scan_dep_audit

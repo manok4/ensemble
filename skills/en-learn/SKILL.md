@@ -16,6 +16,7 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | `--refresh` | Audit content staleness (~monthly) | Per-entry: keep / update / replace / archive |
 | `--pack <library>` | Curate external library reference | `docs/references/<library>-llms.txt` |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
+| `--bootstrap-patterns` | Retrofit existing project (one-time during/after `/en-foundation --retrofit`) | 5-10 entries in `docs/learnings/patterns/` flagged `source: bootstrap`, `confidence: 6`, `requires_validation: true` |
 
 ## Always-on behaviors (across `capture` and `ingest`)
 
@@ -43,7 +44,7 @@ After every write:
 8. **Apply always-on behaviors** (cross-refs, index update, log append).
 9. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
 10. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-11. **Move the relevant plan** from `docs/plans/active/FRXX-*.md` to `docs/plans/completed/FRXX-*.md` — flip `status: active` → `completed`, set `shipped: <date>`, replace plan-tense with documentation-tense, note any deviations from the plan.
+11. **Move the relevant plan** from `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` to `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (filename preserved verbatim during the move) — flip `status: in_progress` (or `open`, if the build skipped the flip) → `completed`, set `shipped: <date>`, replace plan-tense with documentation-tense, note any deviations from the plan.
 12. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
 13. **Update `docs/README.md` index** if it exists.
 14. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
@@ -100,6 +101,33 @@ Per `references/learn-lint.md`. Audits the wiki *graph*:
 
 Output: JSON-lines + markdown summary.
 
+## Process — Mode F: `--bootstrap-patterns`
+
+Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
+
+1. **Detect host.** Source `references/host-detect.md`.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
+3. **Refuse if already bootstrapped.** Scan `docs/learnings/patterns/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
+4. **Confirm with user.** Surface: *"Will dispatch `repo-research` to identify 5–10 strong conventions in this codebase and file them as `patterns/` entries flagged `requires_validation: true`. These are reconstructions, not captures from real moments — lower confidence by design. Continue? (y/n)"*
+5. **Dispatch `repo-research`.** Prompt structured per `references/learn-bootstrap-patterns.md` § "Research prompt." Asks the agent to identify durable conventions in: file layout, naming, dependency direction, error-handling shape, test placement, common abstractions, framework idioms. Returns 5–10 candidates as JSON.
+6. **Cap at 10.** If the research agent returns more than 10, take the top 10 by `confidence` field. Fewer than 5 → surface a warning; the codebase may not have strong conventions yet (typical for very young or scattered repos).
+7. **Compose entries.** For each candidate, write `docs/learnings/patterns/<slug>-<date>.md` using `references/templates/learning-template.md` with:
+   - Frontmatter: `source: bootstrap`, `confidence: 6`, `requires_validation: true`, `bootstrap_run: <YYYY-MM-DD>`.
+   - Body: TL;DR, **Where this applies** (file paths/globs), **Pattern** (the convention), **Why** (rationale inferred from codebase signals), **How to follow it** (concrete rules), **Citations** (specific file:line examples that exhibit the pattern).
+   - **Skip** the "What didn't work" / "Root cause" / "Fix" sections — those don't apply to forward-looking conventions.
+8. **Apply always-on behaviors.** Cross-refs (none on first run), index update (one line per entry under "Patterns"), log append (one summary line: `## [<date>] bootstrap | <count> patterns from repo-research`).
+9. **Surface a follow-up suggestion.** *"Bootstrap complete. <count> patterns filed in `docs/learnings/patterns/` with `requires_validation: true`. Review and validate as you encounter them in `/en-review`, `/en-resolve-pr`, or via `/en-learn --refresh`. Validated entries clear the flag."*
+
+Flags:
+
+| Flag | Effect |
+|---|---|
+| `--force` | Re-run even if previous bootstrap entries exist (existing bootstrap entries are kept; new ones append) |
+| `--dry-run` | Print the candidates the research agent returns without writing files |
+| `--max-patterns <N>` | Cap number of entries (default 10) |
+
+Cross-review: **off**. Bootstrap entries are explicitly lower-confidence; peer review on each one would be theater.
+
 ## Auto-invoke triggers (per A3 / D26)
 
 `/en-learn` auto-runs after `/en-build` and `/en-qa`. Soft prompt:
@@ -116,6 +144,7 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 
 ## Reference files
 
+- `references/learn-bootstrap-patterns.md` — Mode F prompt + entry shape
 - `references/templates/learning-template.md` — body structure for capture/ingest writes
 - `references/learning-frontmatter-schema.md` — frontmatter rules + examples
 - `references/learn-cross-ref-maintenance.md` — always-on back-ref behavior

@@ -38,7 +38,7 @@ This file is **Claude-Code-specific only**. Anything readable by Codex (project 
 
 - Prefer `/en-plan` before `/en-build` for any feature touching > 3 files.
 - Use `/en-cross-review <path>` for ad-hoc peer review without going through the full review skill.
-- For routine refactors that fall under garden's purview, let `/en-garden` run on the next merge — don't open a bespoke PR.
+- For routine refactors that fall under sweep's purview, let `/en-sweep` run on the next merge — don't open a bespoke PR.
 
 ## Skill invocation priority
 
@@ -64,7 +64,7 @@ This project is configured for the Ensemble plugin (`/plugin install ensemble@en
 
 ## Notes on generation
 
-- The template above is the **starting** state. As the project evolves, the user (or `en-garden`) may extend Slash command preferences and Skill invocation priority sections.
+- The template above is the **starting** state. As the project evolves, the user (or `en-sweep`) may extend Slash command preferences and Skill invocation priority sections.
 - The first-line cross-reference is mandatory; the lint will P1-fail if it's missing or modified.
 - The `host: claude-code` frontmatter is critical — it's how `bin/ensemble-lint` knows this is the Claude-specific map.
 

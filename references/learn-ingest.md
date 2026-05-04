@@ -103,14 +103,14 @@ Off-topic check: 0.92 / 1.0 → engineering-relevant for "Ensemble" project.
 Extracting:
   - "AGENTS.md as a map, not encyclopedia" — informs §17.3.
   - "Plans split by lifecycle" — already in our D2.
-  - "Recurring drift cleanup" — informs en-garden design.
+  - "Recurring drift cleanup" — informs en-sweep design.
   - "Failure means a missing capability" — operating principle.
 
 Writing docs/learnings/sources/openai-harness-engineering-2026-04-20.md
 Walking 12 related pages for back-refs:
   + docs/learnings/decisions/agents-md-as-pointer-map-2026-04-21.md
   + docs/learnings/patterns/plans-by-lifecycle-2026-03-12.md
-  + docs/learnings/patterns/garden-event-driven-2026-04-15.md
+  + docs/learnings/patterns/sweep-event-driven-2026-04-15.md
   + docs/learnings/decisions/failure-as-capability-gap-2026-04-22.md
   ... (8 more)
 
