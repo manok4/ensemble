@@ -1,0 +1,268 @@
+---
+title: Plan finalization loop — spec
+status: draft
+owner: mano
+related:
+  - skills/en-plan/SKILL.md
+  - skills/en-build/SKILL.md
+  - skills/en-cross-review/SKILL.md
+  - references/outside-voice.md
+  - references/finding-schema.md
+---
+
+# Plan finalization loop
+
+## Problem
+
+`/en-plan` ends after the first peer-review pass. When the verdict is `revise`,
+findings are applied (recorded in the iteration log) but three follow-through
+steps are left to the human:
+
+1. **Re-review** the revised plan to clear the `revise` verdict.
+2. **Flip `status: draft` → `open`** once cleared.
+3. **Commit the plan file** so `/en-build` has a tracked artifact.
+
+The human applies the findings, then forgets the bookkeeping. `/en-build`
+correctly refuses (`status: draft`, untracked file) but only offers a 3-option
+recovery menu — no one-command path back to a buildable state.
+
+This spec covers improvements **#1, #2, #3** from the workflow analysis:
+
+- **#1** — re-review loop owned by `/en-plan`.
+- **#2** — auto-commit the plan once finalized.
+- **#3** — `/en-build` pre-flight offers an actionable recovery, not just refusal.
+
+Improvement **#4** (scope-aware slicing for deep plans) is out of scope — handled
+in a follow-up spec.
+
+---
+
+## Improvement #1 — Re-review loop in `/en-plan`
+
+### Behavior
+
+After the **first** peer pass returns a verdict:
+
+| Verdict | New behavior |
+|---|---|
+| `approve` | Flip `status: draft` → `open` automatically. (Today: requires manual flip.) |
+| `revise` | Apply / defer / disagree per `references/severity.md` as today; **then re-invoke peer** with the revised plan. Loop. |
+| `reject` | Pause and surface to user (unchanged). |
+
+The loop terminates when one of:
+
+- Verdict becomes `approve` → flip to `open`.
+- `max_finalize_iterations` reached → leave `status: draft`, surface latest
+  findings, ask user to take over. Default is **depth-aware**:
+
+  | Plan depth | Max iterations | Total peer passes (initial + re-reviews) |
+  |---|---|---|
+  | Lightweight | 1 | 2 |
+  | Standard | 2 | 3 |
+  | Deep | 2 | 3 |
+
+  Lightweight plans (1–3 units) are small enough that one re-review is
+  usually decisive; further loops are mostly noise. Standard and Deep get one
+  more pass to handle structural findings that need a second look.
+- User declines a re-review pass mid-loop (`--no-reloop` flag, or interactive
+  prompt between iterations).
+
+### Iteration prompt context
+
+Each re-review pass MUST include in the peer prompt:
+
+- **The full revised plan** (not a diff). The "previous review context"
+  section below provides the framing the peer needs to avoid re-litigating
+  settled ground; a diff would lose surrounding context the peer needs to
+  judge whether a fix actually resolves the concern.
+- A `## Previous review context` section listing:
+  - Findings **applied** this iteration (so the peer can verify the fix landed).
+  - Findings **deferred** (with rationale; peer should not re-flag).
+  - Findings **disagreed-with** (with rationale; peer should not re-flag unless
+    they have new evidence).
+
+Framing line: *"This is iteration N of finalization. Verify previously-applied
+findings actually resolve the concern, and surface only **new** issues or
+unresolved-from-previous."*
+
+This prevents the peer from re-litigating settled ground and keeps token cost
+roughly flat across iterations.
+
+### Frontmatter changes
+
+Add to plan frontmatter (additive — doesn't break existing plans):
+
+```yaml
+peer_review_verdict: approve | revise | reject | null
+peer_review_iterations: <integer>          # 0, 1, 2, ...
+peer_review_last_run: <ISO 8601 date>
+```
+
+The existing iteration log section remains the human-readable narrative; the
+frontmatter fields are the machine-readable state for `/en-build`'s pre-flight.
+
+### Failure cases
+
+| Case | Behavior |
+|---|---|
+| Peer subprocess times out on iteration N | Surface; leave `status: draft`; no re-loop |
+| Peer returns malformed JSON (after retry) | Surface; leave `status: draft` |
+| Max iterations hit, still `revise` | Surface latest findings; ask user "accept as-is and flip to `open`, or stay in `draft`?" |
+| User rejects a finding the peer keeps re-raising | Bump `peer_review_iterations`; if it's the same finding twice, suppress on 3rd peer pass via "do not re-flag" list |
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| `--no-reloop` | Run only the initial peer pass; never re-review. (Today's behavior.) |
+| `--max-iterations <N>` | Override the depth-aware default. |
+
+---
+
+## Improvement #2 — Commit-on-finalize
+
+### Behavior
+
+Once `/en-plan` flips `status` to `open` (via #1's loop or `--no-peer`), the skill:
+
+1. Stages the plan file: `git add docs/plans/active/<plan-file>.md`.
+2. Commits with a conventional message:
+   ```
+   docs(plan): <plan_id> <slug> (<N> units)
+
+   Plan finalized after <iterations> peer-review iteration(s).
+   Verdict: approve. Generated by /en-plan.
+   ```
+3. Does **not** push, does **not** open a PR.
+
+The commit lands on whichever branch the user is currently on.
+
+### Branching policy
+
+- **On default branch (main / master / develop)** → commit there. Plans become
+  discoverable in main-line history. `/en-build` later branches off and
+  inherits the plan file.
+- **On a feature branch** → commit there. `/en-build` will reuse the same
+  branch (matches today's en-build step 5).
+- **On detached HEAD or unusual state** → skip auto-commit; surface and ask.
+
+### Working-tree safety
+
+Before committing:
+
+- If `git diff --cached` has unrelated staged changes → **abort auto-commit**;
+  surface: *"Uncommitted unrelated changes are staged. Stage and commit the
+  plan manually, then re-run."*
+- If working tree has unrelated unstaged changes to files **other than** the
+  plan file → proceed (we only stage the plan file by name; `git add -A` is
+  never used).
+- If the plan file path itself has uncommitted unstaged changes from a prior
+  `/en-plan` invocation → these are the ones we want to commit. Proceed.
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| `--no-commit` | Finalize (status: open) but do not commit. (Today's behavior.) |
+| `--commit-branch <name>` | Create / switch to `<name>` before committing the plan. |
+
+### Open question
+
+Should `/en-plan` ever create a `plan/<plan_id>-<slug>` branch? Argument for:
+keeps main-line clean if plans churn. Argument against: extra branch lifecycle
+to manage, and `/en-build` already creates a feature branch later. **Default
+recommendation: commit to current branch; `--commit-branch` is opt-in.** Mark
+this as a follow-up if the team wants the cleaner separation.
+
+---
+
+## Improvement #3 — `/en-build` pre-flight recovery
+
+### Today
+
+`/en-build` step 4 reads the plan and refuses on `status: draft`. The user
+gets a 3-option menu (re-review / narrow slice / override) as conversational
+guidance.
+
+### New behavior
+
+Pre-flight detects the **recoverable sub-state**:
+
+```
+status: draft
+AND peer_review_verdict in (revise, null)
+AND iteration log shows findings were applied
+AND plan file is committed (or auto-commit is available)
+```
+
+In that case, surface a **single recovery prompt** instead of the menu:
+
+> Plan is in draft. Findings from the last peer review (verdict: revise) appear
+> to be applied (iteration log v1, 8 of 8). I can finalize now: re-run the peer
+> pass, flip to `open` on approve, and commit the plan. Then proceed with
+> `/en-build`. (y / n / details)
+
+- **y** → invoke the same finalize flow described in Improvement #1
+  (re-review loop with iteration prompt context). On `approve`, auto-commit
+  per #2, then continue with the existing build flow from step 5.
+- **n** → refuse with current behavior (show the 3-option menu).
+- **details** → print the iteration log, frontmatter state, and uncommitted
+  status; re-prompt.
+
+### Sub-state matrix
+
+| status | verdict | iteration log | git tracked | Pre-flight action |
+|---|---|---|---|---|
+| `open` | `approve` | any | yes | Proceed (today's behavior) |
+| `open` | `approve` | any | **no** | Offer auto-commit, then proceed |
+| `draft` | `revise` | findings applied | yes or no | **Offer finalize-and-build (the new flow)** |
+| `draft` | `revise` | findings NOT applied | any | Refuse; user must apply findings first |
+| `open` | `null` | none | yes | Proceed (`--no-peer` was used; no peer expected) |
+| `open` | `null` | none | **no** | Offer auto-commit, then proceed |
+| `draft` | `null` | none | any | Refuse; peer review never ran |
+| `draft` | `reject` | any | any | Refuse; user must take over |
+| `completed` / `abandoned` | any | any | any | Refuse (today's behavior) |
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| `--no-finalize` | Disable the recovery offer; refuse on draft as today |
+| `--finalize-only` | Run finalize flow but don't proceed to build (useful for scripting) |
+
+---
+
+## Decisions
+
+1. **Iteration cap is depth-aware.** Lightweight=1, Standard=2, Deep=2
+   (folded into Improvement #1's behavior table).
+2. **Re-review scope is the full plan**, not a diff. The "previous review
+   context" framing handles re-litigation concerns; the peer needs surrounding
+   context to judge fixes. Revisit only if token cost becomes a real issue.
+3. **`peer_review_verdict: null` + `status: open`** is a valid state
+   (`--no-peer` was used). Pre-flight proceeds without a finalize loop.
+   Reflected in the sub-state matrix.
+4. **Hand-edit drift is deferred.** No `peer_review_plan_hash` for now. Rare
+   case; the user can always re-run `/en-plan` if they hand-edit
+   substantively. Revisit if it bites.
+
+---
+
+## Implementation outline (for follow-up plan)
+
+Once this spec is approved, the implementation breaks into roughly:
+
+- **U1** — Add re-review loop to `en-plan` step 13 (`references/outside-voice.md`
+  iteration prompt section gets a new "Previous review context" template).
+- **U2** — Add `peer_review_*` frontmatter fields to plan template.
+- **U3** — Auto-flip `status: draft → open` on `approve` (replaces today's
+  manual flip in step 12).
+- **U4** — Auto-commit the plan file (new step 15.5 between hand-off-prep
+  and the suggestion to run `/en-build`).
+- **U5** — Update `en-build` step 4 with the sub-state matrix + recovery prompt.
+- **U6** — Backfill: existing plans without `peer_review_verdict` field get
+  treated as `null` (matrix handles this).
+- **U7** — Tests in `tests/en-plan/` and `tests/en-build/` for each sub-state.
+- **U8** — Update `docs/workflow-and-catalog.md` to document the new lifecycle.
+
+Total roughly Standard depth (8 units, multi-file).
