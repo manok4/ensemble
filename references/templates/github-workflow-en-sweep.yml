@@ -1,17 +1,29 @@
 # Installed by /en-setup at .github/workflows/en-sweep.yml
-# Triggers en-sweep on every push to main (i.e., immediately after a PR merges).
-# Sweep is strictly doc-only and auto-merges its own PRs after en-review clears them.
+#
+# Scheduled doc-drift cleanup. Runs on the cadence configured in
+# .ensemble/config.local.yaml (default weekly, Monday 9am UTC) — the cron
+# expression below is substituted by /en-setup at install time per the
+# `sweep.schedule` value:
+#   daily   → 0 9 * * *
+#   weekly  → 0 9 * * 1   (default)
+#   monthly → 0 9 1 * *
+#   <cron>  → literal pass-through
+#
+# An activity gate runs first and skips the actual sweep job when no
+# non-sweep commits have landed since the last sweep run. Manual triggers
+# (workflow_dispatch) always bypass the gate.
 
 name: en-sweep
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '{{SWEEP_CRON}}'   # substituted by /en-setup; default '0 9 * * 1' (weekly Mon 9am UTC)
+  workflow_dispatch:
 
 permissions:
   contents: write       # to commit doc-only fixes
   pull-requests: write  # to open and auto-merge PRs
-  issues: write         # to post comments on the source PR
+  issues: write         # to post comments on the most recent merge PR
 
 concurrency:
   group: en-sweep-${{ github.ref }}
@@ -21,84 +33,77 @@ env:
   ENSEMBLE_SWEEP_DEPTH: 0
 
 jobs:
+  # Activity gate — skip silently when no non-sweep commits have landed since
+  # the last sweep-authored commit. Manual triggers bypass.
+  check-activity:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.gate.outputs.should-run }}
+      reason: ${{ steps.gate.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the gate can walk commits
+
+      - name: Activity gate
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            bin/ensemble-sweep-activity-check --manual >> "$GITHUB_OUTPUT"
+          else
+            bin/ensemble-sweep-activity-check >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log decision
+        run: |
+          echo "should-run=${{ steps.gate.outputs.should-run }}"
+          echo "reason=${{ steps.gate.outputs.reason }}"
+
   sweep:
+    needs: check-activity
+    if: needs.check-activity.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # Loop guard 1: skip sweep-authored commits
-      # Commit metadata is passed via env (NOT inlined) — single quotes or newlines
-      # in author names / commit messages would otherwise break the bash parser
-      # before any guard runs (squash-merge messages routinely contain both).
-      - name: Skip sweep-authored commits
-        id: skip-self
-        env:
-          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-        run: |
-          if [ "$COMMIT_AUTHOR" = "ensemble-sweep[bot]" ] \
-             || [[ "$COMMIT_MESSAGE" == "chore(en-sweep):"* ]] \
-             || [[ "$COMMIT_MESSAGE" == "chore(arch):"* ]] \
-             || [[ "$COMMIT_MESSAGE" == "chore(plans):"* ]] \
-             || [[ "$COMMIT_MESSAGE" == "chore(learnings):"* ]] \
-             || [[ "$COMMIT_MESSAGE" == "chore(maps):"* ]] \
-             || [[ "$COMMIT_MESSAGE" == "chore(docs):"* ]]; then
-            echo "Skipping: sweep-authored commit"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
-        if: steps.skip-self.outputs.skip == 'false'
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Loop guard 3: skip if the merge that just happened was a sweep-labeled PR
-      - name: Skip sweep-labeled PR merges
-        id: skip-label
-        if: steps.skip-self.outputs.skip == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-        run: |
-          PR_NUM=$(printf '%s' "$COMMIT_MESSAGE" | grep -oE '#[0-9]+' | head -1 | tr -d '#' || true)
-          if [ -n "$PR_NUM" ]; then
-            LABELS=$(gh pr view "$PR_NUM" --json labels -q '.labels[].name' 2>/dev/null || true)
-            if echo "$LABELS" | grep -q '^en-sweep$'; then
-              echo "Skipping: merge of an en-sweep-labeled PR"
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-
       - name: Set up Bun and tools
-        if: steps.skip-self.outputs.skip == 'false' && steps.skip-label.outputs.skip == 'false'
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
       - name: Install dependencies
-        if: steps.skip-self.outputs.skip == 'false' && steps.skip-label.outputs.skip == 'false'
         run: |
-          # CLI auth: the runner needs ANTHROPIC_API_KEY or CODEX_API_KEY in repo secrets,
-          # plus claude or codex CLI on PATH. Customize this step for your install method.
+          # CLI auth: the runner needs claude or codex CLI on PATH plus a matching
+          # auth secret in repo Settings → Secrets and variables → Actions:
+          #   - claude CLI: CLAUDE_CODE_OAUTH_TOKEN (Pro/Max subscription;
+          #     generate via `claude setup-token`) OR ANTHROPIC_API_KEY (pay-per-use API)
+          #   - codex CLI:  OPENAI_API_KEY
+          # Provide whichever matches the CLI you install. Customize this step for
+          # your install method.
           if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
             echo "ERROR: en-sweep requires claude or codex CLI in the runner. See docs/foundation.md §5.2.10."
             exit 1
           fi
 
       - name: Run en-sweep
-        if: steps.skip-self.outputs.skip == 'false' && steps.skip-label.outputs.skip == 'false'
         env:
+          # Subscription auth (Pro/Max): preferred when available — claude CLI honors
+          # this token and bills against the subscription's rate limit instead of
+          # pay-per-use API tokens. Generate via `claude setup-token` and store as
+          # CLAUDE_CODE_OAUTH_TOKEN in repo secrets.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # API-key auth fallbacks. Whichever CLI is on PATH picks up the matching
+          # variable; the others can be empty/missing.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ENSEMBLE_SWEEP_DEPTH: ${{ env.ENSEMBLE_SWEEP_DEPTH }}
           EN_REVIEW_MODE: report-only
         run: |
-          # Loop guard 5: hard cap on recursion depth
+          # Recursion-depth guard — sweep should never invoke itself recursively.
           if [ "${ENSEMBLE_SWEEP_DEPTH:-0}" -ge 1 ]; then
             echo "Sweep recursion depth cap reached. Skipping."
             exit 0
@@ -108,13 +113,26 @@ jobs:
           # Run sweep via the CI wrapper (resolves claude or codex headlessly)
           bin/en-sweep-ci
 
-      - name: Post summary on source PR
-        if: always() && steps.skip-self.outputs.skip == 'false' && steps.skip-label.outputs.skip == 'false'
+      - name: Post summary as workflow artifact
+        if: always() && hashFiles('.ensemble/sweep-summary.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-summary
+          path: .ensemble/sweep-summary.md
+          retention-days: 30
+
+      - name: Post summary on most recent merged PR
+        if: always() && hashFiles('.ensemble/sweep-summary.md') != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          PR_NUM=$(printf '%s' "$COMMIT_MESSAGE" | grep -oE '#[0-9]+' | head -1 | tr -d '#' || true)
-          if [ -n "$PR_NUM" ] && [ -f .ensemble/sweep-summary.md ]; then
+          # Find the most recent PR-merge commit on main and post the summary
+          # there. Best-effort — if no PR reference is found, just leaves the
+          # summary as the workflow artifact.
+          RECENT_MSG=$(git log -1 --pretty=format:'%s%n%b' origin/main)
+          PR_NUM=$(printf '%s' "$RECENT_MSG" | grep -oE '#[0-9]+' | head -1 | tr -d '#' || true)
+          if [ -n "$PR_NUM" ]; then
             gh pr comment "$PR_NUM" --body-file .ensemble/sweep-summary.md || true
+          else
+            echo "No recent PR found in commit message; summary saved as workflow artifact only."
           fi
