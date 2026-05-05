@@ -43,11 +43,15 @@ else
 fi
 
 # --- 2. No prior sweep commit → should-run=true (first run after install) ---
+# NB: make_repo runs `cd "$tmp"` in a subshell (it's invoked via `$()`), so the
+# parent test shell is still in the ensemble repo until we cd in explicitly.
+# A previous version did `git add` *before* the cd and accidentally committed
+# work-in-progress files into the parent repo.
 TMP=$(make_repo)
+cd "$TMP"
 echo "x" > a.txt
 git add . && git commit -q -m "feat: add a"
 mark_origin
-cd "$TMP"
 out=$("$CHECK")
 cd - >/dev/null
 rm -rf "$TMP"
