@@ -82,7 +82,16 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 8. **Add `.gitignore` entries** if missing:
    - `.ensemble/config.local.yaml`
    - Optionally `docs/learnings/archive/` — ask the user.
-9. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Surface required permissions/secrets per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
+9. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`.
+    1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
+    2. **Map to cron.** Named values map to:
+       - `daily` → `0 9 * * *`
+       - `weekly` → `0 9 * * 1` (Monday 9am UTC)
+       - `monthly` → `0 9 1 * *` (1st of the month, 9am UTC)
+       - Anything else is treated as a literal cron expression and substituted as-is.
+    3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
+    4. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
+    5. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `bin/ensemble-sweep-activity-check`."
 10. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
 11. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.). Choose:

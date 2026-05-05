@@ -1,11 +1,11 @@
 ---
 name: en-sweep
-description: "Doc-drift cleanup that auto-fires after every PR merge to main (event-driven, not scheduled). Runs file-shape lint + wiki-graph health + architecture/plan-lifecycle/pointer-map drift. Opens auto-merging doc-only PRs after /en-review (mode:report-only) clears them. Code-level findings file to tech-debt-tracker.md. Optional continuous monitoring (dead-code + dep-vuln) → TD or draft plan. Five loop guards. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
+description: "Scheduled doc-drift cleanup (default weekly; configurable via sweep.schedule). Runs file-shape lint + wiki-graph health + architecture/plan-lifecycle/pointer-map drift. Activity gate skips runs when no non-sweep commits have landed since the last sweep. Opens auto-merging doc-only PRs after /en-review (mode:report-only) clears them. Code-level findings file to tech-debt-tracker.md. Optional continuous monitoring (dead-code + dep-vuln) → TD or draft plan. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
 ---
 
 # `/en-sweep`
 
-Doc-drift cleanup. Event-driven on `push` to `main` (post-PR-merge). Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
+Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
 
 > **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `bin/ensemble-doc-only-check`.
 
@@ -13,8 +13,11 @@ Doc-drift cleanup. Event-driven on `push` to `main` (post-PR-merge). Doc-only by
 
 | Trigger | Source |
 |---|---|
-| `push` to `main` | `.github/workflows/en-sweep.yml` (installed by `/en-setup`) |
-| Manual (`/en-sweep`) | User runs the slash command |
+| Scheduled cadence | `.github/workflows/en-sweep.yml` cron (set during `/en-setup`; default `0 9 * * 1` — weekly Mon 9am UTC). Configurable: `daily` / `weekly` / `monthly` named values, or any literal cron expression. |
+| `workflow_dispatch` | Manual fire from the Actions UI; bypasses the activity gate. |
+| Manual (`/en-sweep`) | User runs the slash command locally for ad-hoc cleanup. |
+
+**Activity gate.** Before the sweep job runs, `bin/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the patterns `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`, `chore(docs):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently — no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
 
 The CI invocation routes through `bin/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner).
 
@@ -88,13 +91,18 @@ The doc-only contract is enforced at three points:
 
 ## Loop guards
 
-Five guards prevent self-trigger cascades. Per `references/sweep-loop-guards.md`:
+With the move to scheduled triggers, sweep can no longer fire on its own commits — the cron schedule is the rate-limiter. Two guards remain primary; the others are defensive only. Per `references/sweep-loop-guards.md`:
 
-1. Skip sweep-authored commits (commit message prefix or author).
-2. Concurrency group: only one sweep run per branch at a time.
-3. Sweep PR labeling: skip merges of PRs labeled `en-sweep`.
-4. No-material-diff termination: silent exit if no batches.
-5. Recursion depth cap: hard cap at depth 1.
+1. **Concurrency group** (still primary) — only one sweep run per branch at a time. Prevents overlapping cron + manual runs.
+2. **No-material-diff termination** (still primary) — Guard 4 in the old numbering. Silent exit when sweep produces no batches. Inside the skill at step 9.
+3. **Recursion depth cap** (still primary) — hard cap at `ENSEMBLE_SWEEP_DEPTH=1`. Defends against an LLM dispatching `/en-sweep` from inside another sweep.
+
+**Defensive (no longer load-bearing):**
+
+- Skip sweep-authored commits (was Guard 1) — moot with scheduled triggers; the activity gate already filters them out via `--invert-grep` against the same patterns.
+- Skip sweep-PR-labeled merges (was Guard 3) — moot with scheduled triggers; sweep doesn't fire on PR-merge events anymore.
+
+Both patterns are still recognized by the activity gate so they're effectively in place — they're no longer separate workflow steps because they can't be triggered.
 
 ## Auto-merge eligibility
 
@@ -127,6 +135,7 @@ Otherwise: PR stays open for human resolution.
 - `bin/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
 - `bin/ensemble-doc-only-check` — runtime allowlist enforcement
 - `bin/ensemble-lint` — file-shape lint runner
+- `bin/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
 
 ## Failure protocol
 

@@ -93,6 +93,13 @@ learnings_cross_project: false
 # --- Sweep ---
 
 # sweep:
+#   # Cadence — substituted into .github/workflows/en-sweep.yml at /en-setup
+#   # install time. Named values (`daily`/`weekly`/`monthly`) map to canonical
+#   # cron expressions; any other value is treated as a literal cron passthrough.
+#   # Default `weekly` (Monday 9am UTC). Edit the workflow file directly to
+#   # tweak after install — re-running /en-setup respects the schedule already
+#   # in the workflow unless you explicitly opt to regenerate.
+#   schedule: weekly                     # daily | weekly | monthly | <cron expression>
 #   ci_timeout_minutes: 30
 #   max_prs_per_run: 6
 #   # Dead-code + dep-vuln continuous monitoring.
