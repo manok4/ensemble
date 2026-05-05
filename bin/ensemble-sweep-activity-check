@@ -69,7 +69,10 @@ if [ -z "$LAST_SWEEP_SHA" ]; then
 fi
 
 # Count non-sweep commits since LAST_SWEEP_SHA on the target branch.
-NEW_COMMITS=$(git log -E "$LAST_SWEEP_SHA..$BRANCH" --invert-grep --grep="$SWEEP_PATTERN" --pretty=format:'%H' 2>/dev/null | grep -c . || echo 0)
+# Use --oneline + wc -l (rather than grep -c .) — grep -c exits 1 on zero
+# matches, which made `|| echo 0` *append* to a partial pipeline output.
+NEW_COMMITS=$(git log -E "$LAST_SWEEP_SHA..$BRANCH" --invert-grep --grep="$SWEEP_PATTERN" --oneline 2>/dev/null | wc -l | tr -d ' \t\n')
+NEW_COMMITS=${NEW_COMMITS:-0}
 
 if [ "$NEW_COMMITS" -eq 0 ]; then
   SHORT_SHA=$(echo "$LAST_SWEEP_SHA" | cut -c1-7)
