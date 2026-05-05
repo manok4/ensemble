@@ -111,11 +111,18 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
       > "Auto-merge is disabled at the repo level. `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` won't be able to enable auto-merge on PRs until you flip Settings → General → 'Allow auto-merge' on. Skipping for now — this is a manual repo setting."
 
     Idempotent. Don't try to flip it via API — that requires admin scope and is the kind of repo-policy change a human should make explicitly.
-14. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
+14. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
+    > "`REVIEW.md` is a project-root file that tunes how PR review behaves on this repo — severity calibration, nit caps, skip rules, repo-specific checks, convergence behavior on multi-round reviews. Read automatically by Anthropic's managed Code Review service (Team/Enterprise plans); for the self-hosted action, the workflow's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action'). Seed `REVIEW.md` from the Ensemble-flavored default template? (`y` / `n`)"
+
+    On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
+    On `n` → record in the report; skip.
+
+    Idempotent — if `REVIEW.md` already exists, note its presence and skip.
+16. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
     > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/patterns/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
 
     Don't auto-run it. The user decides.
-15. **Recommend next steps:**
+17. **Recommend next steps:**
     ```
     Two paths:
       - Run /en-foundation --retrofit to back-fill docs/foundation.md and docs/architecture.md from existing code.
@@ -177,6 +184,7 @@ Created:
   - docs/learnings/{index.md,log.md}
   - docs/generated/{plan-index.md,learning-index.md}
   - CLAUDE.md (from template)
+  - REVIEW.md (review-only instructions; from template)
   - .github/workflows/en-sweep.yml
   - .github/workflows/claude-code-review.yml (Anthropic Code Review action)
   - .ensemble/config.local.example.yaml
@@ -224,7 +232,8 @@ Next step:
 - `references/learn-log-format.md` — `learnings/log.md` empty-state seed
 - `references/host-detect.md` — host detection (used briefly at start)
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
-- `references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 14
+- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
+- `references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook
 - `bin/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
