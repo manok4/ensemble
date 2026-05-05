@@ -136,4 +136,45 @@ else
   fail "mock-peer harness replay" "expected verdict=approve in: $output"
 fi
 
+# --- Sequenced mock-peer: drives the /en-plan finalize loop simulation ---
+# /en-plan calls peer N times during the finalize loop (initial + revise re-reviews).
+# This harness lets a future test feed revise → revise → approve and inspect
+# how the loop walks the resolution log.
+TMP_SHIM=$(mktemp -d)
+mock_peer_install_sequence "$TMP_SHIM" \
+  "$FIXTURE_DIR/revise-with-findings.json" \
+  "$FIXTURE_DIR/revise-with-findings.json" \
+  "$FIXTURE_DIR/clean-approve.json"
+
+# Call 1: revise
+out1=$(PATH="$TMP_SHIM:$PATH" claude -p "iter 1" 2>/dev/null)
+v1=$(echo "$out1" | jq -r '.verdict')
+assert_eq "revise" "$v1" "sequenced peer call 1 returns revise"
+
+# Call 2: revise
+out2=$(PATH="$TMP_SHIM:$PATH" codex exec "iter 2" 2>/dev/null)
+v2=$(echo "$out2" | jq -r '.verdict')
+assert_eq "revise" "$v2" "sequenced peer call 2 returns revise"
+
+# Call 3: approve
+out3=$(PATH="$TMP_SHIM:$PATH" claude -p "iter 3" 2>/dev/null)
+v3=$(echo "$out3" | jq -r '.verdict')
+assert_eq "approve" "$v3" "sequenced peer call 3 returns approve"
+
+# Counter recorded all three invocations
+calls=$(mock_peer_sequence_calls "$TMP_SHIM")
+assert_eq "3" "$calls" "sequenced peer counter advanced for each call"
+
+# Call 4 should error: sequence exhausted (errexit isn't set, so the failing
+# call doesn't abort the script — we capture the exit code via $?)
+out4=$(PATH="$TMP_SHIM:$PATH" claude -p "iter 4" 2>&1)
+rc4=$?
+if [ "$rc4" -ne 0 ] && echo "$out4" | grep -q "sequence exhausted"; then
+  pass "sequenced peer errors after exhaustion"
+else
+  fail "sequenced peer should error past sequence end" "rc=$rc4 out=$out4"
+fi
+
+mock_peer_uninstall "$TMP_SHIM"
+
 report
