@@ -11,6 +11,7 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
   "summary": "<2-3 sentence overall assessment>",
   "findings": [
     {
+      "finding_id": "<stable id; peer-supplied or host-minted as `<iteration>-<index>` (e.g. `1-3`)>",
       "severity": "P0 | P1 | P2 | P3",
       "confidence": 1,
       "title": "<short title>",
@@ -42,6 +43,7 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 | `findings[].autofix_class` | optional | When the reviewer is confident in the routing; otherwise host classifies. See `references/severity.md`. |
 | `findings[].u_id` | optional | Plan unit ID this finding relates to (e.g., `U3`). Used by `en-build` per-unit dispatch. |
 | `findings[].covers_requirement` | optional | Foundation requirement ID this finding relates to (e.g., `R7`). Used by traceability lints. |
+| `findings[].finding_id` | recommended | Stable id used by `/en-plan`'s resolution log (`peer_review_resolutions:`). Peer can supply one; if absent, the host mints `<iteration>-<index>` (e.g. `1-3` = third finding from iteration 1). Required for re-review iterations to track applied/deferred/disagreed status across passes. |
 
 ## Validation rules the host applies
 

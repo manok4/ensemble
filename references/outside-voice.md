@@ -66,6 +66,20 @@ ARTIFACT (verbatim):
 {ARTIFACT_BODY}
 ---
 
+{IF ARTIFACT_TYPE == "plan":}
+PLAN-SPECIFIC REVIEW DIMENSIONS:
+In addition to general critique, explicitly evaluate **risk classification correctness** for each unit:
+  - Is `risk:` consistent with what the unit's `approach:` actually does? Flag misclassifications. Examples:
+    - A unit with `DROP TABLE` / `TRUNCATE` / mass `DELETE` marked anything other than `destructive`.
+    - A backfill over a large row count marked `low` or `medium`.
+    - An admin endpoint or feature flag flip not marked `gated: true`.
+    - A migration unit marked `low`.
+  - Is the unit's phase placement (derived from `risk:`) appropriate? A `low` unit that depends on a `destructive` unit is a structural error — flag it.
+  - Are gated units actually gated? Look for admin endpoints, third-party API calls with rate-limit risk, or customer-facing flag flips that lack `gated: true`.
+
+These are correctness findings (severity P0/P1) — a misclassified destructive unit could land without the mandatory `/en-build` confirmation.
+{ENDIF}
+
 RETURN VALID JSON ONLY (no prose outside the JSON):
 {
   "verdict": "approve | revise | reject",
@@ -73,6 +87,7 @@ RETURN VALID JSON ONLY (no prose outside the JSON):
   "summary": "<2-3 sentence overall assessment>",
   "findings": [
     {
+      "finding_id": "<optional stable id; host mints `<iteration>-<index>` if absent>",
       "severity": "P0|P1|P2|P3",
       "confidence": <1-10>,
       "title": "<short title>",
@@ -92,6 +107,7 @@ RULES:
 - "peer_mode" must echo the mode the host passed in.
 - If the artifact is solid, "verdict: approve" with summary and zero findings is correct.
 - Output JSON only. No commentary, no preamble, no closing remarks.
+- For plan reviews on iterations > 1, treat the `## Previous review context` section as authoritative: do not re-flag findings already marked applied/deferred/disagreed unless you have new evidence.
 ```
 
 ## How the host invokes it
@@ -117,13 +133,40 @@ Notes:
 - The host parses the JSON, applies findings it agrees with (per `references/severity.md`), defers to `tech-debt-tracker.md`, or disagrees with rationale.
 - Timeout: respect `peer_timeout_seconds` from `~/.ensemble/config.json` (default 600 seconds).
 
+## Re-review iterations (`/en-plan` finalize loop)
+
+When `/en-plan` re-runs the peer pass after applying findings (per the
+finalize-loop spec — depth-aware iteration cap: lightweight=1, standard=2,
+deep=2), the prompt prepends a `## Previous review context` section:
+
+```text
+## Previous review context (iteration {N})
+
+This is iteration {N+1} of finalization. Verify previously-applied findings
+actually resolve the concern, and surface only NEW issues or unresolved-from-
+previous. Do not re-litigate findings listed below unless you have new
+evidence.
+
+### Applied (peer should verify the fix landed):
+- [{finding_id}] {title} — {applied_summary}
+
+### Deferred (do NOT re-flag):
+- [{finding_id}] {title} — Rationale: {rationale}
+
+### Disagreed-with (do NOT re-flag unless new evidence):
+- [{finding_id}] {title} — Rationale: {rationale}
+```
+
+The host assembles this section from the plan's `peer_review_resolutions:`
+frontmatter — never from the human-readable iteration log.
+
 ## Verdict handling
 
 | Verdict | Host behavior |
 |---|---|
-| `approve` | Continue. Note the verdict in the artifact's progress report. |
-| `revise` | Walk findings; apply, defer, or disagree per `references/severity.md`. Re-verify if any code changed. |
-| `reject` | Pause and surface to user. Don't proceed without explicit confirmation. |
+| `approve` | Continue. On `/en-plan` finalize: write `peer_review_plan_hash`, flip `status: draft → open`, auto-commit the plan file (per finalize-loop spec). |
+| `revise` | Walk findings; apply, defer, or disagree per `references/severity.md`. Write structured entries to `peer_review_resolutions:`. Re-verify if any code changed. **`/en-plan` re-runs the peer pass automatically (subject to depth-aware iteration cap)** unless `--no-reloop` was passed. |
+| `reject` | Pause and surface to user. Don't proceed without explicit confirmation. Status stays `draft`. |
 
 ## Failure handling
 

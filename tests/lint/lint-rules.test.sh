@@ -603,4 +603,416 @@ else
   pass "bootstrap rule silent once entry is validated"
 fi
 
+# --- unit.risk-class: new-style plan missing Risk fires P1 ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR60-no-risk.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR60
+title: No-risk-field plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR60
+
+### U1. First unit
+
+- **Goal:** do something
+- **Files:** src/foo.ts
+- **Approach:** straightforward
+EOF
+assert_rule_fires "unit.risk-class" "new-style plan with unit missing Risk:"
+
+# --- unit.risk-class: invalid value fires ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR61-bad-risk.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR61
+title: Bad-risk plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR61
+
+### U1. First unit
+
+- **Goal:** do something
+- **Risk:** kinda-risky
+- **Files:** src/foo.ts
+- **Approach:** straightforward
+EOF
+assert_rule_fires "unit.risk-class" "invalid Risk: enum value"
+
+# --- unit.risk-class: legacy plan (no peer_review_resolutions field) gets P3 advisory only ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR62-legacy.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR62
+title: Legacy plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# FR62
+
+### U1. Pre-spec unit
+
+- **Goal:** do something
+- **Files:** src/foo.ts
+- **Approach:** straightforward
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q '\[P3\] unit.risk-class'; then
+  pass "legacy plan missing Risk fires P3 advisory (not P1)"
+else
+  fail "legacy plan should fire P3 unit.risk-class advisory" "$(echo "$output" | grep risk-class)"
+fi
+if echo "$output" | grep -q '\[P1\] unit.risk-class'; then
+  fail "legacy plan should NOT fire P1 unit.risk-class" "$(echo "$output" | grep -E '\[P1\] unit.risk-class')"
+else
+  pass "legacy plan does NOT fire P1 unit.risk-class"
+fi
+
+# --- unit.risk-class + unit.gated-flag: clean fixture passes ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR63-clean.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR63
+title: Clean fixture
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR63
+
+### U1. Clean unit
+
+- **Goal:** do something
+- **Risk:** medium
+- **Category:** feature
+- **Reversibility:** reversible
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** straightforward
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+rc="${result##*|||}"
+if [ "$rc" -eq 0 ] || ! echo "$output" | grep -qE 'unit\.(risk-class|gated-flag|category-enum)'; then
+  pass "clean new-style plan fires no risk/gated/category violations"
+else
+  fail "clean fixture unexpectedly fired" "$(echo "$output" | grep -E 'unit\.')"
+fi
+
+# --- unit.category-enum: bad category fires ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR64-bad-cat.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR64
+title: Bad-category plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR64
+
+### U1. Unit
+
+- **Goal:** do something
+- **Risk:** medium
+- **Category:** newfangled
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+EOF
+assert_rule_fires "unit.category-enum" "invalid Category: enum"
+
+# --- phase-invariant.dependency-vs-risk: low depends on destructive fires ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR65-bad-deps.md" <<EOF
+---
+type: plan
+plan_type: improvement
+plan_id: FR65
+title: Phase-invariant-violating plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR65
+
+### U1. Drop the table
+
+- **Goal:** drop legacy_users
+- **Risk:** destructive
+- **Category:** drop
+- **Gated:** false
+- **Dependencies:** none
+- **Files:** migrations/0001_drop.sql
+- **Approach:** DROP TABLE
+
+### U2. Add a docstring
+
+- **Goal:** add comment to module
+- **Risk:** low
+- **Category:** observability
+- **Gated:** false
+- **Dependencies:** U1
+- **Files:** src/foo.py
+- **Approach:** add docstring referring to dropped table
+EOF
+assert_rule_fires "phase-invariant.dependency-vs-risk" "low-risk depends on destructive"
+
+# --- phase-invariant.dependency-vs-risk: same-tier or descending order does NOT fire ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR66-good-deps.md" <<EOF
+---
+type: plan
+plan_type: improvement
+plan_id: FR66
+title: Phase-invariant-respecting plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR66
+
+### U1. Add docstring
+
+- **Goal:** docs
+- **Risk:** low
+- **Category:** observability
+- **Gated:** false
+- **Dependencies:** none
+- **Files:** src/foo.py
+- **Approach:** straightforward
+
+### U2. Drop the table
+
+- **Goal:** cleanup
+- **Risk:** destructive
+- **Category:** drop
+- **Gated:** false
+- **Dependencies:** U1
+- **Files:** migrations/0001_drop.sql
+- **Approach:** DROP TABLE
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q "phase-invariant.dependency-vs-risk"; then
+  fail "phase-invariant fired on valid descending-risk dependency" "$(echo "$output" | grep phase-invariant)"
+else
+  pass "phase-invariant silent on valid risk-tier dependency (low → destructive)"
+fi
+
+# --- peer-review-resolutions.schema: missing required field fires ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR67-bad-res.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR67
+title: Bad-resolution-entry plan
+status: draft
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_verdict: revise
+peer_review_resolutions:
+  - finding_id: 1-1
+    severity: P1
+    status: applied
+    title: Race in refresh path
+---
+
+# FR67
+
+### U1. Unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+EOF
+assert_rule_fires "peer-review-resolutions.schema" "resolution entry missing iteration"
+
+# --- peer-review-resolutions.schema: deferred without rationale fires ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR68-no-rationale.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR68
+title: Deferred-without-rationale plan
+status: draft
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_verdict: revise
+peer_review_resolutions:
+  - finding_id: 1-2
+    iteration: 1
+    severity: P2
+    title: Edge case
+    status: deferred
+---
+
+# FR68
+
+### U1. Unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+EOF
+assert_rule_fires "peer-review-resolutions.schema" "deferred entry without rationale"
+
+# --- peer-review-resolutions.schema: clean entry passes ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR69-clean-res.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR69
+title: Clean-resolution plan
+status: draft
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_verdict: revise
+peer_review_resolutions:
+  - finding_id: 1-1
+    iteration: 1
+    severity: P1
+    title: Race in refresh path
+    status: applied
+  - finding_id: 1-2
+    iteration: 1
+    severity: P2
+    title: Edge case
+    status: deferred
+    rationale: lower confidence; tracked in TD12
+---
+
+# FR69
+
+### U1. Unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -q "peer-review-resolutions.schema"; then
+  fail "schema rule fired on clean resolution entries" "$(echo "$output" | grep peer-review-resolutions)"
+else
+  pass "schema rule silent on well-formed resolution entries"
+fi
+
+# --- frontmatter.invalid-enum: peer_review_verdict bad value ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR70-bad-verdict.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR70
+title: Bad-verdict plan
+status: draft
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_verdict: maybe
+peer_review_resolutions: []
+---
+
+# FR70
+
+### U1. Unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+EOF
+assert_rule_fires "frontmatter.invalid-enum" "invalid peer_review_verdict"
+
+# --- frontmatter.invalid-enum: data_scale bad value ---
+setup_minimum
+cat > "$TMP/docs/plans/active/FR71-bad-scale.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: FR71
+title: Bad-scale plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+data_scale: enormous
+---
+
+# FR71
+
+### U1. Unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+EOF
+assert_rule_fires "frontmatter.invalid-enum" "invalid data_scale"
+
 report

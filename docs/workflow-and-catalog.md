@@ -182,21 +182,27 @@ Every skill that runs cross-review enforces these:
 
 | | |
 |---|---|
-| **Purpose** | Concrete implementation plan with per-unit Goal / Files / Approach / Execution note / Test scenarios / Verification |
+| **Purpose** | Concrete implementation plan with per-unit Goal / Files / Approach / **Risk / Category / Reversibility / Gated** / Execution note / Test scenarios / Verification |
 | **Output** | `docs/plans/active/FR<NN>-<slug>.md` (auto-incremented FRXX) |
 | **U-ID stability** | Never renumbered after assignment; splitting keeps original ID on original concept |
 | **Research** | Phase 1 parallel dispatch: `repo-research` + `learnings-research`; `web-research` conditional |
-| **Cross-review** | On by default; auto-skipped if `< skip_peer_below_lines` (default 50) or Lightweight depth |
+| **Cross-review + finalize loop** | Peer fires on draft. On `revise`, applies findings to `peer_review_resolutions:` (machine-readable) and re-invokes peer with previous-review context. Depth-aware iteration cap: lightweight=1, standard=2, deep=2. On `approve`: writes `peer_review_plan_hash`, flips `status: draft → open`, auto-commits the plan file. |
+| **Risk classification** | Author sets `risk: low\|medium\|high\|destructive` per unit; drives `/en-build` phase placement. Plan-write-time invariant check refuses plans where a low-risk unit depends (transitively) on a higher-risk unit. |
+| **Cross-review (Outside Voice)** | On by default; peer prompt cross-checks risk classification + gated-flag presence + dependency-vs-phase invariants. Auto-skipped if `< skip_peer_below_lines` (default 50) or Lightweight depth. |
 | **State-2 fallback** | Plans before foundation retrofit carry `requirements_pending: true` and `covers_requirements: []`; lint emits P3 advisory until foundation has R-IDs |
 
 ### 5. `/en-build` — execute a plan unit-by-unit
 
 | | |
 |---|---|
-| **Purpose** | Implement a plan with cross-agent peer review at every per-unit gate |
+| **Purpose** | Implement a plan with cross-agent peer review at every per-unit gate, with risk-class phasing for plans of size/complexity that warrant it |
 | **Two flavors** | **Build-by-orchestration** (host=Claude → dispatch Codex as WORKER); **Build-handoff** (host=Codex → implement natively, dispatch Claude as PEER-REVIEWER) |
-| **Per-unit pipeline** | Implement → Gate 1 (tests + lint) → `code-simplifier` → Gate 2 (revert simplifier on failure) → Outside Voice peer review → host applies findings (apply / defer to TD-tracker / disagree) → re-verify → commit |
-| **Batch sizing** | Dynamic per feature: tightly-coupled units batch together; auth/payments/migrations batch alone |
+| **Pre-flight** | Sub-state matrix on `peer_review_verdict` + `peer_review_resolutions:`. Recoverable `draft + revise` plans (all findings resolved) get a single finalize-and-build prompt. Untracked but `open` plans get a single auto-commit prompt. Legacy plans without the new frontmatter use an explicit inference table. |
+| **Universal safety gates** | Apply on EVERY code path (phasing on/off, `--unit`, `--from`): `risk: destructive` requires `"run unit U<N>"` literal-string; `gated: true` requires y/skip/abort. **No flag disables these.** |
+| **Phasing** | Multi-trigger detection: ≥8 units, `depth: deep`, any destructive unit, ≥2 high-risk, ≥2 migrations, `data_scale: large`. Phases P1 measurement → P2 additive → P3 migration → P4 destructive. Default auto-roll between phases; `--pause` opts in to per-phase prompts. P4 always requires `"run phase 4"` literal-string. |
+| **Per-unit pipeline** | Universal safety gate → Implement → Gate 1 (tests + lint) → `code-simplifier` → Gate 2 (revert simplifier on failure) → Outside Voice peer review → host applies findings (apply / defer to TD-tracker / disagree) → re-verify → commit (with `phase: P<N>` trailer) |
+| **Per-phase verification** | After each phase: project default test suite + lint + typecheck + `peer_review_plan_hash` re-check (against immutable plan-input fields) + working-tree contract. Failure stops; next phase doesn't start. |
+| **Ctrl-C / abort** | **Clean stop. No signal-time git operations.** Surfaces state and resume instructions; user runs `--commit-wip` separately if a WIP commit is desired. |
 | **Cross-review** | On per-unit; `--no-peer-per-unit` disables |
 | **Auto-invokes `/en-learn`** | Soft prompt at end of build |
 
