@@ -7,7 +7,9 @@ description: "Execute an implementation plan unit-by-unit on a feature branch. P
 
 Execute a plan, unit by unit, with cross-agent peer review at every per-unit gate. Two flavors based on host detection — both guarantee implementer ≠ reviewer.
 
-> **Hard preconditions.** A plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`; `<PREFIX>` from foundation's `plan_id_prefix`, default `FR`) with `status: open` (or `in_progress` when resuming), all U-IDs present, no unblocked dependencies. The skill verifies these at start.
+> **Hard preconditions.** A plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`; `<PREFIX>` from foundation's `plan_id_prefix`, default `FR`) with `status: open` (or `in_progress` when resuming), all U-IDs present, no unblocked dependencies. The skill verifies these at start. **Recoverable `status: draft`** (verdict `revise` with all findings resolved in `peer_review_resolutions:`) is offered a single finalize-and-build prompt instead of refused.
+
+> **Universal safety gates** (apply on EVERY code path — phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See "Universal safety gates" section below.
 
 ## Process
 
@@ -20,7 +22,41 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
    - If the dispatched agent's CLI isn't available, fall back gracefully:
      - build-by-orchestration with no Codex → degrade to native implement + peer review (build-handoff with same-agent fallback).
      - build-handoff with no Claude → fall back to single-agent peer review (`codex exec` fresh subprocess).
-4. **Load plan.** Read `<plan-path>`. Verify `status` is `open` or `in_progress`; refuse `draft` (peer review hasn't cleared) and `completed`/`abandoned`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios. If not, surface and stop. If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched).
+4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios, **Risk, Gated** (or fall back to inference for legacy plans without `risk:`).
+
+    **Pre-flight sub-state matrix** — read `peer_review_verdict` and the count of unresolved entries in `peer_review_resolutions:` (an entry is "unresolved" when its `status` is absent or anything other than `applied | deferred | disagreed | superseded`):
+
+    | status | verdict | unresolved findings | git tracked | Pre-flight action |
+    |---|---|---|---|---|
+    | `open` | `approve` | 0 | yes | Proceed to step 4a |
+    | `open` | `approve` | 0 | **no** | Offer auto-commit (one prompt), then proceed |
+    | `draft` | `revise` | 0 | yes or no | **Offer finalize-and-build:** one prompt to re-run the peer pass via `/en-plan`'s finalize loop, on `approve` flip to `open`, auto-commit, then proceed |
+    | `draft` | `revise` | > 0 | any | Refuse; list the unresolved findings; ask the user to apply/defer/disagree first via `/en-plan --resume` |
+    | `open` | `null` | n/a | yes | Proceed (`--no-peer` was used; no peer expected) |
+    | `open` | `null` | n/a | **no** | Offer auto-commit, then proceed |
+    | `draft` | `null` | n/a | any | Refuse; peer review never ran. Suggest `/en-plan --resume <plan-path>`. |
+    | `draft` | `reject` | any | any | Refuse; user must take over. Surface `peer_review_resolutions:` for context. |
+    | `completed` / `abandoned` | any | any | any | Refuse |
+
+    **Legacy inference** (plans drafted before the new frontmatter exists, i.e. no `peer_review_verdict` field):
+
+    | Legacy signal | Inferred state |
+    |---|---|
+    | `status: draft` AND a parseable iteration log shows applied/deferred/disagreed entries | Treat as `peer_review_verdict: revise` + reconstructed `peer_review_resolutions` (best-effort, flagged `inferred: true`); offer finalize-and-build with a legacy notice |
+    | `status: draft` AND no iteration log | Treat as `peer_review_verdict: null`; refuse |
+    | `status: open` AND no peer-review fields | Treat as `peer_review_verdict: null` AND `--no-peer` was the path; accept |
+    | `status: open` AND iteration log shows final `verdict: approve` | Treat as `peer_review_verdict: approve`; accept |
+    | Any other ambiguous combination | Refuse with a clear instruction to re-run `/en-plan --resume <plan-path>` |
+
+    Recovery prompt (when offering finalize-and-build):
+
+    > Plan is in draft. Findings from the last peer review (verdict: revise) appear to be applied (resolutions: 8 applied, 0 deferred, 0 disagreed). I can finalize now: re-run the peer pass, flip to `open` on approve, and commit the plan. Then proceed with `/en-build`. (y / n / details)
+
+    `--no-finalize` disables the recovery offer; `--finalize-only` runs finalize and stops without building.
+
+   **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one from current immutable fields and record it (but skip the boundary check this run; surface a notice).
+
+   **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 5. **Set up branch.**
    - If on default branch → create `<fr-id>-<slug>` feature branch.
    - If on a feature branch → use it.
@@ -32,20 +68,74 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
    - Independent units → larger batch (3–5).
    - Tightly-coupled units → smaller batch (1–2).
    - Auth/payments/migrations → batch alone.
-9. **For each unit (in dependency order):**
-   - **8a. Honor execution note** (test-first / characterization-first / pragmatic).
-   - **8b. Implement** via the flavor's flow (worker dispatch or native).
-   - **8c. Verification gate 1.** Run unit tests + project lint. Failures → fix before proceeding (don't advance to simplifier or review on broken unit).
-   - **8d. Code-simplifier pass.** Per `references/code-simplifier-dispatch.md`. Skip on trivial units, on `--no-simplify`, or with the auto-skip heuristics.
-   - **8e. Verification gate 2.** Re-run unit tests after simplifier. On failure: revert simplifier's changes (`git restore` for files in `changes_made[]`); proceed with original implementation; surface regression.
-   - **8f. Outside Voice peer review.** Per the chosen flavor (`build-orchestration.md` or `build-handoff.md`). Set `ENSEMBLE_PEER_REVIEW=true` for any subprocess call.
-   - **8g. Host applies findings** per `references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale.
-   - **8h. Surface to user** if peer reports a P0 the host disagrees with, or a security/architecture finding (confidence ≥ 8) the host wants to defer, or peer verdict = `reject`. All other host decisions proceed without confirmation.
-   - **8i. Re-verify** if any code changed in 8g — unit tests + lint. On failure: revert; surface.
-   - **8j. Commit.** Conventional message including U-ID. Body lists peer findings handled (applied / deferred / disagreed). Format per `references/build-orchestration.md` or `build-handoff.md`.
+
+8a. **Phasing decision.** Compute `phasing_required` from these triggers (any one fires → phasing on):
+    - Unit count `>= 8`.
+    - `depth: deep` in plan frontmatter.
+    - Any unit with `risk: destructive`.
+    - `>= 2` units with `risk: high`.
+    - `>= 2` units with `category: migration | migration-additive`.
+    - `data_scale: large` in plan frontmatter.
+
+    User overrides: `--no-phasing` forces off, `--phasing` forces on, `--unit U<N>` and `--from U<N>` bypass phasing entirely (universal safety gates still apply per unit — see below).
+
+    **Phase classification** (when phasing is on): each unit maps to one of P1 (Measurement, `risk: low`), P2 (Additive, `risk: medium` except migration/backfill/schema-evolution categories), P3 (Migration / Backfill, `risk: high` OR `risk: medium` + migration/backfill/schema-evolution category), P4 (Destructive, `risk: destructive`). `risk:` is the single source of truth for phase placement; `category:` only carves out the `medium → P3` case for migrations. **Empty phases are collapsed silently.**
+
+    **Inference fallback** (legacy plans without `risk:`): single ordered classifier, **first match wins**:
+    1. **Destructive patterns** (highest priority): approach mentions `DROP TABLE`, `DROP SCHEMA`, `DROP DATABASE`, mass `DELETE` without `WHERE`, `TRUNCATE`, `rm -rf` against data dirs, `aws s3 rm --recursive`, `kubectl delete` against persistent resources, `terraform destroy` → `risk: destructive`.
+    2. **Destructive migrations**: `migrations/` or `alembic/` paths AND `ALTER COLUMN` (drop/rename/type-change), `DROP COLUMN`, `DROP INDEX` on populated index, destructive data transforms → `risk: high`, `category: migration`.
+    3. **Additive migrations**: `migrations/` paths AND additive only (`CREATE TABLE`, `ADD COLUMN` with default, `CREATE INDEX CONCURRENTLY`) → `risk: medium`, `category: migration-additive`.
+    4. **Backfill**: approach mentions iterating existing rows (UPDATE batch loop, ETL backfill) → `risk: high`, `category: backfill`.
+    5. **Observability/read-only**: files entirely under `tests/`, `docs/`, or configured observability paths → `risk: low`, `category: observability`.
+    6. **Fallback**: → `risk: medium`, `category: feature`.
+
+    When inference fires, surface a confirmation: *"Plan has no `risk:` metadata. Inferred classification: P1 (3), P2 (5), P3 (2), P4 (1). Review before continuing? (y/n)"*.
+
+    **Dependency-vs-phase invariant.** For every dependency edge `U → V`, verify `phase(V) <= phase(U)`. If a low-risk unit depends on a higher-risk unit (so `phase(V) > phase(U)`), **reject the plan as a structural error** with three remediation options (remove the dependency, promote `U.risk:`, or split `U`). Never silently bury the unit in a higher phase — that would violate the "phase contains only its own risk class" invariant and let the unit land after a confirmation typed for destructive work.
+
+8b. **Universal safety gates** (apply on EVERY execution path — phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume; **no flag disables them**):
+
+    For every unit selected for execution, classify it (using `risk:` or the ordered inference fallback) and enforce:
+
+    | Classification | Gate |
+    |---|---|
+    | `risk: destructive` | Literal-string confirmation `"run unit U<N>"` typed verbatim, with goal/files/approach surfaced first. (When the unit is part of an active P4 phase already group-confirmed via `"run phase 4"`, this per-unit gate is skipped — see step 9.) |
+    | `gated: true` | y/skip/abort confirmation, with goal and approach surfaced first. (Always per-unit; never group-confirmed.) |
+    | `risk: high` AND `--strict-destructive` | Literal-string confirmation `"run unit U<N>"`. (Skipped when the unit is part of an active P3 phase already group-confirmed via `"run phase 3"`.) |
+    | Anything else | No mandatory gate at the unit level. |
+
+    These are the primary safety boundary. Phase-level prompts (P4 `"run phase 4"`, opt-in `--pause`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
+
+9. **Phase loop (when phasing is on).** For each phase in `[P1, P2, P3, P4]`:
+   - Skip empty phases silently.
+   - Surface phase plan to user (units, files, risk summary).
+   - **Phase-level mandatory gates** (cannot be bypassed by any flag):
+     - If phase == P4: require literal-string `"run phase 4"`. Accepting covers all destructive units in the phase; per-unit destructive gates are NOT re-prompted within P4.
+     - If `--strict-destructive` AND phase == P3: require literal-string `"run phase 3"`. Same group-cover semantics.
+   - **Opt-in per-phase pause** (`--pause` flag, default off): ask y/pause/n. Default behavior is auto-roll into the next phase.
+   - For each unit in the phase (dependency order):
+     - **9a. Universal safety gate.** Apply per step 8b. Skip the per-unit destructive/high-risk gate if the corresponding phase-level confirmation already covers this unit. Always run the `gated: true` gate (never group-covered).
+     - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
+     - **9c. Implement** via the flavor's flow (worker dispatch or native).
+     - **9d. Verification gate 1.** Run unit tests + project lint. Failures → fix before proceeding (don't advance to simplifier or review on broken unit).
+     - **9e. Code-simplifier pass.** Per `references/code-simplifier-dispatch.md`. Skip on trivial units, on `--no-simplify`, or with the auto-skip heuristics.
+     - **9f. Verification gate 2.** Re-run unit tests after simplifier. On failure: revert simplifier's changes (`git restore` for files in `changes_made[]`); proceed with original implementation; surface regression.
+     - **9g. Outside Voice peer review.** Per the chosen flavor (`build-orchestration.md` or `build-handoff.md`). Set `ENSEMBLE_PEER_REVIEW=true` for any subprocess call.
+     - **9h. Host applies findings** per `references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale.
+     - **9i. Surface to user** if peer reports a P0 the host disagrees with, or a security/architecture finding (confidence ≥ 8) the host wants to defer, or peer verdict = `reject`. All other host decisions proceed without confirmation.
+     - **9j. Re-verify** if any code changed in 9h — unit tests + lint. On failure: revert; surface.
+     - **9k. Commit.** Conventional message including U-ID. Body lists peer findings handled (applied / deferred / disagreed). Append `phase: P<N>` to commit trailer for greppability and `/en-ship` summaries. Format per `references/build-orchestration.md` or `build-handoff.md`.
+   - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
+   - **Plan-hash check.** Re-compute `peer_review_plan_hash` over current immutable plan-input fields (excluding iteration log, per-unit `status`, `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
+   - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
+   - Surface phase summary (units, commits, peer findings, simplifier changes).
+   - If `--pause` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
+
+   **Phasing-off path** (when phasing was disabled by triggers, `--no-phasing`, `--unit`, `--from`): same per-unit loop (9a–9k), no phase grouping, no phase-level prompts. Universal safety gates (step 8b) still fire per unit on every selected destructive or gated unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent).
+
 10. **After all units:**
     - Full test suite, lint, typecheck.
-    - Summary: completion status per U-ID, deviations, simplifier changes, peer-review verdicts.
+    - Summary: completion status per U-ID, deviations, simplifier changes, peer-review verdicts. Per-phase summary if phasing was on.
     - **Auto-invoke `/en-learn`** (soft prompt — A3): "Build complete. Capture learnings? (yes / skip)". User accepts → invoke; user declines → no-op.
     - Suggest next: `/en-review` → `/en-qa` → `/en-ship`.
 
@@ -58,9 +148,20 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 | `--no-simplify` | Skip code-simplifier on every unit |
 | `--no-peer-per-unit` | Skip per-unit Outside Voice peer review |
 | `--worktree` | Run in a worktree (`../<repo>-<fr-id>/`) |
-| `--unit U<N>` | Build only the named unit; don't auto-advance |
+| `--unit U<N>` | Build only the named unit; don't auto-advance. Universal safety gates still apply. |
 | `--dry-run` | Show what would happen; don't write or commit |
-| `--from U<N>` | Resume from a specific unit (skip earlier ones) |
+| `--from U<N>` | Resume from a specific unit (skip earlier ones). Universal safety gates still apply per unit. |
+| `--no-phasing` | Force phasing off (universal safety gates still fire per unit) |
+| `--phasing` | Force phasing on even if no trigger fired |
+| `--from-phase P<N>` | Resume at phase N. Verifies prior phases' commits and a clean working tree before starting. |
+| `--pause` | Pause and prompt between phases (default is auto-roll). Mandatory destructive / gated-unit confirmations always fire regardless. |
+| `--strict-destructive` | Add literal-string confirmation for `risk: high` and Phase 3 in addition to P4 / `risk: destructive` (which always require it). |
+| `--no-finalize` | Disable the recovery offer for `draft + revise` plans; refuse on draft as today. |
+| `--finalize-only` | Run finalize loop and stop without building. |
+| `--commit-wip` | After a stopped run (Ctrl-C, gate-failure, etc.), create a `wip/<plan_id>-phase<N>` branch and commit current state. Explicit user invocation only — never automatic. |
+| `--re-baseline` | After reviewing an external plan-file diff, accept the new state as the build's baseline `peer_review_plan_hash`. |
+
+**No flag disables universal safety gates.** Every flag changes phasing, pacing, or selection; none turn off destructive / gated confirmations.
 
 ## Cross-review
 
@@ -90,9 +191,9 @@ Two verification gates protect against simplifier breakage. On Gate-2 failure, r
 After each unit commits, surface a one-line summary:
 
 ```
-✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight
+✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
   Implementer: codex (worker) | Simplifier: 2 changes | Peer: applied 1, deferred 1
-  Tests: 7 added, 7 passing | Commit: a3f1b9c
+  Tests: 7 added, 7 passing | Commit: a3f1b9c (trailer: phase: P2)
 ```
 
 ## Final summary
@@ -136,18 +237,28 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 | Failure | Behavior |
 |---|---|
 | Plan has unmet dependency (`Depends: U7` but U7 not present) | Stop; surface; suggest plan revision |
+| Plan structure violates phase invariant (low-risk depends on higher-risk) | Reject the plan with three remediation options: remove the dependency, promote the unit's `risk:`, or split the unit. Never silently bury units across phases. |
+| Plan in `status: draft` with unresolved `peer_review_resolutions:` | Refuse build; list unresolved findings; suggest `/en-plan --resume`. |
+| Plan in `status: draft + revise` with all resolutions cleared | Offer finalize-and-build single prompt (recovery flow). On y, run `/en-plan` finalize loop, flip to `open`, commit, then proceed. |
+| Plan untracked in git but `status: open` and verdict cleared | Offer auto-commit single prompt; on y, commit and proceed. |
+| Plan-hash mismatch at phase boundary | Refuse to advance; surface that immutable plan-input fields changed during build; ask user to re-baseline (`--re-baseline`) or abort. |
 | Verification gate 1 fails on a unit | Pause; show test output; ask user: retry, skip, abort |
 | Verification gate 2 fails | Revert simplifier edits automatically; proceed with original; surface regression |
+| After-phase verification fails (full suite / lint / typecheck) | Stop. Do not advance to next phase. Surface failing tests; offer investigate / `--commit-wip` / abort. |
 | Peer review verdict = `reject` | Pause and surface to user before commit |
 | Peer subprocess attempts to modify files (D30 violation) | Detect via git status; revert; do not trust this round of findings; log violation |
 | Worker dispatch returns malformed diff | Retry once; on second failure, surface and ask user to take over the unit |
 | `git restore` fails on a revert | Surface; abort the build; do not leave the working tree corrupted |
-| User asks to abort mid-unit | Commit the unit's progress so far on a WIP branch; surface state |
+| User Ctrl-C mid-phase / mid-unit | **Stop cleanly. No signal-time git operations.** Surface: current branch, current unit (with completion state), dirty files, last successful commit. Provide explicit resume instructions (`/en-build --from U<N>` or `--from-phase P<M>`). User invokes `/en-build --commit-wip` separately if a WIP commit is desired. |
+| User asks to abort mid-unit | Same as Ctrl-C: clean stop, surface state, resume instructions. |
 
 ## What this skill never does
 
-- **Never modifies plan content.** Units, approach, scope, and U-IDs are `/en-plan` territory. The single exception is the lifecycle status flip (`open` → `in_progress`) at step 4 — bookkeeping only, no content changes.
+- **Never modifies plan content.** Units, approach, scope, and U-IDs are `/en-plan` territory. Lifecycle status flip (`open` → `in_progress`) at step 4 and unit `status` updates after each commit are bookkeeping only — no content changes.
 - **Never opens a PR.** PRs are `/en-ship` territory.
 - **Never deletes files outside the unit's scope.**
 - **Never bypasses verification gates.** A gate failure stops or reverts; never proceeds anyway.
+- **Never bypasses universal safety gates.** Destructive units and gated units always require explicit confirmation. No flag disables them.
+- **Never silently buries low-risk units in higher-risk phases.** Phase-invariant violations reject the plan structurally.
+- **Never auto-commits or auto-stashes on Ctrl-C / abort / signal.** No signal-time git operations. WIP commits are user-initiated only via `--commit-wip`.
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
