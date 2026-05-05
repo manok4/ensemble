@@ -48,6 +48,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write   # post review comments
+      id-token: write        # OIDC token for claude-code-action@v1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,7 +123,7 @@ If the action runs but posts no comments, it found nothing actionable (this is a
 If the action fails to start, check:
 
 - Secret name matches (`CLAUDE_CODE_OAUTH_TOKEN` vs `ANTHROPIC_API_KEY`).
-- `permissions:` block includes `pull-requests: write`.
+- `permissions:` block includes `pull-requests: write` **and** `id-token: write` (the action requires OIDC; without it you'll see "couldn't get an OIDC token" and the run fails before any review).
 - The PR isn't from a fork (forks have restricted secrets access by default).
 
 ## Where this fits in the Ensemble flow
