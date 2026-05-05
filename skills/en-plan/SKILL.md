@@ -84,7 +84,21 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
         - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
       - On `verdict: reject` → pause, surface to user, leave `status: draft`. Do not re-loop.
       - **Failure handling:** Peer timeout → surface, leave `status: draft`, no re-loop. Malformed JSON after one retry → same behavior.
-14. **Status flip on approve.** When the loop exits with `verdict: approve` (or when `--no-peer` was used), compute `peer_review_plan_hash` (sha256 over canonicalized immutable plan-input fields — see `references/templates/plan-template.md` lifecycle and the scope-aware-slicing spec for the exact field list), write it to frontmatter, and flip `status: draft → open`. The file stays in `active/`.
+14. **Promote to `open` (status flip).** The plan moves from `status: draft` to `status: open` in **every** path that produces a buildable plan, not just peer-approve. Specifically, flip to `open` when any of these is true:
+    - Peer ran and the loop exited with `verdict: approve`.
+    - `--no-peer` was passed (peer was deliberately skipped).
+    - `PEER_AVAILABLE=false` from host detection (peer unavailable; no flag needed).
+    - Peer was auto-skipped under `skip_peer_below_lines` (plan < 50 lines) or `skip_peer_on_lightweight: true` (Lightweight depth).
+    - Loop hit the iteration cap with `verdict: revise` AND the user chose "accept as-is" at the cap-hit prompt (per failure protocol).
+    - Peer returned `verdict: reject` AND the user explicitly overrode the rejection (per failure protocol).
+
+    On promotion: compute `peer_review_plan_hash` (sha256 over canonicalized immutable plan-input fields — see `references/templates/plan-template.md` lifecycle and the scope-aware-slicing spec for the exact field list), write it to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
+
+    The plan stays in `status: draft` ONLY when:
+    - Peer returned `verdict: reject` AND the user did NOT override.
+    - Peer subprocess timed out or returned malformed JSON (after one retry) AND the user has not yet decided.
+
+    In those `draft`-stuck cases, do not advance to step 15 (commit) or step 18 (hand-off to `/en-build`); surface state and stop. `/en-build`'s pre-flight will offer the recovery path on the next attempt if findings get resolved later.
 15. **Auto-commit the plan file.**
     - Branch policy: commit on the current branch (default `main` / `master` / `develop`, or whatever feature branch the user is on). Skip auto-commit on detached HEAD or unusual states; surface and ask.
     - Working-tree safety: refuse auto-commit if `git diff --cached` has unrelated staged changes; surface and ask the user to commit the plan manually. Untracked or unstaged changes to *other* files are fine — `git add` is invoked with the plan file path only, never `git add -A`.
@@ -187,7 +201,7 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 | Plan touches > 30 files | Surface size warning; offer to split into multiple FRs |
 | Two units claim the same file with conflicting changes | Flag as a planning bug; don't write the plan |
 | User accepts plan but peer review hasn't returned yet | Wait for peer (with timeout); if peer times out, plan is written without peer verdict; surface "peer review timed out" in the report |
-| Peer rejects the plan (verdict: reject) | Pause and ask user; do not flip status to `open` until user explicitly accepts |
+| Peer rejects the plan (verdict: reject) | Pause and surface the reject reason; leave `status: draft`. If the user explicitly overrides the rejection ("proceed anyway"), treat as approved: run step 14 (compute hash, flip `status: draft → open`, write `peer_review_verdict: reject` + a `peer_review_overridden: true` marker for audit) and continue to step 15 (auto-commit). The valid post-flip status is **`open`** — `active/` is the directory the file lives in, not a status value. |
 | Finalize loop hits iteration cap with `verdict: revise` | Surface latest findings; ask user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control. |
 | Re-review surfaces a finding the user previously disagreed with | Append finding to "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early. |
 | Auto-commit refused due to unrelated staged changes | Surface and skip the commit step; user finalizes manually. Plan still flips to `open`; just isn't tracked yet. `/en-build` pre-flight will offer auto-commit on next attempt. |

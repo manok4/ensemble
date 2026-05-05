@@ -114,7 +114,14 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
      - If `--strict-destructive` AND phase == P3: require literal-string `"run phase 3"`. Same group-cover semantics.
    - **Opt-in per-phase pause** (`--pause` flag, default off): ask y/pause/n. Default behavior is auto-roll into the next phase.
    - For each unit in the phase (dependency order):
-     - **9a. Universal safety gate.** Apply per step 8b. Skip the per-unit destructive/high-risk gate if the corresponding phase-level confirmation already covers this unit. Always run the `gated: true` gate (never group-covered).
+     - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Before doing ANY work on this unit:
+       1. **Classify the unit.** Read its `risk:` field; if absent, run the ordered classifier from step 8a's inference fallback to assign one. Read its `gated:` field (default `false`).
+       2. **If `risk: destructive`** AND the active phase has not already been group-confirmed (no `"run phase 4"` accepted for this phase): surface the unit's goal, files, and approach; require typed `"run unit U<N>"` (literal string, verbatim). Any other input → record the unit as `skipped` and advance to the next unit; if the user types `abort`, stop the build per the abort protocol.
+       3. **If `gated: true`** (regardless of risk class): surface the unit's goal and approach; require y/skip/abort. **This gate fires even when a phase-level `"run phase 4"` or `"run phase 3"` has been accepted** — gating is per-unit-only and never group-covered. On `skip`: record as `skipped` and continue. On `abort`: stop per the abort protocol.
+       4. **If `--strict-destructive` is set AND `risk: high`** AND the active phase has not been group-confirmed (no `"run phase 3"` accepted): same as step 2 with `"run unit U<N>"`.
+       5. Otherwise: proceed to 9b.
+       
+       This entire sequence runs identically on every code path — phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase`, manual resume. **No flag suppresses it.** The phase-level prompts above (P4 `"run phase 4"`, P3 under `--strict-destructive`) only group-confirm the *destructive* and *high-risk* gates inside their phase; they never cover `gated: true`, and they never apply on phasing-off paths.
      - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
      - **9c. Implement** via the flavor's flow (worker dispatch or native).
      - **9d. Verification gate 1.** Run unit tests + project lint. Failures → fix before proceeding (don't advance to simplifier or review on broken unit).
@@ -131,7 +138,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
    - Surface phase summary (units, commits, peer findings, simplifier changes).
    - If `--pause` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
 
-   **Phasing-off path** (when phasing was disabled by triggers, `--no-phasing`, `--unit`, `--from`): same per-unit loop (9a–9k), no phase grouping, no phase-level prompts. Universal safety gates (step 8b) still fire per unit on every selected destructive or gated unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent).
+   **Phasing-off path** (phasing disabled by triggers, `--no-phasing`, `--unit U<N>`, `--from U<N>`): same per-unit loop (9a–9k), no phase grouping, no phase-level prompts. Critically, **step 9a runs verbatim** on every selected unit — `--unit U8` against a destructive unit still requires `"run unit U8"` typed literally; `--from U3` against a plan that contains a gated unit still pauses for y/skip/abort on that unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent across phasing-on and phasing-off runs).
 
 10. **After all units:**
     - Full test suite, lint, typecheck.
@@ -250,7 +257,7 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 | Worker dispatch returns malformed diff | Retry once; on second failure, surface and ask user to take over the unit |
 | `git restore` fails on a revert | Surface; abort the build; do not leave the working tree corrupted |
 | User Ctrl-C mid-phase / mid-unit | **Stop cleanly. No signal-time git operations.** Surface: current branch, current unit (with completion state), dirty files, last successful commit. Provide explicit resume instructions (`/en-build --from U<N>` or `--from-phase P<M>`). User invokes `/en-build --commit-wip` separately if a WIP commit is desired. |
-| User asks to abort mid-unit | Same as Ctrl-C: clean stop, surface state, resume instructions. |
+| User asks to abort mid-unit | **Stop cleanly. Surface state and resume instructions.** Do NOT auto-commit, auto-stash, or auto-create a WIP branch — `abort` is a request to stop, not to preserve partial progress. WIP capture is opt-in via a separate `/en-build --commit-wip` invocation; the user must explicitly request it. |
 
 ## What this skill never does
 
