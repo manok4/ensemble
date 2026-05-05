@@ -45,10 +45,12 @@ Five contracts that govern the design:
    later unit in the same phase can be additive — Phase 4 is destructive-only.
 4. **Auto-roll is the default; pausing is opt-in — except where it's
    forced.** `/en-build` rolls through phases continuously by default.
-   `--pause` opts into per-phase confirmation. P4 (Destructive) and any
-   unit flagged `gated: true` ALWAYS pause and require explicit
-   confirmation, regardless of flags. The skill never silently runs through
-   destructive or gated work.
+   `--pause` opts into per-phase confirmation. **Universal safety gates**
+   (every `risk: destructive` unit and every `gated: true` unit) ALWAYS
+   require explicit confirmation, regardless of flags, regardless of
+   whether phasing is on, and regardless of whether the unit is being run
+   as part of a phase or via `--unit` / `--from`. The skill never silently
+   runs through destructive or gated work on any code path.
 5. **Backward compat for plans without risk metadata.** Plans drafted before
    this spec lands fall back to inference; existing `--unit` / `--from`
    flags still work and bypass phasing.
@@ -105,24 +107,44 @@ Add to each unit in the plan template:
   reversibility: trivial | reversible | rollback-required | irreversible
 ```
 
-`risk` is the single source of truth for phase placement. `category` is
-descriptive (used in summaries and inference). `reversibility` is informational.
+**Phase placement is determined solely by `risk:`.** Risk class → phase
+mapping is fixed (`destructive` → P4, `high` → P3, `medium` → P2 or P3
+depending on `category` only when `risk` is `medium` AND `category in
+{migration, backfill, schema-evolution}` (those sit in P3); all other
+`medium` → P2; `low` → P1 if `category in {observability, diagnostics,
+read-only}`, else P2). `category` carries no other authority over phase
+placement; it's metadata for human readability and ordered classification
+inputs. `reversibility` is informational only.
 
 ### Inference fallback (for plans without `risk:`)
 
-Plans drafted before #4 lands have no `risk:` field. Fallback rules, applied
-to each unit:
+Plans drafted before #4 lands have no `risk:` field. Inference is a **single
+ordered classifier** — rules are evaluated top-to-bottom, **first match
+wins**, no backtracking:
 
-1. Files contain `migrations/` or `alembic/` AND approach mentions DROP /
-   ALTER COLUMN / DELETE FROM → `risk: high`, `category: migration`.
-2. Files contain `migrations/` AND approach is purely additive (CREATE TABLE,
-   ADD COLUMN with default) → `risk: medium`, `category: migration-additive`.
-3. Approach mentions DROP TABLE, DROP SCHEMA, mass DELETE without WHERE,
-   `truncate`, `rm -rf` of data dirs → `risk: destructive`, `category:
-   deletion`.
-4. Files are entirely under `tests/`, `docs/`, or observability paths
-   (configurable per project) → `risk: low`, `category: observability`.
-5. Default → `risk: medium`, `category: feature`.
+1. **Destructive patterns** (highest priority). Approach mentions any of:
+   `DROP TABLE`, `DROP SCHEMA`, `DROP DATABASE`, mass `DELETE` without a
+   `WHERE` clause, `TRUNCATE`, `rm -rf` against data dirs, `aws s3 rm
+   --recursive`, `kubectl delete` against persistent resources, `terraform
+   destroy` → `risk: destructive`, `category: deletion`.
+2. **Destructive migrations**. Files under `migrations/` or `alembic/` AND
+   approach mentions `ALTER COLUMN` (drop/rename/type-change), `DROP
+   COLUMN`, `DROP INDEX` on a populated index, or destructive data
+   transforms → `risk: high`, `category: migration`.
+3. **Additive migrations**. Files under `migrations/` or `alembic/` AND
+   approach is purely additive (`CREATE TABLE`, `ADD COLUMN` with default,
+   `CREATE INDEX CONCURRENTLY`) → `risk: medium`, `category:
+   migration-additive`.
+4. **Backfill**. Approach mentions iterating existing rows (`UPDATE` with
+   batch loop, ETL backfill script) → `risk: high`, `category: backfill`.
+5. **Observability / read-only**. Files entirely under `tests/`, `docs/`,
+   or configured observability paths → `risk: low`, `category:
+   observability`.
+6. **Fallback**. None of the above → `risk: medium`, `category: feature`.
+
+The destructive rule fires first deliberately — a unit that *both* lives
+under `migrations/` *and* contains `DROP TABLE` is destructive, not "just"
+a migration.
 
 When inference fires, surface a notice before phasing:
 
@@ -131,22 +153,44 @@ When inference fires, surface a notice before phasing:
 
 ### Cycle / dependency-respecting placement
 
+The placement algorithm is constrained by two invariants that must hold
+together:
+
+- **(A)** A unit cannot land before any unit it depends on.
+- **(B)** A phase contains only units of its own risk class. P4 is
+  destructive-only; P3 is migration / backfill / high-risk only; P2 is
+  additive / medium only; P1 is measurement / low only.
+
 Algorithm:
 
-1. Compute each unit's `min_phase` = the phase its risk class maps to.
-2. For each unit U with `Depends: V`, set `U.min_phase = max(U.min_phase,
-   V.min_phase)`. (A unit can never land before its dependencies.)
-3. Iterate to a fixed point.
-4. Result: each unit is assigned to its lowest legal phase.
+1. Compute each unit's natural phase `nat_phase(U)` from its `risk:` (and
+   `category` for the medium-vs-P3 carve-out, per the rules above).
+2. For each dependency edge `U → V` (U depends on V), check
+   `nat_phase(V) <= nat_phase(U)`. If yes, the edge is satisfiable.
+3. **If any edge has `nat_phase(V) > nat_phase(U)`** — i.e. a low-risk
+   unit depends on a higher-risk unit — the plan is **rejected as a
+   planning error**. `/en-build` does **not** silently push U into V's
+   phase; doing so would violate invariant (B) (e.g. burying a low-risk
+   unit in P4 makes P4 no longer destructive-only and lets it land
+   *after* a `"run phase 4"` confirmation that the user typed for
+   destructive work, not for that low-risk unit).
 
-If the algorithm pushes a unit into a higher-risk phase than its own risk
-class warrants (e.g. a low-risk unit depends on a destructive one), surface
-the issue:
+Rejection message:
 
-> U12 (risk: low) depends on U10 (risk: destructive). U12 will land in P4.
-> If U12 should run earlier, restructure to remove the dependency.
+> Plan structure violates phase invariants:
+> - U12 (risk: low) depends on U10 (risk: destructive).
+>   U12 cannot land in P1 (its natural phase) without U10 already complete,
+>   but P4 must be destructive-only.
+>
+> Restructure options:
+> - Remove the dependency if U12 doesn't actually need U10.
+> - Promote U12's `risk:` if it really must run alongside destructive work.
+> - Split U12 into a part that doesn't depend on U10 and a follow-up.
+>
+> Re-run `/en-plan` or hand-edit and re-run `/en-build`.
 
-This is rare in practice but a real planning bug — flag it loudly.
+This is the same severity as a unit declaring `Depends: U99` where U99
+doesn't exist — a structural plan bug, surfaced loudly, no auto-fix.
 
 ### Empty phases
 
@@ -155,19 +199,52 @@ Collapsed silently. A plan with only P2 + P4 units shows the two phases, not
 
 ---
 
+## Universal safety gates (apply on every code path)
+
+Safety gates are decoupled from phase grouping. They run on **every** path
+that executes a unit — phasing on, phasing off, `--unit U<N>`, `--from
+U<N>`, `--no-phasing`, `--from-phase`, manual interactive resume — without
+exception. The phase loop layers *on top*; it does not replace these.
+
+For every unit selected for execution, `/en-build` performs unit
+classification (using the unit's `risk:` field, falling back to the
+ordered inference classifier) and then enforces:
+
+| Classification | Gate (cannot be bypassed by any flag) |
+|---|---|
+| `risk: destructive` | Literal-string confirmation `"run unit U<N>"` typed verbatim, with the unit's goal, files, and approach surfaced first. |
+| `gated: true` | y/skip/abort confirmation, with the unit's goal and approach surfaced first. |
+| `risk: high` AND `--strict-destructive` | Literal-string confirmation `"run unit U<N>"`. |
+| Anything else | No mandatory gate at the unit level. |
+
+**This is the primary safety boundary.** The phase-level prompts (P4
+`"run phase 4"`, optional `--pause` between phases) are conveniences that
+group multiple units' confirmations into one when phasing is active. With
+phasing on, accepting `"run phase 4"` covers every destructive unit in the
+phase; `/en-build` does not re-prompt per unit. With phasing off (or
+`--unit U<N>` selecting a destructive unit alone), the unit-level gate
+fires instead. **No code path skips the unit-level classification check.**
+
+There is no flag that disables the safety gates. `--no-phasing` disables
+phase grouping but never the gates. `--unit` and `--from` change which
+units run but never which gates apply to them.
+
 ## Execution flow
 
 After phase classification, `/en-build` step 9 (per-unit loop) is wrapped:
 
 ```
+# Phasing-on path:
 for each phase in [P1, P2, P3, P4]:
     if phase is empty: continue
 
     surface phase plan to user (units, files, risk summary)
 
-    # Mandatory gates (cannot be bypassed by any flag):
+    # Phase-level mandatory gates (group-confirm destructive work):
     if phase == P4:
         require literal-string confirmation: "run phase 4"
+        # Accepting this covers all destructive units in the phase;
+        # per-unit destructive gates are NOT re-prompted within P4.
     if --strict-destructive AND phase == P3:
         require literal-string confirmation: "run phase 3"
 
@@ -176,13 +253,32 @@ for each phase in [P1, P2, P3, P4]:
         ask y/pause/n
 
     for each unit in phase (dependency order, today's loop):
-        # Per-unit mandatory gate:
+        # Universal safety gates — fire whenever the corresponding
+        # phase-level gate did NOT cover this unit:
         if unit.gated == true:
-            require explicit confirmation incl. unit summary
+            require explicit y/skip/abort confirmation
+        if unit.risk == "destructive" AND not (phase == P4 already-confirmed):
+            require literal-string "run unit U<N>"
+        if unit.risk == "high" AND --strict-destructive
+                AND not (phase == P3 already-confirmed):
+            require literal-string "run unit U<N>"
 
         run today's flow (steps 8a–8j)
         if any unit fails irrecoverably:
             stop phase; surface state; do not advance to next phase
+
+# Phasing-off path (--no-phasing, --unit, --from, single-unit plans):
+for each unit in selected_units (dependency order):
+    # Universal safety gates ALWAYS fire on this path:
+    classify(unit)  # uses risk: + inference fallback
+    if unit.gated == true:
+        require explicit y/skip/abort confirmation
+    if unit.risk == "destructive":
+        require literal-string "run unit U<N>"
+    if unit.risk == "high" AND --strict-destructive:
+        require literal-string "run unit U<N>"
+
+    run today's flow (steps 8a–8j)
 
     after-phase verification:
         full project test suite (not just per-unit)
@@ -274,8 +370,8 @@ that unit onward in dependency order).
 | Unit fails verification gate 2 (simplifier broke it) | Revert simplifier; continue with original (today's behavior). |
 | After-phase full test suite fails | Stop. Do **not** advance to next phase. Surface failing tests; offer: investigate / commit-as-WIP / abort. |
 | Peer subprocess timeout on a unit | Today's behavior: log; continue or fail per `--no-peer-per-unit`. Doesn't break phasing. |
-| User Ctrl-C mid-phase | Commit progress on a `wip/<plan_id>-phase<N>` branch; surface state; phase incomplete. |
-| Plan file modified during build | Detected via hash check at phase boundary. Surface; refuse to advance. (Aligns with finalize-loop spec's deferred hand-edit detection — different surface, same root protection.) |
+| User Ctrl-C mid-phase | **Stop cleanly. Do not auto-commit.** Surface: current branch, current unit (with completion state), dirty files, last successful commit. Provide explicit resume instructions (`/en-build --from U<N>` or `--from-phase P<M>`). If the user wants a WIP branch, they invoke a separate `/en-build --commit-wip` (new flag) or stash manually — `/en-build` itself never does signal-time git operations. |
+| Plan file modified during build | Hash check at phase boundary. Hash covers **immutable plan-input fields only**: per-unit `goal`, `files`, `approach`, `risk`, `category`, `gated`, `Depends`, plus plan-level `depth`, `data_scale`. Mutable fields managed by `/en-build` itself (iteration log, per-unit `status`, `peer_review_resolutions`) are **excluded** from the hash. Baseline hash is recorded at build start in the plan's `peer_review_plan_hash` frontmatter (added by `/en-plan` per finalize-loop spec); `/en-build` re-computes at each phase boundary and refuses to advance on mismatch. (Aligns with finalize-loop spec's deferred hand-edit detection — different surface, same root protection.) |
 | Branch state diverged (e.g. user committed mid-build) | At phase boundary: detect; surface; require user to clean up before resume. |
 | Worker dispatch returns malformed diff | Today's behavior: retry once; on second failure, ask user. Doesn't break phasing. |
 | Inference produces wrong risk class | User can override interactively when notice surfaces (see Inference fallback). Or pass `--no-phasing`. |
@@ -309,8 +405,8 @@ inspects / merges / discards the worktree at the end.
 | Existing behavior | After #4 |
 |---|---|
 | Small plan (e.g. 3 units, depth: lightweight) | Phasing off; runs as today |
-| `/en-build --unit U5` | Bypasses phasing; runs only U5 |
-| `/en-build --from U3` | Bypasses phasing; runs U3 onward in dependency order |
+| `/en-build --unit U5` | Bypasses phasing; runs only U5. Safety gates apply if U5 is destructive or `gated: true`. |
+| `/en-build --from U3` | Bypasses phasing; runs U3 onward in dependency order. Safety gates apply per unit. |
 | `/en-build --dry-run` | Shows phase plan + per-unit plan; doesn't write |
 | Plan without `risk:` metadata | Inference + user confirmation before phasing |
 | `/en-build` on a phasing-triggered plan | Rolls through P1 → P2 → P3 continuously; pauses mandatorily before P4 and before any `gated: true` unit |
@@ -322,11 +418,14 @@ inspects / merges / discards the worktree at the end.
 
 | Flag | Effect |
 |---|---|
-| `--no-phasing` | Force phasing off |
+| `--no-phasing` | Force phasing off. Safety gates still fire per unit. |
 | `--phasing` | Force phasing on (even if triggers don't fire) |
 | `--from-phase P<N>` | Resume at phase N |
-| `--pause` | Pause and prompt between phases (default is auto-roll). Mandatory P4 / gated-unit confirmations always fire regardless of this flag. |
-| `--strict-destructive` | Extend the literal-string confirmation requirement to P3 in addition to P4 |
+| `--pause` | Pause and prompt between phases (default is auto-roll). Mandatory destructive / gated-unit confirmations always fire regardless of this flag. |
+| `--strict-destructive` | Add literal-string confirmation requirement for `risk: high` and Phase 3 (P4 / `risk: destructive` always require it). |
+
+**No flag disables safety gates.** Every flag changes phasing or pacing;
+none turn off the universal gates defined above.
 
 ---
 
@@ -400,6 +499,31 @@ the per-unit metadata loop in step 9). Defaults to `medium` if user skips.
     mark gated when manual verification is required even though the unit
     isn't destructive (admin endpoints, flag flips, rate-limited APIs).
 
+11. **Universal safety gates are decoupled from phasing.** Destructive and
+    gated-unit confirmations fire on every execution path — phasing on,
+    phasing off, `--unit`, `--from`, manual resume. No flag disables them.
+    Phase-level confirmations (`"run phase 4"`, `"run phase 3"` under
+    `--strict-destructive`) are conveniences that *group* per-unit
+    confirmations when phasing is active; they don't replace the
+    per-unit gates on other code paths.
+
+12. **Dependency-vs-phase conflicts reject the plan.** If a low-risk unit
+    depends on a higher-risk unit, `/en-build` does not silently push the
+    low-risk unit into the higher phase (which would violate the
+    "phase contains only its own risk class" invariant). It refuses with
+    a structural-error message and asks the user to restructure or
+    promote the unit's `risk:`.
+
+13. **Plan-hash drift detection covers immutable fields only.** The hash
+    excludes the iteration log, per-unit `status`, and
+    `peer_review_resolutions` — the fields `/en-build` itself updates.
+    Baseline is captured at build start; mismatch at a phase boundary
+    means an external edit to plan structure, which refuses advance.
+
+14. **No signal-time git operations.** Ctrl-C surfaces state and resume
+    instructions; it does not auto-commit, auto-stash, or auto-branch.
+    WIP commits are user-initiated only.
+
 ---
 
 ## Implementation outline
@@ -417,18 +541,32 @@ Roughly 8–10 units, Standard depth:
   triggers; surface phase classification.
 - **U5** — Phase-classification algorithm: risk-class → phase mapping +
   dependency-respecting placement + inference fallback for legacy plans.
-- **U6** — Phase loop wrapping today's per-unit loop: mandatory P4 / gated
-  prompts, opt-in `--pause` per-phase prompts, after-phase verification with
-  project-default test suite.
-- **U7** — Per-unit gated-confirmation handler (mandatory, regardless of
-  phase or flags).
-- **U8** — `--from-phase`, `--no-phasing`, `--phasing`, `--pause`,
-  `--strict-destructive` flag handling. Default is auto-roll.
-- **U9** — Resume semantics + working-tree contract checks at phase
-  boundaries; commit-message trailer (`phase: P<N>`).
-- **U10** — Tests in `tests/en-build/` covering: phasing-off path, each
-  trigger, inference fallback, P4 literal-string confirmation, gated-unit
-  pause, `--pause` opt-in path, resume from each phase, failure recovery
-  between phases.
+- **U6** — **Universal safety-gate handler** (runs on EVERY execution path:
+  phasing-on, phasing-off, `--unit`, `--from`, resume). Classifies the
+  selected unit and enforces destructive / gated / `--strict-destructive`
+  confirmations. This is the primary safety boundary.
+- **U7** — Phase loop wrapping today's per-unit loop: phase-level
+  group-confirm for P4, opt-in `--pause` per-phase prompts, after-phase
+  verification with project-default test suite. Defers per-unit
+  destructive prompts within P4 to U6 unless covered by the phase-level
+  confirmation.
+- **U8** — Dependency-vs-phase conflict detector: structural-error
+  rejection with restructure guidance (no silent burying).
+- **U9** — `--from-phase`, `--no-phasing`, `--phasing`, `--pause`,
+  `--strict-destructive`, `--commit-wip` flag handling. Default is
+  auto-roll. Verify no flag combination skips U6's gates.
+- **U10** — Resume semantics + working-tree contract checks at phase
+  boundaries; commit-message trailer (`phase: P<N>`); plan-hash baseline
+  capture at build start; per-phase-boundary hash comparison limited to
+  immutable fields.
+- **U11** — Ctrl-C clean-stop handler: surface state + resume instructions;
+  no signal-time git ops.
+- **U12** — Tests in `tests/en-build/` covering: phasing-off path with
+  destructive unit (gate must fire), `--unit U<destructive>` (gate must
+  fire), each phasing trigger, ordered classifier (destructive-first wins
+  over migration-pattern match), dependency-conflict rejection, P4
+  group-confirm covering all P4 units, `--strict-destructive` extending
+  to high-risk units, `--pause` opt-in path, resume from each phase,
+  hash-drift detection on immutable fields only, Ctrl-C clean stop.
 
 Final: update `docs/workflow-and-catalog.md` with the phasing lifecycle.

@@ -96,10 +96,33 @@ Add to plan frontmatter (additive — doesn't break existing plans):
 peer_review_verdict: approve | revise | reject | null
 peer_review_iterations: <integer>          # 0, 1, 2, ...
 peer_review_last_run: <ISO 8601 date>
+peer_review_plan_hash: <sha256-hex>        # see Improvement #4 spec; covers immutable plan-input fields only
+peer_review_resolutions:                   # machine-readable resolution log (see below)
+  - finding_id: <stable id assigned by peer or by /en-plan>
+    iteration: <N>
+    severity: P0 | P1 | P2 | P3
+    title: <short title from peer>
+    status: applied | deferred | disagreed | superseded
+    rationale: <one-line reason; required for deferred / disagreed / superseded>
+    location: <file:line or section name from peer>
 ```
 
-The existing iteration log section remains the human-readable narrative; the
-frontmatter fields are the machine-readable state for `/en-build`'s pre-flight.
+The existing iteration log section in the plan body remains the human-readable
+narrative; the frontmatter fields are the machine-readable state for
+`/en-build`'s pre-flight and `/en-plan`'s re-review-loop "previous review
+context" assembly. **Pre-flight decisions (and the recovery path in
+Improvement #3) read `peer_review_resolutions` and `peer_review_verdict`
+directly — they never parse the iteration-log prose.**
+
+`finding_id` is assigned at the time the peer surfaces the finding. If the
+peer doesn't return an id, `/en-plan` mints one as
+`<iteration>-<index>` (e.g. `1-3` = third finding from iteration 1) and
+records it in both the resolution log and the iteration narrative for
+traceability.
+
+`status: superseded` covers the edge case where a later iteration's fix
+makes an earlier finding moot — record it explicitly rather than dropping
+the entry.
 
 ### Failure cases
 
@@ -186,42 +209,61 @@ guidance.
 
 ### New behavior
 
-Pre-flight detects the **recoverable sub-state**:
+Pre-flight reads the structured frontmatter (`peer_review_verdict`,
+`peer_review_resolutions`) — never the iteration-log prose — and applies
+the matrix below.
 
-```
-status: draft
-AND peer_review_verdict in (revise, null)
-AND iteration log shows findings were applied
-AND plan file is committed (or auto-commit is available)
-```
+For plans **without the new frontmatter fields** (drafted before this spec
+lands), pre-flight runs **legacy inference** first:
 
-In that case, surface a **single recovery prompt** instead of the menu:
+| Legacy signal | Inferred state |
+|---|---|
+| `status: draft` AND a parseable iteration-log section exists with at least one entry marked applied/deferred/disagreed | Treat as `peer_review_verdict: revise` + reconstructed `peer_review_resolutions` (best-effort; flagged `inferred: true`) |
+| `status: draft` AND no iteration log, AND no peer-review section anywhere | Treat as `peer_review_verdict: null` (peer review never ran) |
+| `status: open` AND no peer-review fields | Treat as `peer_review_verdict: null` AND `--no-peer` was used (legacy plan, accept) |
+| `status: open` AND iteration log shows a final `verdict: approve` | Treat as `peer_review_verdict: approve` |
+| Any other ambiguous combination | Surface explicitly: *"Plan has no machine-readable peer-review state and the iteration log is ambiguous. Please re-run `/en-plan --resume` to refresh the frontmatter, or set `peer_review_verdict:` manually."* Refuse to proceed. |
+
+Inferred plans get a one-line notice on the recovery prompt:
+
+> NOTE: this plan's peer-review state was inferred from the iteration log
+> (no `peer_review_resolutions:` field). Continuing will rebuild the
+> structured field from the inference. (y / n / details)
+
+After inference (or for new plans with the field present), apply this
+matrix:
 
 > Plan is in draft. Findings from the last peer review (verdict: revise) appear
-> to be applied (iteration log v1, 8 of 8). I can finalize now: re-run the peer
-> pass, flip to `open` on approve, and commit the plan. Then proceed with
-> `/en-build`. (y / n / details)
+> to be applied (resolutions: 8 applied, 0 deferred, 0 disagreed). I can
+> finalize now: re-run the peer pass, flip to `open` on approve, and commit
+> the plan. Then proceed with `/en-build`. (y / n / details)
 
 - **y** → invoke the same finalize flow described in Improvement #1
   (re-review loop with iteration prompt context). On `approve`, auto-commit
   per #2, then continue with the existing build flow from step 5.
 - **n** → refuse with current behavior (show the 3-option menu).
-- **details** → print the iteration log, frontmatter state, and uncommitted
+- **details** → print the resolution log, frontmatter state, and uncommitted
   status; re-prompt.
 
 ### Sub-state matrix
 
-| status | verdict | iteration log | git tracked | Pre-flight action |
+Read `peer_review_verdict` and the *count of unresolved findings* from
+`peer_review_resolutions` (a finding is "unresolved" when its `status` is
+absent or anything other than `applied | deferred | disagreed | superseded`).
+
+| status | verdict | unresolved findings | git tracked | Pre-flight action |
 |---|---|---|---|---|
-| `open` | `approve` | any | yes | Proceed (today's behavior) |
-| `open` | `approve` | any | **no** | Offer auto-commit, then proceed |
-| `draft` | `revise` | findings applied | yes or no | **Offer finalize-and-build (the new flow)** |
-| `draft` | `revise` | findings NOT applied | any | Refuse; user must apply findings first |
-| `open` | `null` | none | yes | Proceed (`--no-peer` was used; no peer expected) |
-| `open` | `null` | none | **no** | Offer auto-commit, then proceed |
-| `draft` | `null` | none | any | Refuse; peer review never ran |
+| `open` | `approve` | 0 | yes | Proceed (today's behavior) |
+| `open` | `approve` | 0 | **no** | Offer auto-commit, then proceed |
+| `draft` | `revise` | 0 | yes or no | **Offer finalize-and-build (the new flow)** |
+| `draft` | `revise` | > 0 | any | Refuse; user must resolve remaining findings first (list them) |
+| `open` | `null` | n/a | yes | Proceed (`--no-peer` was used; no peer expected) |
+| `open` | `null` | n/a | **no** | Offer auto-commit, then proceed |
+| `draft` | `null` | n/a | any | Refuse; peer review never ran |
 | `draft` | `reject` | any | any | Refuse; user must take over |
 | `completed` / `abandoned` | any | any | any | Refuse (today's behavior) |
+| `draft` | inferred `revise` | inferred 0 | yes or no | Offer finalize-and-build with legacy notice (see legacy inference above) |
+| `draft` | inferred `null` | n/a | any | Refuse; surface that no peer review ran |
 
 ### Flags
 
@@ -242,9 +284,27 @@ In that case, surface a **single recovery prompt** instead of the menu:
 3. **`peer_review_verdict: null` + `status: open`** is a valid state
    (`--no-peer` was used). Pre-flight proceeds without a finalize loop.
    Reflected in the sub-state matrix.
-4. **Hand-edit drift is deferred.** No `peer_review_plan_hash` for now. Rare
-   case; the user can always re-run `/en-plan` if they hand-edit
-   substantively. Revisit if it bites.
+4. **Hand-edit drift is partially handled via `peer_review_plan_hash`** —
+   covered structurally in the scope-aware-slicing spec's plan-hash check
+   at phase boundaries. The hash covers immutable plan-input fields only
+   (per-unit goal/files/approach/risk/category/gated/Depends, plan-level
+   depth/data_scale); it excludes the iteration log, per-unit `status`, and
+   `peer_review_resolutions` (fields `/en-plan` and `/en-build` legitimately
+   update). `/en-plan` writes the hash at finalize; `/en-build` re-validates
+   at phase boundaries.
+5. **Pre-flight reads structured frontmatter, not iteration-log prose.**
+   `peer_review_resolutions` is the machine-readable resolution log;
+   `peer_review_verdict` is the machine-readable verdict. Pre-flight never
+   parses the human-readable iteration log to make decisions. The
+   iteration log remains the human-readable narrative and is kept in sync
+   by `/en-plan` (one-way: structured fields drive the prose, not the
+   reverse).
+6. **Legacy plans get explicit inference rules.** Plans drafted before
+   this spec lands have neither `peer_review_resolutions` nor the
+   verdict field. Pre-flight applies a defined inference table (see
+   Improvement #3 / "legacy inference"); ambiguous cases refuse rather
+   than guess, with a clear instruction to re-run `/en-plan --resume` to
+   refresh the frontmatter.
 
 ---
 
@@ -254,15 +314,26 @@ Once this spec is approved, the implementation breaks into roughly:
 
 - **U1** — Add re-review loop to `en-plan` step 13 (`references/outside-voice.md`
   iteration prompt section gets a new "Previous review context" template).
-- **U2** — Add `peer_review_*` frontmatter fields to plan template.
-- **U3** — Auto-flip `status: draft → open` on `approve` (replaces today's
-  manual flip in step 12).
-- **U4** — Auto-commit the plan file (new step 15.5 between hand-off-prep
+- **U2** — Add `peer_review_*` frontmatter fields to plan template,
+  including the structured `peer_review_resolutions` schema and
+  `peer_review_plan_hash`.
+- **U3** — Resolution-log writer: as findings get applied/deferred/
+  disagreed, `/en-plan` writes structured entries to
+  `peer_review_resolutions` (in addition to the human-readable iteration
+  log) with stable `finding_id`s.
+- **U4** — Auto-flip `status: draft → open` on `approve` (replaces today's
+  manual flip in step 12); compute and write `peer_review_plan_hash`
+  at finalize.
+- **U5** — Auto-commit the plan file (new step 15.5 between hand-off-prep
   and the suggestion to run `/en-build`).
-- **U5** — Update `en-build` step 4 with the sub-state matrix + recovery prompt.
-- **U6** — Backfill: existing plans without `peer_review_verdict` field get
-  treated as `null` (matrix handles this).
-- **U7** — Tests in `tests/en-plan/` and `tests/en-build/` for each sub-state.
-- **U8** — Update `docs/workflow-and-catalog.md` to document the new lifecycle.
+- **U6** — Update `en-build` step 4 with the sub-state matrix + recovery
+  prompt; pre-flight reads structured fields only.
+- **U7** — Legacy inference handler: for plans without the new fields,
+  apply the legacy inference table; surface notice; reconstruct
+  `peer_review_resolutions` best-effort.
+- **U8** — Tests in `tests/en-plan/` and `tests/en-build/` for each
+  sub-state (new-field path AND legacy-inference path).
+- **U9** — Update `docs/workflow-and-catalog.md` to document the new
+  lifecycle including the structured resolution schema.
 
-Total roughly Standard depth (8 units, multi-file).
+Total roughly Standard depth (9 units, multi-file).
