@@ -37,6 +37,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write   # post inline review comments
+      id-token: write        # OIDC token for claude-code-action@v1
 
     steps:
       - uses: actions/checkout@v4
