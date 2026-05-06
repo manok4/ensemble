@@ -15,6 +15,26 @@
 #     [--iteration-context-file <path>]                   # optional re-review context
 #
 # Output: the assembled prompt to stdout. Exit 0 on success.
+#
+# IMPORTANT — invocation pattern:
+#   Pipe stdout DIRECTLY into the peer subprocess via stdin. Do NOT capture
+#   into a shell variable and re-pass via argv — that hits ARG_MAX on large
+#   artifacts and produces silent hangs in the peer subprocess (observed in
+#   the field). Wrap the peer in `timeout` and capture stderr for diagnosis.
+#
+#   Canonical (Claude as peer):
+#     ENSEMBLE_PEER_REVIEW=true ensemble-build-peer-prompt ... \
+#       | timeout "${peer_timeout_seconds:-600}" \
+#           claude --bare -p --output-format json --max-turns 1 \
+#           > /tmp/peer-response.json 2>/tmp/peer-stderr.log
+#
+#   The --bare flag (Claude CLI) skips MCP loading, hooks, LSP, plugin sync,
+#   keychain reads, CLAUDE.md auto-discovery — the common silent-hang causes
+#   for non-interactive peer subprocesses. See references/outside-voice.md.
+#
+#   ANTI-PATTERN (do not use):
+#     prompt=$(ensemble-build-peer-prompt ...)
+#     claude -p ... "$prompt"   # ← ARG_MAX hazard, silent hangs
 
 set -u
 

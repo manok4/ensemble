@@ -17,10 +17,12 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │       dispatch.md).                                                │
 │    4. Verification gate 2 (re-run after simplifier; revert on    │
 │       failure).                                                    │
-│    5. Dispatch Claude as PEER-REVIEWER:                            │
-│         prompt=$(bin/ensemble-build-peer-prompt ...)               │
-│         claude -p --output-format json --max-turns 1 "$prompt"    │
-│         with ENSEMBLE_PEER_REVIEW=true                             │
+│    5. Dispatch Claude as PEER-REVIEWER (pipe stdin, --bare,        │
+│       wrapped in timeout):                                         │
+│         bin/ensemble-build-peer-prompt ... | \                    │
+│           timeout "${peer_timeout_seconds:-600}" \                 │
+│             claude --bare -p --output-format json --max-turns 1   │
+│         (env: ENSEMBLE_PEER_REVIEW=true; stderr captured to log)   │
 │    6. Claude returns findings JSON (does NOT edit files — D30).    │
 │    7. Codex parses JSON; apply / defer / disagree per             │
 │       references/severity.md. Build a `resolutions[]` list as it   │
@@ -42,10 +44,12 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 
 ## Peer-reviewer dispatch prompt
 
-Use `bin/ensemble-build-peer-prompt` to assemble the Outside Voice prompt — do NOT build it by reasoning. The helper substitutes the conditional blocks (single-agent fallback note, plan-specific dimensions for `--artifact-type code` are skipped) and emits the slim template.
+Use `bin/ensemble-build-peer-prompt` to assemble the Outside Voice prompt — do NOT build it by reasoning. The helper emits the slim template to **stdout** (single-agent fallback note + plan-specific dimensions are substituted automatically based on the flags you pass). The canonical invocation pipes that stdout directly into `claude` over stdin — never via `argv`.
+
+### Canonical invocation (build-handoff)
 
 ```bash
-# Build a tempfile containing the post-simplifier diff + the unit's plan section
+# 1. Build a tempfile containing the post-simplifier diff + the unit's plan section
 cat > /tmp/en-build-unit-artifact.txt <<EOF
 === Unit: $U_ID — $UNIT_GOAL ===
 
@@ -56,17 +60,34 @@ $UNIT_BLOCK
 $POST_SIMPLIFIER_DIFF
 EOF
 
-prompt=$(bin/ensemble-build-peer-prompt \
+# 2. Pipe helper-stdout → claude-stdin. No argv-inlining of the prompt.
+#    --bare strips MCP loading, hooks, LSP, plugin sync, CLAUDE.md auto-discovery,
+#    keychain reads — everything that can stall a peer subprocess on startup.
+#    timeout enforces peer_timeout_seconds (default 600) so a hang fails fast
+#    instead of stalling the build forever.
+#    stderr is captured for diagnostic visibility on failure.
+ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
   --artifact-type code \
   --project-context "$ONE_LINE_PROJECT_CONTEXT" \
   --goal "Review unit $U_ID: $UNIT_GOAL" \
   --artifact-file /tmp/en-build-unit-artifact.txt \
-  --peer-mode "$PEER_MODE")
+  --peer-mode "$PEER_MODE" \
+  | timeout "${peer_timeout_seconds:-600}" \
+      claude --bare -p --output-format json --max-turns 1 \
+      > /tmp/en-build-peer-response.json \
+      2>/tmp/en-build-peer-stderr.log
 ```
 
 For re-review iterations (see **Per-unit finalize loop** below), pass `--iteration-context-file <path>` with a serialized resolutions[] context — the helper inserts it between the artifact body and the JSON-shape instructions.
 
-The Outside Voice prompt explicitly forbids file edits, commands, and commits (D30). The peer returns JSON-only findings.
+### Why this exact shape (not `prompt=$(...) ; claude -p "$prompt"`)
+
+- **Pipe over argv.** Capturing the helper's stdout into a shell variable and re-passing as argv hits `ARG_MAX` and stalls some CLI argument-parsing paths — observed silent hangs in the field. Stdin avoids the entire class. The Claude CLI's `-p` description explicitly calls out: *"useful for pipes."*
+- **`--bare` flag.** *Per `claude --help`:* "Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery." That list IS the menu of common silent-hang causes for one-shot peer subprocesses. Sets `CLAUDE_CODE_SIMPLE=1`. Skills still resolve via `/skill-name` if the prompt references them.
+- **`timeout` wrapper.** Without it, a hung peer blocks the build indefinitely. `peer_timeout_seconds` from `~/.ensemble/config.json` is the configured ceiling; the wrapper enforces it.
+- **stderr capture.** When a peer fails, the user needs `/tmp/en-build-peer-stderr.log` to diagnose (was it MCP init? auth? timeout?). The default of swallowing stderr makes hangs invisible.
+
+The Outside Voice prompt explicitly forbids file edits, commands, and commits (D30). The peer returns JSON-only findings (read from `/tmp/en-build-peer-response.json`).
 
 ## Per-unit finalize loop (`--max-per-unit-iterations`, default 1)
 

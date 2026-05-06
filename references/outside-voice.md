@@ -78,7 +78,12 @@ The helper sets the conditional variables based on flag inputs (`--peer-mode`, `
 ## How the host invokes it
 
 **Skills should not assemble this prompt by reasoning** — that's slow and
-error-prone. Use `bin/ensemble-build-peer-prompt` to assemble it:
+error-prone. **And skills must NEVER capture the helper's output into a
+shell variable and re-pass it via `argv`** — that hits `ARG_MAX` on large
+artifacts (per-unit diffs, full plans) and produces silent hangs in the
+peer subprocess. The canonical pattern pipes the helper's stdout directly
+into the peer over stdin, runs the peer in `--bare` minimal mode, and
+wraps the call in `timeout` for hang protection.
 
 ```bash
 # After loading host-detect.md and resolving PEER_CMD, PEER_FORMAT, PEER_MODE:
@@ -88,23 +93,47 @@ if [ "$PEER_AVAILABLE" != "true" ]; then
   exit 0
 fi
 
-prompt=$(bin/ensemble-build-peer-prompt \
+# Pipe helper-stdout → peer-stdin. NO argv-inlining of the prompt.
+# - --bare strips MCP, hooks, LSP, plugin sync, CLAUDE.md auto-discovery,
+#   keychain reads — common silent-hang causes for non-interactive peer subprocs.
+# - timeout enforces peer_timeout_seconds (default 600) so a hang fails fast.
+# - stderr is captured for diagnostic visibility on failure.
+ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
   --artifact-type plan \
   --project-context "$ONE_LINE_PROJECT_CONTEXT" \
   --goal "$ONE_LINE_GOAL" \
   --artifact-file docs/plans/active/EN07-feature_auth-rotation.md \
-  --peer-mode "$PEER_MODE")
-
-ENSEMBLE_PEER_REVIEW=true \
-  $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt" \
-  > /tmp/peer-response.json 2>/tmp/peer-stderr.log
+  --peer-mode "$PEER_MODE" \
+  | timeout "${peer_timeout_seconds:-600}" \
+      $PEER_CMD --bare $PEER_FORMAT --max-turns 1 \
+      > /tmp/peer-response.json \
+      2>/tmp/peer-stderr.log
 ```
 
-For re-review iterations (the `/en-plan` finalize loop), build the
-"## Previous review context" section into a tempfile and pass
-`--iteration-context-file <path>`. The helper inserts it between the
-artifact body and the JSON-shape instructions; see
-`bin/ensemble-build-peer-prompt --help` for full args.
+> **Note on `--bare`:** This is the Claude CLI flag. The Codex CLI has its
+> own equivalent (`codex exec --skip-init` / similar — verify against the
+> installed version). Skills resolve `$PEER_CMD` via host-detect; if the
+> resolved peer doesn't support a `--bare`-equivalent, omit the flag and
+> rely on `timeout` + stderr capture as the floor. Hang protection from
+> `timeout` is universal.
+
+For re-review iterations (the `/en-plan` finalize loop or `/en-build`'s
+per-unit finalize loop), build the "## Previous review context" section
+into a tempfile and pass `--iteration-context-file <path>`. The helper
+inserts it between the artifact body and the JSON-shape instructions;
+see `bin/ensemble-build-peer-prompt --help` for full args.
+
+### Anti-pattern (do not use)
+
+```bash
+# WRONG — produced the silent-hang failure mode in the field:
+prompt=$(bin/ensemble-build-peer-prompt ...)
+$PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"   # argv-inlined large prompt
+```
+
+The helper writes the slim template to **stdout** by design. Capturing
+back into a variable and re-passing via argv defeats that design and
+hits the failure modes the canonical pattern was built to avoid.
 
 Notes:
 
