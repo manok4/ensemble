@@ -217,5 +217,78 @@ else
   fail "build-handoff.md should reference the helper script"
 fi
 
+# --- Counter semantics are explicit: re_review_count starts at 0 (P2 from Codex review) ---
+# The condition "iteration < cap" with iteration starting at 1 and default cap=1
+# never fires — that was the bug. Each ref doc must state explicit counter
+# semantics (`re_review_count` starting at 0) so the loop fires at default settings.
+for doc in "$HANDOFF_DOC" "$ORCH_DOC"; do
+  doc_name=$(basename "$doc")
+  if grep -q "re_review_count" "$doc"; then
+    pass "[$doc_name] uses explicit re_review_count counter"
+  else
+    fail "[$doc_name] missing explicit re_review_count semantics" "loop condition is ambiguous without it"
+  fi
+  if grep -q "starts at 0" "$doc"; then
+    pass "[$doc_name] documents re_review_count starting at 0"
+  else
+    fail "[$doc_name] should document counter starting value (starts at 0)"
+  fi
+done
+
+if grep -q "re_review_count" "$SKILL"; then
+  pass "en-build SKILL.md uses explicit re_review_count counter"
+else
+  fail "en-build SKILL.md missing re_review_count semantics"
+fi
+if grep -q "starts at 0" "$SKILL"; then
+  pass "en-build SKILL.md documents re_review_count starting at 0"
+else
+  fail "en-build SKILL.md should document counter starting value"
+fi
+
+# --- Both flow charts mention phase: P<N> trailer alongside peer-resolution ---
+# Codex flagged the flow charts only mentioning peer-resolution: trailers,
+# omitting the required phase: P<N> trailer that /en-ship and greppable
+# history rely on.
+for doc in "$HANDOFF_DOC" "$ORCH_DOC"; do
+  doc_name=$(basename "$doc")
+  # Extract just the flow chart block (between the ASCII art borders).
+  flow_chart=$(awk '
+    /^```$/ && capture { exit }
+    /┌─/ { capture=1 }
+    capture { print }
+  ' "$doc")
+  if echo "$flow_chart" | grep -q "phase: P"; then
+    pass "[$doc_name] flow chart mentions phase: P<N> trailer"
+  else
+    fail "[$doc_name] flow chart should mention phase: P<N> trailer alongside peer-resolution"
+  fi
+  if echo "$flow_chart" | grep -q "peer-resolution"; then
+    pass "[$doc_name] flow chart mentions peer-resolution trailer"
+  else
+    fail "[$doc_name] flow chart missing peer-resolution mention"
+  fi
+done
+
+# --- Cap-hit warning surfaces a P1 (regression for P2 #1 from Codex) ---
+# When the cap is hit AND findings were applied on the last re-review pass,
+# the spec requires a P1 warning surfaced to the user — those applications
+# weren't peer-verified. The wording should make the un-peer-verified status
+# explicit so users notice and consider raising the cap.
+if grep -q -E "(P1 warning|cap.exhaust|cap-hit|cap exhaust)" "$HANDOFF_DOC"; then
+  if grep -q -E "(NOT (be|been|by) (peer|another peer)|not.*verified by.*peer|NOT.*another peer pass)" "$HANDOFF_DOC"; then
+    pass "build-handoff.md surfaces cap-hit warning that calls out un-peer-verified state"
+  else
+    fail "build-handoff.md should explicitly note that cap-hit applications are NOT peer-verified"
+  fi
+else
+  fail "build-handoff.md missing cap-hit / cap-exhaustion language"
+fi
+if grep -q -E "(P1 warning|cap.exhaust|cap-hit|cap exhaust)" "$SKILL"; then
+  pass "en-build SKILL.md mentions cap-hit handling"
+else
+  fail "en-build SKILL.md should mention cap-hit warning behavior"
+fi
+
 rm -f "$TMP_MSG"
 report

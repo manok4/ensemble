@@ -26,14 +26,17 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │       references/severity.md. Build a `resolutions[]` list as it   │
 │       walks each finding (one entry per finding, with status).     │
 │    8. Re-verify if any code changed.                               │
-│    9. **Per-unit finalize loop.** If `verdict: revise` AND at      │
-│       least one finding was applied AND iteration count <          │
-│       `--max-per-unit-iterations` (default 1) → re-invoke peer    │
-│       with `--iteration-context-file` carrying the resolutions[]   │
-│       list. Loop back to step 6. On `approve` or cap exhaustion,  │
-│       continue.                                                    │
-│   10. Commit (conventional message + U-ID + structured             │
-│       peer-resolution: trailers — one per finding).                │
+│    9. **Per-unit finalize loop.** Counter `re_review_count`       │
+│       starts at 0; increments after each re-review pass. If        │
+│       `verdict: revise` AND ≥1 finding applied AND                 │
+│       `re_review_count < --max-per-unit-iterations` (default 1)   │
+│       → re-invoke peer with `--iteration-context-file` carrying   │
+│       the resolutions[] list, increment counter. Loop back to     │
+│       step 6. On `approve` or cap exhaustion, continue. With      │
+│       default cap=1, exactly one re-review fires when the         │
+│       initial pass returned revise+applied findings.               │
+│   10. Commit (conventional message + U-ID + `phase: P<N>` trailer │
+│       + one `peer-resolution:` trailer per finding).               │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,17 +72,20 @@ The Outside Voice prompt explicitly forbids file edits, commands, and commits (D
 
 Same shape as `/en-plan`'s plan-level finalize loop, scoped to a single unit. When the per-unit peer returns `verdict: revise` and the host applies one or more findings, the implementation has changed since the peer reviewed it — those fixes haven't been verified. The loop runs the peer once more on the post-fix state.
 
+**Counter semantics.** `re_review_count` starts at **0** and increments by 1 after each re-review pass. The initial peer pass at step 5 does NOT count toward it. With default cap=1, this guarantees **exactly one re-review pass** whenever the initial pass returned `revise` with applied findings — the post-fix diff is always peer-verified at default settings. (If the cap were checked against total iterations starting at 1, default cap=1 would never fire — that's the bug this counter avoids.)
+
 Behavior:
 
-| Verdict | Action |
-|---|---|
-| `approve` | Exit loop. Proceed to commit (step 10). |
-| `revise` (any iteration) AND at least one finding applied AND `iteration < cap` | Build `peer_review_resolutions[]` (see schema below), serialize into a `## Previous review context` tempfile, re-invoke peer with `--iteration-context-file`. |
-| `revise` AND iteration cap reached | Exit loop. Commit with the latest resolutions; surface "iteration cap hit on U<N>" in the unit summary. |
-| `revise` AND no findings applied (all deferred or disagreed) | Exit loop — re-running peer wouldn't see different code. Commit with current resolutions. |
-| `reject` | Pause and surface to user. Don't loop. |
+| Verdict | Condition | Action |
+|---|---|---|
+| `approve` | any | Exit loop. Proceed to commit (step 10). The applied findings (if any) have been peer-verified. |
+| `revise` | ≥1 finding applied AND `re_review_count < cap` | Build `peer_review_resolutions[]` (schema below), serialize into a `## Previous review context` tempfile, re-invoke peer with `--iteration-context-file`. Increment `re_review_count` after the re-review returns. |
+| `revise` | cap reached AND ≥1 finding applied on the cap-hitting pass | Exit loop. **Surface a P1 warning** in the unit summary: those last applications were verified by lint+tests at step 8 but NOT by another peer pass. User can raise `--max-per-unit-iterations` if this recurs. Commit with current resolutions. |
+| `revise` | cap reached AND all findings on the cap-hitting pass deferred/disagreed | Exit loop without warning. Commit with current resolutions. |
+| `revise` | no findings applied (all deferred or disagreed) | Exit loop — re-running peer wouldn't see different code. Commit with current resolutions. |
+| `reject` | any | Pause and surface to user. Don't loop. |
 
-**Cap rationale.** Per-unit findings tend to be mechanical fixes that converge fast. Default `--max-per-unit-iterations: 1` means one re-review max (so total of 2 peer passes per unit max). Override with `--max-per-unit-iterations <N>` on `/en-build`. Set to `0` to disable per-unit looping entirely (revert to single-pass behavior).
+**Cap rationale.** Per-unit findings tend to be mechanical fixes that converge fast. Default `--max-per-unit-iterations: 1` means one re-review max (so total of 2 peer passes per unit max: initial + 1 re-review). Override with `--max-per-unit-iterations <N>` on `/en-build`. Set to `0` to disable per-unit looping entirely (revert to single-pass, pre-PR behavior).
 
 **Iteration prompt context.** The "Previous review context" section is assembled from the unit's `peer_review_resolutions[]` list — same format as `/en-plan`'s plan-level loop:
 

@@ -25,13 +25,15 @@ The default `en-build` flavor when **HOST = Claude Code**. Claude is the host; C
 │    7. Apply / defer / disagree per references/severity.md. Build  │
 │       a `resolutions[]` list as it walks each finding.             │
 │    8. Re-verify if any code changed.                               │
-│    9. **Per-unit finalize loop.** If verdict was `revise` AND at  │
-│       least one finding applied AND iteration <                    │
-│       `--max-per-unit-iterations` (default 1): re-review the      │
-│       post-fix diff with previous-iteration context. Loop back to │
-│       step 6. On `approve` or cap, continue.                       │
-│   10. Commit (conventional message + U-ID + structured            │
-│       peer-resolution: trailers — one per finding).                │
+│    9. **Per-unit finalize loop.** Counter `re_review_count`       │
+│       starts at 0; increments after each re-review pass. If       │
+│       verdict was `revise` AND ≥1 finding applied AND              │
+│       `re_review_count < --max-per-unit-iterations` (default 1):  │
+│       re-review the post-fix diff with previous-iteration         │
+│       context, increment counter. Loop back to step 6. On          │
+│       `approve` or cap, continue.                                  │
+│   10. Commit (conventional message + U-ID + `phase: P<N>` +       │
+│       one `peer-resolution:` trailer per finding).                 │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -39,7 +41,9 @@ The default `en-build` flavor when **HOST = Claude Code**. Claude is the host; C
 
 Same intent as `build-handoff.md`'s per-unit loop, but the host (Claude) re-reviews inline rather than via subprocess. After step 7 applies findings, step 9 re-reads the post-fix diff and re-evaluates against the unit's plan section + the resolutions[] context from the prior pass. The "Previous review context" framing ensures the second pass verifies fixes landed without re-litigating settled findings.
 
-Same caps and routing as `build-handoff.md`: cap at `--max-per-unit-iterations` (default 1; max 2 peer passes total per unit). Set to `0` to disable.
+**Counter semantics.** `re_review_count` starts at **0** and increments after each re-review pass. The initial inline review at step 6 does NOT count toward it. Default cap=1 → exactly one re-review whenever step 6 produced `revise` with applied findings. (Counting from 1 would silently break the loop with the same default — see `build-handoff.md` for the full reasoning.)
+
+Same routing as `build-handoff.md` for verdict / condition / action — see the table there. Set `--max-per-unit-iterations 0` to disable; raise the cap when units routinely hit the cap-hit P1 warning.
 
 ## Resolution log (`peer_review_resolutions[]` per unit)
 
