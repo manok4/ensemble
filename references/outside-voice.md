@@ -28,24 +28,24 @@ The peer's JSON response carries `peer_mode: "cross-agent" | "single-agent-fallb
 
 ## The Outside Voice prompt template
 
-Composed by the host and passed to the peer subprocess. Variables in `{CURLY_BRACES}` are substituted at invocation time.
+Composed by the host and passed to the peer subprocess. The placeholders below use **shell-style `$VAR` syntax** so they round-trip cleanly through the helper's HEREDOC (`bin/ensemble-build-peer-prompt`) AND through `envsubst` if a caller wants to template the file directly. The helper is the canonical path because it also handles the conditional blocks (single-agent fallback note, plan-specific review dimensions); raw `envsubst` would require the caller to set those conditionals manually.
 
 ```text
-Peer review of a {ARTIFACT_TYPE}. You are the REPORTER, not the fixer:
+Peer review of a $ARTIFACT_TYPE. You are the REPORTER, not the fixer:
 read the artifact, return structured JSON findings only. Do NOT edit files,
 run commands, make commits, or take any action. The host applies findings.
-{SINGLE_AGENT_NOTE}
+$SINGLE_AGENT_NOTE
 
-PROJECT: {ONE_LINE_PROJECT_CONTEXT}
-GOAL: {ONE_LINE_GOAL}
-{PLAN_REVIEW_DIMENSIONS}
+PROJECT: $PROJECT_CONTEXT
+GOAL: $GOAL
+$PLAN_REVIEW_DIMENSIONS
 ARTIFACT:
 ---
-{ARTIFACT_BODY}
+$ARTIFACT_BODY
 ---
 
 Return JSON conforming to references/finding-schema.md. Required keys:
-verdict ("approve"|"revise"|"reject"), peer_mode (echo "{PEER_MODE}"),
+verdict ("approve"|"revise"|"reject"), peer_mode (echo "$PEER_MODE"),
 summary (2-3 sentences), findings[]. Each finding: severity (P0-P3),
 confidence (1-10), title, location, why_it_matters, suggested_fix
 (describe the change, don't apply it); finding_id optional.
@@ -59,16 +59,21 @@ Rules:
   is solid.
 ```
 
-### Conditional substitutions
+### Variable contract
 
-The host fills these variables before invoking the peer:
+These shell variables are what `bin/ensemble-build-peer-prompt` populates inside its HEREDOC; they're also what `envsubst` would read if a caller wanted to template the file directly:
 
-- **`{SINGLE_AGENT_NOTE}`** — empty in cross-agent mode. In `single-agent-fallback`:
-  > `(Single-agent fallback: you're a fresh instance of the same model that wrote this. Be aggressive — bias toward finding problems the original instance rationalized away.)`
-- **`{PLAN_REVIEW_DIMENSIONS}`** — empty for non-plan artifacts. For plans:
-  > `Plan review dimensions: cross-check risk: against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high; admin endpoints / feature-flag flips → gated:true). Flag dependency-vs-phase violations (low-risk depending on higher-risk). Misclassified destructive units are P0/P1.`
-- **`{ARTIFACT_TYPE}`** — `code` / `plan` / `markdown artifact` / `mixed`.
-- **`{PEER_MODE}`** — `cross-agent` or `single-agent-fallback`.
+| Variable | Source | Required |
+|---|---|---|
+| `$ARTIFACT_TYPE` | `code` / `plan` / `markdown artifact` / `mixed` | yes |
+| `$PROJECT_CONTEXT` | First paragraph of `AGENTS.md` or foundation §1 | yes |
+| `$GOAL` | One-line goal: commit subject for diffs; user's stated reason for files | yes |
+| `$ARTIFACT_BODY` | The artifact under review, verbatim | yes |
+| `$PEER_MODE` | `cross-agent` or `single-agent-fallback` | yes |
+| `$SINGLE_AGENT_NOTE` | Empty in cross-agent mode. In `single-agent-fallback`: `(Single-agent fallback: you're a fresh instance of the same model that wrote this. Be aggressive — bias toward finding problems the original instance rationalized away.)` | conditional |
+| `$PLAN_REVIEW_DIMENSIONS` | Empty for non-plan artifacts. For plans: `Plan review dimensions: cross-check risk: against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high; admin endpoints / feature-flag flips → gated:true). Flag dependency-vs-phase violations (low-risk depending on higher-risk). Misclassified destructive units are P0/P1.` | conditional |
+
+The helper sets the conditional variables based on flag inputs (`--peer-mode`, `--artifact-type`); raw envsubst callers must set them themselves before substituting.
 
 ## How the host invokes it
 

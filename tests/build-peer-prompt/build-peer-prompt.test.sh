@@ -186,4 +186,60 @@ else
   fail "[size] slim prompt scaffold too large" "$words words (target <200)"
 fi
 
+# --- Regression: the doc template uses $VAR not {VAR} (P1 from Codex) ---
+# Codex flagged that envsubst silently leaves {CURLY_BRACES} placeholders
+# as literals, which would ship a literal template to the peer instead of
+# the artifact. Fix: the template now uses shell-style $VAR placeholders so
+# both `bin/ensemble-build-peer-prompt` (HEREDOC) and raw envsubst work.
+# This test guards against drift back to the {VAR} form.
+TEMPLATE_DOC="$REPO_ROOT/references/outside-voice.md"
+
+# Extract just the prompt template block (the first ```text ... ``` fence).
+template=$(awk '
+  /^```text/ { capture=1; next }
+  capture && /^```/ { exit }
+  capture { print }
+' "$TEMPLATE_DOC")
+
+if [ -z "$template" ]; then
+  fail "[envsubst-doc] could not extract prompt template from outside-voice.md"
+else
+  pass "[envsubst-doc] prompt template block extractable from doc"
+fi
+
+# Any {CURLY_BRACES} placeholders in the extracted template would silently
+# pass through envsubst as literals — that's the P1 bug. Reject them.
+if echo "$template" | grep -qE '\{[A-Z_][A-Z_]*\}'; then
+  bad=$(echo "$template" | grep -oE '\{[A-Z_][A-Z_]*\}' | sort -u | tr '\n' ' ')
+  fail "[envsubst-doc] template contains {CURLY_BRACE} placeholders that envsubst will NOT substitute" "found: $bad"
+else
+  pass "[envsubst-doc] template has no {CURLY_BRACE} placeholders (envsubst-compatible)"
+fi
+
+# All seven documented variables must be referenced in the template.
+for v in '$ARTIFACT_TYPE' '$PROJECT_CONTEXT' '$GOAL' '$ARTIFACT_BODY' '$PEER_MODE' '$SINGLE_AGENT_NOTE' '$PLAN_REVIEW_DIMENSIONS'; do
+  if echo "$template" | grep -qF "$v"; then
+    pass "[envsubst-doc] template references $v"
+  else
+    fail "[envsubst-doc] template missing reference to $v"
+  fi
+done
+
+# Optional functional smoke: only runs if envsubst is installed (gettext
+# package; not on macOS by default). When available, we verify substitution
+# actually replaces the placeholders.
+if command -v envsubst >/dev/null 2>&1; then
+  substituted=$(echo "$template" | env -i \
+    ARTIFACT_TYPE=plan PROJECT_CONTEXT="Test project" GOAL="Test goal" \
+    ARTIFACT_BODY="ARTIFACT-MARKER-12345" PEER_MODE=cross-agent \
+    SINGLE_AGENT_NOTE="" PLAN_REVIEW_DIMENSIONS="" envsubst)
+  if echo "$substituted" | grep -q "ARTIFACT-MARKER-12345"; then
+    pass "[envsubst-doc] envsubst substitutes ARTIFACT_BODY into template (functional smoke)"
+  else
+    fail "[envsubst-doc] envsubst did not produce substituted output" "$(echo "$substituted" | head -5)"
+  fi
+else
+  pass "[envsubst-doc] envsubst not installed; static checks above are sufficient"
+fi
+
 report
