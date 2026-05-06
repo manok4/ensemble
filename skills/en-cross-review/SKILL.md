@@ -17,12 +17,14 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
    - **`<git-ref>`** (e.g., `main..HEAD`, `HEAD~1`) → diff between refs.
    - **`<branch-name>`** → diff between branch and the default branch.
 4. **Verify availability.** If `PEER_AVAILABLE=false`, exit with the reason (peer_mode_override=off; cross-agent-only without other CLI installed; etc.).
-5. **Compose review prompt.** Per `references/outside-voice.md`. Substitute:
-   - `{ARTIFACT_TYPE}` — `code` (for diffs/files of source) or `markdown artifact` (for `docs/`) or `mixed`.
-   - `{ONE_LINE_PROJECT_CONTEXT}` — first paragraph of `AGENTS.md` or foundation §1.
-   - `{ONE_LINE_GOAL}` — for diffs, the most-recent commit subject; for files, the user's stated reason for the cross-review.
-   - `{ARTIFACT_BODY}` — the resolved target.
-   - `{PEER_MODE}` — from host-detect.
+5. **Compose review prompt.** Shell out to `bin/ensemble-build-peer-prompt` — do not assemble the prompt by reasoning. Required args:
+   - `--artifact-type <code|plan|markdown artifact|mixed>` — `code` for diffs/files of source, `markdown artifact` for `docs/`, `plan` only when reviewing a `docs/plans/active/*.md` (rare for ad-hoc cross-review), else `mixed`.
+   - `--project-context "<one-line>"` — first paragraph of `AGENTS.md` or foundation §1.
+   - `--goal "<one-line>"` — for diffs: the most-recent commit subject; for files: the user's stated reason for the cross-review.
+   - `--artifact-file <path>` (or pipe via stdin with `--artifact-stdin`) — the resolved target body.
+   - `--peer-mode "$PEER_MODE"` — from host-detect.
+
+   The helper substitutes the conditional blocks (single-agent fallback note, plan-specific review dimensions) for you.
 6. **Apply `--focus` flag** (if set). Append to the prompt: "Focus your review on <focus>; deprioritize other concerns."
    Valid: `security`, `performance`, `tests`, `correctness`, `maintainability`, `all` (default).
 7. **Set `ENSEMBLE_PEER_REVIEW=true`** in the subprocess env (recursion guard).

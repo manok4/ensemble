@@ -31,86 +31,49 @@ The peer's JSON response carries `peer_mode: "cross-agent" | "single-agent-fallb
 Composed by the host and passed to the peer subprocess. Variables in `{CURLY_BRACES}` are substituted at invocation time.
 
 ```text
-You are reviewing a {ARTIFACT_TYPE} produced by another AI agent in a peer-review setup.
+Peer review of a {ARTIFACT_TYPE}. You are the REPORTER, not the fixer:
+read the artifact, return structured JSON findings only. Do NOT edit files,
+run commands, make commits, or take any action. The host applies findings.
+{SINGLE_AGENT_NOTE}
 
-YOUR ROLE: REPORTER, NOT FIXER.
-
-You will read the artifact and return findings as structured JSON. You will NOT:
-  - edit, write, or modify any files
-  - run any commands (build, test, lint, git, anything)
-  - make any commits, branch changes, or git operations
-  - take any action other than analyzing and reporting
-
-The HOST agent that dispatched you owns all code modifications. Your job is to surface
-findings; the host decides which to apply. If you start trying to fix things, you'll
-race with the host on the same files. Don't.
-
-{IF PEER_MODE == "single-agent-fallback":}
-NOTE: SINGLE-AGENT FALLBACK MODE.
-You are a fresh instance of the same model that wrote this artifact. The user does not
-have a second CLI installed, so you are filling the cross-review role with a clean
-context. Be more aggressive than usual: bias toward finding problems, assume the
-implementing instance was tired and may have rationalized issues away. The fresh-context
-advantage is what makes this useful — surface what a second pair of eyes would catch
-even if the model is the same.
-{ENDIF}
-
-PROJECT CONTEXT:
-{ONE_LINE_PROJECT_CONTEXT}
-
-GOAL OF THIS ARTIFACT:
-{ONE_LINE_GOAL}
-
-ARTIFACT (verbatim):
+PROJECT: {ONE_LINE_PROJECT_CONTEXT}
+GOAL: {ONE_LINE_GOAL}
+{PLAN_REVIEW_DIMENSIONS}
+ARTIFACT:
 ---
 {ARTIFACT_BODY}
 ---
 
-{IF ARTIFACT_TYPE == "plan":}
-PLAN-SPECIFIC REVIEW DIMENSIONS:
-In addition to general critique, explicitly evaluate **risk classification correctness** for each unit:
-  - Is `risk:` consistent with what the unit's `approach:` actually does? Flag misclassifications. Examples:
-    - A unit with `DROP TABLE` / `TRUNCATE` / mass `DELETE` marked anything other than `destructive`.
-    - A backfill over a large row count marked `low` or `medium`.
-    - An admin endpoint or feature flag flip not marked `gated: true`.
-    - A migration unit marked `low`.
-  - Is the unit's phase placement (derived from `risk:`) appropriate? A `low` unit that depends on a `destructive` unit is a structural error — flag it.
-  - Are gated units actually gated? Look for admin endpoints, third-party API calls with rate-limit risk, or customer-facing flag flips that lack `gated: true`.
+Return JSON conforming to references/finding-schema.md. Required keys:
+verdict ("approve"|"revise"|"reject"), peer_mode (echo "{PEER_MODE}"),
+summary (2-3 sentences), findings[]. Each finding: severity (P0-P3),
+confidence (1-10), title, location, why_it_matters, suggested_fix
+(describe the change, don't apply it); finding_id optional.
 
-These are correctness findings (severity P0/P1) — a misclassified destructive unit could land without the mandatory `/en-build` confirmation.
-{ENDIF}
-
-RETURN VALID JSON ONLY (no prose outside the JSON):
-{
-  "verdict": "approve | revise | reject",
-  "peer_mode": "cross-agent | single-agent-fallback",
-  "summary": "<2-3 sentence overall assessment>",
-  "findings": [
-    {
-      "finding_id": "<optional stable id; host mints `<iteration>-<index>` if absent>",
-      "severity": "P0|P1|P2|P3",
-      "confidence": <1-10>,
-      "title": "<short title>",
-      "location": "<file:line or section name or 'global'>",
-      "why_it_matters": "<1-2 sentence rationale>",
-      "suggested_fix": "<concrete change the host could apply — describe, don't apply>"
-    }
-  ]
-}
-
-RULES:
-- Critique only. Do not restate the artifact.
-- No cosmetic findings (whitespace, bikeshedding).
-- Skip findings with confidence below 5.
-- Be direct. Don't hedge. State a position.
-- "suggested_fix" is a description of what the host should do. You are not doing it.
-- "peer_mode" must echo the mode the host passed in.
-- If the artifact is solid, "verdict: approve" with summary and zero findings is correct.
-- Output JSON only. No commentary, no preamble, no closing remarks.
-- For plan reviews on iterations > 1, treat the `## Previous review context` section as authoritative: do not re-flag findings already marked applied/deferred/disagreed unless you have new evidence.
+Rules:
+- Critique only; suppress confidence<5 unless severity P0.
+- Output JSON only — no prose outside the JSON object.
+- For iteration > 1, honor "## Previous review context" — don't re-flag
+  applied/deferred/disagreed findings unless you have new evidence.
+- "verdict: approve" with empty findings[] is correct when the artifact
+  is solid.
 ```
 
+### Conditional substitutions
+
+The host fills these variables before invoking the peer:
+
+- **`{SINGLE_AGENT_NOTE}`** — empty in cross-agent mode. In `single-agent-fallback`:
+  > `(Single-agent fallback: you're a fresh instance of the same model that wrote this. Be aggressive — bias toward finding problems the original instance rationalized away.)`
+- **`{PLAN_REVIEW_DIMENSIONS}`** — empty for non-plan artifacts. For plans:
+  > `Plan review dimensions: cross-check risk: against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high; admin endpoints / feature-flag flips → gated:true). Flag dependency-vs-phase violations (low-risk depending on higher-risk). Misclassified destructive units are P0/P1.`
+- **`{ARTIFACT_TYPE}`** — `code` / `plan` / `markdown artifact` / `mixed`.
+- **`{PEER_MODE}`** — `cross-agent` or `single-agent-fallback`.
+
 ## How the host invokes it
+
+**Skills should not assemble this prompt by reasoning** — that's slow and
+error-prone. Use `bin/ensemble-build-peer-prompt` to assemble it:
 
 ```bash
 # After loading host-detect.md and resolving PEER_CMD, PEER_FORMAT, PEER_MODE:
@@ -120,11 +83,23 @@ if [ "$PEER_AVAILABLE" != "true" ]; then
   exit 0
 fi
 
-prompt=$(envsubst < /tmp/outside-voice-prompt.txt)  # variable substitution
+prompt=$(bin/ensemble-build-peer-prompt \
+  --artifact-type plan \
+  --project-context "$ONE_LINE_PROJECT_CONTEXT" \
+  --goal "$ONE_LINE_GOAL" \
+  --artifact-file docs/plans/active/EN07-feature_auth-rotation.md \
+  --peer-mode "$PEER_MODE")
+
 ENSEMBLE_PEER_REVIEW=true \
   $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt" \
   > /tmp/peer-response.json 2>/tmp/peer-stderr.log
 ```
+
+For re-review iterations (the `/en-plan` finalize loop), build the
+"## Previous review context" section into a tempfile and pass
+`--iteration-context-file <path>`. The helper inserts it between the
+artifact body and the JSON-shape instructions; see
+`bin/ensemble-build-peer-prompt --help` for full args.
 
 Notes:
 
