@@ -128,10 +128,11 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
      - **9e. Code-simplifier pass.** Per `references/code-simplifier-dispatch.md`. Skip on trivial units, on `--no-simplify`, or with the auto-skip heuristics.
      - **9f. Verification gate 2.** Re-run unit tests after simplifier. On failure: revert simplifier's changes (`git restore` for files in `changes_made[]`); proceed with original implementation; surface regression.
      - **9g. Outside Voice peer review.** Per the chosen flavor (`build-orchestration.md` or `build-handoff.md`). Set `ENSEMBLE_PEER_REVIEW=true` for any subprocess call.
-     - **9h. Host applies findings** per `references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale.
+     - **9h. Host applies findings** per `references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale. As each finding is walked, append a structured entry to a per-unit `resolutions[]` list (`finding_id`, `u_id`, `iteration`, `severity`, `status`, `title`, `rationale` when applicable — schema in `references/build-handoff.md`).
+     - **9h.1. Per-unit finalize loop.** If `verdict: revise` AND ≥1 finding was applied in 9h AND `iteration < --max-per-unit-iterations` (default 1): build a "Previous review context" section from the resolutions[] list, write to a tempfile, and **re-invoke step 9g** with `--iteration-context-file <path>` (build-handoff via the helper subprocess; build-orchestration inline). Loop until `approve`, cap exhaustion, or all findings deferred/disagreed (no fixes to verify). Cap exhaustion is non-fatal — surface "iteration cap hit on U<N>" in the unit summary and continue. `--max-per-unit-iterations 0` disables the loop entirely.
      - **9i. Surface to user** if peer reports a P0 the host disagrees with, or a security/architecture finding (confidence ≥ 8) the host wants to defer, or peer verdict = `reject`. All other host decisions proceed without confirmation.
      - **9j. Re-verify** if any code changed in 9h — unit tests + lint. On failure: revert; surface.
-     - **9k. Commit.** Conventional message including U-ID. Body lists peer findings handled (applied / deferred / disagreed). Append `phase: P<N>` to commit trailer for greppability and `/en-ship` summaries. Format per `references/build-orchestration.md` or `build-handoff.md`.
+     - **9k. Commit.** Conventional message including U-ID. Body lists peer findings handled (applied / deferred / disagreed) plus iteration count. Append `phase: P<N>` to commit trailer for greppability. **Append one `peer-resolution: <single-line JSON>` trailer per finding** from the resolutions[] list (machine-readable audit; parseable via `git interpret-trailers --parse` or `git log --grep="^peer-resolution:"`). Format per `references/build-orchestration.md` or `build-handoff.md`.
    - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
    - **Plan-hash check.** Re-compute `peer_review_plan_hash` over current immutable plan-input fields (excluding iteration log, per-unit `status`, `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
    - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
@@ -154,6 +155,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 | `--handoff` | Force build-handoff regardless of host |
 | `--no-simplify` | Skip code-simplifier on every unit |
 | `--no-peer-per-unit` | Skip per-unit Outside Voice peer review |
+| `--max-per-unit-iterations <N>` | Cap on per-unit finalize-loop re-reviews. Default 1 (one re-review max → 2 peer passes total per unit). 0 disables looping entirely (single-pass behavior). |
 | `--worktree` | Run in a worktree (`../<repo>-<fr-id>/`) |
 | `--unit U<N>` | Build only the named unit; don't auto-advance. Universal safety gates still apply. |
 | `--dry-run` | Show what would happen; don't write or commit |
@@ -199,9 +201,11 @@ After each unit commits, surface a one-line summary:
 
 ```
 ✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
-  Implementer: codex (worker) | Simplifier: 2 changes | Peer: applied 1, deferred 1
-  Tests: 7 added, 7 passing | Commit: a3f1b9c (trailer: phase: P2)
+  Implementer: codex (worker) | Simplifier: 2 changes | Peer: 2 iterations, applied 1, deferred 1
+  Tests: 7 added, 7 passing | Commit: a3f1b9c (trailers: phase: P2, peer-resolution: x2)
 ```
+
+(Iteration count >1 means the per-unit finalize loop ran. `2 iterations` = initial peer pass + 1 re-review pass.)
 
 ## Final summary
 

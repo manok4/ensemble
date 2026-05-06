@@ -22,11 +22,28 @@ The default `en-build` flavor when **HOST = Claude Code**. Claude is the host; C
 │       failure).                                                    │
 │    6. Claude reviews the simplified diff itself, forms findings.   │
 │       (No subprocess — cross-agent property already satisfied.)    │
-│    7. Apply / defer / disagree per references/severity.md.         │
+│    7. Apply / defer / disagree per references/severity.md. Build  │
+│       a `resolutions[]` list as it walks each finding.             │
 │    8. Re-verify if any code changed.                               │
-│    9. Commit (conventional message + U-ID + peer findings noted).  │
+│    9. **Per-unit finalize loop.** If verdict was `revise` AND at  │
+│       least one finding applied AND iteration <                    │
+│       `--max-per-unit-iterations` (default 1): re-review the      │
+│       post-fix diff with previous-iteration context. Loop back to │
+│       step 6. On `approve` or cap, continue.                       │
+│   10. Commit (conventional message + U-ID + structured            │
+│       peer-resolution: trailers — one per finding).                │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+## Per-unit finalize loop (`--max-per-unit-iterations`, default 1)
+
+Same intent as `build-handoff.md`'s per-unit loop, but the host (Claude) re-reviews inline rather than via subprocess. After step 7 applies findings, step 9 re-reads the post-fix diff and re-evaluates against the unit's plan section + the resolutions[] context from the prior pass. The "Previous review context" framing ensures the second pass verifies fixes landed without re-litigating settled findings.
+
+Same caps and routing as `build-handoff.md`: cap at `--max-per-unit-iterations` (default 1; max 2 peer passes total per unit). Set to `0` to disable.
+
+## Resolution log (`peer_review_resolutions[]` per unit)
+
+Same schema as `build-handoff.md` — see that file for the YAML shape. The Claude host fills it during inline review rather than parsing it from a subprocess. Serialized into commit trailers at step 10.
 
 ## Dispatch prompt template (WORKER)
 
@@ -97,11 +114,17 @@ If Claude applies any code edits in step 7, re-run unit tests + lint before comm
 
 Implementer: codex (worker)
 Code-simplifier: <changed N files | skipped>
-Host review findings:
+Host review findings (iterations: <N>):
   - Applied: <count> findings
   - Deferred to tech-debt-tracker.md: <count> findings
   - Disagreed: <count> findings
+
+phase: P<N>
+peer-resolution: {"finding_id":"u3-1-1","u_id":"U3","iteration":1,"severity":"P1","status":"applied","title":"Race in refresh path"}
+peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2","status":"deferred","rationale":"low conf, tracked TD12","title":"Edge case"}
 ```
+
+**Trailers contract.** Identical to `build-handoff.md` — each finding becomes one `peer-resolution:` git-trailer line with single-line JSON conforming to the per-unit resolution schema. Same parsing semantics (`git interpret-trailers --parse`, `git log --grep="^peer-resolution:"`). Build-orchestration's host (Claude) writes these from its inline-review state; build-handoff's host (Codex) writes them from the peer subprocess JSON.
 
 ## When to NOT use this flavor
 
