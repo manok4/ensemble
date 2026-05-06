@@ -55,7 +55,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
 10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
-    - Build the Outside Voice prompt per `references/outside-voice.md`.
+    - Build the Outside Voice prompt by shelling out to `bin/ensemble-build-peer-prompt --artifact-type "markdown artifact" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
     - Set `ENSEMBLE_PEER_REVIEW=true` env var.
     - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
     - Parse the JSON response (per `references/finding-schema.md`).

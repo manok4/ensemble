@@ -157,4 +157,117 @@ assert_eq "2" "$#" "PEER_CMD splits into 2 args under unquoted expansion"
 assert_eq "codex" "$1" "PEER_CMD first arg is codex"
 assert_eq "exec" "$2" "PEER_CMD second arg is exec"
 
+# --- Scenario: recursion guard short-circuit ---
+# When ENSEMBLE_PEER_REVIEW=true, detect must skip the work entirely and
+# emit PEER_AVAILABLE=false. Tests pass even with no CLIs installed,
+# because the guard fires before any CLI lookup.
+recursion_tmp=$(mktemp -d)
+recursion_out=$(env -i PATH="/usr/bin:/bin" HOME="$recursion_tmp" \
+  ENSEMBLE_PEER_REVIEW=true "$DETECT" 2>/dev/null)
+unset HOST PEER PEER_MODE PEER_CMD PEER_AVAILABLE
+eval "$recursion_out"
+assert_eq "false" "${PEER_AVAILABLE:-}" "[recursion-guard] PEER_AVAILABLE=false"
+assert_eq "off" "${PEER_MODE:-}" "[recursion-guard] PEER_MODE=off"
+if echo "$recursion_out" | grep -q "DETECT_REASON=recursion-guard"; then
+  pass "[recursion-guard] emits DETECT_REASON=recursion-guard"
+else
+  fail "[recursion-guard] should emit DETECT_REASON=recursion-guard" "$recursion_out"
+fi
+# Cache file should NOT be written when recursion guard fires
+if [ ! -f "$recursion_tmp/.ensemble/host-cache.env" ]; then
+  pass "[recursion-guard] does not write cache"
+else
+  fail "[recursion-guard] should not write cache" "cache file exists at $recursion_tmp/.ensemble/host-cache.env"
+fi
+rm -rf "$recursion_tmp"
+
+# --- Scenario: cache hit on second invocation ---
+cache_tmp=$(mktemp -d)
+cache_shim="$cache_tmp/bin"
+cache_home="$cache_tmp/home"
+mkdir -p "$cache_shim" "$cache_home/.ensemble"
+cat > "$cache_shim/claude" <<'EOF'
+#!/usr/bin/env bash
+echo "{}"
+EOF
+chmod +x "$cache_shim/claude"
+cat > "$cache_shim/codex" <<'EOF'
+#!/usr/bin/env bash
+echo "{}"
+EOF
+chmod +x "$cache_shim/codex"
+cat > "$cache_home/.ensemble/config.json" <<EOF
+{ "peer_mode_override": "auto" }
+EOF
+
+# First invocation: cache miss → script runs full path
+out1=$(env -i PATH="$cache_shim:/usr/bin:/bin" HOME="$cache_home" \
+  CLAUDE_CODE_VERSION=test "$DETECT" 2>/dev/null)
+if [ -f "$cache_home/.ensemble/host-cache.env" ]; then
+  pass "[cache] first invocation writes cache file"
+else
+  fail "[cache] first invocation should write cache" "no cache file at $cache_home/.ensemble/host-cache.env"
+fi
+
+# Tamper with the cache file so we can prove the second invocation reads from it
+echo "HOST='cache-marker'" > "$cache_home/.ensemble/host-cache.env"
+echo "PEER_AVAILABLE='cache-marker-flag'" >> "$cache_home/.ensemble/host-cache.env"
+
+# Second invocation: cache hit → emits the tampered content (proving it didn't re-run detection)
+out2=$(env -i PATH="$cache_shim:/usr/bin:/bin" HOME="$cache_home" \
+  CLAUDE_CODE_VERSION=test "$DETECT" 2>/dev/null)
+unset HOST PEER_AVAILABLE
+eval "$out2"
+assert_eq "cache-marker" "${HOST:-}" "[cache] second invocation reads from cache (HOST tampered)"
+assert_eq "cache-marker-flag" "${PEER_AVAILABLE:-}" "[cache] second invocation reads from cache (PEER_AVAILABLE tampered)"
+
+# --no-cache flag bypasses cache → re-runs detection
+out3=$(env -i PATH="$cache_shim:/usr/bin:/bin" HOME="$cache_home" \
+  CLAUDE_CODE_VERSION=test "$DETECT" --no-cache 2>/dev/null)
+unset HOST PEER_AVAILABLE
+eval "$out3"
+assert_eq "claude-code" "${HOST:-}" "[cache] --no-cache bypasses cache and re-runs detection"
+
+# ENSEMBLE_DETECT_NO_CACHE env var also bypasses cache
+out4=$(env -i PATH="$cache_shim:/usr/bin:/bin" HOME="$cache_home" \
+  CLAUDE_CODE_VERSION=test ENSEMBLE_DETECT_NO_CACHE=true "$DETECT" 2>/dev/null)
+unset HOST PEER_AVAILABLE
+eval "$out4"
+assert_eq "claude-code" "${HOST:-}" "[cache] ENSEMBLE_DETECT_NO_CACHE=true bypasses cache"
+
+rm -rf "$cache_tmp"
+
+# --- Scenario: stale cache (TTL exceeded) is bypassed ---
+ttl_tmp=$(mktemp -d)
+ttl_home="$ttl_tmp/home"
+ttl_shim="$ttl_tmp/bin"
+mkdir -p "$ttl_home/.ensemble" "$ttl_shim"
+cat > "$ttl_shim/claude" <<'EOF'
+#!/usr/bin/env bash
+echo "{}"
+EOF
+chmod +x "$ttl_shim/claude"
+cat > "$ttl_shim/codex" <<'EOF'
+#!/usr/bin/env bash
+echo "{}"
+EOF
+chmod +x "$ttl_shim/codex"
+cat > "$ttl_home/.ensemble/config.json" <<EOF
+{ "peer_mode_override": "auto" }
+EOF
+
+# Plant a stale cache (mtime in the past) with tampered content
+echo "HOST='stale-marker'" > "$ttl_home/.ensemble/host-cache.env"
+# Set mtime to 2 hours ago (well beyond default 60-minute TTL)
+touch -t "$(date -v-2H +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 hours ago' +%Y%m%d%H%M.%S)" \
+  "$ttl_home/.ensemble/host-cache.env" 2>/dev/null
+
+out5=$(env -i PATH="$ttl_shim:/usr/bin:/bin" HOME="$ttl_home" \
+  CLAUDE_CODE_VERSION=test "$DETECT" 2>/dev/null)
+unset HOST
+eval "$out5"
+assert_eq "claude-code" "${HOST:-}" "[cache-ttl] stale cache (2h old) is bypassed; detection re-runs"
+
+rm -rf "$ttl_tmp"
+
 report

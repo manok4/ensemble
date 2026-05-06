@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# ensemble-build-peer-prompt — assemble the Outside Voice prompt from args.
+#
+# Skills shell out to this instead of constructing the prompt by reasoning,
+# which is several times slower in agent-tool-call terms. The prompt template
+# is the slim version from references/outside-voice.md.
+#
+# Usage:
+#   ensemble-build-peer-prompt \
+#     --artifact-type <code|plan|markdown artifact|mixed> \
+#     --project-context <one-line> \
+#     --goal <one-line> \
+#     --artifact-file <path>           # OR --artifact-stdin (read from stdin)
+#     [--peer-mode <cross-agent|single-agent-fallback>]   # default: cross-agent
+#     [--iteration-context-file <path>]                   # optional re-review context
+#
+# Output: the assembled prompt to stdout. Exit 0 on success.
+
+set -u
+
+ARTIFACT_TYPE=""
+PROJECT_CONTEXT=""
+GOAL=""
+ARTIFACT_FILE=""
+ARTIFACT_STDIN="false"
+PEER_MODE="cross-agent"
+ITERATION_CONTEXT_FILE=""
+
+usage() {
+  sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+  exit 2
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --artifact-type)            ARTIFACT_TYPE="$2"; shift 2 ;;
+    --project-context)          PROJECT_CONTEXT="$2"; shift 2 ;;
+    --goal)                     GOAL="$2"; shift 2 ;;
+    --artifact-file)            ARTIFACT_FILE="$2"; shift 2 ;;
+    --artifact-stdin)           ARTIFACT_STDIN="true"; shift ;;
+    --peer-mode)                PEER_MODE="$2"; shift 2 ;;
+    --iteration-context-file)   ITERATION_CONTEXT_FILE="$2"; shift 2 ;;
+    -h|--help)                  usage ;;
+    *) echo "unknown flag: $1" >&2; usage ;;
+  esac
+done
+
+# Validate required args
+[ -z "$ARTIFACT_TYPE" ]    && { echo "missing --artifact-type" >&2; exit 2; }
+[ -z "$PROJECT_CONTEXT" ]  && { echo "missing --project-context" >&2; exit 2; }
+[ -z "$GOAL" ]             && { echo "missing --goal" >&2; exit 2; }
+if [ -z "$ARTIFACT_FILE" ] && [ "$ARTIFACT_STDIN" != "true" ]; then
+  echo "missing --artifact-file or --artifact-stdin" >&2; exit 2
+fi
+case "$PEER_MODE" in
+  cross-agent|single-agent-fallback) ;;
+  *) echo "invalid --peer-mode: $PEER_MODE (use cross-agent or single-agent-fallback)" >&2; exit 2 ;;
+esac
+
+# Resolve ARTIFACT_BODY
+if [ "$ARTIFACT_STDIN" = "true" ]; then
+  ARTIFACT_BODY=$(cat)
+else
+  if [ ! -f "$ARTIFACT_FILE" ]; then
+    echo "artifact file not found: $ARTIFACT_FILE" >&2; exit 2
+  fi
+  ARTIFACT_BODY=$(cat "$ARTIFACT_FILE")
+fi
+
+# Conditional: single-agent fallback note
+if [ "$PEER_MODE" = "single-agent-fallback" ]; then
+  SINGLE_AGENT_NOTE="(Single-agent fallback: you're a fresh instance of the same model that wrote this. Be aggressive — bias toward finding problems the original instance rationalized away.)"
+else
+  SINGLE_AGENT_NOTE=""
+fi
+
+# Conditional: plan-specific review dimensions
+if [ "$ARTIFACT_TYPE" = "plan" ]; then
+  PLAN_REVIEW_DIMENSIONS="
+Plan review dimensions: cross-check risk: against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high; admin endpoints / feature-flag flips → gated:true). Flag dependency-vs-phase violations (low-risk depending on higher-risk). Misclassified destructive units are P0/P1."
+else
+  PLAN_REVIEW_DIMENSIONS=""
+fi
+
+# Optional: previous-review-context section for re-review iterations
+ITERATION_CONTEXT=""
+if [ -n "$ITERATION_CONTEXT_FILE" ]; then
+  if [ ! -f "$ITERATION_CONTEXT_FILE" ]; then
+    echo "iteration context file not found: $ITERATION_CONTEXT_FILE" >&2; exit 2
+  fi
+  ITERATION_CONTEXT=$(cat "$ITERATION_CONTEXT_FILE")
+fi
+
+# Emit the prompt
+cat <<PROMPT_EOF
+Peer review of a $ARTIFACT_TYPE. You are the REPORTER, not the fixer:
+read the artifact, return structured JSON findings only. Do NOT edit files,
+run commands, make commits, or take any action. The host applies findings.
+$SINGLE_AGENT_NOTE
+
+PROJECT: $PROJECT_CONTEXT
+GOAL: $GOAL
+$PLAN_REVIEW_DIMENSIONS
+ARTIFACT:
+---
+$ARTIFACT_BODY
+---
+$( [ -n "$ITERATION_CONTEXT" ] && printf '\n%s\n' "$ITERATION_CONTEXT" )
+Return JSON conforming to references/finding-schema.md. Required keys:
+verdict ("approve"|"revise"|"reject"), peer_mode (echo "$PEER_MODE"),
+summary (2-3 sentences), findings[]. Each finding: severity (P0-P3),
+confidence (1-10), title, location, why_it_matters, suggested_fix
+(describe the change, don't apply it); finding_id optional.
+
+Rules:
+- Critique only; suppress confidence<5 unless severity P0.
+- Output JSON only — no prose outside the JSON object.
+- For iteration > 1, honor "## Previous review context" — don't re-flag
+  applied/deferred/disagreed findings unless you have new evidence.
+- "verdict: approve" with empty findings[] is correct when the artifact
+  is solid.
+PROMPT_EOF
