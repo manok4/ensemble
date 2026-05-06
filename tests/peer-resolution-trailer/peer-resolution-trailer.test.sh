@@ -290,5 +290,85 @@ else
   fail "en-build SKILL.md should mention cap-hit warning behavior"
 fi
 
+# --- Peer invocation hardening (silent-hang failure mode) ---
+# Field-observed silent hang: capturing helper stdout into a shell variable
+# and re-passing via argv hit ARG_MAX on a large staged diff. Documented
+# pattern must pipe stdin, use --bare, wrap in timeout, capture stderr.
+
+# 1. Both build-handoff and outside-voice document piping helper-stdout
+#    directly into the peer command (no `prompt=$(...)` capture).
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+  doc_name=$(basename "$doc")
+  if grep -qE 'ensemble-build-peer-prompt[[:space:]]*\\?$' "$doc" || grep -qE '\| (timeout|claude --bare|\$PEER_CMD --bare)' "$doc"; then
+    pass "[$doc_name] uses pipe-stdin invocation pattern"
+  else
+    fail "[$doc_name] should pipe helper stdout into peer (not argv-capture)"
+  fi
+done
+
+# 2. Both reference docs document the --bare flag for the Claude peer.
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+  doc_name=$(basename "$doc")
+  if grep -q -- "--bare" "$doc"; then
+    pass "[$doc_name] documents --bare flag"
+  else
+    fail "[$doc_name] should reference --bare flag for peer subprocess"
+  fi
+done
+
+# 3. Both reference docs wrap the peer call in `timeout`.
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+  doc_name=$(basename "$doc")
+  if grep -qE '\btimeout\b' "$doc"; then
+    pass "[$doc_name] wraps peer call in timeout"
+  else
+    fail "[$doc_name] should wrap peer call in timeout for hang protection"
+  fi
+done
+
+# 4. Both reference docs capture stderr for diagnostic visibility.
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+  doc_name=$(basename "$doc")
+  if grep -qE '2>/tmp/[^ ]*stderr' "$doc"; then
+    pass "[$doc_name] captures peer stderr"
+  else
+    fail "[$doc_name] should capture peer stderr to a log file"
+  fi
+done
+
+# 5. The anti-pattern is explicitly called out in outside-voice.md so future
+#    readers don't drift back to it.
+OUTSIDE_VOICE="${REPO_ROOT}/references/outside-voice.md"
+if grep -q "ARG_MAX\|argv" "$OUTSIDE_VOICE"; then
+  pass "outside-voice.md explicitly warns against argv-inlining"
+else
+  fail "outside-voice.md should explicitly warn against argv-capture anti-pattern"
+fi
+if grep -q "Anti-pattern\|anti-pattern\|ANTI-PATTERN\|do not use" "$OUTSIDE_VOICE"; then
+  pass "outside-voice.md surfaces an explicit anti-pattern block"
+else
+  fail "outside-voice.md should label the anti-pattern explicitly"
+fi
+
+# 6. The helper script itself documents the canonical invocation in its
+#    header, so anyone running `head bin/ensemble-build-peer-prompt` or
+#    reading the source sees the intended usage.
+HELPER="${REPO_ROOT}/bin/ensemble-build-peer-prompt"
+if grep -q -- "--bare" "$HELPER"; then
+  pass "ensemble-build-peer-prompt header documents --bare"
+else
+  fail "ensemble-build-peer-prompt header should document --bare"
+fi
+if grep -qE 'ARG_MAX|ANTI-PATTERN|anti-pattern' "$HELPER"; then
+  pass "ensemble-build-peer-prompt header surfaces the anti-pattern"
+else
+  fail "ensemble-build-peer-prompt header should surface the anti-pattern"
+fi
+if grep -qE '\| timeout' "$HELPER"; then
+  pass "ensemble-build-peer-prompt header documents timeout-wrapping"
+else
+  fail "ensemble-build-peer-prompt header should show timeout-wrapping in canonical example"
+fi
+
 rm -f "$TMP_MSG"
 report
