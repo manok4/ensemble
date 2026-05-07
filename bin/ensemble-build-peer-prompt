@@ -22,19 +22,31 @@
 #   artifacts and produces silent hangs in the peer subprocess (observed in
 #   the field). Wrap the peer in `timeout` and capture stderr for diagnosis.
 #
+#   Auth contract: Ensemble peer review uses the host user's Claude
+#   subscription (OAuth / claude.ai / keychain). Do NOT use Claude's --bare
+#   flag — it bypasses OAuth/keychain and reads only ANTHROPIC_API_KEY,
+#   producing "Not logged in · Please run /login" on subscription-only
+#   hosts. We trade some startup overhead for working subscription auth.
+#
 #   Canonical (Claude as peer):
 #     ENSEMBLE_PEER_REVIEW=true ensemble-build-peer-prompt ... \
 #       | timeout "${peer_timeout_seconds:-600}" \
-#           claude --bare -p --output-format json --max-turns 1 \
+#           claude -p --output-format json --max-turns 1 \
+#             --strict-mcp-config --mcp-config '{}' \
+#             --disable-slash-commands \
+#             --no-session-persistence \
+#             --setting-sources user \
 #           > /tmp/peer-response.json 2>/tmp/peer-stderr.log
 #
-#   The --bare flag (Claude CLI) skips MCP loading, hooks, LSP, plugin sync,
-#   keychain reads, CLAUDE.md auto-discovery — the common silent-hang causes
-#   for non-interactive peer subprocesses. See references/outside-voice.md.
+#   These flags suppress what we can WITHOUT --bare: MCP loading, slash
+#   commands / skills, session writes, project/local settings. Hooks,
+#   LSP, plugin sync, CLAUDE.md auto-discovery still run; bound by timeout.
+#   See references/outside-voice.md for the full rationale.
 #
-#   ANTI-PATTERN (do not use):
+#   ANTI-PATTERNS (do not use):
 #     prompt=$(ensemble-build-peer-prompt ...)
-#     claude -p ... "$prompt"   # ← ARG_MAX hazard, silent hangs
+#     claude -p ... "$prompt"      # ← ARG_MAX hazard, silent hangs
+#     ... | claude --bare -p ...   # ← bypasses subscription auth
 
 set -u
 

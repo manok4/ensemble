@@ -293,31 +293,29 @@ fi
 # --- Peer invocation hardening (silent-hang failure mode) ---
 # Field-observed silent hang: capturing helper stdout into a shell variable
 # and re-passing via argv hit ARG_MAX on a large staged diff. Documented
-# pattern must pipe stdin, use --bare, wrap in timeout, capture stderr.
+# pattern must pipe stdin, wrap in timeout, capture stderr.
+#
+# Auth note: Ensemble's contract is subscription-auth (OAuth / claude.ai /
+# keychain). The Claude CLI's `--bare` flag bypasses that auth and produces
+# "Not logged in · Please run /login" on subscription-only hosts. So we
+# CANNOT use --bare; we use weaker isolation flags that are auth-compatible.
+
+OUTSIDE_VOICE="${REPO_ROOT}/references/outside-voice.md"
+HELPER="${REPO_ROOT}/bin/ensemble-build-peer-prompt"
 
 # 1. Both build-handoff and outside-voice document piping helper-stdout
 #    directly into the peer command (no `prompt=$(...)` capture).
-for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE"; do
   doc_name=$(basename "$doc")
-  if grep -qE 'ensemble-build-peer-prompt[[:space:]]*\\?$' "$doc" || grep -qE '\| (timeout|claude --bare|\$PEER_CMD --bare)' "$doc"; then
+  if grep -qE 'ensemble-build-peer-prompt[[:space:]]*\\?$' "$doc" || grep -qE '\| (timeout|claude|\$PEER_CMD)' "$doc"; then
     pass "[$doc_name] uses pipe-stdin invocation pattern"
   else
     fail "[$doc_name] should pipe helper stdout into peer (not argv-capture)"
   fi
 done
 
-# 2. Both reference docs document the --bare flag for the Claude peer.
-for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
-  doc_name=$(basename "$doc")
-  if grep -q -- "--bare" "$doc"; then
-    pass "[$doc_name] documents --bare flag"
-  else
-    fail "[$doc_name] should reference --bare flag for peer subprocess"
-  fi
-done
-
-# 3. Both reference docs wrap the peer call in `timeout`.
-for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+# 2. Both reference docs wrap the peer call in `timeout`.
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE"; do
   doc_name=$(basename "$doc")
   if grep -qE '\btimeout\b' "$doc"; then
     pass "[$doc_name] wraps peer call in timeout"
@@ -326,8 +324,8 @@ for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
   fi
 done
 
-# 4. Both reference docs capture stderr for diagnostic visibility.
-for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
+# 3. Both reference docs capture stderr for diagnostic visibility.
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE"; do
   doc_name=$(basename "$doc")
   if grep -qE '2>/tmp/[^ ]*stderr' "$doc"; then
     pass "[$doc_name] captures peer stderr"
@@ -336,31 +334,58 @@ for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/outside-voice.md"; do
   fi
 done
 
-# 5. The anti-pattern is explicitly called out in outside-voice.md so future
-#    readers don't drift back to it.
-OUTSIDE_VOICE="${REPO_ROOT}/references/outside-voice.md"
+# 4. argv-inlining anti-pattern is explicitly labeled.
 if grep -q "ARG_MAX\|argv" "$OUTSIDE_VOICE"; then
   pass "outside-voice.md explicitly warns against argv-inlining"
 else
   fail "outside-voice.md should explicitly warn against argv-capture anti-pattern"
 fi
-if grep -q "Anti-pattern\|anti-pattern\|ANTI-PATTERN\|do not use" "$OUTSIDE_VOICE"; then
+if grep -qE "[Aa]nti-pattern|ANTI-PATTERN|do not use" "$OUTSIDE_VOICE"; then
   pass "outside-voice.md surfaces an explicit anti-pattern block"
 else
   fail "outside-voice.md should label the anti-pattern explicitly"
 fi
 
-# 6. The helper script itself documents the canonical invocation in its
-#    header, so anyone running `head bin/ensemble-build-peer-prompt` or
-#    reading the source sees the intended usage.
-HELPER="${REPO_ROOT}/bin/ensemble-build-peer-prompt"
-if grep -q -- "--bare" "$HELPER"; then
-  pass "ensemble-build-peer-prompt header documents --bare"
-else
-  fail "ensemble-build-peer-prompt header should document --bare"
-fi
+# 5. Subscription-auth contract — --bare must be explicitly forbidden in the
+#    canonical invocation across all three docs (it bypasses subscription auth
+#    and produces "Please run /login" failures on subscription-only hosts).
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  # Extract just the canonical invocation block (between ```bash and ``` after the canonical pattern, or the relevant comment block in the helper header).
+  # The simpler check: --bare must NOT appear as part of an active claude or $PEER_CMD invocation on a single line.
+  if grep -qE '^\s*(\|?\s*claude|\|?\s*\$PEER_CMD)[^#]*--bare' "$doc"; then
+    fail "[$doc_name] uses --bare in a canonical claude invocation — bypasses subscription auth"
+  else
+    pass "[$doc_name] does not use --bare in canonical invocation"
+  fi
+done
+
+# 6. Subscription-auth rationale is explicit (so future contributors don't
+#    re-add --bare for performance reasons).
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qE "subscription.*auth|claude\.ai|OAuth|/login" "$doc"; then
+    pass "[$doc_name] explains subscription-auth contract"
+  else
+    fail "[$doc_name] should explain why --bare is rejected (subscription-auth)"
+  fi
+done
+
+# 7. Auth-compatible isolation flags are documented as the --bare substitute.
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE"; do
+  doc_name=$(basename "$doc")
+  for flag in "--strict-mcp-config" "--disable-slash-commands" "--no-session-persistence" "--setting-sources user"; do
+    if grep -qF -- "$flag" "$doc"; then
+      pass "[$doc_name] documents isolation flag: $flag"
+    else
+      fail "[$doc_name] missing isolation flag: $flag"
+    fi
+  done
+done
+
+# 8. Helper script header surfaces the canonical pattern + both anti-patterns.
 if grep -qE 'ARG_MAX|ANTI-PATTERN|anti-pattern' "$HELPER"; then
-  pass "ensemble-build-peer-prompt header surfaces the anti-pattern"
+  pass "ensemble-build-peer-prompt header surfaces anti-pattern label"
 else
   fail "ensemble-build-peer-prompt header should surface the anti-pattern"
 fi
@@ -368,6 +393,24 @@ if grep -qE '\| timeout' "$HELPER"; then
   pass "ensemble-build-peer-prompt header documents timeout-wrapping"
 else
   fail "ensemble-build-peer-prompt header should show timeout-wrapping in canonical example"
+fi
+if grep -qE "subscription|claude\.ai|OAuth|/login" "$HELPER"; then
+  pass "ensemble-build-peer-prompt header explains subscription-auth contract"
+else
+  fail "ensemble-build-peer-prompt header should explain subscription-auth requirement"
+fi
+if grep -q -- "--bare" "$HELPER" && grep -qE "do NOT use|bypass.*OAuth|bypasses keychain|bypasses subscription" "$HELPER"; then
+  pass "ensemble-build-peer-prompt header explicitly warns against --bare"
+else
+  fail "ensemble-build-peer-prompt header should warn against --bare and explain why"
+fi
+
+# 9. Auth preflight is documented (so users see clear errors instead of
+#    every per-unit peer call failing with "Please run /login").
+if grep -qE "auth status|auth preflight|loggedIn" "$HANDOFF_DOC" "$OUTSIDE_VOICE"; then
+  pass "Auth preflight documented in reference docs"
+else
+  fail "Auth preflight should be documented (claude auth status check before first peer call)"
 fi
 
 rm -f "$TMP_MSG"

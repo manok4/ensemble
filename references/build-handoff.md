@@ -17,11 +17,15 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │       dispatch.md).                                                │
 │    4. Verification gate 2 (re-run after simplifier; revert on    │
 │       failure).                                                    │
-│    5. Dispatch Claude as PEER-REVIEWER (pipe stdin, --bare,        │
-│       wrapped in timeout):                                         │
+│    5. Dispatch Claude as PEER-REVIEWER (pipe stdin, isolation      │
+│       flags that PRESERVE subscription auth, wrapped in timeout): │
 │         bin/ensemble-build-peer-prompt ... | \                    │
 │           timeout "${peer_timeout_seconds:-600}" \                 │
-│             claude --bare -p --output-format json --max-turns 1   │
+│             claude -p --output-format json --max-turns 1 \        │
+│               --strict-mcp-config --mcp-config '{}' \             │
+│               --disable-slash-commands \                           │
+│               --no-session-persistence \                           │
+│               --setting-sources user                               │
 │         (env: ENSEMBLE_PEER_REVIEW=true; stderr captured to log)   │
 │    6. Claude returns findings JSON (does NOT edit files — D30).    │
 │    7. Codex parses JSON; apply / defer / disagree per             │
@@ -48,6 +52,8 @@ Use `bin/ensemble-build-peer-prompt` to assemble the Outside Voice prompt — do
 
 ### Canonical invocation (build-handoff)
 
+Ensemble's peer-review subprocess **must use the host user's Claude subscription auth (OAuth / claude.ai / keychain)**, not an API key. This is a deliberate product decision: peer review piggy-backs on the user's existing subscription instead of requiring API credit. That rules out `--bare`, which by design reads only `ANTHROPIC_API_KEY` and bypasses keychain/OAuth entirely. Without `--bare` the peer subprocess pays for some startup work (hooks, LSP, plugin sync, CLAUDE.md auto-discovery), but `timeout` + the isolation flags below keep the cost bounded.
+
 ```bash
 # 1. Build a tempfile containing the post-simplifier diff + the unit's plan section
 cat > /tmp/en-build-unit-artifact.txt <<EOF
@@ -61,8 +67,9 @@ $POST_SIMPLIFIER_DIFF
 EOF
 
 # 2. Pipe helper-stdout → claude-stdin. No argv-inlining of the prompt.
-#    --bare strips MCP loading, hooks, LSP, plugin sync, CLAUDE.md auto-discovery,
-#    keychain reads — everything that can stall a peer subprocess on startup.
+#    Isolation flags below skip MCP loading, slash-command/skill loading, session
+#    persistence, and project/local settings — everything we can suppress without
+#    losing the user's subscription auth.
 #    timeout enforces peer_timeout_seconds (default 600) so a hang fails fast
 #    instead of stalling the build forever.
 #    stderr is captured for diagnostic visibility on failure.
@@ -73,21 +80,47 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
   --artifact-file /tmp/en-build-unit-artifact.txt \
   --peer-mode "$PEER_MODE" \
   | timeout "${peer_timeout_seconds:-600}" \
-      claude --bare -p --output-format json --max-turns 1 \
+      claude -p --output-format json --max-turns 1 \
+        --strict-mcp-config --mcp-config '{}' \
+        --disable-slash-commands \
+        --no-session-persistence \
+        --setting-sources user \
       > /tmp/en-build-peer-response.json \
       2>/tmp/en-build-peer-stderr.log
 ```
 
 For re-review iterations (see **Per-unit finalize loop** below), pass `--iteration-context-file <path>` with a serialized resolutions[] context — the helper inserts it between the artifact body and the JSON-shape instructions.
 
-### Why this exact shape (not `prompt=$(...) ; claude -p "$prompt"`)
+### Why this exact shape (not `prompt=$(...) ; claude -p "$prompt"`, and not `--bare`)
 
 - **Pipe over argv.** Capturing the helper's stdout into a shell variable and re-passing as argv hits `ARG_MAX` and stalls some CLI argument-parsing paths — observed silent hangs in the field. Stdin avoids the entire class. The Claude CLI's `-p` description explicitly calls out: *"useful for pipes."*
-- **`--bare` flag.** *Per `claude --help`:* "Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery." That list IS the menu of common silent-hang causes for one-shot peer subprocesses. Sets `CLAUDE_CODE_SIMPLE=1`. Skills still resolve via `/skill-name` if the prompt references them.
+- **No `--bare`.** *Per `claude --help`:* `--bare` is "Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery." Functionally appealing — but it sets `CLAUDE_CODE_SIMPLE=1` and routes auth strictly through `ANTHROPIC_API_KEY` / `apiKeyHelper` (OAuth and keychain are NEVER read). On a host where the user is logged in via `claude.ai` (subscription) without a real API key in env, `--bare` returns `Not logged in · Please run /login` and the peer call fails. **Ensemble peer review must work with subscription auth, so `--bare` is intentionally not used.**
+- **Isolation flags that preserve auth.** Drop-in substitutes for what `--bare` was buying us, all compatible with OAuth/keychain:
+  - `--strict-mcp-config --mcp-config '{}'` — skip MCP server loading entirely. Empty inline JSON config = no servers.
+  - `--disable-slash-commands` — skip skill / slash-command loading.
+  - `--no-session-persistence` — don't write session state (works with `--print` only).
+  - `--setting-sources user` — load only user-level settings; skip project + local (which can pull in plugins and hooks).
+  - Hooks, LSP, plugin sync, CLAUDE.md auto-discovery still happen. Acceptable; covered by `timeout`.
 - **`timeout` wrapper.** Without it, a hung peer blocks the build indefinitely. `peer_timeout_seconds` from `~/.ensemble/config.json` is the configured ceiling; the wrapper enforces it.
-- **stderr capture.** When a peer fails, the user needs `/tmp/en-build-peer-stderr.log` to diagnose (was it MCP init? auth? timeout?). The default of swallowing stderr makes hangs invisible.
+- **stderr capture.** When a peer fails, the user needs `/tmp/en-build-peer-stderr.log` to diagnose (was it MCP init? auth? timeout? the dreaded `Please run /login`?). The default of swallowing stderr makes hangs invisible.
 
 The Outside Voice prompt explicitly forbids file edits, commands, and commits (D30). The peer returns JSON-only findings (read from `/tmp/en-build-peer-response.json`).
+
+### Auth preflight (recommended)
+
+Skills should preflight subscription auth on the **first** peer dispatch in a session and fail loudly if it's missing — better than seeing every per-unit peer call fail with `Please run /login`:
+
+```bash
+auth_status=$(claude auth status --output-format json 2>/dev/null \
+  | jq -r '.loggedIn // false')
+if [ "$auth_status" != "true" ]; then
+  echo "ERROR: Claude not logged in. Run 'claude /login' to authenticate." >&2
+  echo "Ensemble peer review uses your subscription, not an API key." >&2
+  exit 1
+fi
+```
+
+Cache the result via the host-detect cache so it doesn't re-fire per unit.
 
 ## Per-unit finalize loop (`--max-per-unit-iterations`, default 1)
 
