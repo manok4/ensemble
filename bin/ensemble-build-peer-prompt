@@ -32,16 +32,29 @@
 #     ENSEMBLE_PEER_REVIEW=true ensemble-build-peer-prompt ... \
 #       | timeout "${peer_timeout_seconds:-600}" \
 #           claude -p --output-format json --max-turns 1 \
-#             --strict-mcp-config --mcp-config '{}' \
+#             --strict-mcp-config \
+#             --mcp-config '{"mcpServers":{}}' \
 #             --disable-slash-commands \
 #             --no-session-persistence \
-#             --setting-sources user \
+#             --setting-sources project \
+#             --tools '' \
 #           > /tmp/peer-response.json 2>/tmp/peer-stderr.log
 #
-#   These flags suppress what we can WITHOUT --bare: MCP loading, slash
-#   commands / skills, session writes, project/local settings. Hooks,
-#   LSP, plugin sync, CLAUDE.md auto-discovery still run; bound by timeout.
-#   See references/outside-voice.md for the full rationale.
+#   Notes:
+#     - --mcp-config takes inline JSON; the schema requires the
+#       mcpServers key, so `{"mcpServers":{}}` is the minimum valid
+#       empty form. Plain `{}` fails schema validation.
+#     - --setting-sources project (NOT user): user-level config often
+#       carries the LSP plugin which fires a tool call and consumes
+#       --max-turns 1 before producing JSON output.
+#     - --tools '' is load-bearing: disables ALL built-in tools so
+#       the peer can't make tool calls regardless of settings, AND
+#       enforces D30 (peer reports, never acts) mechanically.
+#
+#   These flags suppress what we can WITHOUT --bare. Hooks, LSP load,
+#   plugin sync, CLAUDE.md auto-discovery still run on startup but
+#   cannot fire tool calls. See references/outside-voice.md for the
+#   full rationale.
 #
 #   ANTI-PATTERNS (do not use):
 #     prompt=$(ensemble-build-peer-prompt ...)

@@ -22,10 +22,12 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │         bin/ensemble-build-peer-prompt ... | \                    │
 │           timeout "${peer_timeout_seconds:-600}" \                 │
 │             claude -p --output-format json --max-turns 1 \        │
-│               --strict-mcp-config --mcp-config '{}' \             │
+│               --strict-mcp-config \                                │
+│               --mcp-config '{"mcpServers":{}}' \                   │
 │               --disable-slash-commands \                           │
 │               --no-session-persistence \                           │
-│               --setting-sources user                               │
+│               --setting-sources project \                          │
+│               --tools ''                                           │
 │         (env: ENSEMBLE_PEER_REVIEW=true; stderr captured to log)   │
 │    6. Claude returns findings JSON (does NOT edit files — D30).    │
 │    7. Codex parses JSON; apply / defer / disagree per             │
@@ -81,10 +83,12 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
   --peer-mode "$PEER_MODE" \
   | timeout "${peer_timeout_seconds:-600}" \
       claude -p --output-format json --max-turns 1 \
-        --strict-mcp-config --mcp-config '{}' \
+        --strict-mcp-config \
+        --mcp-config '{"mcpServers":{}}' \
         --disable-slash-commands \
         --no-session-persistence \
-        --setting-sources user \
+        --setting-sources project \
+        --tools '' \
       > /tmp/en-build-peer-response.json \
       2>/tmp/en-build-peer-stderr.log
 ```
@@ -96,11 +100,12 @@ For re-review iterations (see **Per-unit finalize loop** below), pass `--iterati
 - **Pipe over argv.** Capturing the helper's stdout into a shell variable and re-passing as argv hits `ARG_MAX` and stalls some CLI argument-parsing paths — observed silent hangs in the field. Stdin avoids the entire class. The Claude CLI's `-p` description explicitly calls out: *"useful for pipes."*
 - **No `--bare`.** *Per `claude --help`:* `--bare` is "Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery." Functionally appealing — but it sets `CLAUDE_CODE_SIMPLE=1` and routes auth strictly through `ANTHROPIC_API_KEY` / `apiKeyHelper` (OAuth and keychain are NEVER read). On a host where the user is logged in via `claude.ai` (subscription) without a real API key in env, `--bare` returns `Not logged in · Please run /login` and the peer call fails. **Ensemble peer review must work with subscription auth, so `--bare` is intentionally not used.**
 - **Isolation flags that preserve auth.** Drop-in substitutes for what `--bare` was buying us, all compatible with OAuth/keychain:
-  - `--strict-mcp-config --mcp-config '{}'` — skip MCP server loading entirely. Empty inline JSON config = no servers.
+  - `--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — skip MCP server loading entirely. The inline JSON must include the `mcpServers` key (an empty `{}` fails Claude's MCP-config schema validation); `{"mcpServers":{}}` is the schema-valid empty form.
   - `--disable-slash-commands` — skip skill / slash-command loading.
   - `--no-session-persistence` — don't write session state (works with `--print` only).
-  - `--setting-sources user` — load only user-level settings; skip project + local (which can pull in plugins and hooks).
-  - Hooks, LSP, plugin sync, CLAUDE.md auto-discovery still happen. Acceptable; covered by `timeout`.
+  - `--setting-sources project` — load **project-level** settings only; skip user-level config which typically includes the LSP plugin and other globally-enabled tools that can fire tool calls and consume `--max-turns 1` before producing output. Field-tested: `--setting-sources user` triggered an LSP-driven tool call that busted the single turn.
+  - `--tools ''` — disable all built-in tools (Bash, Edit, Read, etc.) for the peer subprocess. **Load-bearing**: this is what physically prevents the model from making tool calls regardless of which settings load. Also matches the D30 contract — peer reports findings, never acts. With `--tools ''`, the `--max-turns 1` budget is reliably one model-response.
+  - Hooks, LSP load, plugin sync, CLAUDE.md auto-discovery still happen at startup but cannot fire tool calls (because `--tools ''`). Bounded by `timeout`.
 - **`timeout` wrapper.** Without it, a hung peer blocks the build indefinitely. `peer_timeout_seconds` from `~/.ensemble/config.json` is the configured ceiling; the wrapper enforces it.
 - **stderr capture.** When a peer fails, the user needs `/tmp/en-build-peer-stderr.log` to diagnose (was it MCP init? auth? timeout? the dreaded `Please run /login`?). The default of swallowing stderr makes hangs invisible.
 
