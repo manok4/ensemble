@@ -163,8 +163,9 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
        1. **Build the commit message** with conventional subject + U-ID, body listing peer-finding counts (applied / deferred / disagreed) + iteration count, plus trailers:
           - `phase: P<N>` — always.
-          - **`peer-resolution: <single-line JSON>`** — one per finding from the resolutions[] list, ONLY if 9g produced a parsed peer response. Schema per `references/build-handoff.md`.
-          - **`peer-skipped: <reason>`** — exactly one, ONLY if 9g recorded a skip reason from the documented enum. Mutually exclusive with peer-resolution: trailers (peer-resolution wins if both happen to land).
+          - **`peer-verdict: <single-line JSON>`** — exactly one, written WHENEVER the peer actually ran on this unit (regardless of finding count). Required keys: `verdict` (`approve`|`revise`|`reject`), `peer_mode`, `iteration`, `findings_count` (must match the count of `peer-resolution:` trailers below). This is the primary "the peer reviewed this unit" signal — it covers the zero-finding approve case where there are no per-finding trailers to write.
+          - **`peer-resolution: <single-line JSON>`** — one per finding from the resolutions[] list. Zero of these is fine if peer returned 0 findings; the `peer-verdict:` trailer above carries the evidence in that case. Schema per `references/build-handoff.md`.
+          - **`peer-skipped: <reason>`** — exactly one, written ONLY if 9g recorded a skip reason from the documented enum. Mutually exclusive with `peer-verdict:` (peer either ran or it didn't).
        2. **Commit.**
        3. **Run `bin/ensemble-verify-peer-evidence HEAD` in JSON mode.** This is the gate. The helper inspects trailers and returns:
           - `verdict: ok` (exit 0) → continue to next unit.
@@ -243,12 +244,17 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
 ## Cross-review
 
-**On per unit by default.** Disable globally with `--no-peer-per-unit`. Auto-skipped:
+**On per unit by default.** Disable globally with `--no-peer-per-unit`. Auto-skipped (each case maps 1:1 to a documented `peer-skipped:` enum value — the auto-skipped commit STILL records its reason via the trailer so the verify gate at step 9k passes):
 
-- When `PEER_AVAILABLE=false`.
-- When `ENSEMBLE_PEER_REVIEW=true` (recursion guard).
-- On units with diff < `skip_peer_below_lines` (default 50).
-- On Lightweight depth plans IF `skip_peer_on_lightweight: true`.
+| Auto-skip case | `peer-skipped:` value |
+|---|---|
+| `PEER_AVAILABLE=false` | `peer-skipped: PEER_AVAILABLE=false` |
+| `ENSEMBLE_PEER_REVIEW=true` (recursion guard) | `peer-skipped: recursion-guard-active` |
+| `--no-peer-per-unit` flag set | `peer-skipped: --no-peer-per-unit-flag` |
+| Diff `< skip_peer_below_lines` (default 50) | `peer-skipped: auto-skip:diff-below-threshold` |
+| Lightweight depth AND `skip_peer_on_lightweight: true` | `peer-skipped: auto-skip:lightweight-depth` |
+
+Auto-skip and explicit-skip are operationally identical — the agent still writes the structured `peer-skipped:` trailer so the verify gate has machine-readable evidence either way. **Auto-skip cases are NOT permitted on destructive (`risk: destructive`) or `gated: true` units** — those require an actual peer pass (`--require-peer-resolution` enforces it; the gate halts the build instead of letting the unit ship without peer evidence).
 
 When peer is available:
 - Cross-agent → peer is the *other* agent (D23).

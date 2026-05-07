@@ -217,5 +217,146 @@ if echo "$out" | grep -q "peer-skipped trailers:"; then
 else
   fail "human-readable output should include peer-skipped count line"
 fi
+if echo "$out" | grep -q "peer-verdict trailers:"; then
+  pass "human-readable output includes peer-verdict count"
+else
+  fail "human-readable output should include peer-verdict count line"
+fi
+
+# === 14. Zero-finding peer approve — the field-observed bug from PR #14 review ===
+# Peer ran, found nothing, approved. Documented commit format emitted only
+# peer-resolution: per finding, so a clean approve had no trailers and the
+# verifier rejected it. Fix: peer-verdict trailer is always emitted when peer
+# ran (regardless of finding count), and is sufficient evidence.
+cat > /tmp/msg.txt <<'EOF'
+feat: U2 (clean approve, zero findings)
+
+Body.
+
+phase: P2
+peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1,"findings_count":0,"summary":"Plan is well-scoped; no findings."}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --json)
+rc=$?
+assert_eq "0" "$rc" "approve with 0 findings + peer-verdict → exit 0"
+verdict=$(echo "$out" | jq -r .verdict)
+assert_eq "ok" "$verdict" "approve+0-findings verdict=ok (no longer rejected)"
+pv=$(echo "$out" | jq -r .peer_verdict)
+assert_eq "approve" "$pv" "peer_verdict surfaced in JSON output"
+vc=$(echo "$out" | jq -r .peer_verdicts)
+assert_eq "1" "$vc" "peer_verdicts count = 1"
+rc_count=$(echo "$out" | jq -r .peer_resolutions)
+assert_eq "0" "$rc_count" "peer_resolutions = 0 (no findings)"
+
+# === 15. peer-verdict + peer-resolution both present, counts match → ok ===
+cat > /tmp/msg.txt <<'EOF'
+feat: U3 (revise with 2 findings)
+
+Body.
+
+phase: P2
+peer-verdict: {"verdict":"revise","peer_mode":"cross-agent","iteration":1,"findings_count":2}
+peer-resolution: {"finding_id":"u3-1-1","u_id":"U3","iteration":1,"severity":"P1","status":"applied","title":"x"}
+peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2","status":"deferred","rationale":"low conf","title":"y"}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --json)
+rc=$?
+assert_eq "0" "$rc" "peer-verdict + matching peer-resolution count → exit 0"
+
+# === 16. peer-verdict findings_count mismatches peer-resolution count → malformed ===
+cat > /tmp/msg.txt <<'EOF'
+feat: U4 (count mismatch)
+
+Body.
+
+peer-verdict: {"verdict":"revise","peer_mode":"cross-agent","iteration":1,"findings_count":3}
+peer-resolution: {"finding_id":"u4-1-1","u_id":"U4","iteration":1,"severity":"P1","status":"applied","title":"x"}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --json)
+rc=$?
+assert_eq "1" "$rc" "findings_count mismatch → exit 1"
+verdict=$(echo "$out" | jq -r .verdict)
+assert_eq "malformed" "$verdict" "findings_count mismatch verdict=malformed"
+
+# === 17. peer-verdict invalid verdict value → malformed ===
+cat > /tmp/msg.txt <<'EOF'
+feat: U5 (bad verdict value)
+
+Body.
+
+peer-verdict: {"verdict":"maybe","peer_mode":"cross-agent","iteration":1,"findings_count":0}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --json)
+rc=$?
+assert_eq "1" "$rc" "invalid verdict value → exit 1"
+verdict=$(echo "$out" | jq -r .verdict)
+assert_eq "malformed" "$verdict" "invalid verdict value verdict=malformed"
+
+# === 18. peer-verdict missing required field → malformed ===
+cat > /tmp/msg.txt <<'EOF'
+feat: U6 (missing field)
+
+Body.
+
+peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --json)
+rc=$?
+assert_eq "1" "$rc" "peer-verdict missing findings_count → exit 1"
+verdict=$(echo "$out" | jq -r .verdict)
+assert_eq "malformed" "$verdict" "missing findings_count verdict=malformed"
+
+# === 19. multiple peer-verdict trailers → malformed ===
+cat > /tmp/msg.txt <<'EOF'
+feat: U7 (duplicate verdict)
+
+Body.
+
+peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1,"findings_count":0}
+peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":2,"findings_count":0}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --json)
+rc=$?
+assert_eq "1" "$rc" "multiple peer-verdict → exit 1"
+verdict=$(echo "$out" | jq -r .verdict)
+assert_eq "malformed" "$verdict" "multiple peer-verdict verdict=malformed"
+
+# === 20. --require-peer-resolution accepts peer-verdict alone (zero findings approve) ===
+cat > /tmp/msg.txt <<'EOF'
+feat: U8 (destructive; clean approve)
+
+Body.
+
+peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1,"findings_count":0}
+EOF
+sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$sha" --require-peer-resolution --json)
+rc=$?
+assert_eq "0" "$rc" "--require-peer-resolution + peer-verdict (0 findings) → exit 0"
+verdict=$(echo "$out" | jq -r .verdict)
+assert_eq "ok" "$verdict" "destructive unit with clean approve passes the gate"
+
+# === 21. New auto-skip enum entries accepted ===
+for reason in \
+  "auto-skip:diff-below-threshold" \
+  "auto-skip:lightweight-depth"; do
+  cat > /tmp/msg.txt <<EOF
+feat: auto-skip enum check
+
+Body.
+
+peer-skipped: $reason
+EOF
+  sha=$(make_commit /tmp/msg.txt)
+  rc=0
+  "$VERIFY" "$sha" --json >/dev/null 2>&1 || rc=$?
+  assert_eq "0" "$rc" "accepted new auto-skip reason: $reason"
+done
 
 report

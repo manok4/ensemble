@@ -124,13 +124,14 @@ Host review findings (iterations: <N>):
   - Disagreed: <count> findings
 
 phase: P<N>
+peer-verdict: {"verdict":"revise","peer_mode":"cross-agent","iteration":1,"findings_count":2,"summary":"Two correctness concerns; auth path solid"}
 peer-resolution: {"finding_id":"u3-1-1","u_id":"U3","iteration":1,"severity":"P1","status":"applied","title":"Race in refresh path"}
 peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2","status":"deferred","rationale":"low conf, tracked TD12","title":"Edge case"}
 ```
 
-**Trailers contract.** Identical to `build-handoff.md` — each finding becomes one `peer-resolution:` git-trailer line with single-line JSON conforming to the per-unit resolution schema. Same parsing semantics (`git interpret-trailers --parse`, `git log --grep="^peer-resolution:"`). Build-orchestration's host (Claude) writes these from its inline-review state; build-handoff's host (Codex) writes them from the peer subprocess JSON.
+**Trailers contract.** Identical to `build-handoff.md` — `peer-verdict:` carries the overall verdict and finding count (always emitted when peer ran), `peer-resolution:` carries one trailer per finding (zero is fine when the verdict was approve with no findings). Same parsing semantics (`git interpret-trailers --parse`). Build-orchestration's host (Claude) writes these from its inline-review state; build-handoff's host (Codex) writes them from the peer subprocess JSON.
 
-**`peer-skipped:` trailer also applies here** — for the `recursion-guard-active`, `cap-exhausted-with-applied-findings`, or `--no-peer-per-unit-flag` cases. See `references/build-handoff.md` for the full enum and the rule that destructive / gated units cannot use `peer-skipped:`. The verify gate (`bin/ensemble-verify-peer-evidence`) is shared across both flavors.
+**`peer-skipped:` trailer also applies here** — for `recursion-guard-active`, `cap-exhausted-with-applied-findings`, `--no-peer-per-unit-flag`, `auto-skip:diff-below-threshold`, or `auto-skip:lightweight-depth` cases. See `references/build-handoff.md` for the full enum and the rule that destructive / gated units cannot use `peer-skipped:`. The verify gate (`bin/ensemble-verify-peer-evidence`) is shared across both flavors.
 
 ## When to NOT use this flavor
 

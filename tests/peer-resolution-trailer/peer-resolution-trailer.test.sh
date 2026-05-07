@@ -533,5 +533,95 @@ else
   fail "en-build SKILL.md reference list should mention bin/ensemble-verify-peer-evidence"
 fi
 
+# === peer-verdict: trailer (P1 from PR #14 review) ===
+# Zero-finding peer approve was rejected as missing-evidence because the
+# old contract only accepted peer-resolution: per finding. New contract:
+# peer-verdict: trailer is always emitted when peer ran, separate from
+# per-finding peer-resolution: trailers.
+
+# 19. peer-verdict: trailer documented in both reference docs and SKILL.md.
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/references/build-orchestration.md" "$SKILL"; do
+  doc_name=$(basename "$doc")
+  if grep -qF "peer-verdict:" "$doc"; then
+    pass "[$doc_name] documents peer-verdict: trailer"
+  else
+    fail "[$doc_name] should document peer-verdict: trailer"
+  fi
+done
+
+# 20. peer-verdict: schema fields documented (in build-handoff.md, the canonical schema home).
+for field in "verdict" "peer_mode" "iteration" "findings_count"; do
+  if grep -qE "peer-verdict.*$field|\`$field\`.*\\(approve|$field\`.*peer-verdict" "$HANDOFF_DOC" \
+     || grep -qE "$field.*\(approve\|revise\|reject\)|peer-verdict.*$field" "$HANDOFF_DOC" \
+     || grep -qF "\"$field\"" "$HANDOFF_DOC"; then
+    pass "build-handoff.md documents peer-verdict field: $field"
+  else
+    fail "build-handoff.md missing peer-verdict field documentation: $field"
+  fi
+done
+
+# 21. The "always emitted when peer ran" rule is explicit (so future
+#     contributors don't drop the peer-verdict trailer for zero-finding cases).
+if grep -qE "always emitted|written WHENEVER|exactly one per peer pass|whenever the peer actually ran" "$HANDOFF_DOC" "$SKILL"; then
+  pass "peer-verdict 'always emitted when peer ran' rule documented"
+else
+  fail "peer-verdict trailer should be documented as always emitted when peer ran"
+fi
+
+# 22. Zero-finding example present in build-handoff.md (shows the schema works
+#     for clean approves with no findings).
+if grep -qE 'findings_count":0' "$HANDOFF_DOC" \
+   || grep -qE '"findings_count":[[:space:]]*0' "$HANDOFF_DOC"; then
+  pass "build-handoff.md includes a zero-finding peer-verdict example"
+else
+  fail "build-handoff.md should include a zero-finding peer-verdict example (the field-bug case)"
+fi
+
+# 23. peer-verdict.findings_count cross-check rule documented (the value MUST
+#     match the peer-resolution count).
+if grep -qE "MUST match|must match|cross-check.*peer-resolution|findings_count.*peer-resolution" "$HANDOFF_DOC"; then
+  pass "build-handoff.md documents findings_count cross-check rule"
+else
+  fail "build-handoff.md should document findings_count must match peer-resolution count"
+fi
+
+# === Auto-skip enum entries (P2 from PR #14 review) ===
+# The skill's Cross-review section listed two auto-skip cases (small diff,
+# lightweight depth) that didn't have entries in the peer-skipped enum, so
+# agents following auto-skip rules would produce no valid trailer and fail
+# the verify gate. New enum entries close the loophole.
+
+# 24. New auto-skip enum entries documented in build-handoff.md.
+for reason in "auto-skip:diff-below-threshold" "auto-skip:lightweight-depth"; do
+  if grep -qF -- "$reason" "$HANDOFF_DOC"; then
+    pass "build-handoff.md documents new peer-skipped reason: $reason"
+  else
+    fail "build-handoff.md should document peer-skipped reason: $reason"
+  fi
+done
+
+# 25. en-build SKILL.md's auto-skip section now maps each auto-skip case to
+#     a documented peer-skipped enum value (no orphan auto-skip rules).
+for reason in \
+  "PEER_AVAILABLE=false" \
+  "recursion-guard-active" \
+  "--no-peer-per-unit-flag" \
+  "auto-skip:diff-below-threshold" \
+  "auto-skip:lightweight-depth"; do
+  if grep -qF -- "$reason" "$SKILL"; then
+    pass "en-build SKILL.md auto-skip section maps to peer-skipped: $reason"
+  else
+    fail "en-build SKILL.md auto-skip section should reference peer-skipped value: $reason"
+  fi
+done
+
+# 26. Auto-skip is explicitly forbidden on destructive/gated units (so they
+#     can't ship without an actual peer pass via the auto-skip loophole).
+if grep -qiE "auto-skip.*not permitted|auto-skip.*not allowed" "$SKILL"; then
+  pass "en-build SKILL.md forbids auto-skip on destructive/gated units"
+else
+  fail "en-build SKILL.md should forbid auto-skip on destructive/gated units"
+fi
+
 rm -f "$TMP_MSG"
 report
