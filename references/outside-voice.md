@@ -82,8 +82,19 @@ error-prone. **And skills must NEVER capture the helper's output into a
 shell variable and re-pass it via `argv`** — that hits `ARG_MAX` on large
 artifacts (per-unit diffs, full plans) and produces silent hangs in the
 peer subprocess. The canonical pattern pipes the helper's stdout directly
-into the peer over stdin, runs the peer in `--bare` minimal mode, and
-wraps the call in `timeout` for hang protection.
+into the peer over stdin and wraps the call in `timeout` for hang
+protection.
+
+**Auth contract: Ensemble peer review uses the host user's Claude
+subscription (OAuth / claude.ai / keychain).** This is a deliberate
+product decision: peer review piggy-backs on the existing subscription
+instead of requiring API credit. Therefore Ensemble does NOT use Claude's
+`--bare` flag, even though `--bare` would suppress more startup work —
+because `--bare` reads only `ANTHROPIC_API_KEY` / `apiKeyHelper` and
+explicitly skips OAuth and keychain. On a subscription-only host, `--bare`
+fails with `Not logged in · Please run /login`. We trade some startup
+overhead for working subscription auth, then bound the cost with
+`timeout`.
 
 ```bash
 # After loading host-detect.md and resolving PEER_CMD, PEER_FORMAT, PEER_MODE:
@@ -94,8 +105,9 @@ if [ "$PEER_AVAILABLE" != "true" ]; then
 fi
 
 # Pipe helper-stdout → peer-stdin. NO argv-inlining of the prompt.
-# - --bare strips MCP, hooks, LSP, plugin sync, CLAUDE.md auto-discovery,
-#   keychain reads — common silent-hang causes for non-interactive peer subprocs.
+# Isolation flags below skip MCP, skills, session persistence, and
+# project/local settings — every suppression we can do that DOESN'T
+# require API-key auth (i.e. doesn't use --bare).
 # - timeout enforces peer_timeout_seconds (default 600) so a hang fails fast.
 # - stderr is captured for diagnostic visibility on failure.
 ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
@@ -105,17 +117,38 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
   --artifact-file docs/plans/active/EN07-feature_auth-rotation.md \
   --peer-mode "$PEER_MODE" \
   | timeout "${peer_timeout_seconds:-600}" \
-      $PEER_CMD --bare $PEER_FORMAT --max-turns 1 \
+      $PEER_CMD $PEER_FORMAT --max-turns 1 \
+        --strict-mcp-config --mcp-config '{}' \
+        --disable-slash-commands \
+        --no-session-persistence \
+        --setting-sources user \
       > /tmp/peer-response.json \
       2>/tmp/peer-stderr.log
 ```
 
-> **Note on `--bare`:** This is the Claude CLI flag. The Codex CLI has its
-> own equivalent (`codex exec --skip-init` / similar — verify against the
-> installed version). Skills resolve `$PEER_CMD` via host-detect; if the
-> resolved peer doesn't support a `--bare`-equivalent, omit the flag and
-> rely on `timeout` + stderr capture as the floor. Hang protection from
-> `timeout` is universal.
+> **Why this set of flags (not `--bare`):**
+> - `--bare` is the strongest startup suppressor — but it forces
+>   `ANTHROPIC_API_KEY` / `apiKeyHelper` auth and bypasses OAuth/keychain
+>   entirely. Ensemble's contract is subscription-first; `--bare` breaks
+>   that. **Do not use `--bare`** in any peer-review code path.
+> - `--strict-mcp-config --mcp-config '{}'` — skip MCP server loading.
+> - `--disable-slash-commands` — skip skill / slash-command loading.
+> - `--no-session-persistence` — don't write session state (works only
+>   with `--print`; we always use `-p`, so safe).
+> - `--setting-sources user` — load only user-level settings; skip
+>   project + local (which can pull in plugins, hooks, custom MCP).
+> - Hooks, LSP, plugin sync, CLAUDE.md auto-discovery still run. Bound
+>   them with `timeout`.
+
+> **Cross-host note:** This flag set is for the Claude CLI. The Codex CLI
+> has its own minimization flags — skills resolve `$PEER_CMD` via
+> host-detect and adapt. If the resolved peer doesn't support a flag
+> here, omit it and rely on `timeout` + stderr capture as the floor.
+
+> **Auth preflight (recommended).** On the first peer dispatch in a
+> session, run `claude auth status` and fail loudly if `loggedIn != true`.
+> Cheaper than seeing every per-unit peer call fail with `Please run
+> /login`. Cache via the host-detect session cache so it doesn't re-fire.
 
 For re-review iterations (the `/en-plan` finalize loop or `/en-build`'s
 per-unit finalize loop), build the "## Previous review context" section
@@ -123,17 +156,25 @@ into a tempfile and pass `--iteration-context-file <path>`. The helper
 inserts it between the artifact body and the JSON-shape instructions;
 see `bin/ensemble-build-peer-prompt --help` for full args.
 
-### Anti-pattern (do not use)
+### Anti-patterns (do not use)
 
 ```bash
-# WRONG — produced the silent-hang failure mode in the field:
+# WRONG — argv-inlined large prompt, produced the silent-hang failure
+# mode in the field:
 prompt=$(bin/ensemble-build-peer-prompt ...)
-$PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"   # argv-inlined large prompt
+$PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
+
+# WRONG — --bare bypasses subscription auth; fails with
+# "Not logged in · Please run /login" on hosts without a valid
+# ANTHROPIC_API_KEY (the common case for Ensemble users):
+... | claude --bare -p ...
 ```
 
 The helper writes the slim template to **stdout** by design. Capturing
 back into a variable and re-passing via argv defeats that design and
-hits the failure modes the canonical pattern was built to avoid.
+hits the failure modes the canonical pattern was built to avoid. And
+`--bare` would be tempting for startup speed, but it breaks Ensemble's
+subscription-first auth contract.
 
 Notes:
 
