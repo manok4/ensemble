@@ -374,13 +374,56 @@ done
 # 7. Auth-compatible isolation flags are documented as the --bare substitute.
 for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE"; do
   doc_name=$(basename "$doc")
-  for flag in "--strict-mcp-config" "--disable-slash-commands" "--no-session-persistence" "--setting-sources user"; do
+  for flag in "--strict-mcp-config" "--disable-slash-commands" "--no-session-persistence" "--setting-sources project" "--tools ''"; do
     if grep -qF -- "$flag" "$doc"; then
       pass "[$doc_name] documents isolation flag: $flag"
     else
       fail "[$doc_name] missing isolation flag: $flag"
     fi
   done
+done
+
+# 7a. --setting-sources user must NOT be in the canonical invocation
+#     (loads LSP plugin which fires tool calls and busts --max-turns 1).
+#     Allow mentions in markdown prose (`--setting-sources user` in
+#     backticks or in rationale text) — only flag active code-block uses.
+#     Active uses end with " \" (bash line continuation) or appear in
+#     ASCII-art flow charts (lines with leading │).
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qE '(\\$|│.*user[[:space:]]+│).*--setting-sources[[:space:]]+user' "$doc" \
+     || grep -qE '--setting-sources[[:space:]]+user[[:space:]]+\\$' "$doc" \
+     || grep -qE '│[[:space:]]+--setting-sources[[:space:]]+user' "$doc"; then
+    fail "[$doc_name] still uses --setting-sources user in an active invocation"
+  else
+    pass "[$doc_name] does not use --setting-sources user in active invocation"
+  fi
+done
+
+# 7b. --mcp-config must use schema-valid empty form, not plain '{}' (fails MCP schema).
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qE "[-]-mcp-config[[:space:]]+'\{\}'" "$doc"; then
+    fail "[$doc_name] uses --mcp-config '{}' (fails Claude MCP schema validation; use '{\"mcpServers\":{}}')"
+  else
+    pass "[$doc_name] does not use the schema-invalid --mcp-config '{}' form"
+  fi
+  if grep -qF "{\"mcpServers\":{}}" "$doc"; then
+    pass "[$doc_name] uses schema-valid --mcp-config '{\"mcpServers\":{}}'"
+  else
+    fail "[$doc_name] should use --mcp-config '{\"mcpServers\":{}}' (schema-valid empty form)"
+  fi
+done
+
+# 7c. --tools '' must be present in canonical invocations (load-bearing:
+#     prevents tool calls that would bust --max-turns 1, enforces D30).
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qE -- "--tools[[:space:]]+''" "$doc"; then
+    pass "[$doc_name] uses --tools '' to disable built-in tools"
+  else
+    fail "[$doc_name] missing --tools '' (peer must not be able to fire tool calls)"
+  fi
 done
 
 # 8. Helper script header surfaces the canonical pattern + both anti-patterns.

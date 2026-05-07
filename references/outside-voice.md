@@ -118,10 +118,12 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
   --peer-mode "$PEER_MODE" \
   | timeout "${peer_timeout_seconds:-600}" \
       $PEER_CMD $PEER_FORMAT --max-turns 1 \
-        --strict-mcp-config --mcp-config '{}' \
+        --strict-mcp-config \
+        --mcp-config '{"mcpServers":{}}' \
         --disable-slash-commands \
         --no-session-persistence \
-        --setting-sources user \
+        --setting-sources project \
+        --tools '' \
       > /tmp/peer-response.json \
       2>/tmp/peer-stderr.log
 ```
@@ -131,14 +133,26 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
 >   `ANTHROPIC_API_KEY` / `apiKeyHelper` auth and bypasses OAuth/keychain
 >   entirely. Ensemble's contract is subscription-first; `--bare` breaks
 >   that. **Do not use `--bare`** in any peer-review code path.
-> - `--strict-mcp-config --mcp-config '{}'` — skip MCP server loading.
+> - `--strict-mcp-config --mcp-config '{"mcpServers":{}}'` — skip MCP
+>   server loading. The inline JSON must include the `mcpServers` key:
+>   an empty `{}` fails Claude's MCP-config schema validation.
 > - `--disable-slash-commands` — skip skill / slash-command loading.
 > - `--no-session-persistence` — don't write session state (works only
 >   with `--print`; we always use `-p`, so safe).
-> - `--setting-sources user` — load only user-level settings; skip
->   project + local (which can pull in plugins, hooks, custom MCP).
-> - Hooks, LSP, plugin sync, CLAUDE.md auto-discovery still run. Bound
->   them with `timeout`.
+> - `--setting-sources project` — load project-level settings only; skip
+>   user-level config which typically carries the LSP plugin and other
+>   globally-enabled tools. Field-observed: `--setting-sources user`
+>   loaded the LSP and triggered a tool call that consumed `--max-turns 1`
+>   before producing JSON output.
+> - `--tools ''` — **load-bearing.** Disable ALL built-in tools (Bash,
+>   Edit, Read, etc.) for the peer subprocess. Physically prevents the
+>   model from making tool calls regardless of which settings load,
+>   guaranteeing `--max-turns 1` is reliably one model response. Also
+>   the strongest mechanical enforcement of D30 (peer reports, never
+>   acts).
+> - Hooks, LSP load, plugin sync, CLAUDE.md auto-discovery still happen
+>   at startup, but cannot fire tool calls (because `--tools ''`).
+>   Bounded by `timeout`.
 
 > **Cross-host note:** This flag set is for the Claude CLI. The Codex CLI
 > has its own minimization flags — skills resolve `$PEER_CMD` via
