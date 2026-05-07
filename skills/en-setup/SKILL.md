@@ -79,10 +79,30 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 5. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries (these are mandatory per foundation §10.1; lint requires their existence).
 6. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`.
 7. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
-8. **Add `.gitignore` entries** if missing:
-   - `.ensemble/config.local.yaml`
+8. **Add `.gitignore` entries** if missing. **Verify each entry is actually present after the write — do not assume the write succeeded.**
+   - `.ensemble/config.local.yaml` — **required.** Confirm with `grep -qF '.ensemble/config.local.yaml' .gitignore` after writing. If `.gitignore` doesn't exist, create it with this line.
    - Optionally `docs/learnings/archive/` — ask the user.
-9. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`.
+
+   This step is verified again in the final-verification phase (step 17). Both checks must pass.
+9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these four scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+
+   - `bin/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
+   - `bin/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
+   - `bin/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
+   - `bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
+
+   **Resolving the plugin source path.** The plugin's `bin/` lives wherever the host CLI loads plugins from. Resolve via (in order):
+     - `${ENSEMBLE_PLUGIN_DIR:-}` env var if set.
+     - The skill's own load path: `dirname(realpath(<this SKILL.md>))/../../bin/`.
+     - `~/.claude/plugins/<plugin-id>/bin/` for Claude Code's default layout (fallback).
+
+   For each of the four scripts: copy from `<plugin>/bin/<name>` to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
+
+   **Verification:** after copying, confirm with `[ -x bin/<name> ]` for each. Re-checked in the final-verification phase (step 17).
+
+   These bin scripts are project-local on purpose — they're invoked from `.github/workflows/en-sweep.yml` via relative paths, which only works if they're committed to the repo.
+
+10. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
     1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
     2. **Map to cron.** Named values map to:
        - `daily` → `0 9 * * *`
@@ -90,10 +110,11 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
        - `monthly` → `0 9 1 * *` (1st of the month, 9am UTC)
        - Anything else is treated as a literal cron expression and substituted as-is.
     3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
-    4. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
-    5. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `bin/ensemble-sweep-activity-check`."
-10. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
-11. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
+    4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 17.
+    5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
+    6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `bin/ensemble-sweep-activity-check`."
+11. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
+12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.). Choose:
     >   `p` — install project-scoped now (writes to `<repo>/.claude/settings.json`).
     >   `g` — print the global one-liner for me to run from my terminal (active everywhere; agents can't write `~/.claude/` themselves).
@@ -104,7 +125,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `s` → record in the report; don't ask again this session.
 
     Idempotent — if the status check reports any scope active, skip the prompt and note it in the report.
-12. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
+13. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
     > "Anthropic's Claude Code Review GitHub Action isn't installed. It runs Claude on every PR and posts inline review comments — these are exactly what `/en-resolve-pr` is built to handle. Install? (`y` / `n`)
     > Auth options:
     >   - **OAuth** (Pro/Max subscription) — free within rate limits. Requires `CLAUDE_CODE_OAUTH_TOKEN` repo secret (generate with `claude setup-token`).
@@ -114,13 +135,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `n` → record in the report; skip.
 
     Idempotent — if the workflow already exists, note it and don't overwrite.
-13. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
+14. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
     - `true` → record 🟢 "Auto-merge enabled at repo level."
     - `false` or empty → surface advisory (not blocking):
       > "Auto-merge is disabled at the repo level. `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` won't be able to enable auto-merge on PRs until you flip Settings → General → 'Allow auto-merge' on. Skipping for now — this is a manual repo setting."
 
     Idempotent. Don't try to flip it via API — that requires admin scope and is the kind of repo-policy change a human should make explicitly.
-14. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
+15. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
     > "`REVIEW.md` is a project-root file that tunes how PR review behaves on this repo — severity calibration, nit caps, skip rules, repo-specific checks, convergence behavior on multi-round reviews. Read automatically by Anthropic's managed Code Review service (Team/Enterprise plans); for the self-hosted action, the workflow's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action'). Seed `REVIEW.md` from the Ensemble-flavored default template? (`y` / `n`)"
 
     On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
@@ -131,7 +152,51 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/patterns/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
 
     Don't auto-run it. The user decides.
-17. **Recommend next steps:**
+
+17. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. This is the safety net — long mechanical sequences drop steps under context pressure, and a verification phase at the end catches that.
+
+    **Required artifacts** (must exist; missing → fail):
+
+    | Artifact | Check |
+    |---|---|
+    | `docs/plans/{active,completed}/` | both directories exist |
+    | `docs/learnings/{bugs,patterns,decisions,sources}/` | all four directories exist |
+    | `docs/learnings/{index.md,log.md}` | both files exist |
+    | `docs/generated/{plan-index.md,learning-index.md}` | both files exist with `generated: true` frontmatter |
+    | `docs/{references,designs}/` | both directories exist |
+    | `AGENTS.md` | exists; contains the Ensemble pointer-map section marker |
+    | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
+    | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
+    | `.github/workflows/en-sweep.yml` | exists |
+    | `bin/en-sweep-ci` | exists, executable (`-x`) |
+    | `bin/ensemble-sweep-activity-check` | exists, executable |
+    | `bin/ensemble-doc-only-check` | exists, executable |
+    | `bin/ensemble-lint` | exists, executable |
+    | `.ensemble/config.local.example.yaml` | exists |
+
+    **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
+
+    - `.github/workflows/claude-code-review.yml` (step 13 opt-in)
+    - `REVIEW.md` (step 15 opt-in)
+    - `.claude/settings.json` with guardrail PreToolUse hook (step 12 opt-in)
+    - `.ensemble/config.local.yaml` (step 11 opt-in)
+
+    **For each missing required artifact**: re-run the corresponding install step **once**. If it's still missing, **fail loudly**:
+
+    ```
+    ⚠️  /en-setup verification failed.
+    Missing required artifacts after retrofit:
+      - bin/ensemble-lint (not present)
+      - .gitignore (does not contain '.ensemble/config.local.yaml')
+
+    These were supposed to be installed by steps 8–9 but the writes
+    didn't take. Re-run /en-setup, or surface this to the user and ask
+    them to commit what's there before proceeding.
+    ```
+
+    **Idempotency check:** running `/en-setup` again on the same repo must produce zero new changes once verification has passed. Encode this expectation in the report ("Final verification: 14 / 14 required artifacts present").
+
+18. **Recommend next steps:**
     ```
     Two paths:
       - Run /en-foundation --retrofit to back-fill docs/foundation.md and docs/architecture.md from existing code.
@@ -163,8 +228,9 @@ Invoke `scripts/check-health` (in the plugin's `scripts/` directory). It prints 
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Guardrail status** — run `skills/en-guardrail/bin/install-guardrail status`. 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 10).
-- **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 11).
+- **Required-artifact verification** — same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
+- **Guardrail status** — run `skills/en-guardrail/bin/install-guardrail status`. 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
+- **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
 
 For each 🟡 / 🔴 check, the user can opt-in to repair:
@@ -196,6 +262,10 @@ Created:
   - REVIEW.md (review-only instructions; from template)
   - .github/workflows/en-sweep.yml
   - .github/workflows/claude-code-review.yml (Anthropic Code Review action)
+  - bin/en-sweep-ci (chmod +x)
+  - bin/ensemble-sweep-activity-check (chmod +x)
+  - bin/ensemble-doc-only-check (chmod +x)
+  - bin/ensemble-lint (chmod +x)
   - .ensemble/config.local.example.yaml
   - .claude/settings.json (en-guardrail PreToolUse hook, project-scoped)
 
@@ -205,6 +275,8 @@ Modified:
 
 Skipped:
   - docs/foundation.md (run /en-foundation --retrofit to create)
+
+Final verification: 14 / 14 required artifacts present.
 
 Next step:
   Run /en-foundation --retrofit to back-fill foundation and architecture from existing code.
