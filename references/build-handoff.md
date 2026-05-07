@@ -221,22 +221,60 @@ Peer review (claude, mode: cross-agent, iterations: <N>):
   - Disagreed: <count> findings
 
 phase: P<N>
+peer-verdict: {"verdict":"revise","peer_mode":"cross-agent","iteration":1,"findings_count":2,"summary":"Two correctness concerns; auth path solid, refresh-token race needs serialization"}
 peer-resolution: {"finding_id":"u3-1-1","u_id":"U3","iteration":1,"severity":"P1","status":"applied","title":"Race in refresh path"}
 peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2","status":"deferred","rationale":"low conf, tracked TD12","title":"Edge case"}
 ```
 
-**Trailers contract.** Each finding becomes one `peer-resolution:` git-trailer line containing single-line JSON. The JSON conforms to the per-unit resolution schema above (`finding_id`, `u_id`, `iteration`, `severity`, `status`, `title`, `rationale` when applicable). One trailer per finding; the human-readable counts above stay as a quick summary.
+For a clean approve with zero findings, the commit carries the `peer-verdict:` trailer alone:
 
-Why trailers: `git interpret-trailers --parse` and `git log --grep="^peer-resolution:"` are stable, scriptable, and don't require per-unit metadata files. Reviewers can audit by greppable history; future automation (e.g. `/en-resolve-pr` mining what got deferred) reads trailers cleanly.
+```
+phase: P2
+peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1,"findings_count":0,"summary":"Plan is well-scoped; no findings."}
+```
+
+**Trailers contract.**
+
+- **`peer-verdict:`** — exactly one per peer pass on this unit. Written whenever the peer actually ran (`approve` / `revise` / `reject` verdict, regardless of finding count). Required keys: `verdict`, `peer_mode`, `iteration`, `findings_count`. Optional: `summary`. **The `findings_count` field MUST match the number of `peer-resolution:` trailers below** — `bin/ensemble-verify-peer-evidence` cross-checks them.
+- **`peer-resolution:`** — one per finding. JSON schema per the resolution table above. Zero of these is valid when peer approved with no findings (the `peer-verdict:` trailer carries the evidence).
+- **`peer-skipped:`** — present ONLY when peer didn't run; mutually exclusive with `peer-verdict:`.
+
+Why trailers: `git interpret-trailers --parse` and `git log --grep="^peer-verdict:"` (or `peer-resolution:`, or `peer-skipped:`) are stable, scriptable, and don't require per-unit metadata files. Reviewers can audit by greppable history; future automation (e.g. `/en-resolve-pr` mining what got deferred) reads trailers cleanly.
+
+### `peer-skipped:` trailer (for documented skip cases)
+
+When peer review legitimately cannot run on a unit, the commit MUST carry a `peer-skipped:` trailer with a reason from the documented enum — and this is the ONLY way to advance without a `peer-resolution:` trailer. Writing "Peer review approved" as plain prose is **not** a valid skip; the verify gate (`bin/ensemble-verify-peer-evidence`) will reject the commit.
+
+```
+phase: P2
+peer-skipped: PEER_AVAILABLE=false
+```
+
+Documented skip reasons (enum):
+
+| Reason | When to use |
+|---|---|
+| `PEER_AVAILABLE=false` | Host-detect resolved no peer (cross-agent unavailable, single-agent disabled by override). build-handoff cannot dispatch. |
+| `--no-peer-per-unit-flag` | User passed the flag explicitly to skip per-unit peer review. |
+| `peer-subprocess-failed:<one-line-detail>` | Subprocess timeout, malformed JSON twice, D30 violation, or auth failure (e.g. `Please run /login`). The detail goes in a colon-separated suffix for diagnosis. **Surface to the user;** for `risk: destructive` or `gated: true` units, this skip is **not allowed** — the build must halt instead. |
+| `cap-exhausted-with-applied-findings` | Per-unit finalize loop hit the iteration cap with applied findings on the last pass. Already P1-warning-surfaced per `skills/en-build/SKILL.md` step 9h.1; the trailer makes it auditable. |
+| `recursion-guard-active` | `ENSEMBLE_PEER_REVIEW=true` was set at start (this build is itself running inside a peer subprocess). Cannot recursively dispatch; must skip. |
+| `auto-skip:diff-below-threshold` | Unit's diff is smaller than `skip_peer_below_lines` (default 50). Per-unit cost-control auto-skip from `~/.ensemble/config.json`. |
+| `auto-skip:lightweight-depth` | Plan's `depth: lightweight` AND `skip_peer_on_lightweight: true`. Per-plan cost-control auto-skip. |
+
+**Anything else is a contract violation.** "I forgot," "the conversation was compacted," "I assumed it would be ok" — there are no entries in this enum for those. The verify gate at step 9k will reject the commit; the agent must either re-run peer review and produce a `peer-resolution:` trailer or halt and surface to the user.
+
+**Destructive / gated units cannot use `peer-skipped:`.** Those units require an actual peer pass — no flag, no skip reason, no fallback path lets them ship without `peer-resolution:` evidence. The verify gate runs with `--require-peer-resolution` for those units; if peer dispatch fails, the build halts.
 
 ## Failure of peer subprocess
 
 | Failure | Behavior |
 |---|---|
-| `claude -p` subprocess times out | Mark peer review as skipped for this unit; commit without peer verdict; surface in summary |
-| Malformed JSON response | Retry once with "respond with valid JSON only" suffix; on second failure, mark as skipped |
-| Peer subprocess CLI error | Surface; offer to retry with `--no-peer-per-unit` to continue without |
-| Peer attempted to modify files (D30 violation) | Detect by checking git status before/after subprocess; revert any changes; log violation; do not trust this round of findings |
+| `claude -p` subprocess times out | Record `peer-skipped: peer-subprocess-failed:timeout` (not just "skipped") so the verify gate has machine-readable evidence. Commit; surface in summary. **Halt** if the unit is destructive or gated. |
+| Malformed JSON response | Retry once with "respond with valid JSON only" suffix; on second failure, record `peer-skipped: peer-subprocess-failed:malformed-json` and proceed. **Halt** if destructive / gated. |
+| Peer subprocess CLI error | Record `peer-skipped: peer-subprocess-failed:<error-message>`; surface; offer `--no-peer-per-unit` to continue without (will record `--no-peer-per-unit-flag` skip reason). **Halt** if destructive / gated. |
+| Peer attempted to modify files (D30 violation) | Detect by checking git status before/after subprocess; revert any changes; record `peer-skipped: peer-subprocess-failed:d30-violation`; log violation; do not trust this round of findings. **Halt** if destructive / gated. |
+| Auth failure (e.g. `Please run /login`) | Record `peer-skipped: peer-subprocess-failed:auth`. The auth preflight in step 5 should have caught this before the first unit; if it surfaces mid-build, halt and surface clearly. |
 
 ## Detecting D30 violations
 
