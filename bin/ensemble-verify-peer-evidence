@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# ensemble-verify-peer-evidence — check a commit (or HEAD) for peer-review evidence.
+#
+# Mechanical gate that /en-build calls before/after each unit commit. The gate
+# does NOT trust the agent's procedural memory of "did I run the peer review";
+# it inspects git trailers directly. This catches the failure mode where an
+# agent skipped peer review and wrote "Peer review approved" as plain text.
+#
+# Usage:
+#   ensemble-verify-peer-evidence [<commit-ref>] [--require-peer-resolution] [--json]
+#
+# Default <commit-ref>: HEAD.
+#
+# Flags:
+#   --require-peer-resolution   Fail unless at least one `peer-resolution:` trailer
+#                               is present. Used for destructive (P4) and
+#                               `gated: true` units where peer review is
+#                               mandatory and cannot be replaced by `peer-skipped:`.
+#   --json                      Emit JSON to stdout for skill consumption:
+#                                 {"commit","u_id","peer_resolutions","peer_skipped",
+#                                  "skipped_reasons","verdict","detail"}
+#                               Without --json, emit human-readable lines.
+#
+# Exit codes:
+#   0  Evidence present (or skipped with valid reason, when --require-peer-resolution
+#      is NOT set).
+#   1  Missing required evidence — caller should refuse to advance.
+#   2  Invalid input (commit doesn't resolve, malformed trailer, etc.).
+#
+# Trailer schema (consumed by this helper):
+#
+#   peer-resolution: <single-line JSON>
+#       Per-finding record. Required keys: finding_id, u_id, iteration,
+#       severity, status, title. See references/build-handoff.md for the full
+#       schema.
+#
+#   peer-skipped: <reason>
+#       Recorded when peer review was deliberately not invoked for this unit.
+#       Reason MUST be one of the documented enum values:
+#         PEER_AVAILABLE=false
+#         --no-peer-per-unit-flag
+#         peer-subprocess-failed:<one-line-detail>
+#         cap-exhausted-with-applied-findings
+#         recursion-guard-active
+#
+#   peer-skipped is NOT a synonym for "I forgot to run the peer call". Agents
+#   that skip peer review without a recorded reason fail this gate.
+
+set -u
+
+REF="HEAD"
+REQUIRE_RESOLUTION="false"
+EMIT_JSON="false"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --require-peer-resolution) REQUIRE_RESOLUTION="true"; shift ;;
+    --json) EMIT_JSON="true"; shift ;;
+    -h|--help)
+      sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    --*) echo "unknown flag: $1" >&2; exit 2 ;;
+    *) REF="$1"; shift ;;
+  esac
+done
+
+# Resolve commit
+if ! commit=$(git rev-parse --verify "$REF" 2>/dev/null); then
+  echo "ensemble-verify-peer-evidence: cannot resolve ref '$REF'" >&2
+  exit 2
+fi
+
+# Pull commit message and parse trailers
+msg=$(git log -1 --format=%B "$commit")
+trailers=$(printf '%s\n' "$msg" | git interpret-trailers --parse)
+
+# Count trailers
+res_count=$(printf '%s\n' "$trailers" | grep -c '^peer-resolution:' || true)
+skip_lines=$(printf '%s\n' "$trailers" | grep '^peer-skipped:' || true)
+skip_count=$(printf '%s\n' "$skip_lines" | grep -c '^peer-skipped:' || true)
+[ -z "$skip_lines" ] && skip_count=0
+
+# Extract U-ID from the first peer-resolution trailer (parse via jq for safety)
+u_id=""
+first_res=$(printf '%s\n' "$trailers" | grep '^peer-resolution:' | head -n 1)
+if [ -n "$first_res" ]; then
+  json="${first_res#peer-resolution: }"
+  u_id=$(printf '%s' "$json" | jq -r '.u_id // empty' 2>/dev/null || true)
+fi
+
+# Validate peer-resolution trailers parse as JSON with required fields
+res_invalid=0
+res_invalid_detail=""
+if [ "$res_count" -gt 0 ]; then
+  while IFS= read -r line; do
+    json="${line#peer-resolution: }"
+    if ! printf '%s' "$json" | jq empty 2>/dev/null; then
+      res_invalid=$((res_invalid + 1))
+      res_invalid_detail="malformed JSON: $(printf '%s' "$json" | head -c 80)"
+      continue
+    fi
+    for f in finding_id u_id iteration severity status title; do
+      if ! printf '%s' "$json" | jq -e "has(\"$f\")" >/dev/null 2>&1; then
+        res_invalid=$((res_invalid + 1))
+        res_invalid_detail="missing field $f in: $(printf '%s' "$json" | head -c 80)"
+        break
+      fi
+    done
+  done < <(printf '%s\n' "$trailers" | grep '^peer-resolution:')
+fi
+
+# Validate peer-skipped reasons
+skip_invalid=0
+skip_reasons=""
+if [ "$skip_count" -gt 0 ]; then
+  while IFS= read -r line; do
+    reason="${line#peer-skipped: }"
+    case "$reason" in
+      PEER_AVAILABLE=false) skip_reasons="${skip_reasons}${skip_reasons:+,}$reason" ;;
+      --no-peer-per-unit-flag) skip_reasons="${skip_reasons}${skip_reasons:+,}$reason" ;;
+      peer-subprocess-failed:*) skip_reasons="${skip_reasons}${skip_reasons:+,}peer-subprocess-failed" ;;
+      cap-exhausted-with-applied-findings) skip_reasons="${skip_reasons}${skip_reasons:+,}$reason" ;;
+      recursion-guard-active) skip_reasons="${skip_reasons}${skip_reasons:+,}$reason" ;;
+      *) skip_invalid=$((skip_invalid + 1)); skip_reasons="${skip_reasons}${skip_reasons:+,}INVALID($reason)" ;;
+    esac
+  done < <(printf '%s\n' "$skip_lines")
+fi
+
+# Apply gate
+verdict="ok"
+detail=""
+
+if [ "$res_invalid" -gt 0 ]; then
+  verdict="malformed"
+  detail="$res_invalid_detail"
+elif [ "$skip_invalid" -gt 0 ]; then
+  verdict="malformed"
+  detail="invalid peer-skipped reason — must be one of the documented enum values"
+elif [ "$REQUIRE_RESOLUTION" = "true" ]; then
+  if [ "$res_count" -lt 1 ]; then
+    verdict="missing-resolution"
+    detail="--require-peer-resolution set but commit has $res_count peer-resolution trailer(s); destructive / gated units MUST have peer review"
+  fi
+else
+  if [ "$res_count" -lt 1 ] && [ "$skip_count" -lt 1 ]; then
+    verdict="missing-evidence"
+    detail="commit has neither peer-resolution: nor peer-skipped: trailer; en-build refuses to advance without evidence"
+  fi
+fi
+
+# Emit
+if [ "$EMIT_JSON" = "true" ]; then
+  jq -n \
+    --arg commit "$commit" \
+    --arg u_id "${u_id:-}" \
+    --argjson res_count "$res_count" \
+    --argjson skip_count "$skip_count" \
+    --arg skip_reasons "$skip_reasons" \
+    --arg verdict "$verdict" \
+    --arg detail "$detail" \
+    '{commit: $commit, u_id: ($u_id | select(length>0) // null), peer_resolutions: $res_count, peer_skipped: $skip_count, skipped_reasons: ($skip_reasons | split(",") | map(select(length>0))), verdict: $verdict, detail: ($detail | select(length>0) // null)}'
+else
+  printf 'commit: %s\n' "$commit"
+  printf 'u_id: %s\n' "${u_id:-(none)}"
+  printf 'peer-resolution trailers: %d\n' "$res_count"
+  printf 'peer-skipped trailers: %d\n' "$skip_count"
+  [ -n "$skip_reasons" ] && printf 'skipped reasons: %s\n' "$skip_reasons"
+  printf 'verdict: %s\n' "$verdict"
+  [ -n "$detail" ] && printf 'detail: %s\n' "$detail"
+fi
+
+case "$verdict" in
+  ok) exit 0 ;;
+  *) exit 1 ;;
+esac

@@ -130,6 +130,8 @@ peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2
 
 **Trailers contract.** Identical to `build-handoff.md` — each finding becomes one `peer-resolution:` git-trailer line with single-line JSON conforming to the per-unit resolution schema. Same parsing semantics (`git interpret-trailers --parse`, `git log --grep="^peer-resolution:"`). Build-orchestration's host (Claude) writes these from its inline-review state; build-handoff's host (Codex) writes them from the peer subprocess JSON.
 
+**`peer-skipped:` trailer also applies here** — for the `recursion-guard-active`, `cap-exhausted-with-applied-findings`, or `--no-peer-per-unit-flag` cases. See `references/build-handoff.md` for the full enum and the rule that destructive / gated units cannot use `peer-skipped:`. The verify gate (`bin/ensemble-verify-peer-evidence`) is shared across both flavors.
+
 ## When to NOT use this flavor
 
 - Codex CLI not on PATH → fall back to `build-handoff` (which itself falls back to single-agent if claude CLI also missing).

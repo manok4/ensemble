@@ -456,5 +456,82 @@ else
   fail "Auth preflight should be documented (claude auth status check before first peer call)"
 fi
 
+# === Verify-peer-evidence gate (PR #14: fail-closed peer enforcement) ===
+
+VERIFY_HELPER="${REPO_ROOT}/bin/ensemble-verify-peer-evidence"
+
+# 10. The verify helper exists and is executable.
+if [ -x "$VERIFY_HELPER" ]; then
+  pass "bin/ensemble-verify-peer-evidence exists and is executable"
+else
+  fail "bin/ensemble-verify-peer-evidence must exist and be executable"
+fi
+
+# 11. peer-skipped trailer schema documented in build-handoff with the
+#     full enum (no skipping the documentation).
+for reason in \
+  "PEER_AVAILABLE=false" \
+  "--no-peer-per-unit-flag" \
+  "peer-subprocess-failed:" \
+  "cap-exhausted-with-applied-findings" \
+  "recursion-guard-active"; do
+  if grep -qF -- "$reason" "$HANDOFF_DOC"; then
+    pass "build-handoff.md documents peer-skipped reason: $reason"
+  else
+    fail "build-handoff.md should document peer-skipped reason: $reason"
+  fi
+done
+
+# 12. The "anything else is a contract violation" rule is explicit so future
+#     readers don't add weak skip reasons (the field-observed failure: agents
+#     wrote 'Peer review approved' without invoking the peer).
+if grep -qE "contract violation|forgot|compacted|I assumed" "$HANDOFF_DOC"; then
+  pass "build-handoff.md explicitly forbids forgot/compacted/assumed-OK skips"
+else
+  fail "build-handoff.md should explicitly forbid weak skip reasons"
+fi
+
+# 13. Destructive/gated rule: peer-skipped is NOT enough for those units.
+if grep -qE "[Dd]estructive.*cannot use.*peer-skipped|gated.*cannot use.*peer-skipped|require an actual peer pass|--require-peer-resolution" "$HANDOFF_DOC"; then
+  pass "build-handoff.md states destructive/gated units cannot use peer-skipped"
+else
+  fail "build-handoff.md should state that destructive/gated units cannot use peer-skipped"
+fi
+
+# 14. en-build SKILL.md has the verify-and-commit gate at step 9k.
+if grep -qE "[Vv]erify-and-commit|verify-peer-evidence" "$SKILL"; then
+  pass "en-build SKILL.md has verify-and-commit gate"
+else
+  fail "en-build SKILL.md should have a verify-and-commit gate at step 9k"
+fi
+
+# 15. en-build SKILL.md has plugin-install preflight (fail-fast on missing references).
+if grep -qE "[Pp]lugin-install preflight|fail-fast|missing.*reference" "$SKILL"; then
+  pass "en-build SKILL.md has plugin-install preflight"
+else
+  fail "en-build SKILL.md should fail-fast when reference files are missing"
+fi
+
+# 16. en-build SKILL.md has end-of-build peer-evidence audit.
+if grep -qE "[Pp]eer-evidence audit|end-of-build.*invariant|invariant.*peer" "$SKILL"; then
+  pass "en-build SKILL.md has end-of-build peer-evidence audit"
+else
+  fail "en-build SKILL.md should have an end-of-build peer-evidence audit"
+fi
+
+# 17. The skill's "What this skill never does" lists the new fail-closed contracts.
+if grep -qE "[Nn]ever commits a unit without peer evidence|[Nn]ever declares a build.*complete.*missing peer" "$SKILL"; then
+  pass "en-build SKILL.md 'never does' lists peer-evidence enforcement"
+else
+  fail "en-build SKILL.md 'never does' should list the peer-evidence enforcement"
+fi
+
+# 18. Reference list mentions the verify helper.
+if grep -qF "bin/ensemble-verify-peer-evidence" "$SKILL"; then
+  pass "en-build SKILL.md reference list mentions verify-peer-evidence helper"
+else
+  fail "en-build SKILL.md reference list should mention bin/ensemble-verify-peer-evidence"
+fi
+
 rm -f "$TMP_MSG"
 report

@@ -14,7 +14,21 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 ## Process
 
 1. **Detect host.** Source `references/host-detect.md`. Resolve `HOST`, `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`.
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip all peer-review subprocess calls (host implements + reviews inline).
+
+   **Plugin-install preflight (fail-fast).** Verify the skill's referenced files are accessible — observed failure mode: a partial plugin install that has only `SKILL.md` leaves the agent without the dispatch recipe, and peer review silently degrades to "skipped without recording why." For each of these reference paths, confirm the file exists:
+
+   - `references/host-detect.md`
+   - `references/build-orchestration.md`
+   - `references/build-handoff.md`
+   - `references/outside-voice.md`
+   - `references/severity.md`
+   - `references/finding-schema.md`
+   - `bin/ensemble-build-peer-prompt`
+   - `bin/ensemble-verify-peer-evidence`
+
+   If any are missing, **fail at start with a clear error** — do not proceed with a degraded build. Surface the exact paths missing and tell the user to re-run `/en-setup` or sync the plugin.
+
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip all peer-review subprocess calls (host implements + reviews inline). Each unit commit will record `peer-skipped: recursion-guard-active` so the gate at step 9k passes.
 3. **Choose flavor.**
    - HOST = Claude Code → **build-by-orchestration** (Codex as worker). See `references/build-orchestration.md`.
    - HOST = Codex → **build-handoff** (Claude as peer-reviewer). See `references/build-handoff.md`.
@@ -127,12 +141,39 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
      - **9d. Verification gate 1.** Run unit tests + project lint. Failures → fix before proceeding (don't advance to simplifier or review on broken unit).
      - **9e. Code-simplifier pass.** Per `references/code-simplifier-dispatch.md`. Skip on trivial units, on `--no-simplify`, or with the auto-skip heuristics.
      - **9f. Verification gate 2.** Re-run unit tests after simplifier. On failure: revert simplifier's changes (`git restore` for files in `changes_made[]`); proceed with original implementation; surface regression.
-     - **9g. Outside Voice peer review.** Per the chosen flavor (`build-orchestration.md` or `build-handoff.md`). Set `ENSEMBLE_PEER_REVIEW=true` for any subprocess call.
+     - **9g. Outside Voice peer review (mandatory invocation).** Per the chosen flavor (`build-orchestration.md` or `build-handoff.md`). Set `ENSEMBLE_PEER_REVIEW=true` for any subprocess call.
+
+       **Fail-closed contract:** every unit MUST end this step with EITHER a parsed peer-response JSON in hand (will become `peer-resolution:` trailers in 9k) OR a recorded skip reason from the documented enum (will become a `peer-skipped:` trailer). **Writing "Peer review approved" as plain prose without invoking the subprocess is a violation of this contract** — the gate at 9k will reject the commit.
+
+       Valid skip reasons (each maps 1:1 to a documented `peer-skipped:` value):
+         - `PEER_AVAILABLE=false` — host-detect resolved no peer; build-handoff cannot dispatch.
+         - `--no-peer-per-unit-flag` — user passed the flag.
+         - `peer-subprocess-failed:<one-line-detail>` — subprocess timed out, returned malformed JSON twice, or D30 violation forced abort. **Surface to the user;** do not silently proceed if the unit is `risk: destructive` or `gated: true` (those require peer-resolution; see 9k).
+         - `cap-exhausted-with-applied-findings` — finalize loop hit cap with applied findings on the last pass (already P1-warning-surfaced per 9h.1).
+         - `recursion-guard-active` — `ENSEMBLE_PEER_REVIEW=true` was set at start; peer call would recurse.
+
+       For any other situation — including "I forgot," "the conversation was compacted," or "I assumed it would be ok" — there is no valid skip path. Re-invoke the peer; if you can't, fall back to one of the documented skip reasons and surface clearly.
      - **9h. Host applies findings** per `references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale. As each finding is walked, append a structured entry to a per-unit `resolutions[]` list (`finding_id`, `u_id`, `iteration`, `severity`, `status`, `title`, `rationale` when applicable — schema in `references/build-handoff.md`).
      - **9h.1. Per-unit finalize loop.** Track a per-unit `re_review_count` counter that **starts at 0** and increments by 1 after each re-review pass (the initial peer pass at 9g does NOT count toward it). Loop condition: if `verdict: revise` AND ≥1 finding was applied in 9h AND `re_review_count < --max-per-unit-iterations` (default 1): build a "Previous review context" section from the resolutions[] list, write to a tempfile, **re-invoke step 9g** with `--iteration-context-file <path>` (build-handoff via the helper subprocess; build-orchestration inline), then increment `re_review_count`. With the default cap=1, this guarantees **exactly one re-review pass** when the initial pass returned `revise` with applied findings — the post-fix diff is always peer-verified at default settings. `--max-per-unit-iterations 0` disables the loop entirely (single-pass behavior). Loop terminates on `approve`, cap exhaustion, all-deferred-or-disagreed (no fixes to verify), or `reject` (pause + surface to user). **Cap-exhaustion warning:** if the cap is hit AND ≥1 finding was applied on the *last* re-review pass, surface a P1 warning in the unit summary — those last applications were verified by lint+tests in 9j but NOT by another peer pass. The user can raise `--max-per-unit-iterations` if this happens repeatedly.
      - **9i. Surface to user** if peer reports a P0 the host disagrees with, or a security/architecture finding (confidence ≥ 8) the host wants to defer, or peer verdict = `reject`. All other host decisions proceed without confirmation.
      - **9j. Re-verify** if any code changed in 9h — unit tests + lint. On failure: revert; surface.
-     - **9k. Commit.** Conventional message including U-ID. Body lists peer findings handled (applied / deferred / disagreed) plus iteration count. Append `phase: P<N>` to commit trailer for greppability. **Append one `peer-resolution: <single-line JSON>` trailer per finding** from the resolutions[] list (machine-readable audit; parseable via `git interpret-trailers --parse` or `git log --grep="^peer-resolution:"`). Format per `references/build-orchestration.md` or `build-handoff.md`.
+     - **9k. Verify-and-commit (mechanical gate).** This step is **not** a plain commit — it is a *verifying* commit. The agent does NOT decide whether peer evidence is sufficient; the helper script does, by inspecting trailers on the commit it just produced.
+
+       **Substeps (in order, no skipping):**
+
+       1. **Build the commit message** with conventional subject + U-ID, body listing peer-finding counts (applied / deferred / disagreed) + iteration count, plus trailers:
+          - `phase: P<N>` — always.
+          - **`peer-resolution: <single-line JSON>`** — one per finding from the resolutions[] list, ONLY if 9g produced a parsed peer response. Schema per `references/build-handoff.md`.
+          - **`peer-skipped: <reason>`** — exactly one, ONLY if 9g recorded a skip reason from the documented enum. Mutually exclusive with peer-resolution: trailers (peer-resolution wins if both happen to land).
+       2. **Commit.**
+       3. **Run `bin/ensemble-verify-peer-evidence HEAD` in JSON mode.** This is the gate. The helper inspects trailers and returns:
+          - `verdict: ok` (exit 0) → continue to next unit.
+          - `verdict: missing-evidence` / `missing-resolution` / `malformed` (exit 1) → **the commit is invalid by build contract**. Either (a) `git reset --soft HEAD^` to keep the staged changes and re-attempt the commit with proper trailers, or (b) surface to the user and stop the build.
+       4. **For destructive (`risk: destructive`) or `gated: true` units, run with `--require-peer-resolution`.** This rejects `peer-skipped:` as evidence — destructive and gated units cannot ship without an actual peer pass. If 9g had to skip (e.g. peer subprocess failed), **the build halts** and surfaces the failure to the user. **No flag lets a destructive or gated unit commit without peer-resolution evidence.**
+
+       The verify step is mechanical — the helper reads git trailers, not the agent's procedural memory of "did I do the peer call." This is the load-bearing gate that catches the field-observed failure mode where an agent skipped peer review and wrote "Peer review approved" as text.
+
+       Format per `references/build-orchestration.md` or `build-handoff.md`.
    - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
    - **Plan-hash check.** Re-compute `peer_review_plan_hash` over current immutable plan-input fields (excluding iteration log, per-unit `status`, `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
    - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
@@ -143,9 +184,37 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
 10. **After all units:**
     - Full test suite, lint, typecheck.
+    - **End-of-build peer-evidence invariant (mandatory, mechanical).** Walk every unit commit on this branch (since branch start) and run `bin/ensemble-verify-peer-evidence <sha>` per commit. Aggregate by U-ID. **Surface a per-unit table in the summary**:
+
+      ```
+      Peer-evidence audit — FR07-auth-rotation (5 units)
+        ✓ U1 — peer-resolution: 2 (applied 1, deferred 1)
+        ✓ U2 — peer-resolution: 0 (verdict: approve, no findings)
+        ✓ U3 — peer-skipped: PEER_AVAILABLE=false
+        ✓ U4 — peer-resolution: 3 (applied 2, disagreed 1)
+        ✓ U5 — peer-resolution: 1 (applied 1)
+
+      Audit verdict: ok (5/5 units have valid evidence)
+      ```
+
+      If ANY unit's commit fails verification (no trailers, malformed JSON, invalid skip reason, or destructive/gated unit with peer-skipped instead of peer-resolution), the audit verdict is `failed` and the summary surfaces:
+
+      ```
+      ⚠️  Peer-evidence audit FAILED. The following commits are missing valid evidence:
+        ✗ U10 (sha: a3f1b9c) — verdict: missing-evidence (no peer-resolution: or peer-skipped: trailer)
+        ✗ U13 (sha: b8e2cd4) — verdict: missing-resolution (gated:true unit; peer-skipped is not sufficient)
+
+      This means /en-build's per-unit peer review didn't actually run on these
+      units. The unit commits are still on the branch but should NOT be merged
+      until peer review is performed (run /en-cross-review on each commit, or
+      revert and re-run /en-build --from <U-ID>).
+      ```
+
+      The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails, the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-cross-review on the failing commits, then re-audit`.
+
     - Summary: completion status per U-ID, deviations, simplifier changes, peer-review verdicts. Per-phase summary if phasing was on.
-    - **Auto-invoke `/en-learn`** (soft prompt — A3): "Build complete. Capture learnings? (yes / skip)". User accepts → invoke; user declines → no-op.
-    - Suggest next: `/en-review` → `/en-qa` → `/en-ship`.
+    - **Auto-invoke `/en-learn`** (soft prompt — A3): "Build complete. Capture learnings? (yes / skip)". User accepts → invoke; user declines → no-op. **If the peer-evidence audit failed, /en-learn should be deferred** until the failing commits are addressed.
+    - Suggest next: `/en-review` → `/en-qa` → `/en-ship` — but only if the audit passed. Otherwise: `/en-cross-review` on the failing commits.
 
 ## Flags
 
@@ -242,6 +311,8 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 - `references/severity.md` — apply / defer / disagree routing
 - `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
 - `references/stable-ids.md` — U-ID stability rules
+- `bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch (used by step 9g)
+- `bin/ensemble-verify-peer-evidence` — mechanical gate at step 9k and step 10. Inspects git trailers; rejects commits without valid peer evidence. Run with `--require-peer-resolution` for destructive / `gated: true` units (peer-skipped is not sufficient).
 
 ## Failure protocol
 
@@ -273,3 +344,5 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 - **Never silently buries low-risk units in higher-risk phases.** Phase-invariant violations reject the plan structurally.
 - **Never auto-commits or auto-stashes on Ctrl-C / abort / signal.** No signal-time git operations. WIP commits are user-initiated only via `--commit-wip`.
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
+- **Never commits a unit without peer evidence.** Step 9k runs `bin/ensemble-verify-peer-evidence` after each commit. A unit commit without `peer-resolution:` or `peer-skipped:` trailers is rejected — the agent must either re-run peer review or record a documented skip reason. Destructive and gated units cannot use `peer-skipped:` at all; they require an actual peer pass.
+- **Never declares a build "complete" with missing peer evidence.** The end-of-build audit (step 10) runs the same verification across every unit commit on the branch and refuses the success path (`/en-review` → `/en-qa` → `/en-ship`) if any unit fails. Suggests `/en-cross-review` on the failing commits instead.
