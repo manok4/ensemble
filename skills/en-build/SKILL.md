@@ -3,6 +3,9 @@ name: en-build
 description: "Execute an implementation plan unit-by-unit on a feature branch. Picks build-by-orchestration (Claude host dispatches Codex worker) or build-handoff (Codex host with Claude peer reviewer) per host detection. Each unit: tests + lint → simplifier → re-verify → peer review → host applies → commit. Auto-invokes /en-learn at the end. Trigger phrases: 'build this plan', 'implement <plan_id>', 'start building', 'execute the plan'."
 ---
 
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+
+
 # `/en-build`
 
 Execute a plan, unit by unit, with cross-agent peer review at every per-unit gate. Two flavors based on host detection — both guarantee implementer ≠ reviewer.
@@ -13,25 +16,25 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `HOST`, `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`.
+1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve `HOST`, `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`.
 
    **Plugin-install preflight (fail-fast).** Verify the skill's referenced files are accessible — observed failure mode: a partial plugin install that has only `SKILL.md` leaves the agent without the dispatch recipe, and peer review silently degrades to "skipped without recording why." For each of these reference paths, confirm the file exists:
 
-   - `references/host-detect.md`
-   - `references/build-orchestration.md`
-   - `references/build-handoff.md`
-   - `references/outside-voice.md`
-   - `references/severity.md`
-   - `references/finding-schema.md`
-   - `bin/ensemble-build-peer-prompt`
-   - `bin/ensemble-verify-peer-evidence`
+   - `$ENSEMBLE_ROOT/references/host-detect.md`
+   - `$ENSEMBLE_ROOT/references/build-orchestration.md`
+   - `$ENSEMBLE_ROOT/references/build-handoff.md`
+   - `$ENSEMBLE_ROOT/references/outside-voice.md`
+   - `$ENSEMBLE_ROOT/references/severity.md`
+   - `$ENSEMBLE_ROOT/references/finding-schema.md`
+   - `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt`
+   - `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence`
 
    If any are missing, **fail at start with a clear error** — do not proceed with a degraded build. Surface the exact paths missing and tell the user to re-run `/en-setup` or sync the plugin.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip all peer-review subprocess calls (host implements + reviews inline). Each unit commit will record `peer-skipped: recursion-guard-active` so the gate at step 9k passes.
 3. **Choose flavor.**
-   - HOST = Claude Code → **build-by-orchestration** (Codex as worker). See `references/build-orchestration.md`.
-   - HOST = Codex → **build-handoff** (Claude as peer-reviewer). See `references/build-handoff.md`.
+   - HOST = Claude Code → **build-by-orchestration** (Codex as worker). See `$ENSEMBLE_ROOT/references/build-orchestration.md`.
+   - HOST = Codex → **build-handoff** (Claude as peer-reviewer). See `$ENSEMBLE_ROOT/references/build-handoff.md`.
    - User can override with `--orchestrate` or `--handoff`.
    - If the dispatched agent's CLI isn't available, fall back gracefully:
      - build-by-orchestration with no Codex → degrade to native implement + peer review (build-handoff with same-agent fallback).
@@ -139,7 +142,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
      - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
      - **9c. Implement** via the flavor's flow (worker dispatch or native).
      - **9d. Verification gate 1.** Run unit tests + project lint. Failures → fix before proceeding (don't advance to simplifier or review on broken unit).
-     - **9e. Code-simplifier pass.** Per `references/code-simplifier-dispatch.md`. Skip on trivial units, on `--no-simplify`, or with the auto-skip heuristics.
+     - **9e. Code-simplifier pass.** Per `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md`. Skip on trivial units, on `--no-simplify`, or with the auto-skip heuristics.
      - **9f. Verification gate 2.** Re-run unit tests after simplifier. On failure: revert simplifier's changes (`git restore` for files in `changes_made[]`); proceed with original implementation; surface regression.
      - **9g. Outside Voice peer review (mandatory invocation).** Per the chosen flavor (`build-orchestration.md` or `build-handoff.md`). Set `ENSEMBLE_PEER_REVIEW=true` for any subprocess call.
 
@@ -153,7 +156,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
          - `recursion-guard-active` — `ENSEMBLE_PEER_REVIEW=true` was set at start; peer call would recurse.
 
        For any other situation — including "I forgot," "the conversation was compacted," or "I assumed it would be ok" — there is no valid skip path. Re-invoke the peer; if you can't, fall back to one of the documented skip reasons and surface clearly.
-     - **9h. Host applies findings** per `references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale. As each finding is walked, append a structured entry to a per-unit `resolutions[]` list (`finding_id`, `u_id`, `iteration`, `severity`, `status`, `title`, `rationale` when applicable — schema in `references/build-handoff.md`).
+     - **9h. Host applies findings** per `$ENSEMBLE_ROOT/references/severity.md`: agree-and-apply / agree-and-defer-to-tech-debt-tracker / disagree-with-rationale. As each finding is walked, append a structured entry to a per-unit `resolutions[]` list (`finding_id`, `u_id`, `iteration`, `severity`, `status`, `title`, `rationale` when applicable — schema in `$ENSEMBLE_ROOT/references/build-handoff.md`).
      - **9h.1. Per-unit finalize loop.** Track a per-unit `re_review_count` counter that **starts at 0** and increments by 1 after each re-review pass (the initial peer pass at 9g does NOT count toward it). Loop condition: if `verdict: revise` AND ≥1 finding was applied in 9h AND `re_review_count < --max-per-unit-iterations` (default 1): build a "Previous review context" section from the resolutions[] list, write to a tempfile, **re-invoke step 9g** with `--iteration-context-file <path>` (build-handoff via the helper subprocess; build-orchestration inline), then increment `re_review_count`. With the default cap=1, this guarantees **exactly one re-review pass** when the initial pass returned `revise` with applied findings — the post-fix diff is always peer-verified at default settings. `--max-per-unit-iterations 0` disables the loop entirely (single-pass behavior). Loop terminates on `approve`, cap exhaustion, all-deferred-or-disagreed (no fixes to verify), or `reject` (pause + surface to user). **Cap-exhaustion warning:** if the cap is hit AND ≥1 finding was applied on the *last* re-review pass, surface a P1 warning in the unit summary — those last applications were verified by lint+tests in 9j but NOT by another peer pass. The user can raise `--max-per-unit-iterations` if this happens repeatedly.
      - **9i. Surface to user** if peer reports a P0 the host disagrees with, or a security/architecture finding (confidence ≥ 8) the host wants to defer, or peer verdict = `reject`. All other host decisions proceed without confirmation.
      - **9j. Re-verify** if any code changed in 9h — unit tests + lint. On failure: revert; surface.
@@ -164,17 +167,17 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
        1. **Build the commit message** with conventional subject + U-ID, body listing peer-finding counts (applied / deferred / disagreed) + iteration count, plus trailers:
           - `phase: P<N>` — always.
           - **`peer-verdict: <single-line JSON>`** — exactly one, written WHENEVER the peer actually ran on this unit (regardless of finding count). Required keys: `verdict` (`approve`|`revise`|`reject`), `peer_mode`, `iteration`, `findings_count` (must match the count of `peer-resolution:` trailers below). This is the primary "the peer reviewed this unit" signal — it covers the zero-finding approve case where there are no per-finding trailers to write.
-          - **`peer-resolution: <single-line JSON>`** — one per finding from the resolutions[] list. Zero of these is fine if peer returned 0 findings; the `peer-verdict:` trailer above carries the evidence in that case. Schema per `references/build-handoff.md`.
+          - **`peer-resolution: <single-line JSON>`** — one per finding from the resolutions[] list. Zero of these is fine if peer returned 0 findings; the `peer-verdict:` trailer above carries the evidence in that case. Schema per `$ENSEMBLE_ROOT/references/build-handoff.md`.
           - **`peer-skipped: <reason>`** — exactly one, written ONLY if 9g recorded a skip reason from the documented enum. Mutually exclusive with `peer-verdict:` (peer either ran or it didn't).
        2. **Commit.**
-       3. **Run `bin/ensemble-verify-peer-evidence HEAD` in JSON mode.** This is the gate. The helper inspects trailers and returns:
+       3. **Run `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence HEAD` in JSON mode.** This is the gate. The helper inspects trailers and returns:
           - `verdict: ok` (exit 0) → continue to next unit.
           - `verdict: missing-evidence` / `missing-resolution` / `malformed` (exit 1) → **the commit is invalid by build contract**. Either (a) `git reset --soft HEAD^` to keep the staged changes and re-attempt the commit with proper trailers, or (b) surface to the user and stop the build.
        4. **For destructive (`risk: destructive`) or `gated: true` units, run with `--require-peer-resolution`.** This rejects `peer-skipped:` as evidence — destructive and gated units cannot ship without an actual peer pass. If 9g had to skip (e.g. peer subprocess failed), **the build halts** and surfaces the failure to the user. **No flag lets a destructive or gated unit commit without peer-resolution evidence.**
 
        The verify step is mechanical — the helper reads git trailers, not the agent's procedural memory of "did I do the peer call." This is the load-bearing gate that catches the field-observed failure mode where an agent skipped peer review and wrote "Peer review approved" as text.
 
-       Format per `references/build-orchestration.md` or `build-handoff.md`.
+       Format per `$ENSEMBLE_ROOT/references/build-orchestration.md` or `build-handoff.md`.
    - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
    - **Plan-hash check.** Re-compute `peer_review_plan_hash` over current immutable plan-input fields (excluding iteration log, per-unit `status`, `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
    - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
@@ -185,7 +188,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
 10. **After all units:**
     - Full test suite, lint, typecheck.
-    - **End-of-build peer-evidence invariant (mandatory, mechanical).** Walk every unit commit on this branch (since branch start) and run `bin/ensemble-verify-peer-evidence <sha>` per commit. Aggregate by U-ID. **Surface a per-unit table in the summary**:
+    - **End-of-build peer-evidence invariant (mandatory, mechanical).** Walk every unit commit on this branch (since branch start) and run `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence <sha>` per commit. Aggregate by U-ID. **Surface a per-unit table in the summary**:
 
       ```
       Peer-evidence audit — FR07-auth-rotation (5 units)
@@ -258,7 +261,7 @@ Auto-skip and explicit-skip are operationally identical — the agent still writ
 
 When peer is available:
 - Cross-agent → peer is the *other* agent (D23).
-- Single-agent fallback → fresh subprocess of host's CLI (D31). Prompt augmented per `references/single-agent-fallback.md`.
+- Single-agent fallback → fresh subprocess of host's CLI (D31). Prompt augmented per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`.
 
 ## Code simplification
 
@@ -268,7 +271,7 @@ When peer is available:
 - `--no-simplify` flag.
 - Units where the diff exceeds `simplifier.max_lines_to_run` (default 2000).
 
-Two verification gates protect against simplifier breakage. On Gate-2 failure, revert the simplifier's edits and continue with the original implementation (per `references/code-simplifier-dispatch.md`).
+Two verification gates protect against simplifier breakage. On Gate-2 failure, revert the simplifier's edits and continue with the original implementation (per `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md`).
 
 ## Per-unit progress report
 
@@ -307,18 +310,18 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 
 ## Reference files
 
-- `references/host-detect.md` — host detection
-- `references/build-orchestration.md` — Claude-host flow (worker dispatch)
-- `references/build-handoff.md` — Codex-host flow (peer-reviewer dispatch)
-- `references/code-simplifier-dispatch.md` — when/how to run simplifier; revert protocol
-- `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/single-agent-fallback.md` — fallback when only one CLI installed
-- `references/finding-schema.md` — peer JSON shape
-- `references/severity.md` — apply / defer / disagree routing
-- `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
-- `references/stable-ids.md` — U-ID stability rules
-- `bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch (used by step 9g)
-- `bin/ensemble-verify-peer-evidence` — mechanical gate at step 9k and step 10. Inspects git trailers; rejects commits without valid peer evidence. Run with `--require-peer-resolution` for destructive / `gated: true` units (peer-skipped is not sufficient).
+- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
+- `$ENSEMBLE_ROOT/references/build-orchestration.md` — Claude-host flow (worker dispatch)
+- `$ENSEMBLE_ROOT/references/build-handoff.md` — Codex-host flow (peer-reviewer dispatch)
+- `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md` — when/how to run simplifier; revert protocol
+- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt and verdict handling
+- `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — fallback when only one CLI installed
+- `$ENSEMBLE_ROOT/references/finding-schema.md` — peer JSON shape
+- `$ENSEMBLE_ROOT/references/severity.md` — apply / defer / disagree routing
+- `$ENSEMBLE_ROOT/references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
+- `$ENSEMBLE_ROOT/references/stable-ids.md` — U-ID stability rules
+- `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch (used by step 9g)
+- `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence` — mechanical gate at step 9k and step 10. Inspects git trailers; rejects commits without valid peer evidence. Run with `--require-peer-resolution` for destructive / `gated: true` units (peer-skipped is not sufficient).
 
 ## Failure protocol
 
@@ -350,5 +353,5 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 - **Never silently buries low-risk units in higher-risk phases.** Phase-invariant violations reject the plan structurally.
 - **Never auto-commits or auto-stashes on Ctrl-C / abort / signal.** No signal-time git operations. WIP commits are user-initiated only via `--commit-wip`.
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
-- **Never commits a unit without peer evidence.** Step 9k runs `bin/ensemble-verify-peer-evidence` after each commit. A unit commit without `peer-resolution:` or `peer-skipped:` trailers is rejected — the agent must either re-run peer review or record a documented skip reason. Destructive and gated units cannot use `peer-skipped:` at all; they require an actual peer pass.
+- **Never commits a unit without peer evidence.** Step 9k runs `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence` after each commit. A unit commit without `peer-resolution:` or `peer-skipped:` trailers is rejected — the agent must either re-run peer review or record a documented skip reason. Destructive and gated units cannot use `peer-skipped:` at all; they require an actual peer pass.
 - **Never declares a build "complete" with missing peer evidence.** The end-of-build audit (step 10) runs the same verification across every unit commit on the branch and refuses the success path (`/en-review` → `/en-qa` → `/en-ship`) if any unit fails. Suggests `/en-cross-review` on the failing commits instead.

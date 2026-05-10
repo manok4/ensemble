@@ -3,6 +3,9 @@ name: en-plan
 description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs and plan_type (feature | improvement | bug). Reads foundation, runs research agents (repo-research + learnings-research; web-research conditional), breaks work into units with files / tests / execution notes; runs cross-agent peer review on the draft. Modes: --resume <plan> (promote a draft); --from-legacy <path> (migrate legacy plan). Outputs docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'."
 ---
 
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+
+
 # `/en-plan`
 
 Concrete implementation plan with stable U-IDs and Outside Voice peer review. Hands off to `/en-build`.
@@ -11,7 +14,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.
+1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
    - **`--resume <plan-path>`** (explicit) — load the named plan; preserve its `plan_id`, `plan_type`, `created`, `generator` (if present); apply the rest of the planning flow (research, questions, U-IDs, peer review) to flesh it out. Used to promote auto-generated draft plans (from `/en-sweep`'s continuous monitoring) into full peer-reviewed plans. Status remains `draft` until step 11; only the user can flip to `open`.
@@ -35,7 +38,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Standard: 3–10 units, several files, possible new components.
    - Deep: 10+ units, structural change, multi-week work.
    Depth is asked or inferred; default Standard.
-6. **Phase 1 research (parallel).** Per `references/research-dispatch.md`:
+6. **Phase 1 research (parallel).** Per `$ENSEMBLE_ROOT/references/research-dispatch.md`:
    - `repo-research` — patterns, conventions, file paths, prior art (Standard/Deep always).
    - `learnings-research` — relevant entries from `docs/learnings/` via `index.md` (Lightweight optional, Standard/Deep always).
    - `web-research` — only if a 3rd-party library not used elsewhere AND the library has known footguns AND the user hasn't said "skip web research".
@@ -49,7 +52,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Each unit: one logical change, peer-reviewable, atomically committable.
    - Tightly-coupled changes batch into one unit; independent concerns become separate units.
    - Auth/payments/migrations always get their own unit even if small.
-   - **Never renumber after assignment** (per `references/stable-ids.md`).
+   - **Never renumber after assignment** (per `$ENSEMBLE_ROOT/references/stable-ids.md`).
 9. **Per-unit metadata.** For each U-ID:
    - **Goal:** one line.
    - **Requirements covered:** R-IDs and AE-IDs from foundation. (For State-2 retrofit projects without a foundation yet, leave `covers_requirements: []` and set `requirements_pending: true`.)
@@ -69,16 +72,16 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    **Phase invariant check.** For every dependency edge `U → V` (U depends on V), verify `risk(V) <= risk(U)` in the order `low < medium < high < destructive`. A low-risk unit depending on a higher-risk unit is a structural error — `/en-build`'s phase loop refuses to run such plans. Surface and resolve before writing the plan: either remove the dependency, promote `U`'s `risk:`, or split `U` into a part that doesn't depend on the higher-risk unit.
 10. **Resolve `plan_id_prefix`.** Read `plan_id_prefix:` from `docs/foundation.md` frontmatter. If absent (older project, retrofit, or `/en-foundation` not yet run), default to `FR`. Plans inherit the prefix in force at the time they are minted; the prefix is part of the plan's stable ID and never rewritten.
 11. **Auto-increment plan number.** Scan `docs/plans/active/` and `docs/plans/completed/` for the highest existing plan number under the *current* `plan_id_prefix`. Legacy `FR` plans count toward `FR`'s numbering only; a new `EN` project starts at `EN01` even if `FR99` already exists. Zero-pad to 2 digits (3 once `99` is reached).
-12. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in step 13 may flip to `open` automatically.
+12. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `$ENSEMBLE_ROOT/references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in step 13 may flip to `open` automatically.
 13. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
-    - Build the prompt by shelling out to `bin/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
+    - Build the prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `$ENSEMBLE_ROOT/references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
     - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
-    - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
+    - Parse JSON per `$ENSEMBLE_ROOT/references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
       - On `verdict: approve` → exit the loop. Proceed to step 14 (status flip).
-      - On `verdict: revise` → walk findings, apply / defer / disagree per `references/severity.md`. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `bin/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
+      - On `verdict: revise` → walk findings, apply / defer / disagree per `$ENSEMBLE_ROOT/references/severity.md`. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
         - **Iteration cap (depth-aware):** Lightweight = 1, Standard = 2, Deep = 2. `--max-iterations <N>` overrides. `--no-reloop` runs the initial pass only and never re-invokes.
         - **Cap-hit behavior:** Surface the latest findings; ask the user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control.
         - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
@@ -92,7 +95,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - Loop hit the iteration cap with `verdict: revise` AND the user chose "accept as-is" at the cap-hit prompt (per failure protocol).
     - Peer returned `verdict: reject` AND the user explicitly overrode the rejection (per failure protocol).
 
-    On promotion: compute `peer_review_plan_hash` (sha256 over canonicalized immutable plan-input fields — see `references/templates/plan-template.md` lifecycle and the scope-aware-slicing spec for the exact field list), write it to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
+    On promotion: compute `peer_review_plan_hash` (sha256 over canonicalized immutable plan-input fields — see `$ENSEMBLE_ROOT/references/templates/plan-template.md` lifecycle and the scope-aware-slicing spec for the exact field list), write it to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
 
     The plan stays in `status: draft` ONLY when:
     - Peer returned `verdict: reject` AND the user did NOT override.
@@ -124,7 +127,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 - The plan has < 50 lines (`skip_peer_below_lines` config).
 - Depth is Lightweight AND `skip_peer_on_lightweight: true`.
 
-**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `references/outside-voice.md`). The loop continues until `approve` or the depth-aware iteration cap is hit. Cap defaults: Lightweight = 1, Standard = 2, Deep = 2 (so total peer passes are 2 / 3 / 3 including the initial). Override with `--max-iterations <N>`; disable looping entirely with `--no-reloop`.
+**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `$ENSEMBLE_ROOT/references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `$ENSEMBLE_ROOT/references/outside-voice.md`). The loop continues until `approve` or the depth-aware iteration cap is hit. Cap defaults: Lightweight = 1, Standard = 2, Deep = 2 (so total peer passes are 2 / 3 / 3 including the initial). Override with `--max-iterations <N>`; disable looping entirely with `--no-reloop`.
 
 When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` computes `peer_review_plan_hash`, flips `status: draft → open`, and auto-commits the plan file (per step 15).
 
@@ -143,7 +146,7 @@ When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` compute
 When peer is available:
 
 - Cross-agent (both CLIs installed) → peer is the other agent.
-- Single-agent fallback → fresh subprocess of host's CLI; prompt augmented per `references/single-agent-fallback.md`.
+- Single-agent fallback → fresh subprocess of host's CLI; prompt augmented per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`.
 
 ## Tech-debt resolution
 
@@ -160,7 +163,7 @@ If `docs/foundation.md` doesn't exist yet (the user is using `/en-plan` before `
 
 - Set `covers_requirements: []` and `requirements_pending: true` in the plan's frontmatter.
 - Surface the gap: "No `docs/foundation.md` yet. Plan will reference requirements as `requirements_pending: true`. Run `/en-foundation --retrofit` later to back-fill R-IDs."
-- `bin/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
+- `$ENSEMBLE_ROOT/bin/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
 
 ## Output
 
@@ -185,14 +188,14 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 
 ## Reference files
 
-- `references/templates/plan-template.md` — body template
-- `references/host-detect.md` — host detection
-- `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/single-agent-fallback.md` — fallback mode contract
-- `references/finding-schema.md` — peer JSON shape
-- `references/severity.md` — apply / defer / disagree routing
-- `references/research-dispatch.md` — when to dispatch which research agent
-- `references/stable-ids.md` — U-ID stability rules
+- `$ENSEMBLE_ROOT/references/templates/plan-template.md` — body template
+- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
+- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt and verdict handling
+- `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — fallback mode contract
+- `$ENSEMBLE_ROOT/references/finding-schema.md` — peer JSON shape
+- `$ENSEMBLE_ROOT/references/severity.md` — apply / defer / disagree routing
+- `$ENSEMBLE_ROOT/references/research-dispatch.md` — when to dispatch which research agent
+- `$ENSEMBLE_ROOT/references/stable-ids.md` — U-ID stability rules
 
 ## Failure protocol
 

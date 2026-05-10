@@ -3,6 +3,9 @@ name: en-foundation
 description: "Produce or retrofit the foundational artifact set: docs/foundation.md (PRD + tech direction + architecture intent), docs/architecture.md (seed), AGENTS.md, CLAUDE.md. Walks depth-scaled discovery (product, users, R-IDs, stack, data, architecture, deployment, risks), asks for plan_id_prefix (2-3 uppercase letters; default FR), runs cross-agent peer review on the draft. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'PRD and architecture'."
 ---
 
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+
+
 # `/en-foundation`
 
 Combined PRD + technical direction + initial architecture seed for a project. Run **once** at project start (or `--retrofit` for an existing project); thereafter `/en-learn` keeps `docs/architecture.md` and the pointer maps current.
@@ -11,7 +14,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE` for the Outside Voice pass.
+1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE` for the Outside Voice pass.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Detect mode.**
    - `--retrofit` flag, or `docs/foundation.md` exists with `status: draft` → retrofit/edit mode.
@@ -22,7 +25,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    - For State-2 retrofits: existing source code via `repo-research` agent (top-level structure, package.json/Cargo.toml/etc., conventions).
    - `docs/learnings/index.md` if present.
 5. **Right-size depth.** Lightweight / Standard / Deep — picks based on project complexity. Default Standard.
-6. **Discovery loop.** Walk the topic groups in `references/foundation-questions.md`:
+6. **Discovery loop.** Walk the topic groups in `$ENSEMBLE_ROOT/references/foundation-questions.md`:
    - §1 Executive identity & problem
    - §2 Goals & non-goals (G-IDs)
    - §3 Users & roles (A-IDs)
@@ -36,7 +39,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    - §13 Security & privacy (Deep)
    - §14 Risks & open questions
    
-   **One question per turn**, multiple-choice when natural. Skip groups not relevant to the depth tier. Honor the question-count band per `references/foundation-questions.md`.
+   **One question per turn**, multiple-choice when natural. Skip groups not relevant to the depth tier. Honor the question-count band per `$ENSEMBLE_ROOT/references/foundation-questions.md`.
 7. **Synthesize.** Present a structured summary for approval before writing:
    ```
    Here's what I have:
@@ -52,20 +55,20 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 8. **Resolve `plan_id_prefix`.** Derive a 2–3 uppercase-letter suggestion from `{{PROJECT_NAME}}` (e.g. `Ensemble` → `EN`; `Ella Website` → `EW`; `User Dashboard Service` → `UDS`). Ask the user to accept or override:
    > "Plan-ID prefix for this project? Suggested: `EN` (used like `EN03`). Press enter to accept, or type a 2–3 uppercase-letter alternative."
    Validate: 2–3 chars, `[A-Z]+`, not in the reserved set `{R, U, AE, TD}`. On retrofit (foundation already exists with a `plan_id_prefix:`), keep the existing value — never silently change it after plans have been minted. If the user declines to set one, use `FR` as the fallback.
-9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
+9. **Draft `docs/foundation.md`** using `$ENSEMBLE_ROOT/references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
 10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
-    - Build the Outside Voice prompt by shelling out to `bin/ensemble-build-peer-prompt --artifact-type "markdown artifact" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
+    - Build the Outside Voice prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type "markdown artifact" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
     - Set `ENSEMBLE_PEER_REVIEW=true` env var.
     - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
-    - Parse the JSON response (per `references/finding-schema.md`).
-    - Apply, defer, or disagree per `references/severity.md`.
+    - Parse the JSON response (per `$ENSEMBLE_ROOT/references/finding-schema.md`).
+    - Apply, defer, or disagree per `$ENSEMBLE_ROOT/references/severity.md`.
     - Surface the verdict + applied changes to the user.
-12. **Seed `docs/architecture.md`** using `references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
-13. **Write `AGENTS.md`** using `references/templates/agents-md-template.md`. Substitute `{{BUILD_CMD}}`, `{{TEST_CMD}}`, etc. detected from the project (or `<unset>` if not detectable).
-14. **Write `CLAUDE.md`** using `references/templates/claude-md-template.md`. Strict structure: first non-frontmatter line is the AGENTS.md cross-reference; body Claude-Code-specific only.
+12. **Seed `docs/architecture.md`** using `$ENSEMBLE_ROOT/references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
+13. **Write `AGENTS.md`** using `$ENSEMBLE_ROOT/references/templates/agents-md-template.md`. Substitute `{{BUILD_CMD}}`, `{{TEST_CMD}}`, etc. detected from the project (or `<unset>` if not detectable).
+14. **Write `CLAUDE.md`** using `$ENSEMBLE_ROOT/references/templates/claude-md-template.md`. Strict structure: first non-frontmatter line is the AGENTS.md cross-reference; body Claude-Code-specific only.
 15. **Detect new vs existing project (per A1 / D24).**
-    - New project: `docs/foundation.md` did not exist before this run AND repo has no source code outside `node_modules/`/`vendor/`/equivalents (or initial-commit state) → emit `docs/plans/active/<PREFIX>01-feature_project-setup.md` using `references/templates/plan-template.md` with `plan_type: feature`, units for repo init, dependencies, CI, baseline tests. `<PREFIX>` is the resolved `plan_id_prefix`.
+    - New project: `docs/foundation.md` did not exist before this run AND repo has no source code outside `node_modules/`/`vendor/`/equivalents (or initial-commit state) → emit `docs/plans/active/<PREFIX>01-feature_project-setup.md` using `$ENSEMBLE_ROOT/references/templates/plan-template.md` with `plan_type: feature`, units for repo init, dependencies, CI, baseline tests. `<PREFIX>` is the resolved `plan_id_prefix`.
     - Existing project → skip the bootstrap plan entirely.
 16. **Final save.** Flip `docs/foundation.md` `status:` from `draft` to `active` after the user accepts the peer-reviewed version.
 17. **Hand off.** Suggest next step:
@@ -89,7 +92,7 @@ Used by `/en-setup` State 2 to back-fill the foundation for an existing project.
 When peer is available:
 
 - Cross-agent (both CLIs installed) → peer is the *other* agent (per D23).
-- Single-agent fallback → fresh subprocess of host's CLI (per D31). Prompt augmented per `references/single-agent-fallback.md`.
+- Single-agent fallback → fresh subprocess of host's CLI (per D31). Prompt augmented per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`.
 
 ## Capture-from-synthesis (D21)
 
@@ -122,19 +125,19 @@ Next: Run /en-build docs/plans/active/EN01-feature_project-setup.md to bootstrap
 
 ## Reference files
 
-- `references/templates/foundation-template.md` — body template + depth-scaled trim
-- `references/foundation-questions.md` — Q&A library + count bands
-- `references/templates/architecture-template.md` — initial architecture seed
-- `references/templates/agents-md-template.md` — AGENTS.md template
-- `references/templates/claude-md-template.md` — CLAUDE.md template
-- `references/templates/plan-template.md` — for the bootstrap `<PREFIX>01-feature_project-setup` plan
-- `references/host-detect.md` — host detection
-- `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/single-agent-fallback.md` — fallback mode contract
-- `references/finding-schema.md` — peer JSON shape
-- `references/severity.md` — apply/defer/disagree routing
-- `references/research-dispatch.md` — when to use `repo-research`, `learnings-research`, `web-research`
-- `references/stable-ids.md` — R-IDs / A-IDs / F-IDs / AE-IDs / D-IDs / Q-IDs
+- `$ENSEMBLE_ROOT/references/templates/foundation-template.md` — body template + depth-scaled trim
+- `$ENSEMBLE_ROOT/references/foundation-questions.md` — Q&A library + count bands
+- `$ENSEMBLE_ROOT/references/templates/architecture-template.md` — initial architecture seed
+- `$ENSEMBLE_ROOT/references/templates/agents-md-template.md` — AGENTS.md template
+- `$ENSEMBLE_ROOT/references/templates/claude-md-template.md` — CLAUDE.md template
+- `$ENSEMBLE_ROOT/references/templates/plan-template.md` — for the bootstrap `<PREFIX>01-feature_project-setup` plan
+- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
+- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt and verdict handling
+- `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — fallback mode contract
+- `$ENSEMBLE_ROOT/references/finding-schema.md` — peer JSON shape
+- `$ENSEMBLE_ROOT/references/severity.md` — apply/defer/disagree routing
+- `$ENSEMBLE_ROOT/references/research-dispatch.md` — when to use `repo-research`, `learnings-research`, `web-research`
+- `$ENSEMBLE_ROOT/references/stable-ids.md` — R-IDs / A-IDs / F-IDs / AE-IDs / D-IDs / Q-IDs
 
 ## Failure protocol
 

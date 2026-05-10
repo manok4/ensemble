@@ -3,13 +3,16 @@ name: en-ship
 description: "Push clean changes to the remote with a meaningful commit and PR. Pre-flight (lint + typecheck + targeted tests + secret scan + merge-conflict check), conventional-commit message, push, gh pr create. Optional --auto-merge enables gh pr merge --auto --squash. Trigger phrases: 'ship it', 'push and PR', 'open a PR', 'commit and push', 'send for review'."
 ---
 
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+
+
 # `/en-ship`
 
 Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/en-qa` have already passed.
 
 ## Process
 
-1. **Detect host (light).** Source `references/host-detect.md` for path conventions.
+1. **Detect host (light).** Source `$ENSEMBLE_ROOT/references/host-detect.md` for path conventions.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't ship).
 3. **Pre-flight.**
    - `git status` — show unstaged + staged + untracked.
@@ -22,11 +25,11 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    - Project `typecheck` command if applicable.
    - Test files matching changed source files (heuristic: same path with `.test.` / `.spec.` / `_test.` insertion).
    - On any failure → stop; surface; offer to run `/en-review` or `/en-qa` to triage.
-5. **Secret scan on diff.** Per `references/secret-patterns.md`. Match against high-confidence regexes + file-name red flags.
+5. **Secret scan on diff.** Per `$ENSEMBLE_ROOT/references/secret-patterns.md`. Match against high-confidence regexes + file-name red flags.
    - Match → stop; print offenders; suggest `git restore <file>` or `--allow-secrets` (rare).
    - Heuristic match only → surface as warning; let user confirm.
 6. **Confirm scope of staging.** Show what will be committed (`git diff --cached` summary). User confirms or revises.
-7. **Generate conventional-commit message.** Per `references/conventional-commits.md`:
+7. **Generate conventional-commit message.** Per `$ENSEMBLE_ROOT/references/conventional-commits.md`:
    - Inspect the diff to determine `<type>` (`feat` / `fix` / `docs` / `refactor` / etc.).
    - Pick `<scope>` from existing scopes in recent git log + the file paths touched.
    - Compose `<subject>` ≤ 50 chars, imperative mood, no trailing period.
@@ -102,9 +105,9 @@ Next: Run /en-resolve-pr when reviewers leave comments,
 
 ## Reference files
 
-- `references/conventional-commits.md` — message format
-- `references/secret-patterns.md` — secret-scan regex catalog
-- `references/host-detect.md`
+- `$ENSEMBLE_ROOT/references/conventional-commits.md` — message format
+- `$ENSEMBLE_ROOT/references/secret-patterns.md` — secret-scan regex catalog
+- `$ENSEMBLE_ROOT/references/host-detect.md`
 
 ## Failure protocol
 
