@@ -687,6 +687,25 @@ else
   fail "en-setup SKILL.md should mention brew install coreutils as the timeout repair"
 fi
 
+# 31a. The flow chart in build-handoff.md must not show the OLD bare
+#      `timeout "${peer_timeout_seconds:-600}"` form (regression from
+#      PR #16 review). Bare timeout in load-bearing diagrams misleads
+#      agents into copying the stale form and either failing on macOS
+#      or dropping the wrapper.
+#      Allow it ONLY inside the explicit anti-pattern code block in
+#      outside-voice.md — that's where it's labeled as wrong.
+for doc in "$HANDOFF_DOC" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  # Find any `timeout "${peer_timeout_seconds...` not preceded by ENSEMBLE_TIMEOUT_BIN=
+  # context. Easy heuristic: count lines that contain bare-timeout AND don't have ENSEMBLE_TIMEOUT_BIN nearby.
+  bare_count=$(grep -nE '(\| |  +)timeout "\$\{peer_timeout' "$doc" | grep -v 'ENSEMBLE_TIMEOUT_BIN' | wc -l | tr -d ' ')
+  if [ "$bare_count" = "0" ]; then
+    pass "[$doc_name] flow chart / examples do not show bare timeout form"
+  else
+    fail "[$doc_name] still shows bare 'timeout \"\${peer_timeout_seconds...' (use \$ENSEMBLE_TIMEOUT_BIN instead)"
+  fi
+done
+
 # 32. en-setup advisory is non-blocking (per the resolved open question).
 if grep -qiE "do NOT block install|advisory|surface 🟡" "$EN_SETUP" && grep -qE "🟡.*timeout|timeout.*🟡|🟡 No .timeout" "$EN_SETUP"; then
   pass "en-setup SKILL.md treats timeout-binary as advisory (not blocking)"

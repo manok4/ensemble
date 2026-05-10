@@ -17,10 +17,19 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │       dispatch.md).                                                │
 │    4. Verification gate 2 (re-run after simplifier; revert on    │
 │       failure).                                                    │
-│    5. Dispatch Claude as PEER-REVIEWER (pipe stdin, isolation      │
-│       flags that PRESERVE subscription auth, wrapped in timeout): │
-│         bin/ensemble-build-peer-prompt ... | \                    │
-│           timeout "${peer_timeout_seconds:-600}" \                 │
+│    5. Dispatch Claude as PEER-REVIEWER. Pseudocode below; the      │
+│       canonical, copy-pasteable invocation is in the next section │
+│       ("Peer-reviewer dispatch prompt"). Pipe stdin, isolation     │
+│       flags that PRESERVE subscription auth, wrapped in a          │
+│       portable timeout binary, fail fast if neither timeout nor    │
+│       gtimeout is on PATH:                                         │
+│         ENSEMBLE_TIMEOUT_BIN=$(command -v timeout                  │
+│           || command -v gtimeout) || exit 1   # see canonical for  │
+│                                                  the full ERROR:   │
+│                                                  message + brew    │
+│                                                  install coreutils │
+│         $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt ... | \      │
+│           "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \ │
 │             claude -p --output-format json --max-turns 1 \        │
 │               --strict-mcp-config \                                │
 │               --mcp-config '{"mcpServers":{}}' \                   │
@@ -29,6 +38,8 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │               --setting-sources project \                          │
 │               --tools ''                                           │
 │         (env: ENSEMBLE_PEER_REVIEW=true; stderr captured to log)   │
+│         (DO NOT use bare `timeout 600 claude ...` — fails on       │
+│          macOS without coreutils; use the resolved binary above.)  │
 │    6. Claude returns findings JSON (does NOT edit files — D30).    │
 │    7. Codex parses JSON; apply / defer / disagree per             │
 │       references/severity.md. Build a `resolutions[]` list as it   │
