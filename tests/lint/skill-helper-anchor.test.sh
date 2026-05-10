@@ -22,13 +22,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="skill helper-path anchoring"
 
-# All skills with helper references that must be anchored. en-brainstorm,
-# en-debug, en-learn, en-qa, en-resolve-pr, en-ship don't reference bin/
-# helpers — the references/ paths in their bodies still need anchoring,
-# but they were not part of the initial scope (PR #N covered en-build,
-# en-cross-review, en-foundation, en-guardrail, en-plan, en-review,
-# en-setup, en-sweep — the 8 skills that actively dispatch helpers).
-TARGET_SKILLS="en-build en-cross-review en-foundation en-guardrail en-plan en-review en-setup en-sweep"
+# Every skill MUST anchor its helper paths at $ENSEMBLE_ROOT. The initial
+# scope of this fix was the 8 skills with active bin/ dispatches; the
+# remaining 6 (en-brainstorm, en-debug, en-learn, en-qa, en-resolve-pr,
+# en-ship) ALSO have process steps like "Source references/host-detect.md"
+# that were anchoring incorrectly at the skill dir on the install layout
+# this PR documents. Per PR #15 review, the drift guard now covers all 14.
+TARGET_SKILLS="en-brainstorm en-build en-cross-review en-debug en-foundation en-guardrail en-learn en-plan en-qa en-resolve-pr en-review en-setup en-ship en-sweep"
 
 # Sentinel that says "this skill has the helper-resolution preamble."
 PREAMBLE_SENTINEL='**Helper resolution.**'
@@ -132,5 +132,28 @@ for path in \
     fail "plugin source MISSING: $path (preflight references a non-existent helper)"
   fi
 done
+
+# --- en-guardrail's hook script is skill-local, not at root bin/. The
+#     anchored path must reflect that and resolve to a real file. ---
+GUARDRAIL_HOOK="$REPO_ROOT/skills/en-guardrail/bin/check-guardrail.sh"
+GUARDRAIL_SKILL="$REPO_ROOT/skills/en-guardrail/SKILL.md"
+
+if [ -f "$GUARDRAIL_HOOK" ]; then
+  pass "en-guardrail hook script exists at skill-local path"
+else
+  fail "en-guardrail hook script missing at $GUARDRAIL_HOOK"
+fi
+
+if grep -qF '$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh' "$GUARDRAIL_SKILL"; then
+  pass "en-guardrail SKILL.md anchors check-guardrail.sh at the skill-local path"
+else
+  fail "en-guardrail SKILL.md should anchor check-guardrail.sh at \$ENSEMBLE_ROOT/skills/en-guardrail/bin/"
+fi
+
+if grep -qE '`\$ENSEMBLE_ROOT/bin/check-guardrail\.sh`' "$GUARDRAIL_SKILL"; then
+  fail "en-guardrail SKILL.md uses \$ENSEMBLE_ROOT/bin/check-guardrail.sh — that path doesn't exist; the script is skill-local"
+else
+  pass "en-guardrail SKILL.md does NOT use the wrong root-bin path"
+fi
 
 report
