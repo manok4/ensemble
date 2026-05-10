@@ -17,10 +17,19 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │       dispatch.md).                                                │
 │    4. Verification gate 2 (re-run after simplifier; revert on    │
 │       failure).                                                    │
-│    5. Dispatch Claude as PEER-REVIEWER (pipe stdin, isolation      │
-│       flags that PRESERVE subscription auth, wrapped in timeout): │
-│         bin/ensemble-build-peer-prompt ... | \                    │
-│           timeout "${peer_timeout_seconds:-600}" \                 │
+│    5. Dispatch Claude as PEER-REVIEWER. Pseudocode below; the      │
+│       canonical, copy-pasteable invocation is in the next section │
+│       ("Peer-reviewer dispatch prompt"). Pipe stdin, isolation     │
+│       flags that PRESERVE subscription auth, wrapped in a          │
+│       portable timeout binary, fail fast if neither timeout nor    │
+│       gtimeout is on PATH:                                         │
+│         ENSEMBLE_TIMEOUT_BIN=$(command -v timeout                  │
+│           || command -v gtimeout) || exit 1   # see canonical for  │
+│                                                  the full ERROR:   │
+│                                                  message + brew    │
+│                                                  install coreutils │
+│         $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt ... | \      │
+│           "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \ │
 │             claude -p --output-format json --max-turns 1 \        │
 │               --strict-mcp-config \                                │
 │               --mcp-config '{"mcpServers":{}}' \                   │
@@ -29,6 +38,8 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │               --setting-sources project \                          │
 │               --tools ''                                           │
 │         (env: ENSEMBLE_PEER_REVIEW=true; stderr captured to log)   │
+│         (DO NOT use bare `timeout 600 claude ...` — fails on       │
+│          macOS without coreutils; use the resolved binary above.)  │
 │    6. Claude returns findings JSON (does NOT edit files — D30).    │
 │    7. Codex parses JSON; apply / defer / disagree per             │
 │       references/severity.md. Build a `resolutions[]` list as it   │
@@ -68,20 +79,31 @@ $UNIT_BLOCK
 $POST_SIMPLIFIER_DIFF
 EOF
 
-# 2. Pipe helper-stdout → claude-stdin. No argv-inlining of the prompt.
+# 2. Resolve a timeout binary. macOS doesn't ship `timeout`; coreutils
+#    provides `gtimeout` via Homebrew. Fail fast if neither is present —
+#    running peer review unwrapped re-enables the silent-hang failure
+#    mode that prompted PR #9 in the first place.
+ENSEMBLE_TIMEOUT_BIN=$(command -v timeout || command -v gtimeout) || {
+  echo "ERROR: peer review requires 'timeout' or 'gtimeout' on PATH" >&2
+  echo "  Install on macOS: brew install coreutils" >&2
+  echo "  This guards against silent peer-subprocess hangs (per PR #9)." >&2
+  exit 1
+}
+
+# 3. Pipe helper-stdout → claude-stdin. No argv-inlining of the prompt.
 #    Isolation flags below skip MCP loading, slash-command/skill loading, session
 #    persistence, and project/local settings — everything we can suppress without
 #    losing the user's subscription auth.
 #    timeout enforces peer_timeout_seconds (default 600) so a hang fails fast
 #    instead of stalling the build forever.
 #    stderr is captured for diagnostic visibility on failure.
-ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
+ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
   --artifact-type code \
   --project-context "$ONE_LINE_PROJECT_CONTEXT" \
   --goal "Review unit $U_ID: $UNIT_GOAL" \
   --artifact-file /tmp/en-build-unit-artifact.txt \
   --peer-mode "$PEER_MODE" \
-  | timeout "${peer_timeout_seconds:-600}" \
+  | "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \
       claude -p --output-format json --max-turns 1 \
         --strict-mcp-config \
         --mcp-config '{"mcpServers":{}}' \
@@ -92,6 +114,8 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
       > /tmp/en-build-peer-response.json \
       2>/tmp/en-build-peer-stderr.log
 ```
+
+> **Required on PATH:** `timeout` or `gtimeout` (GNU coreutils). macOS: `brew install coreutils`. Linux distros typically ship coreutils by default. Without it, peer review fails fast with a clear install instruction — never runs unwrapped.
 
 For re-review iterations (see **Per-unit finalize loop** below), pass `--iteration-context-file <path>` with a serialized resolutions[] context — the helper inserts it between the artifact body and the JSON-shape instructions.
 
@@ -106,7 +130,7 @@ For re-review iterations (see **Per-unit finalize loop** below), pass `--iterati
   - `--setting-sources project` — load **project-level** settings only; skip user-level config which typically includes the LSP plugin and other globally-enabled tools that can fire tool calls and consume `--max-turns 1` before producing output. Field-tested: `--setting-sources user` triggered an LSP-driven tool call that busted the single turn.
   - `--tools ''` — disable all built-in tools (Bash, Edit, Read, etc.) for the peer subprocess. **Load-bearing**: this is what physically prevents the model from making tool calls regardless of which settings load. Also matches the D30 contract — peer reports findings, never acts. With `--tools ''`, the `--max-turns 1` budget is reliably one model-response.
   - Hooks, LSP load, plugin sync, CLAUDE.md auto-discovery still happen at startup but cannot fire tool calls (because `--tools ''`). Bounded by `timeout`.
-- **`timeout` wrapper.** Without it, a hung peer blocks the build indefinitely. `peer_timeout_seconds` from `~/.ensemble/config.json` is the configured ceiling; the wrapper enforces it.
+- **`timeout` wrapper, with portable resolution.** Without it, a hung peer blocks the build indefinitely. `peer_timeout_seconds` from `~/.ensemble/config.json` is the configured ceiling; the wrapper enforces it. macOS doesn't ship `timeout` in `/usr/bin/` — `brew install coreutils` provides it as `gtimeout`. The canonical invocation resolves with `command -v timeout || command -v gtimeout` and **fails fast (`exit 1`) if neither is present**, rather than silently dropping the wrapper. Falling back to unwrapped peer calls is exactly the failure mode PR #9 was built to eliminate.
 - **stderr capture.** When a peer fails, the user needs `/tmp/en-build-peer-stderr.log` to diagnose (was it MCP init? auth? timeout? the dreaded `Please run /login`?). The default of swallowing stderr makes hangs invisible.
 
 The Outside Voice prompt explicitly forbids file edits, commands, and commits (D30). The peer returns JSON-only findings (read from `/tmp/en-build-peer-response.json`).

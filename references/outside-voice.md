@@ -104,19 +104,30 @@ if [ "$PEER_AVAILABLE" != "true" ]; then
   exit 0
 fi
 
+# Resolve a timeout binary (BSD macOS doesn't ship one; coreutils provides
+# gtimeout via Homebrew). Fail fast if neither is present rather than
+# silently dropping the wrapper — that re-enables the silent-hang failure
+# mode that prompted PR #9.
+ENSEMBLE_TIMEOUT_BIN=$(command -v timeout || command -v gtimeout) || {
+  echo "ERROR: peer review requires 'timeout' or 'gtimeout' on PATH" >&2
+  echo "  Install on macOS: brew install coreutils" >&2
+  echo "  This guards against silent peer-subprocess hangs (per PR #9)." >&2
+  exit 1
+}
+
 # Pipe helper-stdout → peer-stdin. NO argv-inlining of the prompt.
 # Isolation flags below skip MCP, skills, session persistence, and
 # project/local settings — every suppression we can do that DOESN'T
 # require API-key auth (i.e. doesn't use --bare).
 # - timeout enforces peer_timeout_seconds (default 600) so a hang fails fast.
 # - stderr is captured for diagnostic visibility on failure.
-ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
+ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
   --artifact-type plan \
   --project-context "$ONE_LINE_PROJECT_CONTEXT" \
   --goal "$ONE_LINE_GOAL" \
   --artifact-file docs/plans/active/EN07-feature_auth-rotation.md \
   --peer-mode "$PEER_MODE" \
-  | timeout "${peer_timeout_seconds:-600}" \
+  | "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \
       $PEER_CMD $PEER_FORMAT --max-turns 1 \
         --strict-mcp-config \
         --mcp-config '{"mcpServers":{}}' \
@@ -127,6 +138,8 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
       > /tmp/peer-response.json \
       2>/tmp/peer-stderr.log
 ```
+
+> **Required on PATH:** `timeout` or `gtimeout` (GNU coreutils). macOS: `brew install coreutils`. Linux distros typically ship coreutils by default. Without it, peer review fails fast with a clear install instruction — never runs unwrapped.
 
 > **Why this set of flags (not `--bare`):**
 > - `--bare` is the strongest startup suppressor — but it forces
@@ -153,6 +166,13 @@ ENSEMBLE_PEER_REVIEW=true bin/ensemble-build-peer-prompt \
 > - Hooks, LSP load, plugin sync, CLAUDE.md auto-discovery still happen
 >   at startup, but cannot fire tool calls (because `--tools ''`).
 >   Bounded by `timeout`.
+> - **`timeout` portability**: macOS doesn't ship `timeout` in `/usr/bin/`.
+>   Resolve with `command -v timeout || command -v gtimeout` (the latter
+>   is what `brew install coreutils` provides). The canonical invocation
+>   **fails fast (`exit 1`) if neither is present** — running peer
+>   review without hang protection re-enables the silent-hang failure
+>   mode that prompted PR #9. macOS users without coreutils get a clear
+>   install instruction, not a silently-degraded peer call.
 
 > **Cross-host note:** This flag set is for the Claude CLI. The Codex CLI
 > has its own minimization flags — skills resolve `$PEER_CMD` via
@@ -182,13 +202,27 @@ $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
 # "Not logged in · Please run /login" on hosts without a valid
 # ANTHROPIC_API_KEY (the common case for Ensemble users):
 ... | claude --bare -p ...
+
+# WRONG — bare `timeout` fails on macOS-without-coreutils with
+# "timeout: command not found" before Claude is invoked. Use the
+# resolved `$ENSEMBLE_TIMEOUT_BIN` variable from the canonical pattern,
+# which falls back to `gtimeout` and fails fast with an install
+# instruction if neither is present:
+... | timeout 600 claude -p ...
+
+# WRONG — dropping the timeout wrapper "to make it work" silently
+# re-enables the silent-hang failure mode that prompted PR #9.
+# A peer call without an upper bound is the original bug, not a workaround:
+... | claude -p ...
 ```
 
 The helper writes the slim template to **stdout** by design. Capturing
 back into a variable and re-passing via argv defeats that design and
-hits the failure modes the canonical pattern was built to avoid. And
+hits the failure modes the canonical pattern was built to avoid.
 `--bare` would be tempting for startup speed, but it breaks Ensemble's
-subscription-first auth contract.
+subscription-first auth contract. Bare `timeout` and dropped-`timeout`
+both regress the hang-protection contract — fail fast on missing
+binary, never run unwrapped.
 
 Notes:
 

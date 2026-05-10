@@ -623,5 +623,95 @@ else
   fail "en-build SKILL.md should forbid auto-skip on destructive/gated units"
 fi
 
+# === Portable timeout resolution (PR #N — macOS doesn't ship GNU timeout) ===
+# Field-observed: bare `timeout 600 claude ...` failed on macOS-without-coreutils
+# because `timeout` is GNU coreutils, available as `gtimeout` via brew. The
+# agent's workaround (drop the wrapper) silently re-enabled the silent-hang
+# failure mode that prompted PR #9. Canonical pattern now resolves with
+# `command -v timeout || command -v gtimeout` and fails fast on missing.
+
+# 27. All three documented surfaces have the resolution pattern.
+EN_SETUP="${REPO_ROOT}/skills/en-setup/SKILL.md"
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qE "command -v timeout \|\| command -v gtimeout" "$doc"; then
+    pass "[$doc_name] documents timeout-binary resolution pattern"
+  else
+    fail "[$doc_name] should use 'command -v timeout || command -v gtimeout' resolution"
+  fi
+done
+
+# 28. All three surfaces document `brew install coreutils` as the macOS remedy.
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qF "brew install coreutils" "$doc"; then
+    pass "[$doc_name] documents 'brew install coreutils' as macOS remedy"
+  else
+    fail "[$doc_name] should document brew install coreutils for macOS"
+  fi
+done
+
+# 29. All three surfaces fail fast on missing timeout (mention exit 1 / ERROR:).
+for doc in "$HANDOFF_DOC" "$OUTSIDE_VOICE" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  if grep -qE "(exit 1|ERROR:.*timeout)" "$doc"; then
+    pass "[$doc_name] documents fail-fast on missing timeout binary"
+  else
+    fail "[$doc_name] should fail fast (exit 1) on missing timeout binary"
+  fi
+done
+
+# 30. outside-voice.md anti-pattern block lists the new wrong forms.
+if grep -qF "timeout 600 claude" "$OUTSIDE_VOICE"; then
+  pass "outside-voice.md anti-pattern flags bare 'timeout 600 claude'"
+else
+  fail "outside-voice.md anti-pattern block should flag bare 'timeout 600 claude' (fails on macOS without coreutils)"
+fi
+
+if grep -qE "dropping the timeout|drop.*timeout.*regress|timeout silently|silently.*re-enables.*PR #9" "$OUTSIDE_VOICE"; then
+  pass "outside-voice.md anti-pattern flags dropped-timeout"
+else
+  fail "outside-voice.md anti-pattern block should flag dropped-timeout (silently regresses hang protection)"
+fi
+
+# 31. /en-setup checks for timeout binary in BOTH State-2 verification AND
+#     State-3 diagnostic, but does NOT block install on missing.
+if grep -qE "command -v timeout \|\| command -v gtimeout" "$EN_SETUP"; then
+  pass "en-setup SKILL.md checks for timeout/gtimeout"
+else
+  fail "en-setup SKILL.md should check for timeout/gtimeout (advisory)"
+fi
+if grep -qF "brew install coreutils" "$EN_SETUP"; then
+  pass "en-setup SKILL.md documents 'brew install coreutils' repair"
+else
+  fail "en-setup SKILL.md should mention brew install coreutils as the timeout repair"
+fi
+
+# 31a. The flow chart in build-handoff.md must not show the OLD bare
+#      `timeout "${peer_timeout_seconds:-600}"` form (regression from
+#      PR #16 review). Bare timeout in load-bearing diagrams misleads
+#      agents into copying the stale form and either failing on macOS
+#      or dropping the wrapper.
+#      Allow it ONLY inside the explicit anti-pattern code block in
+#      outside-voice.md — that's where it's labeled as wrong.
+for doc in "$HANDOFF_DOC" "$HELPER"; do
+  doc_name=$(basename "$doc")
+  # Find any `timeout "${peer_timeout_seconds...` not preceded by ENSEMBLE_TIMEOUT_BIN=
+  # context. Easy heuristic: count lines that contain bare-timeout AND don't have ENSEMBLE_TIMEOUT_BIN nearby.
+  bare_count=$(grep -nE '(\| |  +)timeout "\$\{peer_timeout' "$doc" | grep -v 'ENSEMBLE_TIMEOUT_BIN' | wc -l | tr -d ' ')
+  if [ "$bare_count" = "0" ]; then
+    pass "[$doc_name] flow chart / examples do not show bare timeout form"
+  else
+    fail "[$doc_name] still shows bare 'timeout \"\${peer_timeout_seconds...' (use \$ENSEMBLE_TIMEOUT_BIN instead)"
+  fi
+done
+
+# 32. en-setup advisory is non-blocking (per the resolved open question).
+if grep -qiE "do NOT block install|advisory|surface 🟡" "$EN_SETUP" && grep -qE "🟡.*timeout|timeout.*🟡|🟡 No .timeout" "$EN_SETUP"; then
+  pass "en-setup SKILL.md treats timeout-binary as advisory (not blocking)"
+else
+  fail "en-setup SKILL.md should mark missing-timeout as advisory (🟡), not blocking"
+fi
+
 rm -f "$TMP_MSG"
 report

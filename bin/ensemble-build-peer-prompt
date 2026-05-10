@@ -29,8 +29,17 @@
 #   hosts. We trade some startup overhead for working subscription auth.
 #
 #   Canonical (Claude as peer):
+#     # Resolve a timeout binary (BSD macOS doesn't ship one; coreutils
+#     # provides gtimeout via Homebrew). Fail fast if neither — running
+#     # peer review unwrapped re-enables the silent-hang failure from PR #9.
+#     ENSEMBLE_TIMEOUT_BIN=$(command -v timeout || command -v gtimeout) || {
+#       echo "ERROR: peer review requires 'timeout' or 'gtimeout' on PATH" >&2
+#       echo "  Install on macOS: brew install coreutils" >&2
+#       exit 1
+#     }
+#
 #     ENSEMBLE_PEER_REVIEW=true ensemble-build-peer-prompt ... \
-#       | timeout "${peer_timeout_seconds:-600}" \
+#       | "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \
 #           claude -p --output-format json --max-turns 1 \
 #             --strict-mcp-config \
 #             --mcp-config '{"mcpServers":{}}' \
@@ -39,6 +48,12 @@
 #             --setting-sources project \
 #             --tools '' \
 #           > /tmp/peer-response.json 2>/tmp/peer-stderr.log
+#
+#   Required on PATH:
+#     - timeout OR gtimeout (GNU coreutils). macOS: brew install coreutils.
+#       Linux distros typically ship coreutils by default. Without it,
+#       peer review fails fast with the install instruction — never runs
+#       unwrapped.
 #
 #   Notes:
 #     - --mcp-config takes inline JSON; the schema requires the
@@ -60,6 +75,11 @@
 #     prompt=$(ensemble-build-peer-prompt ...)
 #     claude -p ... "$prompt"      # ← ARG_MAX hazard, silent hangs
 #     ... | claude --bare -p ...   # ← bypasses subscription auth
+#     ... | timeout 600 claude ... # ← bare `timeout` fails on macOS
+#                                  #    without coreutils (use the
+#                                  #    $ENSEMBLE_TIMEOUT_BIN resolution)
+#     ... | claude -p ...          # ← dropping timeout silently
+#                                  #    re-enables the PR #9 hang regression
 
 set -u
 
