@@ -184,6 +184,24 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     - `.claude/settings.json` with guardrail PreToolUse hook (step 12 opt-in)
     - `.ensemble/config.local.yaml` (step 11 opt-in)
 
+    **Environment dependencies** (advisory; surface 🟡 in report, do NOT block install):
+
+    | Dependency | Check | Repair if missing |
+    |---|---|---|
+    | `timeout` or `gtimeout` on PATH (GNU coreutils) | `command -v timeout \|\| command -v gtimeout` | macOS: `brew install coreutils`. Linux distros typically already have it. |
+
+    Surface the timeout-binary check as an advisory in the report — do NOT block install on missing it. Users may have legitimate reasons to defer (offline, restricted brew, container without coreutils). The 🟡 line in the report tells them what to install:
+
+    ```
+    🟡 No `timeout` binary found on PATH.
+       Repair: brew install coreutils  (macOS)
+       Used by: /en-build's peer-review subprocess hang protection.
+       Without it, /en-build will fail fast with a clear install
+       instruction on the first peer call — peer review never runs
+       unwrapped (per PR #9). Install before the next /en-build run
+       or expect peer-review-required units to halt with an error.
+    ```
+
     **For each missing required artifact**: re-run the corresponding install step **once**. If it's still missing, **fail loudly**:
 
     ```
@@ -235,6 +253,7 @@ In addition to file-shape and lint checks, the diagnostic includes:
 - **Guardrail status** — run `skills/en-guardrail/bin/install-guardrail status`. 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
+- **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by `/en-build`'s peer-review subprocess hang protection. Advisory-only because `/en-build` already fails fast with the install instruction on the first peer call — never silently degraded.
 
 For each 🟡 / 🔴 check, the user can opt-in to repair:
 
