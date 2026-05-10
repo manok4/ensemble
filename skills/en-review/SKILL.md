@@ -3,15 +3,18 @@ name: en-review
 description: "Multi-persona code review of the current branch. Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
 ---
 
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+
+
 # `/en-review`
 
 Multi-persona, confidence-gated code review. Optional cross-agent peer review on top.
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`.
+1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, do not invoke `--peer` even if requested.
-3. **Determine mode** (per `references/persona-dispatch.md` and the §5.2.5 contract):
+3. **Determine mode** (per `$ENSEMBLE_ROOT/references/persona-dispatch.md` and the §5.2.5 contract):
    - **`interactive`** — direct user invocation. Auto-applies `safe_auto` fixes; surfaces `gated_auto` / `manual` to user. May write to working tree.
    - **`headless`** — invoked by another skill (`en-build` per-unit, `en-cross-review`). Auto-applies `safe_auto` silently; returns structured JSON. May write to working tree.
    - **`report-only`** — invoked from CI (`en-sweep`). **Strictly read-only.** No edits, no commits. Returns findings JSON only.
@@ -29,20 +32,20 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
-6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` and `bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
-7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
+6. **Pre-flight lint.** Run `$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/` and `$ENSEMBLE_ROOT/bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
+7. **Conditional persona detection.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
    - Plus `learnings-research` to query `docs/learnings/` for relevant prior bugs/patterns/decisions.
 8. **Parallel dispatch.** Single message, multiple `Agent` tool calls. Wait for all to return.
 9. **Optional Outside Voice (`--peer`).** If `--peer` flag set AND `PEER_AVAILABLE=true` AND mode allows mutation, invoke a cross-agent peer pass over the diff + the persona findings. Adds findings tagged `persona: "peer"` to the envelope.
-10. **Synthesize.** Per `references/persona-dispatch.md`:
+10. **Synthesize.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
     - Validate each response (drop malformed).
     - Collect findings; preserve persona attribution.
     - Dedup by location + title-similarity ≥ 0.7 (merge personas; boost confidence).
     - Conflict detection: same location, incompatible reasons → mark `conflict: true`.
     - Severity reorder: P0 → P3, then confidence, then persona priority.
-11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
+11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `$ENSEMBLE_ROOT/references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
 12. **Apply / surface.**
     - In `interactive` mode: auto-apply `safe_auto`; surface `gated_auto`/`manual`/`advisory` to user. After user picks, apply chosen fixes; re-verify.
     - In `headless` mode: auto-apply `safe_auto` silently; return JSON envelope with all findings.
@@ -67,7 +70,7 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 | `headless` | Yes (silent) | No (returns JSON) | N/A | No |
 | `report-only` | **No** | No | N/A | No |
 
-`report-only` is the **mandatory** mode when `en-sweep` invokes `en-review` in CI — see `references/sweep-checks.md`.
+`report-only` is the **mandatory** mode when `en-sweep` invokes `en-review` in CI — see `$ENSEMBLE_ROOT/references/sweep-checks.md`.
 
 ## Re-verification
 
@@ -133,13 +136,13 @@ Always emit a markdown summary alongside the JSON, even in `headless`/`report-on
 
 ## Reference files
 
-- `references/host-detect.md`
-- `references/persona-dispatch.md` — which personas fire and how
-- `references/finding-schema.md` — JSON shape
-- `references/severity.md` — autofix routing
-- `references/severity-and-routing.md` — alias
-- `references/outside-voice.md` — peer-review prompt (when `--peer`)
-- `references/recursion-guard.md`
+- `$ENSEMBLE_ROOT/references/host-detect.md`
+- `$ENSEMBLE_ROOT/references/persona-dispatch.md` — which personas fire and how
+- `$ENSEMBLE_ROOT/references/finding-schema.md` — JSON shape
+- `$ENSEMBLE_ROOT/references/severity.md` — autofix routing
+- `$ENSEMBLE_ROOT/references/severity-and-routing.md` — alias
+- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt (when `--peer`)
+- `$ENSEMBLE_ROOT/references/recursion-guard.md`
 
 ## Failure protocol
 
