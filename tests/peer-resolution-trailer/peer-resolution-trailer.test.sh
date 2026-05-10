@@ -809,6 +809,29 @@ else
   pass "en-plan SKILL.md no longer has the vague non-destructive catch-all"
 fi
 
+# K. bin/ensemble-lint's gated suggestion uses the new criteria, not the
+#    old "admin endpoints / flag flips / rate-limited APIs" phrasing
+#    (PR #17 review found the lint script was still recommending the old
+#    bar on missing-Gated violations, undoing the tightening).
+LINT_SCRIPT="${REPO_ROOT}/bin/ensemble-lint"
+# Old phrasing that must NOT appear in the suggestion text.
+if grep -qE 'admin endpoints[[:space:]]*/[[:space:]]*flag flips[[:space:]]*/[[:space:]]*rate-limited APIs' "$LINT_SCRIPT"; then
+  fail "bin/ensemble-lint still uses the old gated suggestion (admin endpoints / flag flips / rate-limited APIs) — that contradicts the tightened criteria"
+else
+  pass "bin/ensemble-lint no longer uses the old gated suggestion language"
+fi
+# New phrasing must reference the production-state criterion AND point at the canonical doc.
+if grep -qF "production user state or external system state" "$LINT_SCRIPT"; then
+  pass "bin/ensemble-lint suggestion references the production-state criterion"
+else
+  fail "bin/ensemble-lint gated suggestion should reference 'production user state or external system state'"
+fi
+if grep -qF "references/templates/plan-template.md" "$LINT_SCRIPT"; then
+  pass "bin/ensemble-lint suggestion points at plan-template.md for full criteria"
+else
+  fail "bin/ensemble-lint gated suggestion should point at references/templates/plan-template.md"
+fi
+
 # 32. en-setup advisory is non-blocking (per the resolved open question).
 if grep -qiE "do NOT block install|advisory|surface 🟡" "$EN_SETUP" && grep -qE "🟡.*timeout|timeout.*🟡|🟡 No .timeout" "$EN_SETUP"; then
   pass "en-setup SKILL.md treats timeout-binary as advisory (not blocking)"
