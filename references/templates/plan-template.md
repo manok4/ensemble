@@ -88,7 +88,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** low | medium | high | destructive
 - **Category:** feature | observability | diagnostics | api-additive | migration-additive | migration | backfill | schema-evolution | deletion | drop | removal | other
 - **Reversibility:** trivial | reversible | rollback-required | irreversible
-- **Gated:** false (set `true` if manual confirmation required even when not destructive — admin endpoints, flag flips, rate-limited APIs)
+- **Gated:** false (default; set `true` ONLY when running this unit at build time changes production user state or external system state — see Generation notes for the exact criteria; over-gating trains users to autopilot through prompts)
 - **Execution note:** test-first | characterization-first | pragmatic
 - **Patterns to follow:** <citations from `docs/learnings/patterns/` if relevant>
 - **Test scenarios:**
@@ -163,10 +163,30 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
   - `destructive` — DROP TABLE, DROP SCHEMA, mass DELETE, TRUNCATE, recursive removal of persistent data. Effectively irreversible.
   - **`risk:` is the single source of truth for phase placement.** `category:` is metadata only. When `risk` is unset, `/en-build` runs an ordered classifier (destructive patterns evaluated first) — see scope-aware-slicing spec for the full rules.
 
-- **Gated:**
-  - Default `false`.
-  - Set `true` when manual confirmation is required at build time even though the unit isn't destructive — e.g. admin endpoint deployments, customer-facing flag flips, third-party API calls with rate-limit risk.
-  - Gated units pause `/en-build` regardless of phase or flags. No flag disables this.
+- **Gated** (`gated: true | false`, default `false`):
+
+  Set `true` ONLY when running this unit at build time changes **production user state** or **external system state** in a way the user must authorize at the moment of execution, beyond what tests / lint / peer review can verify. Concrete cases that qualify:
+
+  - **Customer-facing feature flag flip** — the unit toggles a flag that changes real-user behavior on the next deploy. (Note: a unit that *lands new code behind a still-off flag* does NOT qualify; the flag is off, no user impact yet.)
+  - **Production data backfill** — UPDATE/INSERT loops over existing rows; lock-acquiring migrations beyond schema-additive.
+  - **Third-party API with real side effects** — sending email / SMS / payments / Slack messages / webhooks against a non-test endpoint. Sandbox / staging endpoints don't qualify.
+  - **API contract break** — renaming or removing public response fields, changing endpoint shapes, breaking generated-client signatures that downstream consumers depend on. Internal-only renames (variables, types, UI strings, function names not exposed via API) do NOT qualify.
+  - **Production config change with behavior impact** — rate-limit tuning, kill-switch flips, retention policy changes that affect live behavior on deploy.
+
+  **Default to `false`.** Specifically, `gated: false` for:
+
+  - Refactors and internal renames (variables, types, internal function signatures).
+  - UI text / label / copy renames not affecting API contracts.
+  - New components, endpoints, or pages behind feature flags that are still off.
+  - Test additions, lint fixes, doc updates.
+  - Schema additions (CREATE TABLE, ADD COLUMN with default) — those carry their own `risk: medium` migration handling; the after-phase verification covers them.
+  - Wide-blast-radius work that's still operationally inert (e.g. renaming an internal field across many files).
+
+  **Gated is independent of `risk:`.** A `risk: low` unit can be `gated: true` (e.g. a customer-facing flag flip is low-risk to *implement* but operationally consequential to *run*). A `risk: destructive` unit always gets the typed-literal-string gate regardless of the `gated:` field — destructive's gate is stronger and never collapses into gated.
+
+  **Why a tight bar.** Gates only work as a safety mechanism when they're rare enough that the user actually reads them. Over-gating (marking ordinary refactors / renames as gated) trains users to autopilot through y/skip/abort prompts, eroding the signal value of the gates that *do* matter. The plan-author and the peer reviewer should both push back on `gated: true` choices that don't clearly match one of the five concrete cases above.
+
+  Gated units pause `/en-build` regardless of phase or flags. No flag disables this. Phase-level group confirmations (e.g. P4's `"run phase 4"`) never cover `gated: true` — gated is always per-unit.
 
 - **Files field:**
   - Repo-relative paths only.

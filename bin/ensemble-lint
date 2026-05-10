@@ -799,7 +799,7 @@ check_plan_unit_gated_flag() {
       if [ "$new_style" = "true" ]; then
         emit "unit.gated-flag" "$file" "" "P3" \
           "Unit $uid missing Gated: (defaults to false)" \
-          "Add '- **Gated:** false' (or true for admin endpoints / flag flips / rate-limited APIs)"
+          "Add '- **Gated:** false'. Set true ONLY when the unit changes production user state or external system state at build time (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). See references/templates/plan-template.md gated criteria for the full bar; over-gating erodes the signal value of gates that matter."
       fi
       # Legacy plans without gated: stay silent — defaults to false at runtime.
     else

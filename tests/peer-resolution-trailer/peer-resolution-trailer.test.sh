@@ -706,6 +706,132 @@ for doc in "$HANDOFF_DOC" "$HELPER"; do
   fi
 done
 
+# === Tightened gated:true criteria (PR #N) ===
+# Field-observed: a wide-surface UI/terminology rename (no production state
+# change) was marked gated:true by /en-plan, forcing a y/skip/abort prompt
+# for what was operationally inert work. Cause: criteria included a vague
+# "any non-destructive unit that needs explicit confirmation" catch-all,
+# which the planning LLM read too liberally. New bar: gated is for
+# production-state-changing units only.
+
+PLAN_TEMPLATE="${REPO_ROOT}/references/templates/plan-template.md"
+
+# A. The vague "any non-destructive unit" catch-all is GONE.
+if grep -qE "any non-destructive unit that needs explicit confirmation" "$PLAN_TEMPLATE"; then
+  fail "plan-template.md still has the vague 'any non-destructive unit' catch-all (it was the root cause of over-gating)"
+else
+  pass "plan-template.md no longer uses the vague non-destructive catch-all"
+fi
+
+# B. The five concrete qualifying cases are documented (each must appear
+#    in the gated-criteria section).
+for keyword in \
+  "Customer-facing feature flag flip" \
+  "Production data backfill" \
+  "Third-party API with real side effects" \
+  "API contract break" \
+  "Production config change"; do
+  if grep -qF "$keyword" "$PLAN_TEMPLATE"; then
+    pass "plan-template.md gated criteria documents: $keyword"
+  else
+    fail "plan-template.md gated criteria missing: $keyword"
+  fi
+done
+
+# C. Explicit drop-list is documented (these should NOT trigger gated).
+for keyword in \
+  "internal renames" \
+  "UI text" \
+  "Test additions" \
+  "still off"; do
+  if grep -qiF "$keyword" "$PLAN_TEMPLATE"; then
+    pass "plan-template.md gated criteria documents drop-list item: $keyword"
+  else
+    fail "plan-template.md gated criteria should explicitly exclude: $keyword"
+  fi
+done
+
+# D. The over-gating rationale is explicit.
+if grep -qE "(over-gating|trains users to autopilot|erodes.*signal)" "$PLAN_TEMPLATE"; then
+  pass "plan-template.md explains why over-gating is harmful"
+else
+  fail "plan-template.md should explain the cost of over-gating (signal erosion)"
+fi
+
+# E. gated and risk: are documented as orthogonal.
+if grep -qE "(independent of risk|orthogonal to risk:|risk: low.*gated: true|low-risk.*gated: true)" "$PLAN_TEMPLATE"; then
+  pass "plan-template.md documents gated as orthogonal to risk"
+else
+  fail "plan-template.md should clarify gated and risk are independent"
+fi
+
+# F. Default-false instruction is explicit.
+if grep -qE "[Dd]efault.*false|Default to .false." "$PLAN_TEMPLATE"; then
+  pass "plan-template.md instructs 'default to false'"
+else
+  fail "plan-template.md should say 'default to false' for gated"
+fi
+
+# G. The Outside Voice peer prompt challenges over-gating.
+if grep -qiE "challenge gated|flag.*gated:true.*just an internal|over-gating" "$OUTSIDE_VOICE"; then
+  pass "outside-voice.md peer prompt instructs the peer to challenge over-gating"
+else
+  fail "outside-voice.md should instruct the peer to challenge over-gating in plan reviews"
+fi
+
+# H. Peer prompt also flags MISSING gated on production-state-changing units
+#    (the symmetric case — under-gating is also a real risk).
+if grep -qiE "missing gated|under-gating|gated:false on units that DO change production" "$OUTSIDE_VOICE"; then
+  pass "outside-voice.md peer prompt flags under-gating (missing gated:true on production-state changes)"
+else
+  fail "outside-voice.md should also flag under-gating, not just over-gating"
+fi
+
+# I. The helper script's PLAN_REVIEW_DIMENSIONS substitution carries the
+#    same instruction (so peer calls dispatched via the helper get the
+#    challenge-over-gating language).
+if grep -qiE "(challenge gated|flag.*gated:true.*internal/UI|over-gating)" "$HELPER"; then
+  pass "ensemble-build-peer-prompt PLAN_REVIEW_DIMENSIONS challenges over-gating"
+else
+  fail "ensemble-build-peer-prompt PLAN_REVIEW_DIMENSIONS should challenge over-gating"
+fi
+
+# J. en-plan SKILL.md's per-unit gated guidance matches the new bar.
+EN_PLAN_SKILL="${REPO_ROOT}/skills/en-plan/SKILL.md"
+if grep -qE "production user state|production-state-changing|production data backfill" "$EN_PLAN_SKILL"; then
+  pass "en-plan SKILL.md gated guidance uses the production-state criterion"
+else
+  fail "en-plan SKILL.md gated guidance should reference production-state criterion"
+fi
+if grep -qE "any non-destructive unit that needs explicit confirmation" "$EN_PLAN_SKILL"; then
+  fail "en-plan SKILL.md still has the vague non-destructive catch-all"
+else
+  pass "en-plan SKILL.md no longer has the vague non-destructive catch-all"
+fi
+
+# K. bin/ensemble-lint's gated suggestion uses the new criteria, not the
+#    old "admin endpoints / flag flips / rate-limited APIs" phrasing
+#    (PR #17 review found the lint script was still recommending the old
+#    bar on missing-Gated violations, undoing the tightening).
+LINT_SCRIPT="${REPO_ROOT}/bin/ensemble-lint"
+# Old phrasing that must NOT appear in the suggestion text.
+if grep -qE 'admin endpoints[[:space:]]*/[[:space:]]*flag flips[[:space:]]*/[[:space:]]*rate-limited APIs' "$LINT_SCRIPT"; then
+  fail "bin/ensemble-lint still uses the old gated suggestion (admin endpoints / flag flips / rate-limited APIs) — that contradicts the tightened criteria"
+else
+  pass "bin/ensemble-lint no longer uses the old gated suggestion language"
+fi
+# New phrasing must reference the production-state criterion AND point at the canonical doc.
+if grep -qF "production user state or external system state" "$LINT_SCRIPT"; then
+  pass "bin/ensemble-lint suggestion references the production-state criterion"
+else
+  fail "bin/ensemble-lint gated suggestion should reference 'production user state or external system state'"
+fi
+if grep -qF "references/templates/plan-template.md" "$LINT_SCRIPT"; then
+  pass "bin/ensemble-lint suggestion points at plan-template.md for full criteria"
+else
+  fail "bin/ensemble-lint gated suggestion should point at references/templates/plan-template.md"
+fi
+
 # 32. en-setup advisory is non-blocking (per the resolved open question).
 if grep -qiE "do NOT block install|advisory|surface 🟡" "$EN_SETUP" && grep -qE "🟡.*timeout|timeout.*🟡|🟡 No .timeout" "$EN_SETUP"; then
   pass "en-setup SKILL.md treats timeout-binary as advisory (not blocking)"
