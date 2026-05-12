@@ -27,9 +27,32 @@ Two related issues compound this:
 
 en-ship is the natural chokepoint — last step before code leaves the local environment, user is engaged with "what's going out the door," one place to enforce instead of two soft-prompt sites.
 
+## Review history
+
+This spec went through one round of review on PR #18. Three findings, all addressed in-place:
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| Checkpoint ran after lint/typecheck/secret-scan — newly written `/en-learn` files would ship unchecked | P2 | Moved checkpoint to **first** preflight step (before lint/typecheck/secret-scan). Files written by `/en-learn capture` now go through all preflight checks. |
+| Baseline detection via `git log --since=<date>` was imprecise — same-day captures couldn't distinguish commits before vs. after | P2 | Added `\| <head-sha>` field to `docs/learnings/log.md` capture entries (Change 1b). Baseline scan uses `git log <sha>..HEAD` for precise semantics. Legacy entries fall back gracefully with a one-line imprecise-baseline notice. |
+| Outcome-enum drift: foundation §D26 used `<captured\|skipped\|up_to_date>` while the rest of the spec used `intentionally_skipped` | P3 | Locked the canonical enum at the top of the spec; updated foundation §D26 to match; added drift-guard assertion #4 (test asserts exact spelling of all four values; asserts bare `skipped` is NOT used as an outcome value). |
+
+## Outcome enum (canonical)
+
+The en-ship report's `learning_checkpoint:` field accepts exactly these four values. Every other section of this spec, the foundation update, the SKILL.md changes, and the drift-guard tests MUST use these exact strings:
+
+| Value | Meaning |
+|---|---|
+| `captured (N learnings)` | User answered `yes`; `/en-learn capture` wrote N entries. |
+| `intentionally_skipped` | User answered `skip`; explicit decision recorded for audit. |
+| `up_to_date` | Idempotency path — zero commits since last capture; no prompt fired. |
+| `ci_environment` | Non-interactive CI run; checkpoint auto-skipped under `CI=true`. |
+
+If any section of this spec uses different wording (e.g. `skipped` instead of `intentionally_skipped`), it's a bug. The drift-guard test (see Drift guards section) asserts the exact spelling across the spec, SKILL.md, foundation §D26, and the test suite.
+
 ## Resolved decisions
 
-1. **Add a learning checkpoint to `/en-ship`'s preflight.** Not a post-flight soft prompt — a numbered, structured preflight step with a visible outcome line in the en-ship report. The agent must surface either "captured N learnings" OR "intentionally skipped" OR "up to date" — no silent drop possible.
+1. **Add a learning checkpoint to `/en-ship`'s preflight.** Not a post-flight soft prompt — a numbered, structured preflight step with a visible outcome line in the en-ship report. The agent must surface one of the four canonical outcome values — no silent drop possible.
 2. **Always prompt; make skip cheap.** Don't gate on diff-size or commit-count thresholds. Prompt on every `/en-ship` invocation; the user types `skip` if nothing's worth filing. Cost of acknowledging "nothing this time" is much lower than cost of a missed capture.
 3. **Broaden `/en-qa`'s anchor.** Replace *"QA found and fixed N bugs. Capture as learnings?"* with *"QA wrapped. Anything worth filing as a learning from this pass? (yes / skip)"* so the prompt fires even when zero bugs were found.
 4. **Keep `/en-build` and `/en-qa` soft prompts.** They're freshest-point capture opportunities and they work when the agent runs them. The new en-ship checkpoint is the **backstop**, not a replacement.
@@ -39,12 +62,14 @@ en-ship is the natural chokepoint — last step before code leaves the local env
 
 **File:** `skills/en-ship/SKILL.md`
 
-Add a new preflight step (after lint/typecheck/secret-scan, before commit composition):
+Add a new preflight step **as the FIRST preflight step — before lint, typecheck, and secret-scan.**
 
-> **N. Learning checkpoint.** Before composing the commit and pushing, surface a structured prompt to capture learnings from work since the last capture. This is the **backstop** for the soft auto-invokes in `/en-build` and `/en-qa` — those should have caught most captures already, but this step ensures no learnings ship without an explicit decision.
+**Ordering rationale.** When the user answers `yes`, `/en-learn capture` can write new files: `docs/learnings/log.md` (appended), new learning pages under `docs/learnings/{bugs,patterns,decisions,sources}/`, possibly `docs/architecture.md` or `docs/foundation.md` cross-reference updates, and the architecture-sync index updates. If the checkpoint runs AFTER lint/typecheck/secret-scan, those newly-written files get staged and committed without being scanned — they ship unchecked. Running the checkpoint FIRST guarantees every file in the final diff was inspected by every preflight check.
+
+> **1. Learning checkpoint** (first preflight step). Before any other preflight check, surface a structured prompt to capture learnings from work since the last capture. This is the **backstop** for the soft auto-invokes in `/en-build` and `/en-qa` — those should have caught most captures already, but this step ensures no learnings ship without an explicit decision, AND any files written by `/en-learn capture` go through the rest of preflight (lint/typecheck/secret-scan) before being committed.
 >
-> 1. **Determine the capture baseline.** Read `docs/learnings/log.md` and find the latest `[YYYY-MM-DD] capture | ...` entry. If the log doesn't exist or has no capture entries, baseline is "since branch creation."
-> 2. **Compute scope.** `git log <baseline-sha>..HEAD` (or `git log --since=<baseline-date>` if no SHA). Count commits and diff size.
+> 1. **Determine the capture baseline.** Read `docs/learnings/log.md` and find the latest `[YYYY-MM-DD] capture | <subject> | <head-sha>` entry. **The `<head-sha>` field is the load-bearing piece** — see "Change 1b: log format" below for the format addition required to make this work. If the log doesn't exist or has no capture entries, baseline is "since branch creation" (resolved via `git merge-base HEAD <default-branch>`).
+> 2. **Compute scope.** `git log <baseline-sha>..HEAD` — precise commit range, no date-boundary fuzziness. Count commits and diff size.
 > 3. **Surface the checkpoint prompt** (structured, not soft):
 >    ```
 >    Learning checkpoint
@@ -59,7 +84,30 @@ Add a new preflight step (after lint/typecheck/secret-scan, before commit compos
 >    - `yes` → invoke `/en-learn capture` interactively; on completion, resume en-ship preflight at the next step. Record `learning_checkpoint: captured (N learnings)` in en-ship's report.
 >    - `skip` → record `learning_checkpoint: intentionally_skipped` in en-ship's report. The structured record makes the skip auditable later (vs. the current silent drop).
 >    - `details` → print the commit list + per-area summary; re-prompt with the same options.
-> 5. **Idempotency check.** If the baseline scan finds zero commits since last capture, the checkpoint records `learning_checkpoint: up_to_date` and proceeds silently (no prompt). en-ship runs twice on the same branch don't re-prompt.
+> 5. **Idempotency check.** If `git log <baseline-sha>..HEAD` returns zero commits, the checkpoint records `learning_checkpoint: up_to_date` and proceeds silently (no prompt). en-ship runs twice on the same branch don't re-prompt.
+>
+> 6. **Legacy-log fallback.** If the latest capture entry in `docs/learnings/log.md` doesn't have a `<head-sha>` field (legacy plans pre-this-spec), the checkpoint cannot precisely determine the baseline because `## [YYYY-MM-DD] capture | <subject>` alone can't distinguish commits before vs. after a same-day capture. In that case:
+>    - Surface a one-line notice: *"Last capture entry lacks `<head-sha>`. Baseline detection is imprecise until next capture refreshes the log format."*
+>    - Use the conservative fallback: prompt unconditionally with `<unknown> commits since last capture (date: <date>)`. The user makes the call; no silent up_to_date.
+>    - After the user runs a `yes` capture, the new log entry will include the SHA, restoring precise detection on subsequent en-ship runs.
+
+## Change 1b — `docs/learnings/log.md` format addition
+
+**Files:** `references/learn-log-format.md`, `skills/en-learn/SKILL.md`.
+
+**Format change.** Each capture-mode entry in `docs/learnings/log.md` gains a `| <head-sha>` field, recording the git HEAD at the moment of capture:
+
+```
+## [2026-05-12] capture | Single-flight cache pattern for refresh tokens | 4b0424d1
+```
+
+**Why** — without a stored SHA, the en-ship checkpoint's baseline scan falls back to `git log --since=<date>`, which can't distinguish commits *before* vs. *after* a same-day capture. Two captures on the same day or a commit between same-day captures both break the up_to_date idempotency. Storing the HEAD SHA at capture time gives `git log <sha>..HEAD` precise semantics.
+
+**Backward compatibility.** Existing log entries without a SHA continue to parse. The checkpoint logic (step 6 in Change 1) falls back to the conservative "imprecise baseline" path with a one-line notice and unconditional prompt. The first new capture re-establishes precise detection.
+
+**`/en-learn capture` write path.** On every capture, `/en-learn` writes the new log entry with `| $(git rev-parse --short HEAD)` substituted in. Other capture modes (refresh, ingest, bootstrap-patterns) don't include SHA — only `capture` mode does, since only `capture` represents a baseline reset.
+
+**Refresh mode does NOT update the baseline.** `## [YYYY-MM-DD] refresh | ...` entries don't carry SHA and don't reset the en-ship checkpoint baseline. Only explicit `capture | ` entries do. (Per open question #2 from the original spec — resolved here in favor of capture-only.)
 
 The structured outcome line in the en-ship report is the load-bearing piece. Agents can drop a soft post-flight prompt; they cannot omit a numbered step whose output is rendered in the report.
 
@@ -102,7 +150,7 @@ Current:
 
 Replace with:
 
-> **D26. `en-learn` auto-runs after `en-build` and `en-qa`, AND fires as a structured checkpoint in `en-ship`'s preflight.** The en-build and en-qa auto-invokes are soft prompts at the freshest point (right after the work is done); they're the preferred capture point when they fire. The en-ship checkpoint is the **backstop** — a structured preflight step (not a soft prompt) that surfaces a "what changed since last capture?" prompt before code leaves the local environment. Records `learning_checkpoint: <captured|skipped|up_to_date>` in en-ship's report, so missed captures are auditable rather than silently dropped. Together: capture at point of insight when it fires; backstop at point of ship when it doesn't.
+> **D26. `en-learn` auto-runs after `en-build` and `en-qa`, AND fires as a structured checkpoint in `en-ship`'s preflight.** The en-build and en-qa auto-invokes are soft prompts at the freshest point (right after the work is done); they're the preferred capture point when they fire. The en-ship checkpoint is the **backstop** — a structured preflight step (not a soft prompt) that surfaces a "what changed since last capture?" prompt before code leaves the local environment. Records `learning_checkpoint: <captured|intentionally_skipped|up_to_date>` in en-ship's report (with `ci_environment` as a fourth value when running under `CI=true`), so missed captures are auditable rather than silently dropped. Together: capture at point of insight when it fires; backstop at point of ship when it doesn't.
 
 ## Drift guards
 
@@ -115,34 +163,51 @@ New assertions:
 | 1 | `skills/en-ship/SKILL.md` has a "Learning checkpoint" preflight step. |
 | 2 | The checkpoint step references `docs/learnings/log.md` for baseline. |
 | 3 | The checkpoint records a structured outcome line (`learning_checkpoint:` field in the en-ship report). |
-| 4 | The checkpoint supports `up_to_date`, `captured`, and `intentionally_skipped` outcome states. |
-| 5 | The checkpoint has the `--no-learning-checkpoint` flag documented. |
-| 6 | `skills/en-qa/SKILL.md`'s post-QA prompt is NOT anchored to "N bugs" only — must include the broadened phrasing ("QA wrapped" or similar). |
-| 7 | `skills/en-qa/SKILL.md` documents the four capture categories (bugs, tests stabilized, patterns, library footguns). |
-| 8 | `docs/foundation.md` §D26 mentions en-ship as a backstop, not just en-build and en-qa. |
-| 9 | `docs/foundation.md` §D26 mentions "structured checkpoint" language (so the design intent doesn't drift back to soft prompt). |
+| 4 | The checkpoint supports **exactly four** outcome values, spelled exactly: `captured (N learnings)`, `intentionally_skipped`, `up_to_date`, `ci_environment`. Assert all four spellings appear in the SKILL.md and the test suite; assert the bare word `skipped` does NOT appear as an outcome value (must be `intentionally_skipped` to match the spec contract). |
+| 5 | The checkpoint runs FIRST in en-ship's preflight, BEFORE lint/typecheck/secret-scan. Test asserts the step ordering by reading SKILL.md and confirming the learning-checkpoint step number is less than the lint/typecheck/secret-scan step numbers. |
+| 6 | The checkpoint has the `--no-learning-checkpoint` flag documented. |
+| 7 | `skills/en-qa/SKILL.md`'s post-QA prompt is NOT anchored to "N bugs" only — must include the broadened phrasing ("QA wrapped" or similar). |
+| 8 | `skills/en-qa/SKILL.md` documents the four capture categories (bugs, tests stabilized, patterns, library footguns). |
+| 9 | `docs/foundation.md` §D26 mentions en-ship as a backstop, not just en-build and en-qa. |
+| 10 | `docs/foundation.md` §D26 mentions "structured checkpoint" language (so the design intent doesn't drift back to soft prompt). |
+| 11 | `docs/foundation.md` §D26 uses the canonical outcome enum spelling — `intentionally_skipped` (not `skipped`), `up_to_date`, `captured`, `ci_environment`. Catches the P3 drift class from PR #18 review. |
+| 12 | `references/learn-log-format.md` documents the `\| <head-sha>` field on capture entries. |
+| 13 | `skills/en-learn/SKILL.md` writes the SHA on `capture` mode (via `git rev-parse --short HEAD` substitution). |
+| 14 | Refresh/ingest/bootstrap entries do NOT include SHA (only `capture` mode does — it's the only baseline-resetting operation). |
 
 These mirror the drift-guard pattern from PR #15 (skill-helper anchoring) and PR #17 (gated-criteria tightening) — assertions that catch regressions of the design intent, not just regressions of the code.
 
 ## Implementation outline
 
-5 units, Standard depth:
+7 units, Standard depth. **Build order matters**: U1 (log format) must land before U2 (en-ship checkpoint) so the baseline-SHA read path has somewhere to read from.
 
-- **U1** — `skills/en-ship/SKILL.md`: add learning-checkpoint preflight step with the five sub-steps (baseline, scope, prompt, handle response, idempotency). Add `--no-learning-checkpoint` to the flags table. Update the en-ship report output template to include the `learning_checkpoint:` line.
+- **U1** — `references/learn-log-format.md` + `skills/en-learn/SKILL.md`: extend the capture-entry format to include `| <head-sha>` (the actual format change in the reference doc + the write path in `/en-learn capture`). Backward-compat: legacy entries without SHA continue to parse; en-ship checkpoint falls back to "imprecise baseline" with a one-line notice. Refresh / ingest / bootstrap modes don't carry SHA.
+
+  **Risk:** medium (format change with backward-compat surface). **Category:** schema-evolution. **Gated:** false.
+
+- **U2** — `skills/en-ship/SKILL.md`: add learning-checkpoint as the **first preflight step, before lint/typecheck/secret-scan** (per the P2 ordering fix). Six sub-steps: baseline, scope, prompt, response handler, idempotency, legacy fallback. Add `--no-learning-checkpoint` to the flags table. Update the en-ship report output template to include the `learning_checkpoint:` line with the four canonical outcome values.
+
+  **Risk:** low. **Category:** feature. **Gated:** false. **Depends:** U1.
+
+- **U3** — `skills/en-qa/SKILL.md`: replace the "N bugs found" prompt with the broadened "QA wrapped" prompt; document the four capture categories. Update the output-format example to show the broader prompt shape.
 
   **Risk:** low. **Category:** feature. **Gated:** false.
 
-- **U2** — `skills/en-qa/SKILL.md`: replace the "N bugs found" prompt with the broadened "QA wrapped" prompt; document the four capture categories. Update the output-format example to show the broader prompt shape.
-
-  **Risk:** low. **Category:** feature. **Gated:** false.
-
-- **U3** — `docs/foundation.md`: update §D26 to document en-ship as the backstop checkpoint with structured outcome.
+- **U4** — `docs/foundation.md`: update §D26 to document en-ship as the backstop checkpoint with structured outcome, using the **canonical four-value enum spelling** (`captured | intentionally_skipped | up_to_date | ci_environment`). NOT `skipped` — that's the P3 drift class from PR #18 review.
 
   **Risk:** low. **Category:** other (doc update). **Gated:** false.
 
-- **U4** — `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh`: +9 drift-guard assertions per the table above. Test totals expected: 709 → 718.
+- **U5** — `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh`: +14 drift-guard assertions per the table above (the table grew from 9 → 14 with the SHA-in-log additions and the enum-consistency assertions). Test totals expected: 709 → 723.
 
   **Risk:** low. **Category:** feature. **Gated:** false.
+
+- **U6** — Add a small unit test for the baseline-SHA parsing logic. Synthetic `docs/learnings/log.md` fixtures: (a) entry with SHA → parsed correctly; (b) entry without SHA (legacy) → falls back to date with notice; (c) no entries → falls back to branch creation. Asserts the parsing logic the checkpoint depends on.
+
+  **Risk:** low. **Category:** feature. **Gated:** false. **Depends:** U1.
+
+- **U7** — Verification: run `tests/run.sh` + `bin/ensemble-lint` + manual spot-check of the en-ship preflight prose. Confirm the structured outcome line renders correctly in the example output, and that the four canonical enum values are spelled identically across all touched files.
+
+  **Risk:** low. **Category:** diagnostics. **Gated:** false.
 
 - **U5** — Verification: run `tests/run.sh` + `bin/ensemble-lint` + manual spot-check of the en-ship preflight prose. Confirm the structured outcome line renders correctly in the example output.
 
