@@ -42,12 +42,14 @@ Anything else is the agent overriding the design intent.
 
 ## Outcome enum (canonical)
 
-**Not applicable in the usual sense** — this spec doesn't add a new prompt or report value. It defines a contract on agent behavior. The relevant assertion is **binary** for any inter-unit transition:
+**Not applicable in the usual sense** — this spec doesn't add a new prompt or report value. It defines a contract on agent behavior **within the inter-unit main loop** (step 9 start → step 10 end). The relevant assertion is **binary** for any inter-unit transition inside that window:
 
 | Condition | Required behavior |
 |---|---|
-| One of the seven legitimate cases applies | Pause per the existing handler for that case |
-| None of the seven applies | **Advance immediately. No prompt. No "checkpoint." No "let me verify."** |
+| One of cases 3–7 (in-window legitimate pauses) applies | Pause per the existing handler for that case |
+| None applies | **Advance immediately. No prompt. No "checkpoint." No "let me verify."** |
+
+Cases 1–2 (preflight prompts at step 5 / step 7) are out of the contract's scope and continue to operate per their existing handlers — see "Scope of the contract" in the SKILL.md changes below.
 
 The drift guard asserts the contract is documented as a hard prohibition, not just an implicit assumption.
 
@@ -75,15 +77,25 @@ The drift guard asserts the contract is documented as a hard prohibition, not ju
 >
 > `/en-build` is autonomous by design. The user authorized the work at plan time (peer-reviewed plan, status: open, hash recorded). After a unit commits successfully (step 9k passes), advance to the next unit immediately. **Do not pause** for confirmation, judgment, "natural checkpoint," "the next unit is bigger," "let me verify before continuing," or any reason not in the seven enumerated cases below.
 >
-> ### Legitimate pause cases (exhaustive, no others permitted)
+> ### Scope of the contract
 >
-> 1. **Working tree dirty at branch setup** (step 5) — stash / commit / abort prompt.
-> 2. **Plan-review concerns surfaced at start** (step 7) — continue / pause / split prompt.
+> The contract governs **the inter-unit main loop** — specifically, the window from the START of step 9 (per-unit loop, after preflight has cleared) through the END of step 10 (after all units, before /en-learn hand-off). Within this window, pauses are restricted to the seven cases below.
+>
+> **Steps 1–8 are NOT governed by this contract.** Preflight, sub-state matrix decisions (untracked-but-approved → offer auto-commit; draft + revise with cleared findings → offer finalize-and-build; unresolved draft findings → refuse and ask for `/en-plan --resume`), host detection, branch setup, plan-review concerns, and batch sizing all have their own documented prompts and protocols. Those are *pre-execution* prompts about whether the build can sensibly start; they're orthogonal to the *during-execution* autonomy this contract enforces.
+>
+> Why scope this way: the field-observed bug ("Working tree is clean. I stopped at a clean checkpoint before U4") is specifically a post-step-9k, inter-unit pause inserted by agent judgment. Scoping the contract to that window catches exactly that bug class. Scoping wider would either invalidate legitimate preflight prompts or require an unmaintainable enumeration of every prompt-emitting code path.
+>
+> ### Legitimate pause cases within the contract window (exhaustive within scope, no others permitted)
+>
+> 1. **Working tree dirty at branch setup** (step 5) — stash / commit / abort prompt. *(Out of contract window; listed for completeness — see Scope above.)*
+> 2. **Plan-review concerns surfaced at start** (step 7) — continue / pause / split prompt. *(Out of contract window; listed for completeness.)*
 > 3. **`risk: destructive` unit at step 9a** — typed `"run unit U<N>"` literal-string gate.
 > 4. **`gated: true` unit at step 9a** — y/skip/abort prompt.
 > 5. **P4 phase-level confirmation** (step 9, phasing-on path) — typed `"run phase 4"` literal-string.
 > 6. **`--pause` flag set** (step 9, opt-in) — between-phase y/pause/n prompt.
 > 7. **Failure protocol fires** (failure-protocol table) — gate failure, peer reject, malformed evidence, hash mismatch, after-phase verification failure, plan-hash drift, worker malformed diff, etc. Each has its own documented handler.
+>
+> Cases 3–7 are inside the contract window (steps 9 and 10). Cases 1 and 2 are listed for completeness so the reader sees the full pause-emitting universe of /en-build; they're already in their own documented handlers and are not subject to this contract.
 >
 > ### Anti-patterns (explicitly forbidden)
 >
@@ -138,10 +150,22 @@ en-qa has analogous semantics: it runs Phase 1 (system checks) → Phase 2 (brow
 >
 > `/en-qa` is autonomous by design. After fixing a bug (or confirming a flow passed), advance to the next flow immediately. **Do not pause** for confirmation, "let me checkpoint before the bigger test surface," or any reason not in the enumerated cases below.
 >
-> ### Legitimate pause cases (exhaustive, no others permitted)
+> ### Scope of the contract
+>
+> The contract governs **already-runnable QA flows** — the period after setup has cleared, during which Phase 1 system checks are executing or Phase 2 Playwright flows are running and the bug-fix loop is iterating. Within this window, pauses are restricted to the five cases below.
+>
+> **Pre-flow setup is NOT governed by this contract.** Specifically, the following en-qa prompts and skip decisions have their own documented handlers and are NOT inter-flow pauses:
+>
+> - **URL discovery prompt** (en-qa SKILL.md line 22) — when no app URL is found, ask the user. Pre-flow; the QA flow can't start without a URL.
+> - **Phase 2 skip on doc-only branches / `--system-only` / browser-disabled config** (SKILL.md line 52) — Phase 2 is correctly skipped; the contract doesn't force it to run.
+> - **Playwright bootstrap offer** when no test framework is detected — pre-flow setup question; out of contract scope.
+>
+> Why scope this way: the autonomy bug class is the same as en-build's — agent-initiated checkpoints during the QA loop ("the next flow has more assertions; let me checkpoint"). The contract closes that, without invalidating legitimate pre-flow decisions about whether QA can sensibly run at all.
+>
+> ### Legitimate pause cases within the contract window (exhaustive within scope, no others permitted)
 >
 > 1. **System check fails** at Phase 1 (e.g. test suite red, typecheck broken). The QA flow can't sensibly proceed; surface and stop.
-> 2. **Playwright MCP unavailable.** Phase 2 can't run; surface gap and skip to report.
+> 2. **Playwright MCP unavailable mid-flow.** A flow that started but lost MCP connectivity; surface gap and skip remaining flows. *(Distinct from the pre-flow Playwright availability check at setup — that's out of scope per Scope above.)*
 > 3. **Bug found that requires user judgment** to fix (e.g. ambiguous expected behavior; missing requirement). Surface the bug and ask the user.
 > 4. **Bug fix breaks Phase 1 checks** (regression). Stop; surface state.
 > 5. **User-initiated abort.**
@@ -157,24 +181,28 @@ en-qa has analogous semantics: it runs Phase 1 (system checks) → Phase 2 (brow
 
 **File:** `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh` (or a new `tests/lint/agent-autonomy-contract.test.sh` — decide at implementation time based on which test file is the better home).
 
-**New assertions** (~14):
+**New assertions** (~18):
 
 | # | Assertion |
 |---|---|
 | 1 | `skills/en-build/SKILL.md` has an "Agent autonomy contract" section (heading match). |
-| 2 | The contract section enumerates all seven legitimate pause cases (each case's keyword appears at least once in the section). |
-| 3 | The contract section uses the phrase "exhaustive, no others permitted" (or close equivalent) so future readers don't read the list as suggestive examples. |
-| 4 | At least four explicit anti-patterns are documented in the contract section (the four bullets above). |
-| 5 | The "Right response to LLM uncertainty: advance, not ask" framing is present (catches drift back to "when uncertain, prompt"). |
-| 6 | The "What this skill never does" section includes "Never inserts agent-initiated checkpoints" (or close equivalent). |
-| 7 | The contract section references the failure-protocol table as the safety net for "things go wrong" cases (so the agent understands the alternative to self-pausing is the existing failure-protocol catch). |
-| 8 | The contract section explicitly mentions that per-unit progress-report "Note:" lines are the right place for agent observations — they're informational, not gating. |
-| 9 | `skills/en-qa/SKILL.md` has the same contract section, scoped to QA. |
-| 10 | en-qa's contract enumerates the five QA-scoped legitimate pauses. |
-| 11 | en-qa's contract includes explicit anti-patterns. |
-| 12 | en-qa's contract uses "exhaustive, no others permitted" (or close equivalent). |
-| 13 | The forbidden phrase "should I continue?" appears in the anti-patterns of at least one of the two skills (catches drift back to that exact wording). |
-| 14 | The forbidden phrase "let me verify" appears in the anti-patterns of at least one of the two skills. |
+| 2 | The contract section enumerates all seven legitimate pause cases (each case's keyword appears at least once in the section). Cases 1–2 are marked as "out of contract window" or equivalent so readers don't mistake them for forbidden-when-they-fire. |
+| 3 | The contract section has an explicit **"Scope of the contract"** subsection that names "the inter-unit main loop" (or close equivalent) as the contract's window of applicability. Test asserts the literal phrase "Scope of the contract" appears in the section. |
+| 4 | The scope subsection explicitly names "Steps 1–8 are NOT governed by this contract" (or close equivalent), so existing preflight prompts (sub-state matrix, host detection, plan review) are recognized as out-of-scope and legitimate. |
+| 5 | The contract section uses the phrase "exhaustive within scope, no others permitted" (or close equivalent — note the "within scope" qualifier; bare "exhaustive, no others permitted" without the scope qualifier is the language that caused the PR #20 review finding). |
+| 6 | At least four explicit anti-patterns are documented in the contract section. |
+| 7 | The "Right response to LLM uncertainty: advance, not ask" framing is present (catches drift back to "when uncertain, prompt"). |
+| 8 | The "What this skill never does" section includes "Never inserts agent-initiated checkpoints" (or close equivalent). |
+| 9 | The contract section references the failure-protocol table as the safety net for "things go wrong" cases (so the agent understands the alternative to self-pausing is the existing failure-protocol catch). |
+| 10 | The contract section explicitly mentions that per-unit progress-report "Note:" lines are the right place for agent observations — they're informational, not gating. |
+| 11 | `skills/en-qa/SKILL.md` has the same contract section, scoped to QA flows. |
+| 12 | en-qa's contract has its own "Scope of the contract" subsection naming "already-runnable QA flows" (or close equivalent) and explicitly lists pre-flow setup (URL discovery, Phase 2 skip on doc-only / `--system-only`, Playwright bootstrap offer) as out of scope. |
+| 13 | en-qa's contract enumerates the five QA-scoped legitimate pauses. |
+| 14 | en-qa's contract includes explicit anti-patterns. |
+| 15 | en-qa's contract uses "exhaustive within scope, no others permitted" (matching en-build's scoped wording). |
+| 16 | The forbidden phrase "should I continue?" appears in the anti-patterns of at least one of the two skills (catches drift back to that exact wording). |
+| 17 | The forbidden phrase "let me verify" appears in the anti-patterns of at least one of the two skills. |
+| 18 | Existing preflight prompts in en-build SKILL.md (the sub-state matrix's "Offer auto-commit", "Offer finalize-and-build", "Refuse; user must apply findings first" handlers) are NOT removed or altered by the contract — drift guard checks they remain present in step 4 / the pre-flight sub-state matrix. Catches accidental over-application of the contract during implementation. |
 
 ## Change 5 — `docs/foundation.md` decision entry
 
@@ -232,4 +260,15 @@ Add a decision entry to `docs/foundation.md` (number TBD at implementation time)
 
 ## Review history
 
-Initial spec (this document). Anticipates one round of review on the spec PR before any SKILL.md / test changes.
+Initial spec → PR #20 merged → post-merge code review surfaced two P2 findings, both addressed in-place via this follow-up PR:
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| The "seven cases exhaustive, no others permitted" framing omits existing en-build preflight prompts (untracked-approved → offer auto-commit; draft+revise with cleared findings → offer finalize-and-build; unresolved draft findings → refuse and ask for `/en-plan --resume`). If implemented literally, those legitimate prompts look like contract violations. | P2 | **Added "Scope of the contract" subsection** to en-build's contract. Names "the inter-unit main loop" (step 9 start → step 10 end) as the window. Steps 1–8 are explicitly OUT of scope; preflight handlers stay as-is. Cases 1–2 in the legitimate-pauses list are now labeled "out of contract window; listed for completeness." Drift-guard assertions 3, 4, 5 added to enforce the scoping in SKILL.md prose. |
+| en-qa's "five exhaustive" list omits existing skip/prompt paths (URL discovery, Phase 2 skip on doc-only / `--system-only` / browser-disabled, Playwright bootstrap offer). | P2 | **Added matching "Scope of the contract" subsection** to en-qa's contract. Names "already-runnable QA flows" as the window. Pre-flow setup (URL discovery, doc-only / `--system-only` skip, Playwright bootstrap) is explicitly out of scope. Case 2 (Playwright unavailable) clarified as "mid-flow only" — pre-flow availability check is out of scope. Drift-guard assertion 12 added. |
+
+Both fixes use the same shape: define a contract window, list cases inside the window as exhaustive, recognize legitimate handlers outside the window without trying to enumerate every prompt-emitting code path (unmaintainable). The "exhaustive, no others permitted" phrasing now reads as "exhaustive within scope, no others permitted" — the "within scope" qualifier is the load-bearing fix.
+
+Drift-guard count: 14 → 18 (added scope assertions for both contracts + a guard against accidentally removing existing preflight handlers during implementation).
+
+The implementation outline didn't grow — same 4 units, since both changes are within Change 1 (en-build) and Change 3 (en-qa) which were already in scope.
