@@ -27,14 +27,20 @@ The change is intentionally narrow: it only triggers on the **literal default br
 
 ## Outcome enum (canonical)
 
-The prompt's response set and the `/en-plan` report's `default_branch_checkpoint:` field accept exactly these values. Every other section of this spec, the foundation update, the SKILL.md changes, and the drift-guard tests MUST use these exact strings:
+**Four prompt response options. Three terminal report values.** These are deliberately not the same count — `details` is a diagnostic-and-re-prompt option that doesn't end the checkpoint.
 
-| Response | Report value | Action |
+The prompt's four response options:
+
+| Response | Terminal? | Action |
 |---|---|---|
-| `y` (default) | `auto_branched` | Create `<plan_id>-<slug>` from current commit; check out the new branch; commit the plan there. |
-| `no-commit` | `no_commit_requested` | Finalize plan to `status: open`; skip the auto-commit step; surface manual commit instructions. |
-| `current` | `committed_to_default_branch` | Commit the plan on the default branch (opt-out for users who genuinely want this). |
-| `details` | (no terminal value; prompt re-asked) | Show diagnostic info (detected default branch, target branch name, `protected_branches` config hint); re-prompt. |
+| `y` (default) | yes | Branch resolution + checkout → step 12 writes plan on the new branch → step 15 commits there. Report: `auto_branched`. |
+| `no-commit` | yes | Stay on default branch → step 12 writes the plan → step 15 skips commit, surfaces manual instructions. Report: `no_commit_requested`. |
+| `current` | yes | Stay on default branch → step 12 writes the plan → step 15 commits on the default branch (explicit opt-out). Report: `committed_to_default_branch`. |
+| `details` | **no** | Print diagnostic info (detected default branch + which source, target branch name, future-extension note). Re-prompt with the four options. Does NOT produce a report value because the checkpoint hasn't terminated yet. |
+
+The `/en-plan` report's `default_branch_checkpoint:` field accepts exactly **three terminal values** — `auto_branched`, `no_commit_requested`, `committed_to_default_branch` — and is omitted entirely when the checkpoint didn't fire (user wasn't on the default branch).
+
+Every section of this spec, the foundation update, the SKILL.md changes, and the drift-guard tests MUST use these exact strings. Bare words `branched`, `skipped`, `main`, `kept_on_main` MUST NOT appear as report values.
 
 If any section of this spec uses different wording (e.g. `branched` instead of `auto_branched`, or `kept_on_main`), it's a bug. Drift-guard test asserts exact spelling.
 
@@ -45,17 +51,26 @@ If any section of this spec uses different wording (e.g. `branched` instead of `
 3. **`/en-foundation` gets the same treatment.** Same friction class, same pattern. Out of scope for THIS PR — separate follow-up. Both skills' auto-commit logic should be uniform, but easier to ship them independently.
 4. **Branch name = `<plan_id>-<slug>`.** Matches `/en-build`'s feature-branch convention so build picks up the existing branch instead of creating a parallel one. If the branch already exists with only plan-related commits, check it out and resume; if it has build commits or unrelated work, surface and ask.
 
-## Change 1 — `/en-plan` SKILL.md auto-commit step
+## Change 1 — `/en-plan` SKILL.md: new branch-resolution step (11.5)
 
-**File:** `skills/en-plan/SKILL.md`, step 15 (auto-commit).
+**File:** `skills/en-plan/SKILL.md`, **NEW step inserted between step 11 (auto-increment plan number) and step 12 (write plan file)**.
 
-Insert a default-branch checkpoint **before** the existing "stage and commit" logic. Existing flags (`--commit-branch`, `--no-commit`) and the unrelated-staged-changes refuse-to-commit logic stay unchanged — the checkpoint is additive.
+### Why this placement, not inside step 15
 
-The new sub-step ordering inside step 15:
+The reviewer's P2 finding made the original placement (inside step 15, after the plan file was already written) untenable. The failure case:
+
+- First `/en-plan` from `main` → step 12 writes `docs/plans/active/<plan-file>.md` to main's working tree → step 15 checkpoint fires → user picks `y` → `git checkout -b <plan_id>-<slug>` from main → commit lands on the new branch → working tree clean. **Works fine on first run.**
+- Resume `/en-plan` from `main` for the same `plan_id` → step 12 writes the plan file to main's working tree (untracked, since the prior plan commit lives only on the feature branch) → step 15 checkpoint fires → user picks `y` → `git checkout <plan_id>-<slug>` to resume the existing branch → **git refuses with "untracked working tree file would be overwritten"** because the existing branch has that file committed.
+
+The fix is to move the branch decision BEFORE any disk writes. Specifically: between step 11 (we now know `<plan_id>`, so the target branch name is known) and step 12 (the first time we write the plan file to disk). After that, every plan-write (step 12, every iteration of step 13's finalize loop, etc.) happens on the right branch, and step 15's auto-commit becomes a straight `git add + git commit` on whichever branch we're already on.
+
+### New step 11.5 — Default-branch checkpoint (before plan-file write)
+
+Insert as new sub-step right after step 11:
 
 1. **Resolve target branch.**
-   - If `--commit-branch <name>` was passed → honor it; skip the rest of step 15.1; jump to commit.
-   - If `--no-commit` was passed → honor it; surface manual instructions; skip commit.
+   - If `--commit-branch <name>` was passed → set target branch to `<name>`; honor it; skip the rest of step 11.5 prompt logic; check out the branch (creating it if needed); proceed to step 12.
+   - If `--no-commit` was passed → no branch switch; stay on the current branch; proceed to step 12. (At step 15 the commit will be skipped anyway.)
    - Otherwise: continue to default-branch detection.
 
 2. **Detect default branch** (three-source resolution, first hit wins):
@@ -63,10 +78,10 @@ The new sub-step ordering inside step 15:
    - `git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||'`
    - Hardcoded fallback: check current branch against `main`, `master`, `develop`, `trunk`. If on one of these AND no remote origin → assume it's the default.
 
-   If detection fails entirely (e.g. fresh repo with no commits, detached HEAD): skip the checkpoint and use the existing commit-on-current-branch behavior.
+   If detection fails entirely (e.g. fresh repo with no commits, detached HEAD): skip the checkpoint; stay on the current branch; proceed to step 12.
 
 3. **Checkpoint decision.**
-   - If current branch != detected default branch → proceed with existing behavior (commit on current branch).
+   - If current branch != detected default branch → skip the checkpoint; stay on the current branch; proceed to step 12.
    - If current branch == default branch → surface the checkpoint prompt (next sub-step).
 
 4. **Surface the checkpoint prompt** (structured, not soft):
@@ -87,28 +102,42 @@ The new sub-step ordering inside step 15:
    details                — show diagnostic info
    ```
 
-5. **Handle response.**
+5. **Handle response.** All branch operations happen BEFORE step 12's plan-file write, so working-tree state is clean (no untracked plan files yet) and `git checkout` can switch freely.
 
-   - `y` (default): `git checkout -b <plan_id>-<slug>` from the current commit. If the branch already exists:
-     - Inspect via `git log <branch>..HEAD` and `git log HEAD..<branch>` to determine state.
-     - If the branch has only plan-related commits (file paths under `docs/plans/`): check it out, surface notice (*"Existing branch <name> has prior plan commits; resuming."*), commit there.
-     - If the branch has build commits OR commits touching files outside `docs/plans/`: refuse, surface state, prompt: *"Branch `<name>` already exists with non-plan commits. Pick a different name? (`<plan_id>-<slug>-2` / custom / abort)"*.
+   - `y` (default — auto-branch):
+     - **If branch `<plan_id>-<slug>` doesn't exist** → `git checkout -b <plan_id>-<slug>` from the current commit. Working tree stays clean (no plan file written yet). Proceed to step 12 on the new branch.
+     - **If branch `<plan_id>-<slug>` already exists** → inspect its state via `git log <default-branch>..<branch>` to see what's on it:
+       - If only plan-related commits (file paths under `docs/plans/`): `git checkout <branch>`. Working tree now reflects the prior plan commit. Surface notice: *"Existing branch `<branch>` has prior plan commits; resuming. Working tree is now at the prior plan state."*. Proceed to step 12 — step 12's write will either match the existing file (idempotent no-op at commit time) or update it.
+       - If build commits OR commits touching files outside `docs/plans/`: refuse the auto-resume; surface state; prompt: *"Branch `<branch>` already exists with non-plan commits. Pick a different name? (`<plan_id>-<slug>-2` / custom / abort)"*. On custom name → check out a new branch with that name; on `abort` → stop the skill, record state.
      - Record `default_branch_checkpoint: auto_branched` in the `/en-plan` report's structured output.
-   - `no-commit`: skip the commit step entirely; finalize the plan to `status: open` but leave it uncommitted; surface manual instructions:
-     > *"Plan written. To commit:*
-     > `git checkout -b <plan_id>-<slug>`
-     > `git add docs/plans/active/<plan-file>.md`
-     > `git commit -m 'docs(plan): <plan_id> <slug>'`*"*
-     Record `default_branch_checkpoint: no_commit_requested`.
-   - `current`: proceed with existing commit-on-default-branch behavior; record `default_branch_checkpoint: committed_to_default_branch` (with an audit-friendly explicit-opt-in note).
-   - `details`: print detected default branch, source of detection (`gh` / `git symbolic-ref` / fallback), target branch name (`<plan_id>-<slug>`), existence check result, and one-line config-extension hint:
-     > *"To skip this prompt for additional protected branches (e.g. `develop`), add `protected_branches: [develop, trunk]` to `.ensemble/config.local.yaml`. (Planned for a future release; not yet implemented.)"*
+   - `no-commit`:
+     - Stay on the current branch (default branch). No branch switch.
+     - Continue with step 12 (plan-file write); proceed through peer review (step 13) and status flip (step 14).
+     - At step 15, **skip the commit step**; surface manual instructions:
+       > *"Plan written to `docs/plans/active/<plan-file>.md` on `<default-branch>`. To commit on a feature branch:*
+       > `git stash -u`
+       > `git checkout -b <plan_id>-<slug>`
+       > `git stash pop`
+       > `git add docs/plans/active/<plan-file>.md`
+       > `git commit -m 'docs(plan): <plan_id> <slug>'`*"*
+     - Record `default_branch_checkpoint: no_commit_requested`.
+   - `current`:
+     - Stay on the current branch (default branch). No branch switch.
+     - Proceed normally through step 12, 13, 14, 15. At step 15 the commit lands on the default branch.
+     - Record `default_branch_checkpoint: committed_to_default_branch` with an audit-friendly explicit-opt-in note.
+   - `details`:
+     - Print diagnostic info, then re-prompt (does NOT terminate the checkpoint):
+       - Detected default branch name and which source resolved it (`gh` / `git symbolic-ref` / hardcoded fallback).
+       - Target branch name (`<plan_id>-<slug>`) and whether it already exists.
+       - Future-extension note (framed as future, not actionable today):
+         > *"Note: in v1, this checkpoint fires only on the repo's literal default branch (`<detected>`). A future enhancement will read `protected_branches: [...]` from `.ensemble/config.local.yaml` to extend the SAME prompt to additional long-lived branches (e.g. `develop`, release branches). Not yet implemented — listed here so the extension point is discoverable."*
+     - After the diagnostic, re-display the four-option prompt; loop until the user picks a terminal option (`y` / `no-commit` / `current`).
 
-6. **Idempotency note.** Running `/en-plan` on the same plan twice from `main`:
-   - First run: prompt → user picks `y` → branch `<plan_id>-<slug>` created; plan committed there.
-   - Second run (still on `main`, plan_id resolves to the same value via re-detection): prompt fires again; user picks `y`; branch already exists with the prior plan commit; existing-branch handler checks it out and treats this as a resume. The auto-commit step writes the updated plan and commits.
+6. **Idempotency.** Running `/en-plan` on the same plan twice from `main`:
+   - **First run:** step 11.5 checkpoint fires → user picks `y` → branch `<plan_id>-<slug>` created from `main` → step 12 writes the plan file on the new branch → steps 13-15 commit on the new branch.
+   - **Second run** (still on `main`, `plan_id` resolves to the same value via re-detection in step 11): step 11.5 checkpoint fires → user picks `y` → existing-branch handler sees the branch with prior plan commits → `git checkout <branch>` (working tree clean, no conflicts because step 12 hasn't run yet) → step 12 writes the (potentially updated) plan file → step 15 commits any changes (or no-op if nothing changed).
 
-   This matches `/en-plan --resume` semantics — `/en-plan` is already idempotent on the plan file; the checkpoint extends that to the branch.
+   **The resume case works cleanly because the branch checkout happens BEFORE the plan-file write.** No "untracked working tree file would be overwritten" race. This matches `/en-plan --resume` semantics; the checkpoint extends idempotency to the branch in addition to the plan file.
 
 ## Change 2 — `/en-plan` SKILL.md flags table
 
@@ -194,10 +223,10 @@ New assertions in `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh
 
 | # | Assertion |
 |---|---|
-| 1 | `skills/en-plan/SKILL.md` step 15 mentions "default-branch checkpoint" (or equivalent) BEFORE the existing "stage and commit" logic. |
-| 2 | The checkpoint has all four response options documented (`y`, `no-commit`, `current`, `details`) with their canonical report values. |
-| 3 | The checkpoint records a structured outcome line (`default_branch_checkpoint:` field in the report). |
-| 4 | The checkpoint supports **exactly four** outcome values, spelled exactly: `auto_branched`, `no_commit_requested`, `committed_to_default_branch`. (`details` doesn't produce an outcome — it re-prompts.) Bare words `branched`, `skipped`, `main`, or `kept_on_main` must NOT appear as outcome values. |
+| 1 | `skills/en-plan/SKILL.md` has the default-branch checkpoint as **a new step between step 11 and step 12** (i.e. BEFORE the plan-file write at step 12, not inside step 15). Assert by checking step ordering — the checkpoint's heading appears between "Auto-increment plan number" (step 11) and "Write to docs/plans/active/..." (step 12). |
+| 2 | The checkpoint has **exactly four prompt response options** documented in the SKILL.md prompt text: `y`, `no-commit`, `current`, `details`. Test asserts all four literal strings appear in the prompt block. |
+| 3 | The checkpoint records a structured outcome line (`default_branch_checkpoint:` field in the report) — emitted only when the checkpoint fired (not on every run). |
+| 4 | The checkpoint has **exactly three terminal outcome values**, spelled exactly: `auto_branched`, `no_commit_requested`, `committed_to_default_branch`. The fourth response option (`details`) is **non-terminal** — it re-prompts after surfacing diagnostics, so it does NOT produce a report value. Test asserts: (a) all three terminal strings appear in the SKILL.md handler section, (b) bare words `branched`, `skipped`, `main`, or `kept_on_main` do NOT appear as outcome values, (c) the spec explicitly notes `details` as non-terminal so future readers don't add it as a fourth report value. |
 | 5 | The skill documents three-source default-branch detection: `gh repo view`, `git symbolic-ref refs/remotes/origin/HEAD`, hardcoded fallback. |
 | 6 | The hardcoded fallback list is exactly: `main`, `master`, `develop`, `trunk`. (Adding or removing entries here without a deliberate decision is a regression.) |
 | 7 | Branch name convention is `<plan_id>-<slug>` (matches `/en-build`). Test asserts the literal `<plan_id>-<slug>` pattern appears in step 15. |
@@ -211,7 +240,7 @@ New assertions in `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh
 
 5 units, Standard depth. **Build order matters**: U1 (SKILL.md changes) is the load-bearing piece; the rest support it.
 
-- **U1** — `skills/en-plan/SKILL.md`: insert the default-branch checkpoint as sub-steps in step 15. Three-source detection, four-response handler, idempotency note, existing-branch logic. Update the flags table with `--branch-on-default`. Update the report output template to include the `default_branch_checkpoint:` line.
+- **U1** — `skills/en-plan/SKILL.md`: insert the default-branch checkpoint as a NEW step 11.5, between step 11 (auto-increment plan number) and step 12 (write plan file). Three-source detection, four-response handler (`y`, `no-commit`, `current`, `details`), three terminal report values (`auto_branched`, `no_commit_requested`, `committed_to_default_branch`), existing-branch handler with checkout-before-write semantics so the resume case never hits the untracked-working-tree-file race. Step 15 simplifies to "git add + commit on current branch" (we've already moved to the right branch in step 11.5). Update the flags table with `--branch-on-default`. Update the report output template to include the `default_branch_checkpoint:` line (emitted only when the checkpoint fired).
 
   **Risk:** medium (changes the default auto-commit behavior; affects every `/en-plan` run on default branch). **Category:** feature. **Gated:** false (not a production-state change; behavior change happens at design time, not runtime).
 
@@ -260,4 +289,10 @@ New assertions in `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh
 
 ## Review history
 
-Initial spec (this document).
+Initial spec → PR #19 round 1 review surfaced three actionable findings, all addressed in-place:
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| Resume path race: step 12 wrote the plan to main's working tree, then step 15 tried to check out the feature branch, hitting git's "untracked working tree file would be overwritten" guard | P2 | **Restructured the entire change.** The checkpoint moved from inside step 15 (post-write) to a new step 11.5 (between plan_id resolution and plan-file write). Branch resolution + checkout now happens BEFORE any disk writes, so the resume case never races. Step 15 becomes a straight `git add + git commit` on whichever branch we're already on. |
+| Drift guard #4 said "exactly four outcome values" but listed three terminal values + a non-terminal `details` option — guard was un-implementable as written | P2 | **Reframed.** The spec now distinguishes "four prompt response options" (countable in the prompt text) from "three terminal report values" (countable in the response handler). Drift guard #4 asserts three terminal values + explicitly notes `details` as non-terminal so future readers don't add it as a fourth report value. Canonical outcome table at the top of the spec updated to match. |
+| `details` text told users to add `protected_branches:` to config to "skip this prompt for additional branches" — config isn't implemented in v1, AND the behavior described would EXTEND the prompt, not skip it | P3 | **Rewrote the details message** as a future-extension note: *"Note: in v1, this checkpoint fires only on the repo's literal default branch. A future enhancement will read `protected_branches: [...]` to extend the SAME prompt to additional long-lived branches. Not yet implemented — listed here so the extension point is discoverable."* No longer presented as actionable config; correctly frames the direction of the future change. |
