@@ -67,9 +67,18 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 
 After QA wraps, soft-prompt:
 
-> "QA found and fixed N bugs. Capture as learnings? (yes / skip)"
+> "QA wrapped (N bugs found+fixed, M flows verified). Worth filing any learnings from this pass? (yes / skip)"
 
-User accepts → invoke `/en-learn capture` for each fixed bug. User declines → no-op. Bugs are the highest-signal source of learnings; capturing them is what makes the wiki valuable over time.
+Anchor the prompt on *"QA wrapped"*, not on "N bugs" — that broader framing catches non-bug captures too:
+
+- **Bugs found and fixed.** The classic case; highest-signal source of learnings.
+- **Tests stabilized.** A flaky test got pinned down (worth capturing root cause + fix).
+- **Patterns discovered.** A QA pass exposed a recurring shape worth filing under `patterns/`.
+- **Library footguns.** Browser-side behavior of a third-party widget that surprised you.
+
+User accepts → invoke `/en-learn capture` per item. User declines → no-op; the `/en-ship` learning-checkpoint backstop will catch it at ship time if anything was missed.
+
+Note: this is the **freshest-point capture** (immediately after the work, while context is hot). The en-ship checkpoint is the backstop for cases where this prompt was skipped or dropped. Both fire by design — complementary signal.
 
 ## Output format
 
