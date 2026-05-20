@@ -47,7 +47,25 @@ After every write:
 8. **Apply always-on behaviors** (cross-refs, index update, log append).
 9. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `$ENSEMBLE_ROOT/references/architecture-update-rules.md`.
 10. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-11. **Move the relevant plan** from `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` to `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (filename preserved verbatim during the move) — flip `status: in_progress` (or `open`, if the build skipped the flip) → `completed`, set `shipped: <date>`, replace plan-tense with documentation-tense, note any deviations from the plan.
+11. **Plan-lifecycle handling.** Step 11 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per `docs/en-ship-plan-completion-checkpoint-spec.md`) is the backstop for cases where `/en-learn` isn't invoked at all.
+
+   **11a. Lifecycle flip (always runs when a plan_id is in context).** If `/en-learn capture` was invoked within the context of a specific plan (derivable from the current branch name per `<plan_id>-<slug>` convention, or passed via `--plan <plan-path>`), perform the lifecycle flip:
+   - Read frontmatter; check `status:`.
+   - If `status: in_progress` OR `status: open`: flip to `status: completed`, set `shipped: <today>`. Both `open` and `in_progress` flow into this path — the `open` case preserves the recovery for builds that skipped the `open → in_progress` flip (interrupted build, manual resume, etc.).
+   - If `status: completed`: no-op; plan already moved.
+   - If `status: draft` OR `status: abandoned`: skip the flip; surface a one-line notice (`/en-learn` shouldn't be flipping a draft plan to completed).
+   - `git mv docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (filename preserved verbatim during the move).
+   - Stage the rename + frontmatter edit.
+
+   **11a always runs**, even when the user picked "skip — no learnings worth filing" earlier in the capture flow. The flip is lifecycle bookkeeping; it shouldn't be tied to whether wiki content was filed.
+
+   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (i.e. step 6's compose-entry produced a real file in `docs/learnings/<category>/`), AND 11a ran (plan was moved), also:
+   - Replace plan-tense ("we will", "this should") with documentation-tense ("we did", "this does").
+   - Note any deviations from the plan (sections of the plan that didn't ship as written, or that landed differently).
+
+   **11b is skipped when the user said "skip — no learnings worth capturing"** earlier in the flow; lifecycle flip (11a) still happens, just without the documentation-tense rewrite.
+
+   **Edge case: no plan_id in context.** If `/en-learn capture` is invoked outside any plan context (no plan branch, no `--plan` argument), step 11 is a silent no-op — there's nothing to flip.
 12. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
 13. **Update `docs/README.md` index** if it exists.
 14. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
