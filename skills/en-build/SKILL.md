@@ -123,6 +123,61 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
     These are the primary safety boundary. Phase-level prompts (P4 `"run phase 4"`, opt-in `--pause`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
 
+## Agent autonomy contract
+
+`/en-build` is autonomous by design. The user authorized the work at plan time (peer-reviewed plan, `status: open`, hash recorded). After a unit commits successfully (step 9k passes), advance to the next unit immediately. **Do not pause** for confirmation, judgment, "natural checkpoint," "the next unit is bigger," "let me verify before continuing," or any reason not in the seven enumerated cases below.
+
+### Scope of the contract
+
+The contract governs **the inter-unit main loop** — specifically, the window from the START of step 9 (per-unit loop, after preflight has cleared) through the END of step 10 (after all units, before /en-learn hand-off). Within this window, pauses are restricted to the seven cases below.
+
+**Steps 1–8 are NOT governed by this contract.** Preflight, sub-state matrix decisions (untracked-but-approved → offer auto-commit; draft + revise with cleared findings → offer finalize-and-build; unresolved draft findings → refuse and ask for `/en-plan --resume`), host detection, branch setup, plan-review concerns, and batch sizing all have their own documented prompts and protocols. Those are *pre-execution* prompts about whether the build can sensibly start; they're orthogonal to the *during-execution* autonomy this contract enforces.
+
+Why scope this way: the field-observed bug ("Working tree is clean. I stopped at a clean checkpoint before U4") is specifically a post-step-9k, inter-unit pause inserted by agent judgment. Scoping the contract to that window catches exactly that bug class. Scoping wider would either invalidate legitimate preflight prompts or require an unmaintainable enumeration of every prompt-emitting code path.
+
+### Legitimate pause cases within the contract window (exhaustive within scope, no others permitted)
+
+1. **Working tree dirty at branch setup** (step 5) — stash / commit / abort prompt. *(Out of contract window; listed for completeness — see Scope above.)*
+2. **Plan-review concerns surfaced at start** (step 7) — continue / pause / split prompt. *(Out of contract window; listed for completeness.)*
+3. **`risk: destructive` unit at step 9a** — typed `"run unit U<N>"` literal-string gate.
+4. **`gated: true` unit at step 9a** — y/skip/abort prompt.
+5. **P4 phase-level confirmation** (step 9, phasing-on path) — typed `"run phase 4"` literal-string.
+6. **`--pause` flag set** (step 9, opt-in) — between-phase y/pause/n prompt.
+7. **Failure protocol fires** (failure-protocol table) — gate failure, peer reject, malformed evidence, hash mismatch, after-phase verification failure, plan-hash drift, worker malformed diff, etc. Each has its own documented handler.
+
+Cases 3–7 are inside the contract window (steps 9 and 10). Cases 1 and 2 are listed for completeness so the reader sees the full pause-emitting universe of /en-build; they're already in their own documented handlers and are not subject to this contract.
+
+### Anti-patterns (explicitly forbidden)
+
+- **Agent-initiated "checkpoint before bigger unit" pauses.** The plan was authored and peer-reviewed; the agent does not re-evaluate unit complexity at execution time.
+- **"Working tree is clean, paused for confirmation" between non-gated units.** Working-tree-clean is the *expected* state between units, not a reason to pause.
+- **"Should I continue?" preambles outside the seven cases.** Continuing is the default; stopping requires a specific authorized reason.
+- **"Let me verify with the user before [implementing/committing/running tests/anything]"** when none of the seven cases apply. The user already authorized the plan; per-unit pauses bypass that authorization.
+- **"This next unit has [X characteristic that's not in the seven cases]; pausing here."** No characteristic outside the seven cases is grounds for an inserted pause.
+
+### Right response to LLM uncertainty: advance, not ask
+
+If the agent feels uncertain about advancing, the correct action is to **continue per the contract**. The failure protocols are the safety net:
+
+- Tests fail → step 9d / 9j catches it.
+- Lint fails → step 9d catches it.
+- Peer review fails → step 9g / 9h / 9i handles it.
+- Implementation goes wrong → verification gate 1 or 2 catches it.
+- After-phase regression → after-phase verification catches it.
+
+Agent-self-paused checkpoints add no protection on top of these mechanisms — they just add friction that the autonomous-execution design exists to avoid.
+
+If the agent has a real concern that's outside the seven cases AND not caught by failure protocols, the right place to surface it is in the **per-unit progress report after committing** (step 9k's report). The report is informational — it doesn't pause the loop. Example:
+
+```
+✓ U3 — feat(api): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
+  Implementer: codex (worker) | Simplifier: 2 changes | Peer: applied 1, deferred 1
+  Tests: 7 added, 7 passing | Commit: a3f1b9c
+  Note: U4 touches more files than U3 (12 vs 3). No pause; advancing.
+```
+
+`Note:` lines are encouraged when the agent has observations worth surfacing. They don't gate the build.
+
 9. **Phase loop (when phasing is on).** For each phase in `[P1, P2, P3, P4]`:
    - Skip empty phases silently.
    - Surface phase plan to user (units, files, risk summary).
@@ -350,6 +405,7 @@ Auto-invoking /en-learn (capture learnings? y/n) →
 - **Never deletes files outside the unit's scope.**
 - **Never bypasses verification gates.** A gate failure stops or reverts; never proceeds anyway.
 - **Never bypasses universal safety gates.** Destructive units and gated units always require explicit confirmation. No flag disables them.
+- **Never inserts agent-initiated checkpoints.** Only the seven enumerated pause cases (see Agent autonomy contract) are legitimate within the inter-unit main loop. The agent never adds "let me checkpoint here" or "I'll pause before the next unit" pauses based on its own judgment. The plan was authored and reviewed; the agent executes.
 - **Never silently buries low-risk units in higher-risk phases.** Phase-invariant violations reject the plan structurally.
 - **Never auto-commits or auto-stashes on Ctrl-C / abort / signal.** No signal-time git operations. WIP commits are user-initiated only via `--commit-wip`.
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
