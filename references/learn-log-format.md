@@ -22,7 +22,7 @@ updated: YYYY-MM-DD
 ## [2026-04-25] pack | drizzle-orm
 ## [2026-04-24] lint-fix | Repaired 3 missing back-refs
 ## [2026-04-23] refresh | Archived 2 entries; updated 4
-## [2026-04-22] capture-from-conversation | Plan-vs-reality drift in FR03 | 2a0e2ea
+## [2026-04-22] capture-from-conversation | Plan-vs-reality drift in FR03
 ```
 
 ## Line format
