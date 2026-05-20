@@ -160,7 +160,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - Peer returned `verdict: reject` AND the user did NOT override.
     - Peer subprocess timed out or returned malformed JSON (after one retry) AND the user has not yet decided.
 
-    In those `draft`-stuck cases, do not advance to step 15 (commit) or step 18 (hand-off to `/en-build`); surface state and stop. `/en-build`'s pre-flight will offer the recovery path on the next attempt if findings get resolved later.
+    In those `draft`-stuck cases, do not advance to step 16 (commit) or step 19 (hand-off to `/en-build`); surface state and stop. `/en-build`'s pre-flight will offer the recovery path on the next attempt if findings get resolved later.
 16. **Auto-commit the plan file.**
     - Branch policy: commit on the current branch (default `main` / `master` / `develop`, or whatever feature branch the user is on). Skip auto-commit on detached HEAD or unusual states; surface and ask.
     - Working-tree safety: refuse auto-commit if `git diff --cached` has unrelated staged changes; surface and ask the user to commit the plan manually. Untracked or unstaged changes to *other* files are fine — `git add` is invoked with the plan file path only, never `git add -A`.
@@ -199,6 +199,7 @@ When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` compute
 | `--max-iterations <N>` | Override the depth-aware iteration cap. |
 | `--no-commit` | Finalize (`status: open`) but do not auto-commit the plan file. |
 | `--commit-branch <name>` | Create/switch to `<name>` before committing the plan file. |
+| `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint (step 12) for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
 | `--resume <plan-path>` | See process step 3. |
 | `--from-legacy <path>` | See process step 3. |
 
@@ -241,6 +242,8 @@ Units:
   - U5: Update tests covering AE2, AE3 (test-first)
 
 Peer review: cross-agent (codex). Verdict: revise. Applied 2 of 3 findings (1 deferred to TD8).
+
+Default-branch checkpoint: auto_branched (created EN07-auth-rotation from main)
 
 Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 ```
