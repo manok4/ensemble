@@ -112,3 +112,20 @@ learnings_cross_project: false
 #   auto_plan_threshold_loc: 50
 #   auto_plan_threshold_locations: 2
 #   max_drafts_per_run: 3
+
+# --- Plan branching ---
+
+# Future enhancement (not yet implemented in /en-plan or /en-foundation):
+# Extend the default-branch auto-branch checkpoint to additional long-lived
+# integration branches (gitflow develop, release branches, etc.). When set,
+# any branch in this list triggers the SAME prompt as the default branch.
+#
+# In v1, /en-plan's default-branch checkpoint fires ONLY on the repo's literal
+# default branch (per three-source detection: gh defaultBranchRef → git
+# symbolic-ref refs/remotes/origin/HEAD → hardcoded fallback). This config
+# extension is documented so the extension point is discoverable.
+#
+# protected_branches:
+#   - develop
+#   - trunk
+#   - release/*  # glob patterns will be supported
