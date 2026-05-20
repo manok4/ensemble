@@ -34,9 +34,9 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
    **Placement rationale.** This step deliberately runs LATE in preflight — after lint/typecheck/secret-scan/scope-confirm and before commit-message generation. Earlier placement would mutate the plan (flip status, set shipped, git mv) before later checks could fail, leaving the plan recording having shipped when the PR never opened. Late placement makes the lifecycle mutation atomic with the ship commit.
 
-   1. **Plan-branch detection.** Read the current git branch name. Extract `<plan_id>` via regex against the foundation's `plan_id_prefix:` (e.g. `EN`, `FR`) — branch name pattern is `<plan_id>-<slug>` per `/en-plan`'s default-branch checkpoint. If no plan_id derivable → record `plan_completion_checkpoint: not_applicable`; skip silently to step 8.
+   1. **Plan-branch detection.** Read the current git branch name. Extract `<plan_id>` via case-insensitive regex against the foundation's `plan_id_prefix:` (e.g. `EN`, `FR`) — branch name pattern is `<plan_id>-<slug>` per `/en-plan`'s default-branch checkpoint. **Normalize the extracted ID to the canonical (uppercase) form** before any filesystem lookup: `/en-build` may create lowercase branches (e.g. `fr07-auth-rotation`) while plan files are named with the uppercase prefix (`FR07-feature_auth-rotation.md`); on case-sensitive filesystems an unnormalized lookup misses the plan and silently records `not_applicable`, defeating the checkpoint. If no plan_id derivable → record `plan_completion_checkpoint: not_applicable`; skip silently to step 8.
 
-   2. **Plan file lookup.** Look for `docs/plans/active/<plan_id>-*.md`. If found, read frontmatter; otherwise check `docs/plans/completed/<plan_id>-*.md` (already shipped; outcome `up_to_date`). If neither exists → outcome `not_applicable`; skip silently to step 8.
+   2. **Plan file lookup.** Using the normalized (uppercase) plan_id from step 1, look for `docs/plans/active/<plan_id>-*.md`. If found, read frontmatter; otherwise check `docs/plans/completed/<plan_id>-*.md` (already shipped; outcome `up_to_date`). If neither exists → outcome `not_applicable`; skip silently to step 8.
 
    3. **Status inspection.**
       - `completed` → record `plan_completion_checkpoint: up_to_date`; skip silently to step 8.
@@ -109,7 +109,10 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     - Body auto-generated:
       - **Summary** — 1–3 bullets from the commits.
       - **Test plan** — checkbox list of what was tested (from `/en-qa` report if available, otherwise generated from changed files).
-      - Plan reference: `Closes plan: docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` if the branch name carries a recognizable plan ID (`<PREFIX><NN>`).
+      - Plan reference: `Closes plan: <resolved-plan-path>` if the branch name carries a recognizable plan ID (`<PREFIX><NN>`). The resolved path depends on the step-7 checkpoint outcome:
+        - `completed_and_moved` → use `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (the plan was just renamed; the active/ path no longer exists).
+        - `up_to_date` → use `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (already in completed/ from a prior ship).
+        - `skipped_by_user`, `incomplete_build`, `not_applicable` → use `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (plan stayed in active/).
     - Use HEREDOC for body to preserve formatting.
     - On PR-creation success → return URL.
 12. **Optional auto-merge.** If user confirms AND CI is green AND branch protection allows:

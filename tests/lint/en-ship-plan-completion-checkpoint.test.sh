@@ -54,7 +54,7 @@ else
 fi
 
 # 5. Bare 'completed', 'done', 'skipped', 'flipped' MUST NOT appear as report values
-for bare in "completed$" "done$" "flipped$"; do
+for bare in "completed$" "done$" "skipped$" "flipped$"; do
   if grep -qE "plan_completion_checkpoint:[[:space:]]+$bare" "$EN_SHIP"; then
     fail "checkpoint uses non-canonical bare outcome: $bare"
   else
