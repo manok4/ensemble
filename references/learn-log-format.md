@@ -16,9 +16,9 @@ updated: YYYY-MM-DD
 
 > Append-only. One line per `en-learn` operation. Grep with: `grep "^## \[" docs/learnings/log.md | tail -10`
 
-## [2026-04-28] capture | Single-flight cache for per-user side-effecting operations
+## [2026-04-28] capture | Single-flight cache for per-user side-effecting operations | 4b0424d
 ## [2026-04-27] ingest-url | OpenAI harness-engineering essay summary
-## [2026-04-26] capture | Refresh token race when two requests arrive within rotation window
+## [2026-04-26] capture | Refresh token race when two requests arrive within rotation window | 7caca49
 ## [2026-04-25] pack | drizzle-orm
 ## [2026-04-24] lint-fix | Repaired 3 missing back-refs
 ## [2026-04-23] refresh | Archived 2 entries; updated 4
@@ -28,8 +28,13 @@ updated: YYYY-MM-DD
 ## Line format
 
 ```markdown
-## [YYYY-MM-DD] <op> | <subject>
+## [YYYY-MM-DD] <op> | <subject>                    # for non-capture operations
+## [YYYY-MM-DD] capture | <subject> | <head-sha>    # for capture mode only (baseline reset)
 ```
+
+`capture` mode writes an additional `| <head-sha>` field carrying the git short-SHA of HEAD at the moment of capture. This is the **baseline** that `/en-ship`'s learning checkpoint reads to compute "commits since last capture" via `git log <head-sha>..HEAD`. Other operations (`refresh`, `ingest-url`, `lint-fix`, `pack`, `capture-from-conversation`) don't carry a SHA — they don't reset the baseline; only explicit `capture` does.
+
+Legacy entries without `| <head-sha>` continue to parse. The en-ship checkpoint falls back to a date-based baseline scan with a one-line "imprecise baseline" notice. The next `capture` operation re-establishes the precise baseline on the new entry.
 
 | Element | Required | Notes |
 |---|---|---|

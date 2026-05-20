@@ -27,7 +27,7 @@ After every write:
 
 1. **Active cross-reference maintenance** — walk new entry's `related: []`; add reciprocal back-refs to each cited page. Per `$ENSEMBLE_ROOT/references/learn-cross-ref-maintenance.md`.
 2. **Index update** — append a one-line entry to `docs/learnings/index.md` under the appropriate category. Per `$ENSEMBLE_ROOT/references/learn-index-format.md`.
-3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>`. Per `$ENSEMBLE_ROOT/references/learn-log-format.md`.
+3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>` for most ops; **`capture` mode appends `| <head-sha>` from `git rev-parse --short HEAD`** as the baseline marker for `/en-ship`'s learning checkpoint. Per `$ENSEMBLE_ROOT/references/learn-log-format.md`. Other ops (`refresh`, `ingest-url`, `lint-fix`, `pack`, `capture-from-conversation`) don't write SHA — only `capture` resets the baseline.
 
 ## Process — Mode A: `capture` (default)
 

@@ -22,7 +22,7 @@ else
 fi
 
 # 2. Placement: AFTER lint+typecheck+secret-scan+scope-confirm, BEFORE commit-message
-#    Specifically: between step 6 (Confirm scope) and step 8 (Generate commit message)
+#    Specifically: between step 7 (Confirm scope) and step 9 (Generate commit message)
 checkpoint_line=$(grep -n "Plan completion checkpoint" "$EN_SHIP" | head -1 | cut -d: -f1)
 scope_line=$(grep -nE "^[0-9]+\. \*\*Confirm scope" "$EN_SHIP" | head -1 | cut -d: -f1)
 commit_msg_line=$(grep -nE "^[0-9]+\. \*\*Generate conventional-commit" "$EN_SHIP" | head -1 | cut -d: -f1)

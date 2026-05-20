@@ -63,13 +63,57 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 
 **Off.** Bug fixes from QA are mechanical; over-reviewing them costs more than it surfaces. The user can run `/en-cross-review` ad-hoc on a QA branch if they want a peer pass before shipping.
 
+## Agent autonomy contract (mirrors `/en-build`)
+
+`/en-qa` is autonomous by design. After fixing a bug (or confirming a flow passed), advance to the next flow immediately. **Do not pause** for confirmation, "let me checkpoint before the bigger test surface," or any reason not in the enumerated cases below.
+
+### Scope of the contract
+
+The contract governs **already-runnable QA flows** — the period after setup has cleared, during which Phase 1 system checks are executing or Phase 2 Playwright flows are running and the bug-fix loop is iterating. Within this window, pauses are restricted to the five cases below.
+
+**Pre-flow setup is NOT governed by this contract.** Specifically, the following en-qa prompts and skip decisions have their own documented handlers and are NOT inter-flow pauses:
+
+- **URL discovery prompt** — when no app URL is found, ask the user. Pre-flow; the QA flow can't start without a URL.
+- **Phase 2 skip on doc-only branches / `--system-only` / browser-disabled config** — Phase 2 is correctly skipped; the contract doesn't force it to run.
+- **Playwright bootstrap offer** when no test framework is detected — pre-flow setup question; out of contract scope.
+
+Why scope this way: the autonomy bug class is the same as en-build's — agent-initiated checkpoints during the QA loop ("the next flow has more assertions; let me checkpoint"). The contract closes that, without invalidating legitimate pre-flow decisions about whether QA can sensibly run at all.
+
+### Legitimate pause cases within the contract window (exhaustive within scope, no others permitted)
+
+1. **System check fails** at Phase 1 (e.g. test suite red, typecheck broken). The QA flow can't sensibly proceed; surface and stop.
+2. **Playwright MCP unavailable mid-flow.** A flow that started but lost MCP connectivity; surface gap and skip remaining flows. *(Distinct from the pre-flow Playwright availability check at setup — that's out of scope per Scope above.)*
+3. **Bug found that requires user judgment** to fix (e.g. ambiguous expected behavior; missing requirement). Surface the bug and ask the user.
+4. **Bug fix breaks Phase 1 checks** (regression). Stop; surface state.
+5. **User-initiated abort.**
+
+### Anti-patterns (explicitly forbidden — same as `/en-build`)
+
+- "Phase 1 passed; should I proceed to Phase 2?" No — proceed automatically.
+- "Test fixture X is more complex; let me verify before running it." No — run it.
+- "All bugs fixed; should I run the full suite once more?" No — the autoflow already does this.
+- "Big surface area in the next flow; checkpoint here." No — advance.
+
+### Right response to LLM uncertainty: advance, not ask
+
+If uncertain, continue. The pause cases above and Phase 1's system checks are the safety net. Agent-initiated checkpoints add no protection on top — they just add friction.
+
 ## Auto-invoke `/en-learn`
 
 After QA wraps, soft-prompt:
 
-> "QA found and fixed N bugs. Capture as learnings? (yes / skip)"
+> "QA wrapped (N bugs found+fixed, M flows verified). Worth filing any learnings from this pass? (yes / skip)"
 
-User accepts → invoke `/en-learn capture` for each fixed bug. User declines → no-op. Bugs are the highest-signal source of learnings; capturing them is what makes the wiki valuable over time.
+Anchor the prompt on *"QA wrapped"*, not on "N bugs" — that broader framing catches non-bug captures too:
+
+- **Bugs found and fixed.** The classic case; highest-signal source of learnings.
+- **Tests stabilized.** A flaky test got pinned down (worth capturing root cause + fix).
+- **Patterns discovered.** A QA pass exposed a recurring shape worth filing under `patterns/`.
+- **Library footguns.** Browser-side behavior of a third-party widget that surprised you.
+
+User accepts → invoke `/en-learn capture` per item. User declines → no-op; the `/en-ship` learning-checkpoint backstop will catch it at ship time if anything was missed.
+
+Note: this is the **freshest-point capture** (immediately after the work, while context is hot). The en-ship checkpoint is the backstop for cases where this prompt was skipped or dropped. Both fire by design — complementary signal.
 
 ## Output format
 
