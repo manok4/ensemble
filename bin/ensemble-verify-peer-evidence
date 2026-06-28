@@ -95,6 +95,35 @@
 
 set -u
 
+# Validate a review-verdict JSON payload by VALUE and TYPE, not just key
+# presence. Echoes an error string (and returns 1) when invalid; silent + 0
+# when valid. Shared by the single-commit path and --branch-coverage so a
+# malformed branch-level trailer can never be counted as coverage.
+validate_review_verdict() {
+  vjson="$1"
+  if ! printf '%s' "$vjson" | jq empty 2>/dev/null; then
+    echo "malformed review-verdict JSON: $(printf '%s' "$vjson" | head -c 80)"; return 1
+  fi
+  v=$(printf '%s' "$vjson" | jq -r '.verdict // empty' 2>/dev/null || true)
+  case "$v" in approve|revise|reject) ;; *) echo "review-verdict.verdict must be approve|revise|reject, got: ${v:-<missing>}"; return 1 ;; esac
+  if ! printf '%s' "$vjson" | jq -e '(.reviewer | type == "string" and (length > 0))' >/dev/null 2>&1; then
+    echo "review-verdict.reviewer must be a non-empty string"; return 1
+  fi
+  if ! printf '%s' "$vjson" | jq -e '(.mode | type == "string" and (length > 0))' >/dev/null 2>&1; then
+    echo "review-verdict.mode must be a non-empty string"; return 1
+  fi
+  if ! printf '%s' "$vjson" | jq -e '(.units_covered | type == "array")' >/dev/null 2>&1; then
+    echo "review-verdict.units_covered must be an array"; return 1
+  fi
+  if ! printf '%s' "$vjson" | jq -e '(.units_covered | all(type == "string"))' >/dev/null 2>&1; then
+    echo "review-verdict.units_covered must be an array of strings"; return 1
+  fi
+  if ! printf '%s' "$vjson" | jq -e '(.findings_count | type == "number" and . >= 0 and (floor == .))' >/dev/null 2>&1; then
+    echo "review-verdict.findings_count must be a non-negative integer"; return 1
+  fi
+  return 0
+}
+
 REF="HEAD"
 REQUIRE_RESOLUTION="false"
 EMIT_JSON="false"
@@ -122,26 +151,34 @@ if [ -n "$BRANCH_COVERAGE" ]; then
   fi
   covered="[]"
   verdict_commits="[]"
+  invalid_commits="[]"
   while IFS= read -r sha; do
     [ -z "$sha" ] && continue
     cmsg=$(git log -1 --format=%B "$sha")
     rv=$(printf '%s\n' "$cmsg" | git interpret-trailers --parse | grep '^review-verdict:' | head -n1)
     [ -z "$rv" ] && continue
     rvjson="${rv#review-verdict: }"
-    if printf '%s' "$rvjson" | jq -e '.units_covered' >/dev/null 2>&1; then
-      units=$(printf '%s' "$rvjson" | jq -c '.units_covered // []')
-      covered=$(jq -cn --argjson a "$covered" --argjson b "$units" '($a + $b) | unique')
-      verdict_commits=$(jq -cn --argjson a "$verdict_commits" --arg s "$sha" '$a + [$s]')
+    # Fail closed: a malformed review-verdict trailer is NOT counted as coverage
+    # (parity with the single-commit `malformed` verdict).
+    if [ -n "$(validate_review_verdict "$rvjson" || true)" ]; then
+      invalid_commits=$(jq -cn --argjson a "$invalid_commits" --arg s "$sha" '$a + [$s]')
+      continue
     fi
+    units=$(printf '%s' "$rvjson" | jq -c '.units_covered // []')
+    covered=$(jq -cn --argjson a "$covered" --argjson b "$units" '($a + $b) | unique')
+    verdict_commits=$(jq -cn --argjson a "$verdict_commits" --arg s "$sha" '$a + [$s]')
   done < <(git rev-list "$BRANCH_COVERAGE" 2>/dev/null)
 
   if [ "$EMIT_JSON" = "true" ]; then
-    jq -n --argjson covered "$covered" --argjson commits "$verdict_commits" \
-      '{covered_units: $covered, review_verdict_commits: $commits}'
+    jq -n --argjson covered "$covered" --argjson commits "$verdict_commits" --argjson invalid "$invalid_commits" \
+      '{covered_units: $covered, review_verdict_commits: $commits, invalid_review_verdict_commits: $invalid}'
   else
     printf 'covered_units: %s\n' "$(printf '%s' "$covered" | jq -r 'join(", ")')"
     printf 'review-verdict commits: %s\n' "$(printf '%s' "$verdict_commits" | jq -r 'length')"
+    printf 'invalid review-verdict commits: %s\n' "$(printf '%s' "$invalid_commits" | jq -r 'length')"
   fi
+  # Fail closed if any malformed branch-level trailer was found.
+  [ "$(printf '%s' "$invalid_commits" | jq -r 'length')" != "0" ] && exit 1
   exit 0
 fi
 
@@ -243,17 +280,10 @@ if [ "$rv_count" -gt 0 ]; then
     rv_invalid_detail="multiple review-verdict trailers ($rv_count); expected at most one per commit"
   else
     json="${rv_lines#review-verdict: }"
-    if ! printf '%s' "$json" | jq empty 2>/dev/null; then
+    rv_err=$(validate_review_verdict "$json" || true)
+    if [ -n "$rv_err" ]; then
       rv_invalid=$((rv_invalid + 1))
-      rv_invalid_detail="malformed review-verdict JSON: $(printf '%s' "$json" | head -c 80)"
-    else
-      for f in verdict reviewer mode units_covered findings_count; do
-        if ! printf '%s' "$json" | jq -e "has(\"$f\")" >/dev/null 2>&1; then
-          rv_invalid=$((rv_invalid + 1))
-          rv_invalid_detail="review-verdict missing field '$f'"
-          break
-        fi
-      done
+      rv_invalid_detail="$rv_err"
     fi
   fi
 fi

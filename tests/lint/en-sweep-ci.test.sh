@@ -33,10 +33,17 @@ else
 fi
 
 # --- the guard actually exits non-zero (function exists + exit 1 path) ---
-if grep -qE "guard_result" "$CI" && grep -qE "exit 1" "$CI"; then
+if grep -qE "guard_claude|guard_codex" "$CI" && grep -qE "exit 1" "$CI"; then
   pass "en-sweep-ci has a failing guard path"
 else
   fail "en-sweep-ci must fail (exit 1) on a no-op run"
+fi
+
+# --- codex JSONL stream is guarded separately from claude's envelope ---
+if grep -qE "guard_codex" "$CI" && grep -qE "turn.completed|agent_message" "$CI"; then
+  pass "en-sweep-ci guards codex JSONL stream separately"
+else
+  fail "en-sweep-ci must guard codex's JSONL stream (not assume claude's envelope)"
 fi
 
 # --- functional: guard fails on a no-op envelope, passes on a real run ---

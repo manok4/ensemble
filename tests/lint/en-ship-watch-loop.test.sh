@@ -58,6 +58,27 @@ else
   fail "get-pr-comments must paginate reviewThreads + comments + reviews (found $pageinfo_count pageInfo)"
 fi
 
+# --- correct gh --paginate contract: each connection uses after:$endCursor + pageInfo{hasNextPage endCursor} ---
+after_count=$(grep -c 'after:\$endCursor\|after: \$endCursor' "$GETPR")
+if [ "$after_count" -ge 3 ]; then
+  pass "each connection wires after:\$endCursor (gh --paginate contract)"
+else
+  fail "each connection must use after:\$endCursor for gh --paginate (found $after_count)"
+fi
+hasnext_count=$(grep -c "hasNextPage endCursor\|hasNextPage" "$GETPR")
+if [ "$hasnext_count" -ge 3 ]; then
+  pass "each connection exposes pageInfo{hasNextPage endCursor}"
+else
+  fail "each connection must expose pageInfo{hasNextPage endCursor} (found $hasnext_count)"
+fi
+
+# --- merge logic: jq -s combines multiple pages into one array (FR01 review finding 1) ---
+PAGE1='{"data":{"repository":{"pullRequest":{"reviewThreads":{"edges":[{"node":{"id":"t1"}}]}}}}}'
+PAGE2='{"data":{"repository":{"pullRequest":{"reviewThreads":{"edges":[{"node":{"id":"t2"}}]}}}}}'
+merged=$(printf '%s\n%s\n' "$PAGE1" "$PAGE2" | jq -s 'map(.data.repository.pullRequest.reviewThreads.edges) | add // []')
+n=$(echo "$merged" | jq 'length')
+assert_eq "2" "$n" "jq -s merges multiple pages (page1 + page2 edges combined)"
+
 # --- syntax valid ---
 if bash -n "$GETPR" 2>/dev/null; then
   pass "get-pr-comments is syntactically valid"
