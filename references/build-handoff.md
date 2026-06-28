@@ -262,6 +262,11 @@ peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1,"find
 - **`peer-verdict:`** — exactly one per peer pass on this unit. Written whenever the peer actually ran (`approve` / `revise` / `reject` verdict, regardless of finding count). Required keys: `verdict`, `peer_mode`, `iteration`, `findings_count`. Optional: `summary`. **The `findings_count` field MUST match the number of `peer-resolution:` trailers below** — `bin/ensemble-verify-peer-evidence` cross-checks them.
 - **`peer-resolution:`** — one per finding. JSON schema per the resolution table above. Zero of these is valid when peer approved with no findings (the `peer-verdict:` trailer carries the evidence).
 - **`peer-skipped:`** — present ONLY when peer didn't run; mutually exclusive with `peer-verdict:`.
+- **`review-verdict:`** — BRANCH-LEVEL evidence for the lfg-style model (one per post-build review/fix commit; see `references/build-orchestration.md` post-build phase). Required keys: `verdict` (`approve`/`revise`/`reject`), `reviewer` (e.g. `en-review` / `cross-agent`), `mode`, `units_covered` (JSON array of U-IDs the pass covered), `findings_count`. A unit counts as reviewed when its U-ID appears in some `review-verdict.units_covered` on the branch (`ensemble-verify-peer-evidence --branch-coverage <range>` enumerates them). **Not accepted under `--require-peer-resolution`** — destructive / `gated: true` units still need a dedicated per-unit peer pass. Example:
+
+  ```
+  review-verdict: {"verdict":"approve","reviewer":"en-review","mode":"headless","units_covered":["U1","U2","U3"],"findings_count":1}
+  ```
 
 Why trailers: `git interpret-trailers --parse` and `git log --grep="^peer-verdict:"` (or `peer-resolution:`, or `peer-skipped:`) are stable, scriptable, and don't require per-unit metadata files. Reviewers can audit by greppable history; future automation (e.g. `/en-resolve-pr` mining what got deferred) reads trailers cleanly.
 

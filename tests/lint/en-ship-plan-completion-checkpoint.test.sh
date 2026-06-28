@@ -190,4 +190,16 @@ else
   fail "foundation §D34 should include canonical outcomes"
 fi
 
+# --- build-completeness accepts branch-level review coverage (FR01 U2) ---
+if grep -qF -- "--branch-coverage" "$EN_SHIP"; then
+  pass "build-completeness check accepts branch-level coverage (--branch-coverage)"
+else
+  fail "build-completeness check should accept branch-level coverage"
+fi
+if grep -qiE "per-unit OR branch-level|branch-level evidence|branch-level review" "$EN_SHIP"; then
+  pass "checkpoint documents per-unit OR branch-level evidence"
+else
+  fail "checkpoint should document per-unit OR branch-level evidence"
+fi
+
 report
