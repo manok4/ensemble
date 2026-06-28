@@ -133,6 +133,14 @@ The peer pass produces an **additional** finding set merged into the envelope wi
 
 Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit is preferred to per-PR-of-15-units) so each round stays small.
 
+## Lite roster (`--lite`)
+
+When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, dispatch a reduced roster instead of the full panel:
+
+- **Roster:** `correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
+- **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides.
+- **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
+
 ## Failure protocol
 
 | Failure | Behavior |

@@ -37,6 +37,8 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
    - Plus `learnings-research` to query `docs/learnings/` for relevant prior bugs/patterns/decisions.
+
+   **7a. Lite roster (`--lite`).** When `--lite` is passed, classify the diff via `$ENSEMBLE_ROOT/references/diff-signal-detection.md`. If `is_small_and_safe` is `true` (1–39 executable lines, zero uncounted files, no risk signals, **and** no conditional persona was triggered above), collapse the roster to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens** — skip `testing`, `maintainability`, `learnings`, and all conditionals. **Fail closed:** if `is_small_and_safe` is `false` for any reason (unknown line count, any uncounted non-code file, any risk signal, or any conditional persona fired), run the **full roster regardless of `--lite`** — the gate wins, the flag is advisory. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `$ENSEMBLE_ROOT/references/persona-dispatch.md`).
 8. **Parallel dispatch.** Single message, multiple `Agent` tool calls. Wait for all to return.
 9. **Optional Outside Voice (`--peer`).** If `--peer` flag set AND `PEER_AVAILABLE=true` AND mode allows mutation, invoke a cross-agent peer pass over the diff + the persona findings. Adds findings tagged `persona: "peer"` to the envelope.
 10. **Synthesize.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
@@ -61,6 +63,7 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full diff) |
+| `--lite` | Fast path for tiny, low-risk diffs: collapse to `correctness` + `standards` (+ `fast-pass`) when `references/diff-signal-detection.md` classifies the diff `is_small_and_safe`. **Fail-closed** — any uncounted file, unknown line count, risk signal, or triggered conditional persona forces the full roster regardless of the flag. |
 
 ## Mutation rules per mode
 
