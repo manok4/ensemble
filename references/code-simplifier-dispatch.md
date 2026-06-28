@@ -140,3 +140,7 @@ Without gate 1, the simplifier can hide bugs behind "cleaner" rewrites. Without 
 | Gate 2 test failure | Revert; surface regression with the failing test name; proceed with original |
 | Gate 2 lint failure | Revert; surface; proceed with original |
 | Multiple consecutive units fail Gate 2 | After 3 in a row, **disable the simplifier for the rest of the run** with a one-line note. Suggests something systemic (project conventions clash with simplifier rules) for a `learn capture` after the build |
+
+## Branch-level invocation (D35)
+
+In the branch-level review model, `en-build` no longer runs the code-simplifier per unit. The post-build phase invokes `/en-simplify` once over the whole branch diff (which itself dispatches the `code-simplifier` agent across reuse/quality/efficiency dimensions and runs scoped verification). The per-unit dispatch + two-gate revert protocol documented above still applies when `/en-simplify` runs its own verification, and remains the contract for any skill that dispatches the simplifier directly.

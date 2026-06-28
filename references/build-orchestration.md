@@ -143,3 +143,20 @@ peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2
 
 - `ENSEMBLE_PEER_REVIEW=true` is **not** set for worker dispatch — that env var is the recursion guard for *peer review*, not workers. Workers can perform their full operations.
 - Pass `--max-turns` aggressively (e.g., 30) so Codex has room to iterate on tests within the unit.
+
+## Post-build phase (branch-level review model, D35)
+
+After all units commit, en-build runs one post-build phase instead of per-unit simplify+review for ordinary units:
+
+1. `/en-simplify` over the branch diff (`git diff <merge-base>..HEAD`) — leaves changes in the working tree, does not commit.
+2. `/en-review --mode headless` over the branch diff — apply eligible findings.
+3. Commit the resulting changes with a single `review-verdict:` trailer:
+
+   ```
+   chore(build): post-build simplify + review
+
+   review-verdict: {"verdict":"approve","reviewer":"en-review","mode":"headless","units_covered":["U1","U2","U5"],"findings_count":1}
+   ```
+
+   `units_covered` lists every **ordinary** U-ID built this run. If steps 1–2 produced no changes, make an empty commit (`--allow-empty`) carrying the trailer so the branch records the pass. Destructive/`gated:true` units are NOT listed here — they carry their own per-unit `peer-verdict:`/`peer-resolution:` evidence from step 9e.
+4. Audit via `ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD`; every plan unit must be covered branch-level OR have per-unit evidence.
