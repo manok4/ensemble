@@ -132,3 +132,7 @@ Dispatched by `/en-plan` for "FR07 — refresh-token rotation":
   ]
 }
 ```
+
+## Evidence dossier
+
+For large result sets, follow the evidence-dossier protocol in `references/research-dispatch.md`: write verbatim quotes + source pointers to a scratch dossier at `/tmp/ensemble/<skill>/<run-id>/<this-agent>.md` (line-capped ~150), and return only a 3–5 line **gist** plus `dossier_path` instead of inlining every quote. The orchestrator and downstream agents read the dossier from disk on demand. **Degraded fallback:** if the scratch write fails, return findings inline and set `dossier_path: null` — never drop evidence.
