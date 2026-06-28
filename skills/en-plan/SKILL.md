@@ -32,6 +32,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Direct rough description from the user.
    - Bug report or tracked debt item (`Resolves: TD<N>`).
 
+   **Brainstorm soft-nudge.** If no `docs/designs/*.md` matches this topic (no prior brainstorm) AND the request isn't already a bug/TD fix or a `--resume`/`--from-legacy` run, surface a one-line soft offer before proceeding: *"No design doc found for this — want to `/en-brainstorm` first to explore approaches, or proceed straight to planning? (brainstorm / proceed)."* **Soft nudge only:** proceeding is always allowed and is the default on any non-answer; this is never a hard gate (consistent with the gating-shrink philosophy — encourage, don't block).
+
    **Infer `plan_type`** from the request — `feature` (net-new behavior), `improvement` (refactor / perf / DX work, including TD), or `bug` (fix). Default `feature` when unclear; confirm with the user when the request is ambiguous.
 5. **Right-size depth.**
    - Lightweight: 1–3 units, single file or two, no architecture changes.
