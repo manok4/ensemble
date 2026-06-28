@@ -149,7 +149,7 @@ peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2
 After all units commit, en-build runs one post-build phase instead of per-unit simplify+review for ordinary units:
 
 1. `/en-simplify` over the branch diff (`git diff <merge-base>..HEAD`) — leaves changes in the working tree, does not commit. (Simplification is refinement, not review, so it may run host-side.)
-2. **Cross-agent Outside Voice review** over the branch diff — the host implemented every ordinary unit, so the review runs on the **peer** (Claude host → Codex; Codex host → Claude; D23), NOT host-side personas. Dispatch via `bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <branch-diff>` piped into `$PEER_CMD` (with `ENSEMBLE_PEER_REVIEW=true`); the host applies eligible findings (D30). Fallbacks: peer unavailable → host-side `/en-review --mode headless` (`reviewer: en-review-host-fallback`); single CLI → fresh-subprocess (`single-agent-fallback`).
+2. **`/en-review --peer-only --mode headless`** over the branch diff — the host implemented every ordinary unit, so the review runs on the **peer** (Claude host → Codex; Codex host → Claude; D23), NOT host-side personas. en-review's peer-only mode owns the dispatch (`bin/ensemble-build-peer-prompt --artifact-type code` → `$PEER_CMD`, `ENSEMBLE_PEER_REVIEW=true`) and returns the findings envelope; the host applies eligible findings (D30). Fallbacks (handled inside en-review): single CLI → fresh-subprocess (`single-agent-fallback`); no peer at all → host persona roster (`reviewer: en-review-host-fallback`).
 3. Commit the resulting changes with a single `review-verdict:` trailer:
 
    ```

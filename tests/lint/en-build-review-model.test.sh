@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build review model"
 
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
+EN_REVIEW="$REPO_ROOT/skills/en-review/SKILL.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- post-build phase exists ---
@@ -24,19 +25,36 @@ else
   fail "post-build must invoke en-simplify"
 fi
 
-# Branch-level review must be the cross-agent peer (implementer != reviewer),
-# NOT host-side personas. Require peer dispatch via the prompt helper + PEER_CMD.
-if grep -qiE "cross-agent" "$SKILL" && grep -qF "ensemble-build-peer-prompt" "$SKILL" && grep -qF "PEER_CMD" "$SKILL"; then
-  pass "post-build review dispatches the cross-agent peer (implementer != reviewer)"
+# Branch-level review is the cross-agent peer (implementer != reviewer), invoked
+# by calling /en-review in --peer-only mode (single implementation, not duplicated).
+if grep -qF -- "/en-review --peer-only" "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
+  pass "post-build review calls /en-review --peer-only (cross-agent, implementer != reviewer)"
 else
-  fail "post-build review must dispatch the cross-agent peer, not host personas"
+  fail "post-build review must call /en-review --peer-only"
 fi
 
-# host-side en-review is only the fallback when no peer is available
-if grep -qiE "PEER_AVAILABLE=false.*en-review|en-review-host-fallback" "$SKILL"; then
-  pass "host-side en-review is the no-peer fallback only"
+# en-review implements --peer-only: peer is the sole reviewer, host personas skipped
+if grep -qF -- "--peer-only" "$EN_REVIEW"; then
+  pass "en-review documents --peer-only"
 else
-  fail "host-side en-review should be the no-peer fallback only"
+  fail "en-review must document --peer-only"
+fi
+if grep -qiE "skip persona detection and dispatch|sole reviewer.*peer|peer.*sole reviewer" "$EN_REVIEW"; then
+  pass "en-review --peer-only skips host personas (peer is sole reviewer)"
+else
+  fail "en-review --peer-only must skip host personas"
+fi
+# the peer machinery lives in en-review (build-peer-prompt referenced there)
+if grep -qF "ensemble-build-peer-prompt" "$EN_REVIEW"; then
+  pass "en-review owns the peer-dispatch machinery"
+else
+  fail "en-review must own the peer-dispatch machinery"
+fi
+# en-review-host-fallback recorded when no peer
+if grep -qiE "en-review-host-fallback" "$EN_REVIEW"; then
+  pass "en-review records host-fallback reviewer when no peer"
+else
+  fail "en-review must record host-fallback reviewer when no peer"
 fi
 
 # --- review-verdict trailer emitted with units_covered ---
