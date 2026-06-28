@@ -17,11 +17,26 @@ else
   fail "en-build must have a post-build phase"
 fi
 
-# --- post-build invokes en-simplify then en-review (branch-level) ---
-if grep -qF "/en-simplify" "$SKILL" && grep -qE "/en-review --mode headless|/en-review .*headless" "$SKILL"; then
-  pass "post-build invokes en-simplify + en-review (headless)"
+# --- post-build invokes en-simplify, then a CROSS-AGENT peer review ---
+if grep -qF "/en-simplify" "$SKILL"; then
+  pass "post-build invokes en-simplify"
 else
-  fail "post-build must invoke en-simplify + en-review headless"
+  fail "post-build must invoke en-simplify"
+fi
+
+# Branch-level review must be the cross-agent peer (implementer != reviewer),
+# NOT host-side personas. Require peer dispatch via the prompt helper + PEER_CMD.
+if grep -qiE "cross-agent" "$SKILL" && grep -qF "ensemble-build-peer-prompt" "$SKILL" && grep -qF "PEER_CMD" "$SKILL"; then
+  pass "post-build review dispatches the cross-agent peer (implementer != reviewer)"
+else
+  fail "post-build review must dispatch the cross-agent peer, not host personas"
+fi
+
+# host-side en-review is only the fallback when no peer is available
+if grep -qiE "PEER_AVAILABLE=false.*en-review|en-review-host-fallback" "$SKILL"; then
+  pass "host-side en-review is the no-peer fallback only"
+else
+  fail "host-side en-review should be the no-peer fallback only"
 fi
 
 # --- review-verdict trailer emitted with units_covered ---

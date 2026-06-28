@@ -29,7 +29,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 
 ### Stage 2 — Build
 
-- Invoke `/en-build <plan-path>`. Per the branch-level review model (D35), en-build internally runs its post-build phase (`/en-simplify` → `/en-review` headless → apply → review-verdict) before handing off — en-flow does **not** re-run simplify/review at the top level.
+- Invoke `/en-build <plan-path>`. Per the branch-level review model (D35), en-build internally runs its post-build phase (`/en-simplify` → cross-agent Outside Voice review on the peer → apply → review-verdict) before handing off — en-flow does **not** re-run simplify/review at the top level.
 - **GATE:** build completed and the end-of-build evidence audit passed (`verdict: ok`). If the audit failed, **stop** and surface the failing units (suggest `/en-cross-review` per en-build's failure path); do not proceed to ship.
 
 ### Stage 3 — Learn (model-decided)

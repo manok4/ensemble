@@ -148,15 +148,15 @@ peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2
 
 After all units commit, en-build runs one post-build phase instead of per-unit simplify+review for ordinary units:
 
-1. `/en-simplify` over the branch diff (`git diff <merge-base>..HEAD`) — leaves changes in the working tree, does not commit.
-2. `/en-review --mode headless` over the branch diff — apply eligible findings.
+1. `/en-simplify` over the branch diff (`git diff <merge-base>..HEAD`) — leaves changes in the working tree, does not commit. (Simplification is refinement, not review, so it may run host-side.)
+2. **Cross-agent Outside Voice review** over the branch diff — the host implemented every ordinary unit, so the review runs on the **peer** (Claude host → Codex; Codex host → Claude; D23), NOT host-side personas. Dispatch via `bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <branch-diff>` piped into `$PEER_CMD` (with `ENSEMBLE_PEER_REVIEW=true`); the host applies eligible findings (D30). Fallbacks: peer unavailable → host-side `/en-review --mode headless` (`reviewer: en-review-host-fallback`); single CLI → fresh-subprocess (`single-agent-fallback`).
 3. Commit the resulting changes with a single `review-verdict:` trailer:
 
    ```
    chore(build): post-build simplify + review
 
-   review-verdict: {"verdict":"approve","reviewer":"en-review","mode":"headless","units_covered":["U1","U2","U5"],"findings_count":1}
+   review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"branch-level","units_covered":["U1","U2","U5"],"findings_count":1}
    ```
 
-   `units_covered` lists every **ordinary** U-ID built this run. If steps 1–2 produced no changes, make an empty commit (`--allow-empty`) carrying the trailer so the branch records the pass. Destructive/`gated:true` units are NOT listed here — they carry their own per-unit `peer-verdict:`/`peer-resolution:` evidence from step 9e.
+   `reviewer` is `cross-agent` when the peer ran (the normal case), else `single-agent-fallback` / `en-review-host-fallback`. `units_covered` lists every **ordinary** U-ID built this run. If steps 1–2 produced no changes, make an empty commit (`--allow-empty`) carrying the trailer so the branch records the pass. Destructive/`gated:true` units are NOT listed here — they carry their own per-unit `peer-verdict:`/`peer-resolution:` evidence from step 9e.
 4. Audit via `ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD`; every plan unit must be covered branch-level OR have per-unit evidence.

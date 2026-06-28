@@ -11,7 +11,7 @@ The `/en-flow` orchestrator (`disable-model-invocation: true`) chains the lifecy
             en-build ──▶ branch w/ unit commits +        GATE: evidence audit verdict: ok
                          post-build review-verdict
                  │       (en-build internally runs
-                 │        en-simplify → en-review)
+                 │        en-simplify → cross-agent review)
                  ▼
         en-learn (model-decided) ─▶ optional learning    no-op if en-build already captured
                  │
