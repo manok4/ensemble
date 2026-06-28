@@ -110,8 +110,15 @@ jobs:
           fi
           export ENSEMBLE_SWEEP_DEPTH=$(( ${ENSEMBLE_SWEEP_DEPTH:-0} + 1 ))
 
-          # Run sweep via the CI wrapper (resolves claude or codex headlessly)
-          bin/en-sweep-ci
+          # Run sweep via the CI wrapper from the freshly-cloned plugin (NOT the
+          # project-local bin/ copy) so wrapper fixes propagate automatically with
+          # each run. The wrapper registers the cloned plugin and fails the job if
+          # the en-sweep skill doesn't actually execute (no more green-but-inert).
+          if [ -x "$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci" ]; then
+            "$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci"
+          else
+            bin/en-sweep-ci   # fallback: project-local copy (older installs)
+          fi
 
       - name: Post summary as workflow artifact
         if: always() && hashFiles('.ensemble/sweep-summary.md') != ''

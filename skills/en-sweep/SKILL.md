@@ -22,7 +22,7 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 
 **Activity gate.** Before the sweep job runs, `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the patterns `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`, `chore(docs):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently — no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
 
-The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner).
+The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
 
 ## Process
 
