@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: FR01
 title: Skill-suite optimization and supercharge
-status: open
+status: in_progress
 location: active
 created: 2026-06-28
 shipped:
