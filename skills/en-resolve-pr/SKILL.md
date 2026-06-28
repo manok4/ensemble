@@ -150,7 +150,7 @@ This skill does **not** at v1:
 
 ## Reference files
 
-- `scripts/get-pr-comments` — GraphQL fetch of all four feedback buckets + cross-invocation context
+- `scripts/get-pr-comments` — GraphQL fetch of all four feedback buckets + cross-invocation context. **Fully cursor-paginated** (reviewThreads / comments / reviews) so multi-page PRs aren't silently truncated past page 1 (issue #798).
 - `scripts/get-thread-for-comment` — maps a comment node ID to its parent thread (targeted mode)
 - `scripts/reply-to-pr-thread` — GraphQL `addPullRequestReviewThreadReply` wrapper; body via stdin
 - `scripts/resolve-pr-thread` — GraphQL `resolveReviewThread` wrapper
