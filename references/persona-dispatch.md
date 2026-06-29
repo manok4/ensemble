@@ -13,15 +13,18 @@ Fire on every `en-review` invocation regardless of diff content:
 | `maintainability-reviewer` | Coupling, complexity, naming, dead code, abstraction debt |
 | `standards-reviewer` | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
 
-## Conditional (3) — fire when diff matches
+## Conditional (6) — fire when diff matches
 
-Decide via diff content scan before dispatching:
+Decide via diff content scan before dispatching. Each fires only on a match → zero cost on unrelated diffs. In non-adversarial tiers a matched conditional becomes a **dimension in the peer brief** (no extra agent); in the Adversarial tier it's **also** dispatched as a host persona subagent.
 
 | Agent | Fires when diff touches |
 |---|---|
 | `security-reviewer` | Auth code, public endpoints, user-input handling, secret/token handling, permissions, CORS, CSP, cookie config |
 | `performance-reviewer` | DB queries (raw SQL, ORM call patterns), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms |
 | `migrations-reviewer` | Schema migration files, backfill scripts, data-isolation changes, multi-tenancy boundary changes |
+| `api-contract-reviewer` | Routes/handlers/serializers/schemas, public exported type signatures, status codes, pagination, versioning, generated-client surfaces |
+| `reliability-reviewer` | Error handling, retries/timeouts/backoff, idempotency, background jobs/queues/workers, transactions, external-call orchestration |
+| `frontend-races-reviewer` | Client components / async UI (`.tsx`/`.jsx`/`.vue`/`.svelte`, Stimulus/Turbo), DOM events, effects/subscriptions, client state with async updates |
 
 ## Detection heuristics
 
