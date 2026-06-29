@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN02
 title: Tiered peer-default code review with adversarial mode
-status: open
+status: in_progress
 location: active
 created: 2026-06-28
 shipped:
