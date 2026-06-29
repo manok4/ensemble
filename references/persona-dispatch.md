@@ -74,8 +74,8 @@ After all personas return:
 
 1. **Validate each response** — must parse as JSON, must follow `references/finding-schema.md`. Drop malformed responses with a stderr log; don't fail the whole review.
 2. **Collect findings** — flatten into one list with the persona attribution preserved (`finding.persona = "correctness"`).
-3. **Dedup** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-confidence variant; merge `personas` field.
-4. **Boost confidence on overlap** — if two personas independently surfaced the same finding, boost confidence by +1 (capped at 10). Strong signal.
+3. **Dedup** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-anchor variant; merge `personas` field.
+4. **Corroboration promotion on overlap** — if ≥2 *independent* reviewers surfaced the same finding, promote one confidence anchor (`50→75→100`; see `references/finding-schema.md`). Promotion never bypasses the quote-the-line gate. The `fast-pass` read is not independent and never counts.
 5. **Conflict detection** — same `location` flagged for incompatible reasons → leave both; mark `conflict: true` for user judgment.
 6. **Severity reordering** — sort by severity (P0 → P3), then confidence (high → low), then persona priority (`correctness` > `security` > `testing` > `standards` > `maintainability` > `performance` > `migrations`).
 
@@ -91,7 +91,7 @@ The synthesis layer emits a single envelope (per `references/finding-schema.md`)
   "findings": [
     {
       "severity": "P1",
-      "confidence": 9,
+      "confidence": 100,
       "title": "...",
       "location": "src/auth/refresh.ts:42",
       "personas": ["correctness", "security"],
