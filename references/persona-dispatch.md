@@ -13,15 +13,18 @@ Fire on every `en-review` invocation regardless of diff content:
 | `maintainability-reviewer` | Coupling, complexity, naming, dead code, abstraction debt |
 | `standards-reviewer` | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
 
-## Conditional (3) — fire when diff matches
+## Conditional (6) — fire when diff matches
 
-Decide via diff content scan before dispatching:
+Decide via diff content scan before dispatching. Each fires only on a match → zero cost on unrelated diffs. In non-adversarial tiers a matched conditional becomes a **dimension in the peer brief** (no extra agent); in the Adversarial tier it's **also** dispatched as a host persona subagent.
 
 | Agent | Fires when diff touches |
 |---|---|
 | `security-reviewer` | Auth code, public endpoints, user-input handling, secret/token handling, permissions, CORS, CSP, cookie config |
 | `performance-reviewer` | DB queries (raw SQL, ORM call patterns), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms |
 | `migrations-reviewer` | Schema migration files, backfill scripts, data-isolation changes, multi-tenancy boundary changes |
+| `api-contract-reviewer` | Routes/handlers/serializers/schemas, public exported type signatures, status codes, pagination, versioning, generated-client surfaces |
+| `reliability-reviewer` | Error handling, retries/timeouts/backoff, idempotency, background jobs/queues/workers, transactions, external-call orchestration |
+| `frontend-races-reviewer` | Client components / async UI (`.tsx`/`.jsx`/`.vue`/`.svelte`, Stimulus/Turbo), DOM events, effects/subscriptions, client state with async updates |
 
 ## Detection heuristics
 
@@ -74,8 +77,8 @@ After all personas return:
 
 1. **Validate each response** — must parse as JSON, must follow `references/finding-schema.md`. Drop malformed responses with a stderr log; don't fail the whole review.
 2. **Collect findings** — flatten into one list with the persona attribution preserved (`finding.persona = "correctness"`).
-3. **Dedup** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-confidence variant; merge `personas` field.
-4. **Boost confidence on overlap** — if two personas independently surfaced the same finding, boost confidence by +1 (capped at 10). Strong signal.
+3. **Dedup** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-anchor variant; merge `personas` field.
+4. **Corroboration promotion on overlap** — if ≥2 *independent* reviewers surfaced the same finding, promote one confidence anchor (`50→75→100`; see `references/finding-schema.md`). Promotion never bypasses the quote-the-line gate. The `fast-pass` read is not independent and never counts.
 5. **Conflict detection** — same `location` flagged for incompatible reasons → leave both; mark `conflict: true` for user judgment.
 6. **Severity reordering** — sort by severity (P0 → P3), then confidence (high → low), then persona priority (`correctness` > `security` > `testing` > `standards` > `maintainability` > `performance` > `migrations`).
 
@@ -91,7 +94,7 @@ The synthesis layer emits a single envelope (per `references/finding-schema.md`)
   "findings": [
     {
       "severity": "P1",
-      "confidence": 9,
+      "confidence": 100,
       "title": "...",
       "location": "src/auth/refresh.ts:42",
       "personas": ["correctness", "security"],
@@ -133,13 +136,13 @@ The peer pass produces an **additional** finding set merged into the envelope wi
 
 Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit is preferred to per-PR-of-15-units) so each round stays small.
 
-## Lite roster (`--lite`)
+## Lite tier (`--lite`)
 
-When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, dispatch a reduced roster instead of the full panel:
+Lite is a **peer-only tier** (EN02 D36) — `--lite` narrows the **peer brief**, it does not dispatch a reduced host roster. When the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, brief the peer on **correctness + standards dimensions only** (skip testing / maintainability / learnings / conditionals).
 
-- **Roster:** `correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
-- **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides.
-- **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
+- **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional matched — fall through to the **Standard** (full-dimension) brief. `--lite` is advisory; the gate decides.
+- **Host fallback only:** the reduced *host* roster (`correctness-reviewer` + `standards-reviewer` + `fast-pass`) runs ONLY on the no-peer fallback / `--host-only` path, not in the normal peer-driven Lite tier.
+- **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent reviewer finding. `fast-pass` findings never count toward corroboration promotion.
 
 ## Failure protocol
 
@@ -149,3 +152,13 @@ When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `r
 | One persona returns malformed JSON | Drop; retry once with "respond with valid JSON only"; if it fails again, drop |
 | All personas fail | `verdict: error`; surface to user; do not commit |
 | Diff is too large to fit in one persona's context | Split by file; run persona per file; merge findings (rare; bound by per-unit discipline) |
+
+## Thematic grouping
+
+After the confidence gate, `/en-review` builds **triage groups** over the surfaced findings (distinct from dedup: dedup answers "same finding?"; grouping answers "distinct findings to resolve together?").
+
+- A group carries: short title, included stable finding `#`s, one-line context, preferred resolution, why. When one fix path resolves several, name it and say which to handle first.
+- Grouping **never** merges findings into a synthetic finding and **never** changes a finding's severity / anchor / route / stable `#`. A finding appears in **at most one** group; genuinely unrelated findings stay ungrouped.
+- Triggers: shared root cause, affected subsystem, user-facing failure mode, overlapping fix path, dependency ordering, repeated symptoms of one design choice.
+- Tokens: `grouping:auto` (default — group only when findings span distinct concerns; prefer no groups over decorative single-item groups), `grouping:off` (suppress), `grouping:always` (force even for small reviews).
+- Order groups by highest-severity finding, then lowest stable `#`. Prune groups referencing dropped findings (post-gate) or applied findings (post-apply); under `grouping:auto` remove groups left with fewer than two findings.

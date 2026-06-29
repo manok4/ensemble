@@ -53,6 +53,29 @@ Otherwise `false` — **fail closed**. Specifically, any of these forces `false`
 
 `true` when `FRONTEND_FILES > 0`. Otherwise `false` — **but** the caller's explicit `--browser` flag forces `true` regardless, and an undetermined diff (can't compute `FRONTEND_FILES`, e.g. no base ref) is treated as `true` (fail closed — run the browser pass rather than skip it).
 
+### `is_high_stakes` (en-review Adversarial-tier eligibility)
+
+`true` when **any** of:
+
+- `RISK_SIGNALS` is non-empty (auth / payments / migrations / data-mutation / external-effects / secrets), OR
+- `EXEC_LINES >= 150` (large change — more surface for cross-file bugs), OR
+- the diff can't be classified (no base ref, unknown line count) → **fail closed to `true`**.
+
+Otherwise `false`. The caller's explicit `--adversarial` flag forces `true` regardless. Drives `/en-review`'s tier selection: `false` → Lite/Standard (peer-only); `true` → Adversarial (host personas + peer + reconcile). Same cost asymmetry as the other classifiers — a false "not high-stakes" skips the dual-review a risky diff warranted, so unknown resolves to high-stakes.
+
+## Conditional-reviewer signals (en-review)
+
+Beyond the risk/size classifiers above, `/en-review` matches the diff against conditional-reviewer trigger patterns (full heuristics in `references/persona-dispatch.md`). Each fires only on a match → zero cost on unrelated diffs. A matched conditional becomes a peer-brief dimension in non-adversarial tiers and a host persona in the Adversarial tier:
+
+- **security** — auth / public endpoints / user-input / secrets (also a `RISK_SIGNALS` source).
+- **performance** — DB queries / hot paths / async / caching / large transforms.
+- **migrations** — migration files / backfills / tenancy boundaries (also a `RISK_SIGNALS` source).
+- **api-contract** — routes / serializers / public type signatures / status codes / pagination / versioning / generated clients.
+- **reliability** — error handling / retries / timeouts / idempotency / background jobs / queues.
+- **frontend-races** — client components / async UI / DOM events / effects / client state (overlaps `FRONTEND_FILES`).
+
+These select *which reviewers/dimensions run*; they do not by themselves set `is_high_stakes` (only `RISK_SIGNALS`, size, or unclassifiability do).
+
 ## Why fail-closed
 
 The cost asymmetry is the whole point. A false "small/safe" skips review that a change needed; a false "no-frontend" skips QA that a change needed. Both ship a regression. A false "not-small" / "needs-browser" only spends a few extra minutes. When unsure, spend the minutes.

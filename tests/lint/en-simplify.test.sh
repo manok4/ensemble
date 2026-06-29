@@ -74,3 +74,5 @@ if grep -qF "agents/code-simplifier.md" "$EN_SIMPLIFY"; then
 else
   fail "en-simplify should reuse the code-simplifier agent"
 fi
+
+report

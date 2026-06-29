@@ -13,7 +13,8 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
     {
       "finding_id": "<stable id; peer-supplied or host-minted as `<iteration>-<index>` (e.g. `1-3`)>",
       "severity": "P0 | P1 | P2 | P3",
-      "confidence": 1,
+      "confidence": 75,
+      "first_evidence": "<verbatim motivating line with file:line — REQUIRED at confidence 75/100>",
       "title": "<short title>",
       "location": "<file:line | section name | 'global'>",
       "why_it_matters": "<1-2 sentence rationale>",
@@ -34,8 +35,9 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 | `peer_mode` | yes when peer-call | Echo of the mode the host passed in (`cross-agent` or `single-agent-fallback`). Reviewer agents that aren't peer calls omit this field. |
 | `summary` | yes | 2–3 sentences. The host renders this in progress reports verbatim. |
 | `findings` | yes | Array; can be empty when verdict = approve. |
-| `findings[].severity` | yes | See `references/severity.md`. |
-| `findings[].confidence` | yes | Integer 1–10. <5 should be suppressed unless severity is P0. |
+| `findings[].severity` | yes | See `references/severity.md`. Orthogonal to `confidence`. |
+| `findings[].confidence` | yes | One of 5 discrete anchors `{0, 25, 50, 75, 100}` (see Confidence anchors below). Not a free 1–10 scale. |
+| `findings[].first_evidence` | yes at anchor 75/100 | The verbatim motivating line with `file:line`. **A finding at anchor 75 or 100 without `first_evidence` is demoted to 50.** Optional below 75. |
 | `findings[].title` | yes | Short title; appears in lists. |
 | `findings[].location` | yes | `<file>:<line>` for code; `<section>` for docs; `global` for cross-file. |
 | `findings[].why_it_matters` | yes | 1–2 sentence rationale. |
@@ -45,20 +47,37 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 | `findings[].covers_requirement` | optional | Foundation requirement ID this finding relates to (e.g., `R7`). Used by traceability lints. |
 | `findings[].finding_id` | recommended | Stable id used by `/en-plan`'s resolution log (`peer_review_resolutions:`). Peer can supply one; if absent, the host mints `<iteration>-<index>` (e.g. `1-3` = third finding from iteration 1). Required for re-review iterations to track applied/deferred/disagreed status across passes. |
 
+## Confidence anchors
+
+`confidence` is one of **5 discrete anchors**, each tied to a behavioral criterion the model can honestly apply — not a continuous 1–10 scale (which invites false precision):
+
+| Anchor | Name | Criterion | Report decision |
+|---|---|---|---|
+| `0` | Not confident | False positive or pre-existing | suppress silently |
+| `25` | Somewhat | Might be real but unverified | suppress silently |
+| `50` | Moderately | Verified real but nitpick / narrow edge / minimal impact | suppressed from primary findings (filed as TD) UNLESS P0 |
+| `75` | Highly | Will affect users/callers in normal usage; **requires `first_evidence`** | actionable |
+| `100` | Certain | Verifiable from code alone (compile error, type mismatch, definitive logic bug, quoted standards violation) | actionable |
+
+**Quote-the-line gate.** A finding at anchor `75` or `100` MUST carry a non-empty `first_evidence` (the verbatim motivating line + `file:line`). A 75/100 finding missing `first_evidence` is **demoted to 50**. This is the primary false-positive control.
+
+**Legacy 1–10 compatibility (normalize before validating).** Reviewer/peer outputs predating the anchor model (and peer CLIs that still emit a 1–10 `confidence`) are accepted: the host **normalizes to the nearest anchor before applying the gate** — `1–4 → 25`, `5–6 → 50`, `7–8 → 75`, `9–10 → 100` (and `0 → 0`). A value already in `{0,25,50,75,100}` passes through unchanged. Normalization happens at parse time, so a legacy `confidence: 9` becomes anchor `100` (and then faces the quote-the-line gate like any other 100). This keeps existing peer prompts valid during the transition without a flag day.
+
 ## Validation rules the host applies
 
 1. JSON must parse. If not, retry once with a "respond with valid JSON only" suffix; on second failure, log and skip.
 2. `verdict` must be one of the three enum values.
 3. Every `severity` must be in `{P0, P1, P2, P3}`.
-4. `confidence` must be an integer 1–10.
-5. Findings with `confidence < 5` and `severity != P0` are suppressed silently (per the §6.4 invariant: "Confidence ≥ 7 surfaces in main report; 5–6 surfaces with caveat; <5 suppressed unless severity would be P0").
+4. `confidence` must be one of `{0, 25, 50, 75, 100}`.
+5. Apply the quote-the-line gate: demote any 75/100 finding lacking `first_evidence` to 50.
+6. The confidence gate suppresses findings below anchor 75 from primary output — **EXCEPT P0 at anchor 50+** (critical-but-uncertain must never be silently dropped). Suppressed-but-real findings (anchor 50) are filed as TD entries, not discarded.
 
 ## Multi-persona synthesis
 
 When `en-review` runs multiple persona agents and aggregates their findings:
 
 - Findings are merged, deduped (by location + title similarity), and re-classified.
-- Same finding from two personas → boost confidence (+1, capped at 10).
+- **Cross-reviewer corroboration:** when ≥2 independent reviewers flag the same fingerprint, promote one anchor (`50→75→100`). Promotion never bypasses the quote-the-line gate (a promoted 75/100 still needs `first_evidence`). The `fast-pass` pseudo-reviewer is the orchestrator's own read, not independent — it never counts toward promotion.
 - Same location flagged for incompatible reasons → leave both, mark `conflict: true` for user judgment.
 - The synthesis layer emits a single envelope with the same shape, plus a `personas` field listing which personas contributed:
 

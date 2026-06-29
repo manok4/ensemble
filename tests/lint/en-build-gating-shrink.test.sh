@@ -59,3 +59,5 @@ if grep -qiE "two narrow categories only|Gating surface is two narrow" "$FOUNDAT
 else
   fail "foundation D33 must record the gating-surface narrowing"
 fi
+
+report

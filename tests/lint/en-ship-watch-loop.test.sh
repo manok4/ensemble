@@ -85,3 +85,5 @@ if bash -n "$GETPR" 2>/dev/null; then
 else
   fail "get-pr-comments has a syntax error"
 fi
+
+report

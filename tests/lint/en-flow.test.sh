@@ -78,3 +78,5 @@ if [ -f "$REF" ] && grep -qF "en-flow-pipeline.md" "$FLOW"; then
 else
   fail "en-flow-pipeline reference must exist and be wired"
 fi
+
+report
