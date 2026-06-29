@@ -152,3 +152,13 @@ When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `r
 | One persona returns malformed JSON | Drop; retry once with "respond with valid JSON only"; if it fails again, drop |
 | All personas fail | `verdict: error`; surface to user; do not commit |
 | Diff is too large to fit in one persona's context | Split by file; run persona per file; merge findings (rare; bound by per-unit discipline) |
+
+## Thematic grouping
+
+After the confidence gate, `/en-review` builds **triage groups** over the surfaced findings (distinct from dedup: dedup answers "same finding?"; grouping answers "distinct findings to resolve together?").
+
+- A group carries: short title, included stable finding `#`s, one-line context, preferred resolution, why. When one fix path resolves several, name it and say which to handle first.
+- Grouping **never** merges findings into a synthetic finding and **never** changes a finding's severity / anchor / route / stable `#`. A finding appears in **at most one** group; genuinely unrelated findings stay ungrouped.
+- Triggers: shared root cause, affected subsystem, user-facing failure mode, overlapping fix path, dependency ordering, repeated symptoms of one design choice.
+- Tokens: `grouping:auto` (default — group only when findings span distinct concerns; prefer no groups over decorative single-item groups), `grouping:off` (suppress), `grouping:always` (force even for small reviews).
+- Order groups by highest-severity finding, then lowest stable `#`. Prune groups referencing dropped findings (post-gate) or applied findings (post-apply); under `grouping:auto` remove groups left with fewer than two findings.

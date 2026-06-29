@@ -63,15 +63,16 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 10. **Synthesize.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
     - Validate each response (drop malformed).
     - Collect findings; preserve persona attribution.
-    - Dedup by location + title-similarity ≥ 0.7 (merge personas; boost confidence).
+    - Dedup by location + title-similarity ≥ 0.7 (merge personas; corroboration promotes one anchor per `$ENSEMBLE_ROOT/references/finding-schema.md`).
     - Conflict detection: same location, incompatible reasons → mark `conflict: true`.
-    - Severity reorder: P0 → P3, then confidence, then persona priority.
+    - Severity reorder: P0 → P3, then confidence anchor, then persona priority.
 11. **Confidence gate (discrete anchors + quote-the-line).** Findings use 5 discrete anchors `{0, 25, 50, 75, 100}` per `$ENSEMBLE_ROOT/references/finding-schema.md`. First apply the **quote-the-line gate**: demote any anchor-75/100 finding lacking `first_evidence` to 50. Then suppress findings **below anchor 75** from surfaced output — **EXCEPT P0 at anchor 50+**, which always survives (critical-but-uncertain must not be silently dropped). Suppressed-but-real findings (anchor 50) are **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (anchor 50)` — en-review files them rather than discarding (unlike ce). Per `$ENSEMBLE_ROOT/references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
+11.5. **Thematic triage grouping.** After the confidence gate, build triage groups over the surfaced findings per `$ENSEMBLE_ROOT/references/persona-dispatch.md` (grouping section). A group answers "which distinct findings should be understood/fixed together?" — it has a short title, the included stable finding `#`s, one-line context, preferred resolution, and why; it **never merges findings into a synthetic finding and never changes a finding's severity / anchor / route**; a finding appears in **at most one** group. `grouping:auto` (default) builds groups only when findings span distinct concerns (shared root cause / subsystem / fix path / dependency order); `grouping:off` suppresses; `grouping:always` forces. Order groups by their highest-severity finding. Prune any group whose findings were dropped (post-gate) or applied (post-apply); drop single-item groups under `grouping:auto`.
 12. **Apply / surface.**
     - In `interactive` mode: auto-apply `safe_auto`; surface `gated_auto`/`manual`/`advisory` to user. After user picks, apply chosen fixes; re-verify.
     - In `headless` mode: auto-apply `safe_auto` silently; return JSON envelope with all findings.
     - In `report-only` mode: never apply anything; return JSON only.
-13. **Output report.** Markdown summary (for human consumption) plus JSON envelope (for programmatic callers). Both include a `sub_threshold_filed_count` line indicating how many findings were filed as TD entries (or surfaced separately in `report-only`).
+13. **Output report.** Markdown summary (for human consumption) plus JSON envelope (for programmatic callers). Both include a `sub_threshold_filed_count` line and a `triage_groups` array (the thematic groups from step 11.5; each references stable finding `#`s). The markdown renders groups above the flat severity-ordered list.
 
 ## Flags
 
@@ -82,6 +83,7 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 | `--peer-only` | Cross-agent peer is the **sole** reviewer; skip host personas entirely (implementer ≠ reviewer). Used by `/en-build`'s post-build phase. Falls back to host roster only when no peer CLI exists. Mutually exclusive with `--lite`. |
 | `--adversarial` | Force the Adversarial tier: host personas **and** the cross-agent peer run independently, then reconcile. Auto-selected when the diff is `is_high_stakes`. Mutually exclusive with `--lite` (adversarial wins). |
 | `--host-only` | Force the host persona roster as the reviewer (no peer). Same as the no-peer fallback; for offline / single-CLI use or when the peer is undesired. |
+| `grouping:auto\|off\|always` | Thematic triage grouping (step 11.5). `auto` (default) groups only when findings span distinct concerns; `off` suppresses; `always` forces. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full diff) |
