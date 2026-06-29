@@ -1,7 +1,7 @@
 ---
 type: plan
 plan_type: improvement
-plan_id: FR01
+plan_id: EN01
 title: Skill-suite optimization and supercharge
 status: in_progress
 location: active
@@ -34,7 +34,7 @@ depth: deep
 data_scale: small
 ---
 
-# FR01 - Skill-suite optimization and supercharge
+# EN01 - Skill-suite optimization and supercharge
 
 ## Context
 
@@ -394,4 +394,4 @@ Dependency-respecting build order (phase label in brackets): U1 [P1], U4 [P1], U
 
 ## Lifecycle
 
-`draft → open → in_progress → completed`. This is the first plan in `docs/plans/` for this repo (the repo previously tracked work via `docs/*-spec.md`). `plan_id_prefix` is unset in foundation → default `FR`; set `plan_id_prefix: EN` in foundation later if preferred (does not rewrite this plan's ID).
+`draft → open → in_progress → completed`. This is the first plan in `docs/plans/` for this repo (the repo previously tracked work via `docs/*-spec.md`). `plan_id_prefix: EN` is set in foundation, so this and all future plans mint `EN<NN>` IDs.
