@@ -105,10 +105,12 @@ SYNTHETIC_RESPONSE='{
     }
   }
 }'
-# Extract the jq filter from the script. The jq is the multi-line block
-# starting with `' | jq '` and ending with the closing `'` before EOF.
+# Extract the partition jq filter from the script — the multi-line block
+# starting with `echo "$RAW" | jq '` and ending with the closing `'` before EOF.
+# (The script also contains earlier `| jq -s` pagination-merge pipelines; anchor
+# on the partition invocation specifically so we extract the right block.)
 JQ_FILTER=$(awk '
-  /\| jq /{flag=1; sub(/.*\| jq '"'"'/, ""); }
+  /echo "\$RAW" \| jq /{flag=1; sub(/.*\| jq '"'"'/, ""); }
   flag{print}
 ' "$SCRIPTS_DIR/get-pr-comments" | sed "s/'$//")
 if echo "$SYNTHETIC_RESPONSE" | jq "$JQ_FILTER" >/dev/null 2>&1; then

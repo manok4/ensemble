@@ -1,19 +1,74 @@
 #!/usr/bin/env bash
 # en-sweep-ci — wrapper used by .github/workflows/en-sweep.yml.
-# Resolves which CLI is available in the runner and invokes it headlessly.
+# Resolves which CLI is available in the runner, registers the cloned Ensemble
+# plugin so the en-sweep skill is discoverable, invokes it headlessly, and
+# GUARDS the result so a non-executing run fails the job instead of going
+# green-but-inert.
 #
-# Both CLIs accept --skill / -p so the skill can run without an interactive host.
+# Field-observed failure (FR01 U11): `claude -p --skill en-sweep` returned
+# {"num_turns":0,"result":"Unknown command: /en-sweep","is_error":false} and
+# exited 0 — the skill was never registered, so CI passed weekly while doing
+# nothing. The plugin is cloned to $ENSEMBLE_PLUGIN_DIR but was never wired into
+# the CLI's skill resolution. This wrapper now (a) passes the plugin dir to the
+# CLI and (b) inspects the result envelope and fails on a no-op run.
 
 set -eu
 
+PLUGIN_DIR="${ENSEMBLE_PLUGIN_DIR:-}"
+
+# Guard for CLAUDE's single JSON result envelope (`claude -p --output-format json`).
+guard_claude() {
+  out="$1"
+  turns=$(printf '%s' "$out" | jq -r '.num_turns // empty' 2>/dev/null || true)
+  result=$(printf '%s' "$out" | jq -r '.result // empty' 2>/dev/null || true)
+  is_err=$(printf '%s' "$out" | jq -r '.is_error // empty' 2>/dev/null || true)
+  if [ "${turns:-0}" = "0" ] \
+     || printf '%s' "$result" | grep -qi 'unknown command' \
+     || [ "$is_err" = "true" ]; then
+    echo "ERROR: en-sweep did not execute (num_turns=${turns:-?}, is_error=${is_err:-?})." >&2
+    echo "       result: ${result:-<none>}" >&2
+    echo "       The en-sweep skill was not resolved. Ensure the cloned plugin" >&2
+    echo "       at \$ENSEMBLE_PLUGIN_DIR is registered (--plugin-dir / plugin install)." >&2
+    exit 1
+  fi
+}
+
+# Guard for CODEX's JSONL event stream (`codex exec --json`). Codex does not emit
+# Claude's single envelope (no .num_turns); it emits one JSON object per line
+# (thread.started / turn.started / item.completed / turn.completed). Success =
+# a turn.completed event AND no "unknown command" / skill-not-found error item
+# AND at least one agent_message item (the skill produced output).
+guard_codex() {
+  out="$1"
+  if printf '%s' "$out" | grep -qi 'unknown command'; then
+    echo "ERROR: en-sweep not resolved by codex (\"unknown command\"). Register the cloned plugin at \$ENSEMBLE_PLUGIN_DIR." >&2
+    exit 1
+  fi
+  completed=$(printf '%s\n' "$out" | jq -rs '[.[] | select(.type == "turn.completed")] | length' 2>/dev/null || echo 0)
+  messages=$(printf '%s\n' "$out" | jq -rs '[.[] | select(.type == "item.completed" and .item.type == "agent_message")] | length' 2>/dev/null || echo 0)
+  if [ "${completed:-0}" = "0" ] || [ "${messages:-0}" = "0" ]; then
+    echo "ERROR: en-sweep did not execute under codex (turn.completed=${completed:-0}, agent_message=${messages:-0})." >&2
+    echo "       The en-sweep skill likely was not resolved; register the cloned plugin at \$ENSEMBLE_PLUGIN_DIR." >&2
+    exit 1
+  fi
+}
+
 if command -v claude >/dev/null 2>&1; then
-  exec claude -p \
-    --output-format json \
-    --max-turns 50 \
-    --skill en-sweep \
-    "$@"
+  set -- -p --output-format json --max-turns 50 --skill en-sweep "$@"
+  if [ -n "$PLUGIN_DIR" ]; then
+    set -- --plugin-dir "$PLUGIN_DIR" "$@"
+  fi
+  out=$(claude "$@")
+  printf '%s\n' "$out"
+  guard_claude "$out"
 elif command -v codex >/dev/null 2>&1; then
-  exec codex exec --json --skill en-sweep "$@"
+  if [ -n "$PLUGIN_DIR" ]; then
+    out=$(codex exec --json --plugin-dir "$PLUGIN_DIR" --skill en-sweep "$@")
+  else
+    out=$(codex exec --json --skill en-sweep "$@")
+  fi
+  printf '%s\n' "$out"
+  guard_codex "$out"
 else
   echo "ERROR: en-sweep requires claude or codex CLI in the CI runner." >&2
   echo "Install one and retry. See docs/foundation.md §5.2.10 for details." >&2

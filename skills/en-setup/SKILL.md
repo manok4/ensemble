@@ -105,6 +105,8 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
    These bin scripts are project-local on purpose — they're invoked from `.github/workflows/en-sweep.yml` via relative paths, which only works if they're committed to the repo.
 
+   **Re-sync on update (drift caveat).** Because these are *copied* into the project, a consuming repo carries a frozen snapshot from install time — fixes to the plugin's `bin/` scripts do NOT propagate automatically. When the plugin updates a sweep script (e.g. the `en-sweep-ci` guard fix), re-run this step to re-copy (it's idempotent — it overwrites when content differs). The current workflow template mitigates this for `en-sweep-ci` specifically by preferring the freshly-cloned `$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci` at run time and only falling back to the project-local copy; `ensemble-sweep-activity-check` still runs project-local (its job doesn't clone), so re-sync it on update.
+
 10. **Install `.github/workflows/en-sweep.yml`** from `$ENSEMBLE_ROOT/references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
     1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
     2. **Map to cron.** Named values map to:

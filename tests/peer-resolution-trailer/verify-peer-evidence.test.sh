@@ -359,4 +359,59 @@ EOF
   assert_eq "0" "$rc" "accepted new auto-skip reason: $reason"
 done
 
+# === Branch-level review-verdict (FR01 U2) ===
+
+# review-verdict alone → verdict ok (branch-level evidence)
+cat > /tmp/msg.txt <<'EOF'
+chore(build): branch-level review pass
+
+review-verdict: {"verdict":"approve","reviewer":"en-review","mode":"headless","units_covered":["U1","U2","U3"],"findings_count":1}
+EOF
+rv_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$rv_sha" --json); rc=$?
+assert_eq "0" "$rc" "review-verdict alone → exit 0"
+assert_eq "ok" "$(echo "$out" | jq -r .verdict)" "review-verdict verdict=ok"
+assert_eq "1" "$(echo "$out" | jq -r .review_verdicts)" "review-verdict count=1"
+
+# review-verdict is NOT sufficient under --require-peer-resolution
+rc=0
+"$VERIFY" "$rv_sha" --require-peer-resolution --json >/dev/null 2>&1 || rc=$?
+assert_eq "1" "$rc" "review-verdict rejected under --require-peer-resolution"
+out=$("$VERIFY" "$rv_sha" --require-peer-resolution --json 2>/dev/null)
+assert_eq "missing-resolution" "$(echo "$out" | jq -r .verdict)" "review-verdict → missing-resolution when peer-resolution required"
+
+# malformed review-verdict (missing units_covered) → malformed
+cat > /tmp/msg.txt <<'EOF'
+chore(build): bad rv
+
+review-verdict: {"verdict":"approve","reviewer":"en-review","mode":"headless","findings_count":0}
+EOF
+bad_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$bad_sha" --json 2>/dev/null)
+assert_eq "malformed" "$(echo "$out" | jq -r .verdict)" "review-verdict missing units_covered → malformed"
+
+# review-verdict with bad VALUES/TYPES → malformed (not just presence; FR01 review finding 2)
+cat > /tmp/msg.txt <<'EOF'
+chore(build): typed-bad rv
+
+review-verdict: {"verdict":"banana","reviewer":null,"mode":{},"units_covered":"U1","findings_count":"many"}
+EOF
+typed_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" "$typed_sha" --json 2>/dev/null)
+assert_eq "malformed" "$(echo "$out" | jq -r .verdict)" "review-verdict bad values/types → malformed"
+
+# --branch-coverage enumerates covered U-IDs across the range
+out=$("$VERIFY" --branch-coverage "${rv_sha}~1..${rv_sha}" --json)
+covered=$(echo "$out" | jq -c '.covered_units')
+assert_eq '["U1","U2","U3"]' "$covered" "branch-coverage enumerates covered units"
+
+# --branch-coverage fails closed on a malformed review-verdict (FR01 review finding 3)
+rc=0
+"$VERIFY" --branch-coverage "${typed_sha}~1..${typed_sha}" --json >/tmp/bc_out.json 2>/dev/null || rc=$?
+assert_eq "1" "$rc" "branch-coverage exits non-zero when a review-verdict is malformed"
+inv=$(jq -r '.invalid_review_verdict_commits | length' /tmp/bc_out.json)
+assert_eq "1" "$inv" "branch-coverage reports the malformed trailer as invalid"
+covered=$(jq -c '.covered_units' /tmp/bc_out.json)
+assert_eq '[]' "$covered" "branch-coverage does not count a malformed trailer's units"
+
 report

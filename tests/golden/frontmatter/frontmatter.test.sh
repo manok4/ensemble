@@ -86,6 +86,16 @@ EOF
   mkdir -p "$tmpdir/$(dirname "$staged_path")"
   cp "$SCRIPT_DIR/$fixture_path" "$tmpdir/$staged_path"
 
+  # Date-relative fixtures (architecture freshness via last_drift_check +
+  # freshness_target_days) would otherwise go stale as wall-clock advances past
+  # the hardcoded date, failing "valid.md should lint clean" months later. Stamp
+  # the date fields to today at stage time so the fixture stays fresh forever.
+  if grep -q '^last_drift_check:' "$tmpdir/$staged_path"; then
+    today=$(date +%Y-%m-%d)
+    sed -i.bak -E "s/^(last_drift_check:).*/\1 $today/; s/^(updated:).*/\1 $today/; s/^(created:).*/\1 $today/" "$tmpdir/$staged_path"
+    rm -f "$tmpdir/$staged_path.bak"
+  fi
+
   # Run lint against the tempdir
   local output rc
   pushd "$tmpdir" >/dev/null

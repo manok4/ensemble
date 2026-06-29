@@ -34,11 +34,20 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
 6. **Pre-flight lint.** Run `$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/` and `$ENSEMBLE_ROOT/bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
 7. **Conditional persona detection.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
+
+   **Peer-only short-circuit (`--peer-only`).** If `--peer-only` is set, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** — the sole reviewer is the cross-agent Outside Voice peer (step 9). This is the mode `/en-build`'s post-build phase uses: the host implemented the code, so review must come from the *other* agent, with no host-side personas. `--peer-only` and `--lite` are mutually exclusive (lite is a host-persona roster; peer-only has no host personas) — if both are passed, `--peer-only` wins. Proceed directly to step 9.
+
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
    - Plus `learnings-research` to query `docs/learnings/` for relevant prior bugs/patterns/decisions.
+
+   **7a. Lite roster (`--lite`).** When `--lite` is passed, classify the diff via `$ENSEMBLE_ROOT/references/diff-signal-detection.md`. If `is_small_and_safe` is `true` (1–39 executable lines, zero uncounted files, no risk signals, **and** no conditional persona was triggered above), collapse the roster to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens** — skip `testing`, `maintainability`, `learnings`, and all conditionals. **Fail closed:** if `is_small_and_safe` is `false` for any reason (unknown line count, any uncounted non-code file, any risk signal, or any conditional persona fired), run the **full roster regardless of `--lite`** — the gate wins, the flag is advisory. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `$ENSEMBLE_ROOT/references/persona-dispatch.md`).
 8. **Parallel dispatch.** Single message, multiple `Agent` tool calls. Wait for all to return.
-9. **Optional Outside Voice (`--peer`).** If `--peer` flag set AND `PEER_AVAILABLE=true` AND mode allows mutation, invoke a cross-agent peer pass over the diff + the persona findings. Adds findings tagged `persona: "peer"` to the envelope.
+9. **Outside Voice peer (`--peer` adds it on top; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (build-by-orchestration: peer is the other agent per D23):
+   - Build the prompt: `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`. Set `ENSEMBLE_PEER_REVIEW=true`; pipe into `$PEER_CMD` (wrapped in `$ENSEMBLE_TIMEOUT_BIN`). Parse findings per `$ENSEMBLE_ROOT/references/finding-schema.md`.
+   - **`--peer`** (on top of personas): add the peer's findings tagged `persona: "peer"` to the persona envelope.
+   - **`--peer-only`** (sole reviewer): the peer's findings ARE the envelope. Record the reviewer in the result: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` (no other CLI at all) — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
+   - **Recursion guard:** if `ENSEMBLE_PEER_REVIEW=true` at entry, do not dispatch a peer (would recurse). Under `--peer-only` that means falling back to the host roster (or, in a subprocess that can't review itself, returning the empty envelope with `reviewer: recursion-guard`).
 10. **Synthesize.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
     - Validate each response (drop malformed).
     - Collect findings; preserve persona attribution.
@@ -57,10 +66,12 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 | Flag | Effect |
 |---|---|
 | `--mode interactive\|headless\|report-only` | Override default mode |
-| `--peer` | Add cross-agent peer pass on top of personas |
+| `--peer` | Add cross-agent peer pass on top of the host personas |
+| `--peer-only` | Cross-agent peer is the **sole** reviewer; skip host personas entirely (implementer ≠ reviewer). Used by `/en-build`'s post-build phase. Falls back to host roster only when no peer CLI exists. Mutually exclusive with `--lite`. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full diff) |
+| `--lite` | Fast path for tiny, low-risk diffs: collapse to `correctness` + `standards` (+ `fast-pass`) when `$ENSEMBLE_ROOT/references/diff-signal-detection.md` classifies the diff `is_small_and_safe`. **Fail-closed** — any uncounted file, unknown line count, risk signal, or triggered conditional persona forces the full roster regardless of the flag. |
 
 ## Mutation rules per mode
 
@@ -141,7 +152,9 @@ Always emit a markdown summary alongside the JSON, even in `headless`/`report-on
 - `$ENSEMBLE_ROOT/references/finding-schema.md` — JSON shape
 - `$ENSEMBLE_ROOT/references/severity.md` — autofix routing
 - `$ENSEMBLE_ROOT/references/severity-and-routing.md` — alias
-- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt (when `--peer`)
+- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt (when `--peer` / `--peer-only`)
+- `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` / `--peer-only`
+- `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — fallback when only one CLI is installed
 - `$ENSEMBLE_ROOT/references/recursion-guard.md`
 
 ## Failure protocol

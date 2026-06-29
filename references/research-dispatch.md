@@ -120,6 +120,18 @@ For Lightweight skills, **prefer none** unless local context is genuinely insuff
 | Network failure for `web-research` | Log; suggest user run again later if needed |
 | Empty results | Note in skill output; not a failure |
 
+## Evidence dossier (large result sets)
+
+To keep the orchestrator's context small, research agents use the **evidence-dossier** pattern instead of returning every quote inline:
+
+1. **Scout writes bulk evidence to scratch.** The agent writes verbatim quotes with source pointers (`file:line` or URL) to a scratch file at `/tmp/ensemble/<skill>/<run-id>/<agent>.md`, line-capped (~150 lines; oldest-trimmed if exceeded). `<run-id>` is supplied by the dispatching skill (or derived from the task) so parallel agents don't collide.
+2. **Agent returns only a gist + path.** The structured return carries a 3–5 line gist (the headline findings) plus `dossier_path`. It does **not** inline the full quote set.
+3. **Downstream reads on demand.** The orchestrator (en-plan / en-review / en-foundation) and any downstream agent read `dossier_path` from disk only when they need the detail — they carry the gist in working context, not the full dossier.
+
+**Degraded fallback:** if the scratch write fails (no `/tmp`, permission error), return the findings inline as before and note `dossier_path: null` in the gist. Never drop evidence because the dossier write failed.
+
+This keeps the orchestrator's window bounded regardless of how much the scout read — the cost of deep research lands on disk, not in the conversation.
+
 ## Capturing research as a learning
 
 When `en-brainstorm`, `en-plan`, or `en-foundation` learns something *new* via `web-research` that's worth retaining, the capture-from-synthesis reflex (D21) fires:

@@ -26,6 +26,10 @@
 #     changes can't silently hide real findings.
 #   - PR-author replies are exposed in pr_author_replies (separate field) so
 #     triage can detect "already responded" without losing the comment.
+#   - PAGINATION: all three top-level connections (reviewThreads, comments,
+#     reviews) are fully cursor-paginated via `gh api graphql --paginate`, so
+#     PRs with more than one page of feedback are NOT silently truncated
+#     (issue #798). Nested per-thread comments are fetched at first:100.
 
 set -e
 
@@ -58,61 +62,87 @@ if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
     exit 1
 fi
 
-# Single GraphQL query covers the four fetched buckets plus the cross-round context.
-read -r -d '' QUERY <<'GRAPHQL' || true
-query EnResolvePrFetch($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      author { login }
-      reviewThreads(first: 50) {
-        edges {
-          node {
-            id
-            isResolved
-            isOutdated
-            path
-            line
-            originalLine
-            startLine
-            originalStartLine
-            comments(first: 10) {
-              nodes {
-                id
-                author { login }
-                body
-                createdAt
-                url
-              }
-            }
-          }
-        }
-      }
-      comments(first: 100) {
-        nodes {
-          id
-          author { login }
-          body
-          createdAt
-        }
-      }
-      reviews(first: 50) {
-        nodes {
-          id
-          author { login }
-          body
-          state
-        }
+# Pagination (issue #798 / compound-engineering parity): fixed `first: N` page
+# sizes with no cursor loop silently drop everything past page 1 on PRs with
+# many review threads / comments / reviews. Each top-level connection is fetched
+# with `gh api graphql --paginate`, which drives a single `$endCursor` variable
+# and concatenates page responses; `jq -s` then merges all pages. The three
+# connections are independent, so they are paginated as separate queries (one
+# --paginate cursor can only drive one connection) and reassembled below.
+
+# Author login — single fetch, no connection to paginate.
+AUTHOR_LOGIN=$(gh api graphql \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \
+    -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){author{login}}}}' \
+    --jq '.data.repository.pullRequest.author.login' 2>/dev/null || true)
+
+# reviewThreads — paginated; nested comments raised to first:100.
+read -r -d '' Q_THREADS <<'GRAPHQL' || true
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviewThreads(first:100, after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        edges{ node{
+          id isResolved isOutdated path line originalLine startLine originalStartLine
+          comments(first:100){ nodes{ id author{login} body createdAt url } }
+        } }
       }
     }
   }
 }
 GRAPHQL
+THREAD_EDGES=$(gh api graphql --paginate \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" -f query="$Q_THREADS" \
+    | jq -s 'map(.data.repository.pullRequest.reviewThreads.edges) | add // []')
 
-RAW=$(gh api graphql \
-    -f owner="$OWNER" \
-    -f repo="$REPO" \
-    -F pr="$PR_NUMBER" \
-    -f query="$QUERY")
+# comments — paginated.
+read -r -d '' Q_COMMENTS <<'GRAPHQL' || true
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      comments(first:100, after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ id author{login} body createdAt }
+      }
+    }
+  }
+}
+GRAPHQL
+COMMENT_NODES=$(gh api graphql --paginate \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" -f query="$Q_COMMENTS" \
+    | jq -s 'map(.data.repository.pullRequest.comments.nodes) | add // []')
+
+# reviews — paginated.
+read -r -d '' Q_REVIEWS <<'GRAPHQL' || true
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviews(first:100, after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ id author{login} body state }
+      }
+    }
+  }
+}
+GRAPHQL
+REVIEW_NODES=$(gh api graphql --paginate \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" -f query="$Q_REVIEWS" \
+    | jq -s 'map(.data.repository.pullRequest.reviews.nodes) | add // []')
+
+# Reassemble into the same shape the single-query version produced, so the
+# partition jq below is unchanged.
+RAW=$(jq -n \
+    --arg author "$AUTHOR_LOGIN" \
+    --argjson threads "$THREAD_EDGES" \
+    --argjson comments "$COMMENT_NODES" \
+    --argjson reviews "$REVIEW_NODES" \
+    '{data:{repository:{pullRequest:{
+        author:{login:$author},
+        reviewThreads:{edges:$threads},
+        comments:{nodes:$comments},
+        reviews:{nodes:$reviews}
+    }}}}')
 
 # Partition the response into the buckets /en-resolve-pr's SKILL.md consumes.
 # CI/status bots whose output is structurally never actionable (coverage

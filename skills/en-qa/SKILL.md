@@ -26,6 +26,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - User asks if none found.
 5. **Verify Playwright MCP.** Per `$ENSEMBLE_ROOT/references/playwright-helpers.md`. If unavailable → run Phase 1 only and surface the gap.
 6. **Bootstrap test framework if absent.** If the project has no test suite at all, surface and offer to install Playwright (or the project's preferred framework). Bootstrap is its own commit.
+6a. **Browser-phase detector.** Before running Phase 2, classify the change via `$ENSEMBLE_ROOT/references/diff-signal-detection.md`. Run Phase 2 only when `needs_browser` is `true` (the diff touches frontend/UI files) **OR** the user passed `--browser`. When `needs_browser` is `false` AND `--browser` was not passed: skip Phase 2 with the one-line note *"Browser QA auto-skipped — no frontend files changed; pass --browser to force."* and proceed to the report. **Fail closed:** if the diff can't be classified (no base ref, detached HEAD), treat as `needs_browser: true` and run Phase 2. `--browser` always forces Phase 2; `--system-only` always skips it (and wins over `--browser`).
 7. **Phase 2 — browser QA.** Per `$ENSEMBLE_ROOT/references/qa-flows.md`:
    - Walk each top-level user flow (from foundation §6 F-IDs).
    - For each, exercise the golden path + the edge cases (empty state, error state, slow network, double-click, navigate-mid-action, keyboard-only, mobile viewport).
@@ -44,7 +45,8 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 | Flag | Effect |
 |---|---|
 | `--url <url>` | Override URL detection |
-| `--system-only` | Skip Phase 2 (browser QA) |
+| `--system-only` | Skip Phase 2 (browser QA). Wins over `--browser`. |
+| `--browser` | Force Phase 2 even when the detector finds no frontend files changed. |
 | `--flow <name>` | Run only the named flow |
 | `--no-fix` | Find bugs, don't fix; output as a list for triage |
 | `--mobile-only` / `--desktop-only` | Limit viewports |
@@ -56,6 +58,7 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 - No URL provided and none detected.
 - Playwright MCP unavailable.
 - Branch is doc-only (`git diff --name-only` shows only `docs/`).
+- **No frontend files changed** (detector `needs_browser: false`, no `--browser`) — per `$ENSEMBLE_ROOT/references/diff-signal-detection.md`.
 - `--system-only` flag.
 - `peer_mode_override: off` and the user disabled all browser ops.
 
