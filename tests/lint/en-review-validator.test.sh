@@ -38,11 +38,11 @@ else
   fail "validator must re-check the three questions"
 fi
 
-# --- drops P2/P3 on false; keeps P0/P1 ---
-if grep -qiE "only P2/P3|drop.*P2/P3" "$REF" && grep -qiE "[Kk]eep P0/P1" "$REF"; then
-  pass "drops P2/P3 on validated:false; keeps P0/P1"
+# --- drops only P2/P3 on false; NEVER auto-drops P0/P1 (single invariant) ---
+if grep -qiE "severity is \*\*P2/P3\*\* . \*\*drop\*\*|P2/P3.* drop" "$REF" && grep -qiE "never auto-drop|NEVER auto-drop" "$REF"; then
+  pass "drops only P2/P3 on validated:false; never auto-drops P0/P1"
 else
-  fail "must drop only P2/P3 on validated:false and keep P0/P1"
+  fail "must drop only P2/P3 and never auto-drop P0/P1"
 fi
 
 # --- infra failure keeps finding ---
@@ -58,3 +58,5 @@ if grep -qiE "[Oo]ff the hot path" "$EN_REVIEW"; then
 else
   fail "validator must be documented as off the hot path"
 fi
+
+report

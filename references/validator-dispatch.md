@@ -22,10 +22,12 @@ Returns: `{ "validated": true | false, "reason": "<one line>" }`.
 
 ## Applying the result
 
+One invariant, applied everywhere (no subjective exceptions):
+
 - `validated: true` → keep the finding as-is.
-- `validated: false` → **drop** the finding — **but only P2/P3**. Record the drop in the coverage section (count + reasons) so it's auditable, not silent.
-- **Keep P0/P1 even on `validated: false`** unless the reason is clearly decisive (e.g. "this exact guard exists at `file:line`"). A validator disagreeing with a critical finding is a flag for human judgment, not an auto-drop — surface the disagreement.
-- **Infra failure** (validator subagent errors/times out): keep the finding; never let a transient failure silently remove a finding. For P2/P3 on infra failure, keep and mark `validation: degraded`.
+- `validated: false` AND severity is **P2/P3** → **drop** the finding. Record the drop in the coverage section (count + reasons) so it's auditable, not silent.
+- `validated: false` AND severity is **P0/P1** → **NEVER auto-drop.** Keep the finding and mark `validation: disputed` (the validator's `reason` attached), so a human sees both the finding and the validator's objection. A validator disagreeing with a critical finding is a flag for judgment, not a deletion.
+- **Infra failure** (validator subagent errors/times out): keep the finding; never let a transient failure silently remove one. Mark `validation: degraded`.
 
 ## After validation
 

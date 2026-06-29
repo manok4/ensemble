@@ -111,3 +111,5 @@ if grep -qiE "Default: invoke .?/en-review --peer-only" "$SKILL"; then
 else
   fail "post-build default must stay --peer-only"
 fi
+
+report

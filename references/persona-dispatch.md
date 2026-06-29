@@ -136,13 +136,13 @@ The peer pass produces an **additional** finding set merged into the envelope wi
 
 Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit is preferred to per-PR-of-15-units) so each round stays small.
 
-## Lite roster (`--lite`)
+## Lite tier (`--lite`)
 
-When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, dispatch a reduced roster instead of the full panel:
+Lite is a **peer-only tier** (EN02 D36) — `--lite` narrows the **peer brief**, it does not dispatch a reduced host roster. When the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, brief the peer on **correctness + standards dimensions only** (skip testing / maintainability / learnings / conditionals).
 
-- **Roster:** `correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
-- **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides.
-- **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
+- **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional matched — fall through to the **Standard** (full-dimension) brief. `--lite` is advisory; the gate decides.
+- **Host fallback only:** the reduced *host* roster (`correctness-reviewer` + `standards-reviewer` + `fast-pass`) runs ONLY on the no-peer fallback / `--host-only` path, not in the normal peer-driven Lite tier.
+- **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent reviewer finding. `fast-pass` findings never count toward corroboration promotion.
 
 ## Failure protocol
 

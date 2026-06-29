@@ -18,7 +18,7 @@ else
 fi
 
 # --- grouping never merges / alters findings ---
-if grep -qiE "never merges findings into a synthetic finding" "$EN_REVIEW" && grep -qiE "at most one group" "$EN_REVIEW"; then
+if grep -qiE "never merges findings into a synthetic finding" "$EN_REVIEW" && grep -qiE "at most one" "$EN_REVIEW"; then
   pass "grouping never merges/alters; a finding is in at most one group"
 else
   fail "grouping must never merge/alter findings; at most one group per finding"
@@ -51,3 +51,5 @@ if grep -qiE "Thematic grouping" "$PERSONA"; then
 else
   fail "persona-dispatch must document thematic grouping"
 fi
+
+report

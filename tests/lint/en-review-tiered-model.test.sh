@@ -66,3 +66,5 @@ if grep -qE "^- \*\*D36\." "$FOUNDATION" && grep -qiE "peer-default" "$FOUNDATIO
 else
   fail "foundation D36 must record the tiered peer-default model"
 fi
+
+report

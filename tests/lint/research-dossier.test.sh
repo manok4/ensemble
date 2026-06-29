@@ -44,3 +44,5 @@ for agent in repo-research learnings-research web-research; do
     fail "$agent must document the dossier contract"
   fi
 done
+
+report

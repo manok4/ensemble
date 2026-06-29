@@ -56,3 +56,5 @@ if grep -qiE "Conditional-reviewer signals" "$SIGNAL" && grep -qF "api-contract"
 else
   fail "diff-signal-detection must note the conditional-reviewer signals"
 fi
+
+report

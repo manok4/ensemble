@@ -58,3 +58,5 @@ if grep -qiE "cross-model agreement|strongest signal" "$RECON"; then
 else
   fail "cross-model agreement must be the strongest signal"
 fi
+
+report

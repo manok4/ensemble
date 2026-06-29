@@ -64,3 +64,5 @@ if grep -qE "must be one of .\{0, 25, 50, 75, 100\}" "$SCHEMA"; then
 else
   fail "schema must validate the anchor set, not integer 1-10"
 fi
+
+report

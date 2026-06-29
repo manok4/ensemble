@@ -61,6 +61,8 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 
 **Quote-the-line gate.** A finding at anchor `75` or `100` MUST carry a non-empty `first_evidence` (the verbatim motivating line + `file:line`). A 75/100 finding missing `first_evidence` is **demoted to 50**. This is the primary false-positive control.
 
+**Legacy 1–10 compatibility (normalize before validating).** Reviewer/peer outputs predating the anchor model (and peer CLIs that still emit a 1–10 `confidence`) are accepted: the host **normalizes to the nearest anchor before applying the gate** — `1–4 → 25`, `5–6 → 50`, `7–8 → 75`, `9–10 → 100` (and `0 → 0`). A value already in `{0,25,50,75,100}` passes through unchanged. Normalization happens at parse time, so a legacy `confidence: 9` becomes anchor `100` (and then faces the quote-the-line gate like any other 100). This keeps existing peer prompts valid during the transition without a flag day.
+
 ## Validation rules the host applies
 
 1. JSON must parse. If not, retry once with a "respond with valid JSON only" suffix; on second failure, log and skip.

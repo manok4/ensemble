@@ -38,11 +38,11 @@ else
   fail "en-review --lite must state fail-closed override"
 fi
 
-# --- persona-dispatch documents the lite roster ---
-if grep -qiE "Lite roster" "$PERSONA"; then
-  pass "persona-dispatch documents the lite roster"
+# --- persona-dispatch documents the lite tier (peer-default; host roster is fallback-only) ---
+if grep -qiE "Lite tier" "$PERSONA"; then
+  pass "persona-dispatch documents the lite tier"
 else
-  fail "persona-dispatch must document the lite roster"
+  fail "persona-dispatch must document the lite tier"
 fi
 
 # --- fast-pass confidence cap documented ---
@@ -51,3 +51,5 @@ if grep -qiE "anchor 50|cap.*fast-pass|fast-pass.*cap" "$PERSONA"; then
 else
   fail "persona-dispatch must document fast-pass confidence cap"
 fi
+
+report

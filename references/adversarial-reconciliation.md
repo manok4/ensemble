@@ -21,7 +21,7 @@ How `/en-review` reconciles two **independent** finding sets — the host person
 
 4. **Conflict (same fingerprint, incompatible severity/route)** → keep both, mark `conflict: true`, choose the more conservative route, and surface for user judgment (per `references/persona-dispatch.md`).
 
-5. The reconciled set flows into the normal synthesis: dedup is already done here, then thematic grouping (`references/persona-dispatch.md` Lite/grouping rules) and the confidence gate apply.
+5. The reconciled set flows into the normal synthesis (step 10), but **dedup is already complete here** — reconciliation IS the dedup for the adversarial path (it fingerprinted and merged across H and P). Step 10's dedup is therefore a **no-op** on a reconciled set (re-running it changes nothing); the host skips it and proceeds to conflict-marking, the confidence gate (step 11), and thematic grouping (step 11.5). Do not re-promote anchors in step 10 — corroboration promotion already happened in step 2 here.
 
 ## Output
 

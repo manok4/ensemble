@@ -57,3 +57,5 @@ if grep -qiE "[Nn]o frontend files changed" "$EN_QA"; then
 else
   fail "no-frontend auto-skip reason must be documented"
 fi
+
+report

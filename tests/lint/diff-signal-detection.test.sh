@@ -61,3 +61,5 @@ if grep -qiE "lite.*does not override|gate wins" "$REF"; then
 else
   fail "must state lite flag cannot override the gate"
 fi
+
+report
