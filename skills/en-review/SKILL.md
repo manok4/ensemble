@@ -33,16 +33,26 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
 6. **Pre-flight lint.** Run `$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/` and `$ENSEMBLE_ROOT/bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
-7. **Conditional persona detection.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
 
-   **Peer-only short-circuit (`--peer-only`).** If `--peer-only` is set, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** — the sole reviewer is the cross-agent Outside Voice peer (step 9). This is the mode `/en-build`'s post-build phase uses: the host implemented the code, so review must come from the *other* agent, with no host-side personas. `--peer-only` and `--lite` are mutually exclusive (lite is a host-persona roster; peer-only has no host personas) — if both are passed, `--peer-only` wins. Proceed directly to step 9.
+6a. **Tier selection (the performance/coverage balance).** Classify the diff via `$ENSEMBLE_ROOT/references/diff-signal-detection.md` and select a tier. **The peer is the reviewer of record in every non-adversarial tier — the host orchestrates and applies but does NOT review its own judgment** (implementer ≠ reviewer; D30 peer-reports/host-applies).
+
+   | Tier | Selected when | Reviewer | Brief |
+   |---|---|---|---|
+   | **Lite** | `--lite` AND `is_small_and_safe` | cross-agent peer only (step 9) | focused: correctness + standards dimensions |
+   | **Standard** *(default)* | not `is_high_stakes`, not Adversarial | cross-agent peer only (step 9) | full: all matched dimensions incl. conditionals (step 7's detection feeds the brief, not host dispatch) |
+   | **Adversarial** | `is_high_stakes` OR `--adversarial` | host personas (steps 7–8) **and** peer (step 9), reconciled (step 9.5) | full host roster + independent peer |
+
+   - **Non-adversarial (Lite / Standard):** skip host persona *dispatch* (step 8). Run step 7 only to decide which conditional dimensions to name in the peer brief. Go to step 9 (peer-only). The optional host fast-pass (orchestrator quick read, anchor ≤ 50) may run as a cheap complement but is never the reviewer of record.
+   - **Adversarial:** run host personas (steps 7–8) AND the peer (step 9), then reconcile (step 9.5, per `$ENSEMBLE_ROOT/references/adversarial-reconciliation.md`).
+   - **`--peer-only`** forces peer-only regardless of tier (used by `/en-build`'s post-build phase). **`--host-only`** / no-peer fallback forces the host roster (step 9's fallback). `--lite` and `--adversarial` are mutually exclusive; `--adversarial` wins.
+7. **Conditional persona detection.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`. In non-adversarial tiers this step only *selects the dimensions* for the peer brief (no host dispatch); in Adversarial it selects the host personas to dispatch in step 8.
 
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
    - Plus `learnings-research` to query `docs/learnings/` for relevant prior bugs/patterns/decisions.
 
    **7a. Lite roster (`--lite`).** When `--lite` is passed, classify the diff via `$ENSEMBLE_ROOT/references/diff-signal-detection.md`. If `is_small_and_safe` is `true` (1–39 executable lines, zero uncounted files, no risk signals, **and** no conditional persona was triggered above), collapse the roster to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens** — skip `testing`, `maintainability`, `learnings`, and all conditionals. **Fail closed:** if `is_small_and_safe` is `false` for any reason (unknown line count, any uncounted non-code file, any risk signal, or any conditional persona fired), run the **full roster regardless of `--lite`** — the gate wins, the flag is advisory. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `$ENSEMBLE_ROOT/references/persona-dispatch.md`).
-8. **Parallel dispatch.** Single message, multiple `Agent` tool calls. Wait for all to return.
+8. **Parallel dispatch (Adversarial tier only).** Single message, multiple `Agent` tool calls; wait for all to return. **Skipped in Lite/Standard** — those are peer-only (step 9); host personas dispatch only in the Adversarial tier (or the no-peer host fallback).
 9. **Outside Voice peer (`--peer` adds it on top; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (build-by-orchestration: peer is the other agent per D23):
    - Build the prompt: `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`. Set `ENSEMBLE_PEER_REVIEW=true`; pipe into `$PEER_CMD` (wrapped in `$ENSEMBLE_TIMEOUT_BIN`). Parse findings per `$ENSEMBLE_ROOT/references/finding-schema.md`.
    - **`--peer`** (on top of personas): add the peer's findings tagged `persona: "peer"` to the persona envelope.
@@ -68,6 +78,8 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 | `--mode interactive\|headless\|report-only` | Override default mode |
 | `--peer` | Add cross-agent peer pass on top of the host personas |
 | `--peer-only` | Cross-agent peer is the **sole** reviewer; skip host personas entirely (implementer ≠ reviewer). Used by `/en-build`'s post-build phase. Falls back to host roster only when no peer CLI exists. Mutually exclusive with `--lite`. |
+| `--adversarial` | Force the Adversarial tier: host personas **and** the cross-agent peer run independently, then reconcile. Auto-selected when the diff is `is_high_stakes`. Mutually exclusive with `--lite` (adversarial wins). |
+| `--host-only` | Force the host persona roster as the reviewer (no peer). Same as the no-peer fallback; for offline / single-CLI use or when the peer is undesired. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full diff) |
