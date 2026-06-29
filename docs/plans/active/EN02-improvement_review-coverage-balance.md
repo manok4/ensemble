@@ -64,6 +64,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** ce-code-review `references/findings-schema.json` + `subagent-template.md` (anchor rubric, quote-the-line gate)
 - **Test scenarios:**
@@ -89,6 +90,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** EN01 `references/diff-signal-detection.md` (fail-closed classifier); `references/outside-voice.md` (peer dispatch)
 - **Test scenarios:**
@@ -113,6 +115,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** ce-code-review Stage 5 cross-reviewer agreement + `cross-model-review.md`
 - **Test scenarios:**
@@ -138,6 +141,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** ce-code-review `references/personas/{api-contract,reliability,julik-frontend-races}-reviewer.md`; existing ensemble `agents/security-reviewer.md` shape
 - **Test scenarios:**
@@ -160,6 +164,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** ce-code-review Stage 5 step 9b (triage grouping)
 - **Test scenarios:**
@@ -182,6 +187,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** ce-code-review Stage 5b + `validator-template.md`
 - **Test scenarios:**
@@ -205,6 +211,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
+- **Gated:** false
 - **Execution note:** pragmatic
 - **Patterns to follow:** EN01 U3 post-build phase; EN01 D35
 - **Test scenarios:**
