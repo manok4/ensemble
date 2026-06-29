@@ -99,3 +99,15 @@ if grep -qE "\`--no-peer\`.*post-build branch-level" "$SKILL"; then
 else
   fail "--no-peer must be documented for the post-build review"
 fi
+
+# --- EN02 U7: post-build escalates to --adversarial on high-stakes branch diffs ---
+if grep -qF -- "/en-review --adversarial" "$SKILL" && grep -qF "is_high_stakes" "$SKILL"; then
+  pass "post-build escalates to --adversarial when is_high_stakes"
+else
+  fail "post-build must escalate to --adversarial on high-stakes branch diffs"
+fi
+if grep -qiE "Default: invoke .?/en-review --peer-only" "$SKILL"; then
+  pass "post-build default stays --peer-only"
+else
+  fail "post-build default must stay --peer-only"
+fi
