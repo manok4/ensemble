@@ -105,8 +105,13 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 
 ### U2. ...
 
-## Risks
+## Decisions, assumptions & risks
 
+**Optional — include only when there's real substance; omit entirely on trivial plans.** A lean bulleted list (not four heavy sub-sections). Give non-obvious decisions, rejected alternatives, inferred bets, and genuine risks a single reviewable home instead of scattering them in unit `Approach:` fields. Use the prefix that fits each bullet:
+
+- **Decision:** <a non-obvious technical choice and why> 
+- **Alternative:** <a road not taken — what it was and why rejected>
+- **Assumption:** <an inferred bet the plan depends on; how it'd be checked/falsified>
 - **Risk:** <what could go wrong> — **Mitigation:** <how we handle it>
 
 ## Tracked debt
