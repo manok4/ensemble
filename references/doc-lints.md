@@ -100,6 +100,15 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 | `requirements-traceability.empty-when-foundation-has-r-ids` | P1 | A plan has `covers_requirements: []` and `requirements_pending: false` while `foundation.md` has at least one R-ID |
 | `requirements-traceability.requirements-pending-no-foundation` | P3 | Plan has `requirements_pending: true` but no foundation exists yet (advisory; reminder to run `/en-foundation`) |
 
+### `unit.*` — per-unit plan metadata (plan files only)
+
+| Rule | Severity | Notes |
+|---|---|---|
+| `unit.risk-class` | P1 (new-style) / P2–P3 (legacy) | Every unit must declare a valid `Risk:` (`low\|medium\|high\|destructive`) |
+| `unit.gated-flag` | P2–P3 | Every unit should declare `Gated: true\|false` (defaults to false) |
+| `unit.category-enum` | P2 | `Category:` when present must match the documented enum |
+| `unit.test-scenarios` | P2 | A `category: feature` unit whose `Test scenarios:` has fewer than two scenario lines is flagged — a nudge toward real scenarios across happy/edge/error/integration (never a P1 blocker) |
+
 ## Output format
 
 JSON-lines, one violation per line:

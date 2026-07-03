@@ -833,6 +833,50 @@ check_plan_unit_category_enum() {
   done < <(extract_units "$file")
 }
 
+# --- Rule: unit.test-scenarios ---
+# Feature-bearing units SHOULD enumerate real test scenarios (happy / edge /
+# error / integration). A `category: feature` unit with fewer than two scenario
+# lines is flagged P2 advisory (a nudge, never a P1 blocker). The
+# `Test expectation: none — <reason>` escape is for NON-feature units (which are
+# already skipped by the category filter) — a feature unit cannot use it to
+# bypass; if a unit genuinely has no testable behavior, recategorize it.
+check_plan_unit_test_scenarios() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+
+  while IFS='|' read -r uid cat scen_lines _has_expect; do
+    [ -z "$uid" ] && continue
+    # Only nudge explicit feature units; leave other categories alone. A feature
+    # unit needs real scenarios regardless of any Test expectation line (that
+    # escape is for non-feature units, which never reach this check).
+    [ "$cat" = "feature" ] || continue
+    if [ "${scen_lines:-0}" -lt 2 ]; then
+      emit "unit.test-scenarios" "$file" "" "P2" \
+        "Unit $uid (feature) has fewer than two test scenarios ($scen_lines)" \
+        "Enumerate real scenarios across the applicable categories (happy path, edge cases, error/failure paths, integration) with concrete inputs/actions/outcomes. If the unit genuinely has no testable behavior, recategorize it (non-feature) and use '- **Test expectation:** none — <reason>'. See references/templates/plan-template.md."
+    fi
+  done < <(
+    awk '
+      function emit_current() {
+        if (uid) printf "%s|%s|%s|%s\n", uid, cat, scen, hasexp
+      }
+      BEGIN { uid=""; cat=""; scen=0; hasexp=0; in_scen=0 }
+      /^### U[0-9]+/ {
+        emit_current()
+        match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH)
+        cat=""; scen=0; hasexp=0; in_scen=0
+        next
+      }
+      /^- \*\*Category:\*\*/ { sub(/^- \*\*Category:\*\*[[:space:]]*/, ""); cat=$0; in_scen=0; next }
+      /^- \*\*Test expectation:\*\*/ { hasexp=1; in_scen=0; next }
+      /^- \*\*Test scenarios:\*\*/ { in_scen=1; next }
+      /^- \*\*[A-Za-z]/ { in_scen=0; next }   # any other top-level unit field ends the block
+      { if (in_scen && $0 ~ /^[[:space:]]+-[[:space:]]/) scen++ }
+      END { emit_current() }
+    ' "$file"
+  )
+}
+
 # --- Rule: phase-invariant.dependency-vs-risk ---
 # A low-risk unit must never depend (transitively) on a higher-risk unit.
 # This would force /en-build to either reject the plan or violate phase purity.
@@ -968,6 +1012,7 @@ while IFS= read -r file; do
   check_plan_unit_risk_class "$file"
   check_plan_unit_gated_flag "$file"
   check_plan_unit_category_enum "$file"
+  check_plan_unit_test_scenarios "$file"
   check_plan_phase_invariant "$file"
   check_plan_resolutions_schema "$file"
   check_cross_links "$file"

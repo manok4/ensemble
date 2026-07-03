@@ -74,6 +74,12 @@ data_scale: {{DATA_SCALE}}
 
 <one to three paragraphs: the architectural shape of the solution. Decisions live here at the macro level; per-unit tactics live in U-ID sections.>
 
+## Technical design
+
+**Present ONLY when an architecture-complexity trigger fires** (≥3 new/changed components, a ≥3-step protocol/handshake, a state machine, ≥3 data-flow stages, or DSL/public-API design). A **directional** high-level sketch of the cross-cutting architecture — component boundaries, data flow between them, and key interfaces/contracts. Directional, not a spec (the units carry the tactics). **Omit this section entirely on simpler plans** that fire no trigger.
+
+<component boundaries · data flow · key interfaces — a diagram or a short structured description>
+
 ## Implementation units
 
 Each unit has a stable U-ID. Never renumbered after assignment.
@@ -91,15 +97,27 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Gated:** false (default; set `true` ONLY when running this unit at build time changes production user state or external system state — see Generation notes for the exact criteria; over-gating trains users to autopilot through prompts)
 - **Execution note:** test-first | characterization-first | pragmatic
 - **Patterns to follow:** <citations from `docs/learnings/patterns/` if relevant>
-- **Test scenarios:**
-  - <scenario>
-  - <scenario>
+- **Test scenarios:** For a **feature-bearing** unit (anything that adds/changes behavior), enumerate **actual** scenarios across the applicable categories — each with concrete inputs, actions, and expected outcomes:
+  - *Happy path:* <core behavior — input → action → expected outcome>
+  - *Edge case:* <boundary / empty / nil / concurrent — expected outcome>
+  - *Error / failure path:* <invalid input / service failure / timeout / permission — expected outcome>
+  - *Integration:* <cross-layer / callback / middleware — expected outcome> (when the unit spans layers)
+
+  Skip a category only when it genuinely doesn't apply to the unit. **Non-feature-bearing** units (pure config, scaffolding, styling, docs) use the escape hatch instead of scenarios:
+  - **Test expectation:** none — <reason, e.g. "config-only; covered by the suite it enables">
+
+  A feature unit with blank or fewer-than-two scenarios is **incomplete** — the pre-write review and the `unit.test-scenarios` lint (P2 advisory) flag it.
 - **Verification:** <what counts as done — tests pass + lint + manual check>
 
 ### U2. ...
 
-## Risks
+## Decisions, assumptions & risks
 
+**Optional — include only when there's real substance; omit entirely on trivial plans.** A lean bulleted list (not four heavy sub-sections). Give non-obvious decisions, rejected alternatives, inferred bets, and genuine risks a single reviewable home instead of scattering them in unit `Approach:` fields. Use the prefix that fits each bullet:
+
+- **Decision:** <a non-obvious technical choice and why> 
+- **Alternative:** <a road not taken — what it was and why rejected>
+- **Assumption:** <an inferred bet the plan depends on; how it'd be checked/falsified>
 - **Risk:** <what could go wrong> — **Mitigation:** <how we handle it>
 
 ## Tracked debt

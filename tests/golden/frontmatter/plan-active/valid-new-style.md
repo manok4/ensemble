@@ -41,6 +41,10 @@ Body.
 - **Dependencies:** none
 - **Files:** src/helper.ts
 - **Approach:** add a function
+- **Test scenarios:**
+  - Happy path: valid input -> helper returns the expected value
+  - Edge case: empty input -> helper returns the empty result
+  - Error path: null input -> helper throws a typed error
 
 ### U2. Use helper
 
@@ -52,3 +56,7 @@ Body.
 - **Dependencies:** U1
 - **Files:** src/main.ts
 - **Approach:** call the helper
+- **Test scenarios:**
+  - Happy path: main path calls the helper and uses its result
+  - Edge case: helper returns empty -> main path no-ops
+  - Integration: main path + helper together produce the end-to-end outcome
