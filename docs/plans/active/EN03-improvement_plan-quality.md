@@ -28,7 +28,7 @@ A head-to-head against compound-engineering's `ce-plan` found en-plan already le
 
 The priority is **performance (plan→build quality) first, then speed, then cost**. All three upgrades honor that: two shift effort left (small plan cost, larger build/QA savings) and one self-gates to complex plans only.
 
-**Branch/merge note.** EN03 is cut from `main` and edits `skills/en-plan/SKILL.md` and `references/templates/plan-template.md`, which EN01 also edits — but in **different regions** (EN01 U12 added a brainstorm nudge at en-plan step 4; EN01 U7 touched plan-template's Gated criteria). A merge with EN01 should be trivial/auto-mergeable. EN03 is otherwise independent of the EN01/EN02 review-model stack.
+**Branch/merge note.** This plan is cut from `main` and edits `skills/en-plan/SKILL.md` and `references/templates/plan-template.md`, which the in-flight skill-suite branch also edits — but in **different regions** (that branch added a brainstorm nudge near en-plan's request-sourcing step, and touched the plan-template Gated criteria). A merge should be trivial/auto-mergeable. This work is otherwise independent of the in-flight review-model branches.
 
 ## Out of scope for this plan (deliberately, to stay lean)
 
@@ -127,4 +127,4 @@ Build order: U1 (headline — template categories + lint rule + pre-write check 
 
 ## Lifecycle
 
-`draft → open → in_progress → completed`. `plan_id: EN03` is forced (EN01/EN02 aren't on `main` yet, so auto-increment would collide at EN01). Independent of the EN01/EN02 stack; mergeable in parallel (trivial overlap with EN01 in en-plan/plan-template, different regions).
+`draft → open → in_progress → completed`. `plan_id: EN03` is forced (the two in-flight plans aren't on `main` yet, so auto-increment would collide low). Independent of the in-flight stack; mergeable in parallel (trivial overlap with the skill-suite branch in en-plan/plan-template, different regions).

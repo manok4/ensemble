@@ -91,9 +91,16 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Gated:** false (default; set `true` ONLY when running this unit at build time changes production user state or external system state — see Generation notes for the exact criteria; over-gating trains users to autopilot through prompts)
 - **Execution note:** test-first | characterization-first | pragmatic
 - **Patterns to follow:** <citations from `docs/learnings/patterns/` if relevant>
-- **Test scenarios:**
-  - <scenario>
-  - <scenario>
+- **Test scenarios:** For a **feature-bearing** unit (anything that adds/changes behavior), enumerate **actual** scenarios across the applicable categories — each with concrete inputs, actions, and expected outcomes:
+  - *Happy path:* <core behavior — input → action → expected outcome>
+  - *Edge case:* <boundary / empty / nil / concurrent — expected outcome>
+  - *Error / failure path:* <invalid input / service failure / timeout / permission — expected outcome>
+  - *Integration:* <cross-layer / callback / middleware — expected outcome> (when the unit spans layers)
+
+  Skip a category only when it genuinely doesn't apply to the unit. **Non-feature-bearing** units (pure config, scaffolding, styling, docs) use the escape hatch instead of scenarios:
+  - **Test expectation:** none — <reason, e.g. "config-only; covered by the suite it enables">
+
+  A feature unit with blank, single-vague-line ("tests pass"), or `none`-without-reason scenarios is **incomplete** — the pre-write review and the `unit.test-scenarios` lint (P2 advisory) flag it.
 - **Verification:** <what counts as done — tests pass + lint + manual check>
 
 ### U2. ...
