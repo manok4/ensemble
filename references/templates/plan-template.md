@@ -74,6 +74,12 @@ data_scale: {{DATA_SCALE}}
 
 <one to three paragraphs: the architectural shape of the solution. Decisions live here at the macro level; per-unit tactics live in U-ID sections.>
 
+## Technical design
+
+**Present ONLY when an architecture-complexity trigger fires** (≥3 new/changed components, a ≥3-step protocol/handshake, a state machine, ≥3 data-flow stages, or DSL/public-API design). A **directional** high-level sketch of the cross-cutting architecture — component boundaries, data flow between them, and key interfaces/contracts. Directional, not a spec (the units carry the tactics). **Omit this section entirely on simpler plans** that fire no trigger.
+
+<component boundaries · data flow · key interfaces — a diagram or a short structured description>
+
 ## Implementation units
 
 Each unit has a stable U-ID. Never renumbered after assignment.
