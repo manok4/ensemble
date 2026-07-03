@@ -835,23 +835,25 @@ check_plan_unit_category_enum() {
 
 # --- Rule: unit.test-scenarios ---
 # Feature-bearing units SHOULD enumerate real test scenarios (happy / edge /
-# error / integration). A `category: feature` unit whose Test scenarios block is
-# empty or a single vague line, and that lacks the `Test expectation: none —
-# <reason>` escape, is flagged P2 advisory (a nudge, never a P1 blocker).
+# error / integration). A `category: feature` unit with fewer than two scenario
+# lines is flagged P2 advisory (a nudge, never a P1 blocker). The
+# `Test expectation: none — <reason>` escape is for NON-feature units (which are
+# already skipped by the category filter) — a feature unit cannot use it to
+# bypass; if a unit genuinely has no testable behavior, recategorize it.
 check_plan_unit_test_scenarios() {
   case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
   local file="$1"
 
-  while IFS='|' read -r uid cat scen_lines has_expect; do
+  while IFS='|' read -r uid cat scen_lines _has_expect; do
     [ -z "$uid" ] && continue
-    # Only nudge explicit feature units; leave other categories alone.
+    # Only nudge explicit feature units; leave other categories alone. A feature
+    # unit needs real scenarios regardless of any Test expectation line (that
+    # escape is for non-feature units, which never reach this check).
     [ "$cat" = "feature" ] || continue
-    # Escape hatch: an explicit `Test expectation: none — <reason>` satisfies it.
-    [ "$has_expect" = "1" ] && continue
     if [ "${scen_lines:-0}" -lt 2 ]; then
       emit "unit.test-scenarios" "$file" "" "P2" \
-        "Unit $uid (feature) has thin test scenarios ($scen_lines line(s))" \
-        "Enumerate real scenarios across the applicable categories (happy path, edge cases, error/failure paths, integration) with concrete inputs/actions/outcomes — or, for a non-feature unit, use '- **Test expectation:** none — <reason>'. See references/templates/plan-template.md."
+        "Unit $uid (feature) has fewer than two test scenarios ($scen_lines)" \
+        "Enumerate real scenarios across the applicable categories (happy path, edge cases, error/failure paths, integration) with concrete inputs/actions/outcomes. If the unit genuinely has no testable behavior, recategorize it (non-feature) and use '- **Test expectation:** none — <reason>'. See references/templates/plan-template.md."
     fi
   done < <(
     awk '

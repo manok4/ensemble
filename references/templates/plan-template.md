@@ -106,7 +106,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   Skip a category only when it genuinely doesn't apply to the unit. **Non-feature-bearing** units (pure config, scaffolding, styling, docs) use the escape hatch instead of scenarios:
   - **Test expectation:** none — <reason, e.g. "config-only; covered by the suite it enables">
 
-  A feature unit with blank, single-vague-line ("tests pass"), or `none`-without-reason scenarios is **incomplete** — the pre-write review and the `unit.test-scenarios` lint (P2 advisory) flag it.
+  A feature unit with blank or fewer-than-two scenarios is **incomplete** — the pre-write review and the `unit.test-scenarios` lint (P2 advisory) flag it.
 - **Verification:** <what counts as done — tests pass + lint + manual check>
 
 ### U2. ...

@@ -107,7 +107,7 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 | `unit.risk-class` | P1 (new-style) / P2–P3 (legacy) | Every unit must declare a valid `Risk:` (`low\|medium\|high\|destructive`) |
 | `unit.gated-flag` | P2–P3 | Every unit should declare `Gated: true\|false` (defaults to false) |
 | `unit.category-enum` | P2 | `Category:` when present must match the documented enum |
-| `unit.test-scenarios` | P2 | A `category: feature` unit whose `Test scenarios:` is empty or a single vague line, and that lacks the `Test expectation: none — <reason>` escape, is flagged — a nudge toward real scenarios across happy/edge/error/integration (never a P1 blocker) |
+| `unit.test-scenarios` | P2 | A `category: feature` unit whose `Test scenarios:` has fewer than two scenario lines is flagged — a nudge toward real scenarios across happy/edge/error/integration (never a P1 blocker) |
 
 ## Output format
 
