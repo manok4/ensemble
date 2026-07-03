@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN03
 title: Plan-quality upgrades to en-plan
-status: open
+status: in_progress
 location: active
 created: 2026-07-03
 shipped:
