@@ -13,6 +13,8 @@ related:
 
 # en-learn capture checkpoint at en-ship
 
+> **Relocated to en-build by EN04 (2026-07-03).** This checkpoint now fires at **`/en-build` completion**, not in `/en-ship`'s preflight. The rationale below (a structured, non-droppable checkpoint that a soft prompt cannot guarantee) is unchanged and still load-bearing — only its *location* moved, so capture happens at the point of insight while the user is present, and `/en-ship` can be hands-off by default. Where this spec says "en-ship preflight," read "en-build completion." See `docs/plans/active/EN04-improvement_hands-off-ship.md` and foundation D38.
+
 ## Problem
 
 The current auto-invoke design relies on two soft prompts at the end of `/en-build` and `/en-qa`. Both have the same failure mode as the en-setup verification step we fixed in PR #13: a soft prompt at the end of a long mechanical sequence gets silently dropped by the agent under context pressure.
@@ -52,7 +54,7 @@ If any section of this spec uses different wording (e.g. `skipped` instead of `i
 
 ## Resolved decisions
 
-1. **Add a learning checkpoint to `/en-ship`'s preflight.** Not a post-flight soft prompt — a numbered, structured preflight step with a visible outcome line in the en-ship report. The agent must surface one of the four canonical outcome values — no silent drop possible.
+1. **Add a structured learning checkpoint at `/en-build` completion** (relocated from `/en-ship`'s preflight by EN04). Not a post-flight soft prompt — a numbered, structured step with a visible `learning_checkpoint:` outcome line in the build summary. The agent must surface one of the four canonical outcome values — no silent drop possible. (Originally specified in `/en-ship`'s preflight; EN04 moved it to en-build completion so capture happens at the point of insight and en-ship stays hands-off. The non-droppable-structured-step requirement is unchanged.)
 2. **Always prompt; make skip cheap.** Don't gate on diff-size or commit-count thresholds. Prompt on every `/en-ship` invocation; the user types `skip` if nothing's worth filing. Cost of acknowledging "nothing this time" is much lower than cost of a missed capture.
 3. **Broaden `/en-qa`'s anchor.** Replace *"QA found and fixed N bugs. Capture as learnings?"* with *"QA wrapped. Anything worth filing as a learning from this pass? (yes / skip)"* so the prompt fires even when zero bugs were found.
 4. **Keep `/en-build` and `/en-qa` soft prompts.** They're freshest-point capture opportunities and they work when the agent runs them. The new en-ship checkpoint is the **backstop**, not a replacement.
