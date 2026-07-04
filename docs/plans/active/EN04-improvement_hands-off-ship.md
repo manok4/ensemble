@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN04
 title: Hands-off en-ship with CI-hosted self-heal
-status: open
+status: in_progress
 location: active
 created: 2026-07-03
 shipped:
