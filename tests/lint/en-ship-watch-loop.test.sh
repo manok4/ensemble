@@ -38,25 +38,47 @@ else
   fail "local loop must invoke /en-resolve-pr"
 fi
 
-# --- loops until clean, bounded, then escalate needs-human ---
-if grep -qiE "Loop until clean|loop until|until all checks are green" "$EN_SHIP" && grep -qiE "escalat|needs-human" "$EN_SHIP"; then
-  pass "local loop repeats until clean, bounded, then escalates"
+# --- review findings fetched comprehensively (inline threads), not just --json comments ---
+if grep -qF "get-pr-comments" "$EN_SHIP" && grep -qiE "inline review threads?" "$EN_SHIP"; then
+  pass "loop fetches inline review threads via get-pr-comments (not --json comments alone)"
 else
-  fail "local loop must repeat until clean (bounded) then escalate"
+  fail "loop must fetch inline review threads (get-pr-comments), not just gh pr view --json comments"
 fi
 
-# --- default never auto-merges (stop at mergeable PR) ---
-if grep -qiE "never auto-merg|Default OFF" "$EN_SHIP"; then
-  pass "default stops at a mergeable PR (no auto-merge)"
+# --- failing-check logs get a real repair path (not just review comments) ---
+if grep -qF "gh run view --log-failed" "$EN_SHIP" && grep -qiE "Failing checks" "$EN_SHIP"; then
+  pass "failing checks route their logs into the fix path (not comment-only)"
 else
-  fail "default must not auto-merge"
+  fail "loop must feed failing-check logs into the fix path"
 fi
 
-# --- --auto-merge arms native gh auto-merge ---
-if grep -qF -- "--auto-merge" "$EN_SHIP" && grep -qF "gh pr merge --auto --squash" "$EN_SHIP"; then
-  pass "--auto-merge arms gh pr merge --auto --squash"
+# --- trusted-source gate before auto-fixing (prompt-injection guard) ---
+if grep -qiE "[Tt]rusted-source gate" "$EN_SHIP" && grep -qiE "untrusted|prompt-injection" "$EN_SHIP" && grep -qiE "same-repo|fork" "$EN_SHIP"; then
+  pass "loop gates on trusted author + same-repo before auto-fixing"
 else
-  fail "--auto-merge must arm gh pr merge --auto --squash"
+  fail "loop must gate on trusted source (author/bot, same-repo) before auto-fixing"
+fi
+
+# --- bounded by watch.max_cycles, default 3, then escalate needs-human ---
+if grep -qF "watch.max_cycles" "$EN_SHIP" && grep -qE "default \`?3\`?" "$EN_SHIP" && grep -qiE "needs-human" "$EN_SHIP"; then
+  pass "loop bounded by watch.max_cycles (default 3) then escalates needs-human"
+else
+  fail "loop must be bounded by watch.max_cycles (default 3) then escalate needs-human"
+fi
+
+# --- CI is read-only (no CI-side writer) ---
+if grep -qiE "CI.?s role is (to )?run tests|CI's role is read-only|keeps write access and secrets off CI" "$EN_SHIP"; then
+  pass "en-ship documents CI as read-only (fixing is local)"
+else
+  fail "en-ship must state CI is read-only"
+fi
+
+# --- --auto-merge armed ONLY once the loop is clean ---
+if grep -qF -- "--auto-merge" "$EN_SHIP" && grep -qF "gh pr merge --auto --squash" "$EN_SHIP" \
+   && grep -qiE "only after the watch loop reaches a clean state|arm it only after" "$EN_SHIP"; then
+  pass "--auto-merge arms native auto-merge only after the loop is clean"
+else
+  fail "--auto-merge must be armed only after the loop reaches a clean state"
 fi
 
 # --- --no-watch flag ---

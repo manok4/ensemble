@@ -2,7 +2,7 @@
 type: plan
 plan_type: improvement
 plan_id: EN04
-title: Hands-off en-ship with CI-hosted self-heal
+title: Hands-off en-ship with a local self-heal loop
 status: in_progress
 location: active
 created: 2026-07-03
@@ -34,97 +34,59 @@ depth: standard
 data_scale: small
 ---
 
-# EN04 - Hands-off en-ship with CI-hosted self-heal
+# EN04 - Hands-off en-ship with a local self-heal loop
+
+> **Shipped design (authoritative): local self-heal, not CI.** An earlier draft of this plan (units U3–U5, retained in history below) moved the self-heal fix loop *into* CI via an `en-ship-watch.yml` workflow + `bin/en-ship-watch-ci` wrapper. That direction was **reversed during build, per user decision** — those artifacts were removed. Fixing happens **locally**; CI is read-only. The sections below describe what actually shipped. Foundation **D38** is the canonical record. **Do not reintroduce a CI-side writer / `en-ship-watch.yml` / write-capable runner.**
 
 ## Context
 
-A review of the `no-mistakes` git-push-gate tool surfaced one property en-ship lacks: **no babysitting** - you kick off shipping and walk away, and the process self-heals CI failures and lands a mergeable PR without you keeping a session open. no-mistakes achieves this with a persistent local daemon. Ensemble can't ship a daemon (it's a skill suite, not a compiled binary), but it already has a daemon available for free - GitHub Actions.
+A review of the `no-mistakes` git-push-gate tool surfaced one property en-ship lacks: **no babysitting** — you kick off shipping, and the process self-heals PR findings and lands a mergeable PR without you hand-applying each fix. no-mistakes does this by fixing **locally** (in a local daemon's worktree, with the local agent). EN04 adopts that principle: the self-heal fix loop runs **on the developer's machine**, not in CI.
 
-This plan makes `/en-ship` **hands-off by default** and moves the self-heal loop off the local session into a CI-hosted, event-driven workflow. The user runs `/en-ship`, closes the laptop, and returns to a green, mergeable PR (or a merged one under `--auto-merge`).
+`/en-ship` becomes **hands-off by default** and, after opening the PR, runs a **session-bound local watch-and-fix loop**: CI runs tests + a review model posts findings; en-ship watches for those, drives `/en-resolve-pr` to fix them locally, pushes, re-validates, and loops until the PR is green with no unresolved findings.
 
-Two kinds of babysitting are removed:
-
-1. **Decision-babysitting** - en-ship's mid-flow interactive checkpoints (learning, scope) become auto-resolve, with a hard-stop safety floor (secrets / push-to-default-branch / destructive) that never auto-resolves.
-2. **Session-babysitting** - the local watch-and-fix loop (current en-ship step 13, session-bound) is replaced by a CI-hosted `en-ship-watch.yml` that self-heals failures in the runner and survives the session ending.
-
-Alongside, the **learning checkpoint moves from en-ship to en-build completion**, per an explicit user requirement. This is not a naive move: [en-learn-checkpoint-spec.md](../../en-learn-checkpoint-spec.md) placed the checkpoint in en-ship *specifically because* the en-build/en-qa soft prompts drop under context pressure (the PR #18 fix). So EN04 promotes en-build's soft auto-invoke into a **structured, non-droppable checkpoint** (visible outcome line, the four canonical outcome values) - preserving the anti-drop property at a point where the user is present and context is freshest.
-
-The priority is **performance (walk-away reliability) first, then speed, then cost**. The CI-hosted watcher is event-driven (fires only on a CI failure, not polling), so it is cheaper to run than no-mistakes' polling daemon and - on public repos - effectively free beyond model tokens.
+Alongside, the **learning checkpoint moves from en-ship to en-build completion**, per an explicit user requirement. This is not a naive move: [en-learn-checkpoint-spec.md](../../en-learn-checkpoint-spec.md) placed the checkpoint in en-ship *specifically because* the en-build/en-qa soft prompts drop under context pressure (the PR #18 fix). So EN04 promotes en-build's soft auto-invoke into a **structured, non-droppable checkpoint** (visible outcome line, four canonical values) — preserving the anti-drop property at a point where the user is present.
 
 ## Out of scope for this plan (deliberately)
 
-- **A local background daemon.** The "don't become no-mistakes" boundary - GitHub Actions is the daemon.
-- **Changing the plan-completion checkpoint's contract.** It stays in en-ship as the lifecycle backstop; EN04 only makes it *auto-resolve* under hands-off (auto-`y` when the build is verifiably complete; informational pass on `incomplete_build`). Its outcome enum and placement are unchanged.
-- **Merging without a human by default.** Default stops at PR-ready; `--auto-merge` is opt-in.
-- **en-qa changes.** en-qa's broadened capture prompt (from the learn-checkpoint spec) is untouched here.
-- **New provider support / multi-SCM.** GitHub-only, matching the existing en-sweep/claude-review workflows.
+- **CI-side fixing / a write-capable CI runner.** Fixing is local; CI reviews only. (This is the reversal — see the banner above.)
+- **A local background daemon.** The loop is session-bound (runs while the `/en-ship` session is open); no detached daemon is shipped.
+- **Changing the plan-completion checkpoint's contract.** It stays in en-ship as the lifecycle backstop; EN04 only makes it *auto-resolve* under hands-off. Its outcome enum and placement are unchanged.
+- **en-qa changes.** en-qa's broadened capture prompt is untouched here.
 
-## Approach (high-level)
+## Approach (high-level, as shipped)
 
-Five units, sequenced so every dependency is built before its dependents. The learning checkpoint gets a new, structured home in en-build (U1). en-ship's hands-off *preflight* change (U2) is deliberately **watcher-agnostic** - it depends only on U1, not on the CI engine. The self-heal engine is a new CI workflow + bin wrapper (U3), installed by en-setup (U4). Only then does en-ship's *post-PR* watcher integration (U5) land, depending on both the hands-off preflight (U2) and the engine (U3).
+- **U1** relocates the learning checkpoint to **en-build completion** as a structured, non-droppable step. (depends: none)
+- **U2** makes **en-ship's preflight hands-off**: removes the learning checkpoint, auto-resolves scope + the plan-completion checkpoint, adds `--interactive`, records D38. (depends: U1)
+- **Local watch-and-fix loop** (en-ship step 13, the shipped self-heal): after the PR opens, poll CI + review findings (via the comprehensive `get-pr-comments` fetch), gate on trusted authors, drive `/en-resolve-pr` locally to fix (routing failing-check logs and review threads), loop until clean (bounded `watch.max_cycles`, default 3), then escalate. `--auto-merge` (opt-in, armed once clean) and `--no-watch`.
 
-- **U1** relocates the learning checkpoint to en-build as a structured, non-droppable step. (depends: none)
-- **U2** makes en-ship's preflight hands-off: removes the learning checkpoint, auto-resolves scope + the plan-completion checkpoint, adds `--interactive`, records decision D38. Watcher-agnostic. (depends: U1)
-- **U3** builds the CI self-heal engine: `github-workflow-en-ship-watch.yml` (event-driven on `check_suite: completed` failure for labeled PRs) + `bin/en-ship-watch-ci` (drives en-resolve-pr headless, bounded to 3 attempts, branch-only writes, escalates by dropping the label). (depends: none)
-- **U4** teaches en-setup to install the workflow + wrapper and surface the (shared) secrets. (depends: U3)
-- **U5** wires en-ship's post-PR hands-off completion: `--auto-merge`, watcher detection + labeling, graceful degradation, and the watch-loop-step rewrite. (depends: U2, U3)
+**History (superseded).** The plan originally built the self-heal loop in CI as U3 (`en-ship-watch.yml` + `bin/en-ship-watch-ci`), U4 (en-setup install), and U5 (en-ship arms the CI watcher). Six review passes surfaced escalating security problems (a `workflow_run` pwn-request vuln, a required write-token in CI, fork-checkout safety, plugin-in-CI). The user then corrected the direction: **fix locally, not in CI.** U3/U4 artifacts were deleted and U5 was replaced by the local loop. The U3–U5 unit descriptions are retained below strictly as a historical record — **not** as buildable work.
 
-**Split rationale (peer review, iteration 1).** An earlier draft folded U2 and U5 into a single "hands-off en-ship" unit that both *depended on* U3 and was sequenced *before* it - a dependency-order inconsistency, and too large a blast radius for one unit. Splitting the watcher-agnostic preflight change (U2) from the watcher-integration change (U5) removes the dependency inversion and keeps each unit reviewable.
+## Decisions, assumptions & risks (as shipped)
 
-## Decisions, assumptions & risks
+- **Decision — self-heal is LOCAL, not CI.** *Rejected alternative:* a CI-hosted fix workflow (built as U3–U5, then removed). *Why:* a CI job that *writes* fixes needs repo-write + API secrets in the runner, which opens the `workflow_run` pwn-request class and a fork-safety surface. Fixing locally keeps all write access + secrets on the developer's machine; CI stays read-only (tests + a review model). Simpler and safer.
+- **Decision — session-bound, not a detached daemon.** *Why:* Ensemble is a skill suite, not a compiled binary; a robust local daemon (crash recovery, state, service lifecycle) is out of scope. The loop runs while the `/en-ship` session is open — automated (no hand-applying fixes) but not full close-the-laptop walk-away.
+- **Decision — trusted-source gate on findings.** Only auto-fix findings from trusted authors (PR author, collaborator/CODEOWNERS, recognized review bot) on same-repo PRs. A PR comment is untrusted input; blindly fixing from it is a prompt-injection vector.
+- **Decision — promote, don't just move, the learning checkpoint.** The en-build checkpoint is structured (visible outcome line, four canonical values) to preserve the PR #18 anti-drop guarantee.
+- **Decision — hands-off is the default; `--interactive` is the escape hatch.** A **breaking change** to en-ship's contract (D38), acceptable pre-1.0.
+- **Risk — session-bound loop dies with the session.** Accepted: automated fixing without hand-holding is the goal; full walk-away would need a daemon (out of scope).
+- **Risk — loop spins on an unfixable finding.** *Mitigation:* bounded to `watch.max_cycles` (default 3), then escalate the remainder as `needs-human`.
 
-- **Decision - CI-hosted, not local-detached, watcher.** *Alternative considered:* a detached local background process. *Rejected:* without daemon infrastructure it is brittle (dies on reboot, no crash recovery, races the working tree). CI-hosted gets the durability property for free and survives the machine being off.
-- **Decision - event-driven, not polling.** The workflow triggers on `check_suite: completed` (failure) for labeled PRs, so compute is spent only when there is a failure to fix - cheaper than no-mistakes' polling and the GitHub-native pattern.
-- **Decision - reuse en-sweep's secrets, add none.** en-setup already surfaces `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` (+ `OPENAI_API_KEY`, `GITHUB_TOKEN`) for en-sweep. The watcher reuses them; no new secret is introduced.
-- **Decision - promote, don't just move, the learning checkpoint.** *Alternative:* revert en-build's invoke to a soft prompt at build completion. *Rejected:* regresses the PR #18 silent-drop fix. The en-build checkpoint must be structured (visible outcome line, four canonical values) to preserve the anti-drop guarantee.
-- **Decision - hands-off is the default; `--interactive` is the escape hatch.** This is a **breaking change** to en-ship's contract (documented in D38). Acceptable for a pre-1.0 skill suite; `--interactive` restores the prior stop-and-ask flow, including a lightweight learning prompt for the direct-to-ship (no-en-build) path.
-- **Assumption - en-resolve-pr runs acceptably headless in a runner.** It has no explicit `report-only` mode (it writes), but it is already driven bounded-and-automated by en-ship's watch loop; the wrapper enforces the same 2–3 cycle cap and the recursion guard (`ENSEMBLE_PEER_REVIEW`).
-- **Assumption - repos allow auto-merge + Actions with repo-write.** One-time setup, like `no-mistakes init`. en-ship degrades gracefully when the watcher is absent.
-- **Risk - a write-capable runner is a security surface.** *Mitigation:* branch-only writes, never force-push the default branch, bounded attempts, and the guardrail that the wrapper refuses to touch protected refs. Called out in D38.
-- **Risk - fix→CI→fix infinite loop.** *Mitigation:* hard cap of 3 fix attempts tracked via a PR-visible counter; on exhaustion the wrapper drops the watch label and comments to escalate.
-- **Risk - "hands-off but nothing is watching."** *Mitigation:* en-ship detects whether `en-ship-watch.yml` is installed and never reports hands-off success when it is absent - it prints the install command and either falls back to the session-bound loop or stops cleanly at PR-ready.
-
-## Technical design
-
-> **Correction (post-build): the CI self-heal engine below was REMOVED.** During build the direction was reversed per user decision: **fixing happens locally, not in CI.** U3/U4 (the `en-ship-watch.yml` workflow + `bin/en-ship-watch-ci` wrapper + their en-setup install) were deleted. CI's role is read-only — run tests + a review model that posts findings; `/en-ship` then runs a **session-bound local watch-and-fix loop** that drives `/en-resolve-pr` on the developer's machine, loops until clean, and escalates the remainder. This keeps all repo-write access and secrets off CI. The technical-design and U3/U4/U5 sections below describe the abandoned CI-hosted design and are retained only as a record; **the authoritative shipped design is foundation D38.**
-
-### Control flow - default `/en-ship` (hands-off)
+## Technical design (as shipped)
 
 ```
-preflight (auto-resolve scope; HARD-STOP on secrets / push-to-default / destructive)
-  → plan-completion checkpoint: auto-y if build verifiably complete, else informational
-  → commit → push → open PR
-  → watcher installed?
-       yes → apply `en-ship-watch` label; report "watcher armed"; stop at PR-ready
-             (if --auto-merge: also `gh pr merge --auto --squash`)
-       no  → print `/en-setup` install command; fall back to session-bound watch OR
-             stop cleanly at PR-ready (never silently claim hands-off)
+/en-ship (hands-off default)
+  preflight (auto-resolve scope; HARD-STOP on secrets / push-to-default / destructive)
+    → plan-completion checkpoint: auto-y if build verifiably complete, else informational
+    → commit → push → open PR
+    → LOCAL watch-and-fix loop (step 13):
+         poll CI (gh pr checks) + review findings (get-pr-comments: inline threads + review bodies + comments)
+         → trusted-source gate (PR author / collaborator / review bot; same-repo; head-SHA match)
+         → fix locally via /en-resolve-pr (failing-check logs AND review threads) → push → re-poll
+         → loop until green + no unresolved findings (bounded watch.max_cycles=3) → else escalate needs-human
+    → --auto-merge (opt-in): arm `gh pr merge --auto --squash` ONLY once the loop is clean
 ```
 
-### CI self-heal engine
-
-`en-ship-watch.yml` (event-driven):
-```
-on:
-  check_suite:
-    types: [completed]
-jobs:
-  self-heal:
-    if: github.event.check_suite.conclusion == 'failure'
-    # gated further inside the wrapper: only PRs carrying the `en-ship-watch` label
-    steps: [checkout, resolve CLI + auth env, run bin/en-ship-watch-ci]
-```
-
-`bin/en-ship-watch-ci` responsibilities (mirrors `en-sweep-ci`'s structure):
-1. Resolve the PR from the failing check_suite head SHA; exit 0 (no-op) if it lacks the `en-ship-watch` label.
-2. Read/increment a fix-attempt counter (PR-visible, e.g. a hidden marker in a bot comment or the label set); if `>= 3`, drop the label, comment an escalation, exit 0.
-3. Fetch failed job logs; drive `/en-resolve-pr` (headless, recursion-guarded) to produce a fix.
-4. If a fix was produced: commit on the PR branch, push (branch-only - refuse any write to the default branch or a force-push of a protected ref), which re-triggers CI.
-5. If no fix was produced or the failure is a judgment call: drop the label + escalation comment.
-
-### Data / state
-
-No new persistent state. The fix-attempt bound and label are the only coordination signals, both living on the PR (GitHub is the store). No new secret - the workflow reuses en-sweep's auth env vars.
+CI's role is **read-only**: run tests + let a review model (Anthropic Code Review action, CodeRabbit, `/en-sweep`'s review) post findings. No CI-side writer, no `en-ship-watch.yml`, no new secret.
 
 ## Implementation units
 
@@ -157,8 +119,8 @@ No new persistent state. The fix-attempt bound and label are the only coordinati
 - **Approach:**
   1. **Remove** the learning checkpoint (current step 4); renumber the remaining steps.
   2. **Hands-off preflight defaults:** auto-resolve scope-confirm; make the plan-completion checkpoint auto-resolve - auto-`y` (flip + `git mv` + set `shipped:`, atomic with the ship commit) when the build is verifiably complete via `bin/ensemble-verify-peer-evidence` (per-unit or `--branch-coverage`), and record an informational `incomplete_build` (non-gating) otherwise. **Safety floor unchanged:** secret-scan match, push to the default branch, and destructive-guardrail hits still hard-stop even in hands-off.
-  3. **`--interactive` flag:** restore the removed checkpoints, including a lightweight learning prompt for the direct-to-ship path where no en-build ran. (Defining `--interactive` here keeps the flags table coherent; `--auto-merge` is added in U5 with the post-PR watcher wiring.)
-  4. **D38** in `docs/foundation.md` §4.1 covering: hands-off default (breaking change), learning-checkpoint relocation to en-build, plan-completion auto-resolve under hands-off, and (forward-referencing U3/U5) the CI-hosted self-heal watcher with its guardrails.
+  3. **`--interactive` flag:** restore the removed checkpoints, including a lightweight learning prompt for the direct-to-ship path where no en-build ran.
+  4. **D38** in `docs/foundation.md` §4.1 covering: hands-off default (breaking change), learning-checkpoint relocation to en-build, plan-completion auto-resolve under hands-off, and the local watch-and-fix loop. *(As shipped, D38 records the local self-heal design; the `--auto-merge` flag and the local loop landed in en-ship's step 13/14 — see the shipped design above.)*
 - **Risk:** medium
 - **Category:** feature
 - **Reversibility:** reversible
@@ -172,7 +134,9 @@ No new persistent state. The fix-attempt bound and label are the only coordinati
   - Integration - D38: foundation records the breaking-change decision with the canonical facets. (drift guard asserts D38 exists and names hands-off + relocation)
 - **Verification:** `tests/lint/en-ship-hands-off.test.sh` passes (ends with `report`); `bash tests/run.sh` green; `bin/ensemble-lint --scope docs/` exit 0; foundation shows D38; grep confirms the learning checkpoint no longer appears in en-ship.
 
-### U3. CI-hosted self-heal engine: workflow template + bin wrapper
+### U3. CI-hosted self-heal engine: workflow template + bin wrapper — ⚠️ SUPERSEDED / REMOVED
+
+> **This unit was built, then removed** when the direction was reversed to local self-heal (see the banner at the top of this plan and D38). `en-ship-watch.yml`, `bin/en-ship-watch-ci`, and their tests do **not** exist in the shipped tree. Kept only as a historical record — do not build.
 
 - **Goal:** Provide the event-driven CI workflow and the bin wrapper that self-heals CI failures on a labeled PR, bounded and branch-safe.
 - **Requirements covered:** none.
@@ -192,7 +156,9 @@ No new persistent state. The fix-attempt bound and label are the only coordinati
   - Integration: workflow YAML is valid and triggers on `check_suite: completed` with the failure guard. (drift guard greps the template for the trigger + job guard + wrapper invocation)
 - **Verification:** `tests/lint/en-ship-watch-ci.test.sh` passes (ends with `report`); `bash -n bin/en-ship-watch-ci` clean; a YAML sanity check on the template; `bash tests/run.sh` green.
 
-### U4. en-setup installs the watch workflow + wrapper
+### U4. en-setup installs the watch workflow + wrapper — ⚠️ SUPERSEDED / REMOVED
+
+> **Built then removed** with U3 (local-self-heal reversal). en-setup does **not** install any en-ship-watch workflow/wrapper in the shipped tree. Historical record only — do not build.
 
 - **Goal:** Teach `/en-setup` to install `en-ship-watch.yml` and `bin/en-ship-watch-ci`, and surface the (shared) secrets, mirroring the en-sweep install.
 - **Requirements covered:** none.
@@ -211,7 +177,9 @@ No new persistent state. The fix-attempt bound and label are the only coordinati
   - Integration: the referenced template path matches U3's file name exactly. (drift guard cross-checks the template filename)
 - **Verification:** `tests/lint/en-setup-watch-install.test.sh` passes (ends with `report`); `bash tests/run.sh` green; `bin/ensemble-lint --scope docs/` exit 0.
 
-### U5. en-ship post-PR hands-off: `--auto-merge`, watcher integration, graceful degradation
+### U5. en-ship post-PR hands-off: `--auto-merge`, watcher integration, graceful degradation — ⚠️ SUPERSEDED
+
+> **The CI-watcher parts of this unit were reversed.** As shipped, en-ship's step 13 is the **local** watch-and-fix loop (not a CI-watcher arm); `--auto-merge` survives (armed once the local loop is clean). Historical record of the CI-first design below — do not build the watcher-arm/degradation parts.
 
 - **Goal:** Wire en-ship's post-PR completion for walk-away shipping - add `--auto-merge`, detect and arm the CI watcher, degrade gracefully when it is absent, and rewrite the watch-loop step to the CI-first model.
 - **Requirements covered:** none.
@@ -235,10 +203,9 @@ No new persistent state. The fix-attempt bound and label are the only coordinati
   - Integration: the label name and workflow filename referenced in en-ship match U3/U4 exactly. (drift guard cross-checks `en-ship-watch` + `en-ship-watch.yml`)
 - **Verification:** updated `tests/lint/en-ship-watch-loop.test.sh` passes (ends with `report`); `bash tests/run.sh` green; grep confirms en-ship references the watcher label + workflow name consistently with U3/U4.
 
-## Verification (whole plan)
+## Verification (whole plan, as shipped)
 
-- `bash tests/run.sh` - full suite green (new: 5 test files; updated: 1).
+- `bash tests/run.sh` - full suite green.
 - `bin/ensemble-lint --scope docs/` - exit 0 (no cross-link / frontmatter / unit drift).
-- `bash -n bin/en-ship-watch-ci` - syntax clean; YAML sanity on the new workflow template.
-- Manual spot-check: the four canonical learning-checkpoint values are spelled identically across en-build SKILL, the spec, and tests; en-ship no longer contains a learning checkpoint; the hands-off safety floor (secrets / push-to-default / destructive) is preserved as hard-stops.
-- Branch-level cross-agent review at build completion (D35), verdict recorded via the `review-verdict:` trailer.
+- Manual spot-check: the four canonical learning-checkpoint values are spelled identically across en-build SKILL, the spec, and tests; en-ship no longer contains a learning checkpoint; the hands-off safety floor (secrets / push-to-default / destructive) is preserved as hard-stops; **no `en-ship-watch.yml` / `bin/en-ship-watch-ci` / CI-side writer exists** (the local-self-heal reversal).
+- Branch-level cross-agent review at build completion (D35) + subsequent `/en-review` passes, verdicts recorded via `review-verdict:` trailers.

@@ -64,7 +64,7 @@ else
 fi
 
 # --- spec carries the relocation note ---
-if grep -qiE "Relocated to en-build by EN04" "$SPEC"; then
+if grep -qiE "relocated .*(to|from).*en-build|AUTHORITATIVE LOCATION.*en-build" "$SPEC"; then
   pass "en-learn-checkpoint spec documents the relocation to en-build"
 else
   fail "spec must document the relocation to en-build"
