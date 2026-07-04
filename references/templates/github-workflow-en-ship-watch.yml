@@ -55,11 +55,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.EN_SHIP_WATCH_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
       - name: Install agent CLI
         # NONFATAL by design: a failed install must NOT abort the job before the
         # wrapper runs — otherwise the PR sits silently armed with no escalation.
