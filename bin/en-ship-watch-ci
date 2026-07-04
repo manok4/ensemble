@@ -2,24 +2,27 @@
 # en-ship-watch-ci — wrapper used by .github/workflows/en-ship-watch.yml.
 #
 # CI-hosted self-heal for hands-off /en-ship (EN04). The workflow fires on a
-# failed CI `workflow_run`. This wrapper gates on the `en-ship-watch` label,
-# bounds fix attempts, drives /en-resolve-pr headless in the runner to fix the
-# failing CI, and pushes the fix BRANCH-ONLY (never the default branch, never a
-# fork's base repo, never a force-push of a protected ref). On an unfixable
-# failure, the attempt cap, a fork PR, a missing trigger token, or a push
-# failure, it drops the label and comments an escalation so a human is pulled
-# back in.
+# failed CI `workflow_run`. It runs THIS wrapper from a TRUSTED default-branch
+# checkout (never PR-head code), so the security-sensitive gating below runs
+# trusted. The wrapper:
+#   - rejects fork / cross-repository PRs via the GitHub API BEFORE fetching or
+#     running any PR branch (untrusted fork code never executes here);
+#   - gates on the `en-ship-watch` label, a trigger token, and a 3-attempt cap;
+#   - only THEN fetches the same-repo PR branch, drives /en-resolve-pr headless
+#     to fix the failing CI, and pushes the fix BRANCH-ONLY.
+# On anything unsafe or unfixable it drops the label and comments an escalation.
 #
 # Auth: the fix agent reuses en-sweep's secrets. The push/gh token must be able
-# to TRIGGER workflows (a PAT/App token in EN_SHIP_WATCH_TOKEN) — GITHUB_TOKEN
-# pushes do not retrigger Actions CI, so the wrapper escalates when no trigger
-# token is present rather than pushing a fix CI will silently ignore.
+# to TRIGGER workflows (EN_SHIP_WATCH_TOKEN, a PAT/App token) — GITHUB_TOKEN
+# pushes do not retrigger Actions CI.
 
 set -euo pipefail
 
 WATCH_LABEL="en-ship-watch"
 MAX_ATTEMPTS="${EN_SHIP_WATCH_MAX_ATTEMPTS:-3}"
 ATTEMPT_TRAILER="en-ship-watch-attempt"
+BOT_NAME="en-ship-watch[bot]"
+BOT_EMAIL="en-ship-watch@users.noreply.github.com"
 
 # ---------------------------------------------------------------------------
 # Pure, testable decision guards (no side effects — safe to source in tests).
@@ -35,6 +38,13 @@ under_attempt_cap() {
   [ "${1:-0}" -lt "${2:-3}" ]
 }
 
+# is_cross_repository <isCrossRepository flag> — 0 (true) when the PR head is in
+# a DIFFERENT repo (a fork). Fork PRs are refused: their code is untrusted and a
+# HEAD:branch push to origin would target the base repo, not the PR head.
+is_cross_repository() {
+  [ "${1:-}" = "true" ]
+}
+
 # assert_branch_safe <target-branch> <default-branch> — refuse (non-zero) when
 # the push target is empty or is the default branch. Branch-only writes.
 assert_branch_safe() {
@@ -46,15 +56,8 @@ assert_branch_safe() {
   return 0
 }
 
-# is_same_repo_pr <head-repo-owner> <base-repo-owner> — 0 when the PR head is in
-# the SAME repo (not a fork). Fork PRs are refused: pushing to origin would
-# mutate the base repo's branch, not the PR head.
-is_same_repo_pr() {
-  [ -n "${1:-}" ] && [ "${1:-}" = "${2:-}" ]
-}
-
 # count_attempts <default-branch> — number of prior watcher fix commits on the
-# current branch, read from the PR-visible commit trailers.
+# checked-out PR branch, read from the PR-visible commit trailers.
 count_attempts() {
   local default="${1:-main}"
   git log "origin/${default}..HEAD" --format='%(trailers:key='"$ATTEMPT_TRAILER"',valueonly)' 2>/dev/null \
@@ -65,6 +68,11 @@ count_attempts() {
 # Side-effecting helpers (thin wrappers over gh/git; skipped under tests).
 # ---------------------------------------------------------------------------
 
+configure_git_identity() {
+  git config user.name "$BOT_NAME"
+  git config user.email "$BOT_EMAIL"
+}
+
 drop_label_and_escalate() {
   local pr="$1" reason="$2"
   gh pr edit "$pr" --remove-label "$WATCH_LABEL" >/dev/null 2>&1 || true
@@ -72,30 +80,22 @@ drop_label_and_escalate() {
   echo "en-ship-watch: escalated PR #${pr} (${reason})"
 }
 
-# drive_resolve_pr — invoke /en-resolve-pr headless via whichever CLI is on PATH,
-# mirroring en-sweep-ci's CLI resolution. Returns the CLI exit status.
+# drive_resolve_pr — invoke /en-resolve-pr headless via whichever CLI is on PATH.
 drive_resolve_pr() {
   local pr="$1" plugin_dir="${ENSEMBLE_PLUGIN_DIR:-}"
   if command -v claude >/dev/null 2>&1; then
     set -- -p --output-format json --max-turns 50 --skill en-resolve-pr "resolve the failing CI on PR #${pr}"
     [ -n "$plugin_dir" ] && set -- --plugin-dir "$plugin_dir" "$@"
     claude "$@"
-  elif command -v codex >/dev/null 2>&1; then
-    if [ -n "$plugin_dir" ]; then
-      codex exec --json --plugin-dir "$plugin_dir" --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null
-    else
-      codex exec --json --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null
-    fi
   else
-    echo "ERROR: en-ship-watch requires claude or codex CLI in the runner." >&2
-    return 1
+    codex exec --json --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null
   fi
 }
 
 # stamp_attempt <n> — record the attempt on the produced fix commit so the cap
 # actually advances across runs. Amends HEAD (the fix commit) with the trailer.
 stamp_attempt() {
-  git commit --amend --no-edit --trailer "${ATTEMPT_TRAILER}: ${1}" >/dev/null
+  git commit --amend --no-edit --trailer "${ATTEMPT_TRAILER}: ${1}"
 }
 
 # ---------------------------------------------------------------------------
@@ -109,8 +109,9 @@ main() {
   local head_sha="${EN_SHIP_WATCH_HEAD_SHA:-${GITHUB_SHA:-}}"
   local default_branch="${EN_SHIP_WATCH_DEFAULT_BRANCH:-$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null || echo main)}"
 
-  # Resolve the open PR whose head is this failing CI run.
-  local pr labels branch head_owner base_owner
+  # Resolve the open PR whose head is this failing CI run (metadata only — no
+  # PR code is fetched or executed yet).
+  local pr labels branch cross
   pr="$(gh pr list --state open --search "$head_sha" --json number --jq '.[0].number' 2>/dev/null || true)"
   if [ -z "$pr" ]; then
     echo "en-ship-watch: no open PR for ${head_sha}; nothing to do."; exit 0
@@ -122,14 +123,12 @@ main() {
     echo "en-ship-watch: PR #${pr} is not labeled '${WATCH_LABEL}'; no-op."; exit 0
   fi
 
-  branch="$(gh pr view "$pr" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
-  head_owner="$(gh pr view "$pr" --json headRepositoryOwner --jq '.headRepositoryOwner.login' 2>/dev/null || true)"
-  base_owner="$(gh repo view --json owner --jq '.owner.login' 2>/dev/null || true)"
-
-  # Gate 2 — fork PRs: origin is the base repo, so a HEAD:branch push would
-  # mutate the wrong repo. Refuse and escalate.
-  if ! is_same_repo_pr "$head_owner" "$base_owner"; then
-    drop_label_and_escalate "$pr" "PR is from a fork (${head_owner:-unknown}); self-heal only supports same-repo branches"
+  # Gate 2 (SECURITY) — refuse fork / cross-repository PRs BEFORE any PR code is
+  # fetched or run. This is why the workflow checks out trusted default-branch
+  # code: fork code never executes in this privileged (write + secrets) context.
+  cross="$(gh pr view "$pr" --json isCrossRepository --jq '.isCrossRepository' 2>/dev/null || echo true)"
+  if is_cross_repository "$cross"; then
+    drop_label_and_escalate "$pr" "PR is from a fork / different repository; self-heal only supports same-repo branches"
     exit 0
   fi
 
@@ -139,16 +138,31 @@ main() {
     exit 0
   fi
 
-  # Gate 4 — bound fix attempts.
-  local attempts; attempts="$(count_attempts "$default_branch")"
-  if ! under_attempt_cap "$attempts" "$MAX_ATTEMPTS"; then
-    drop_label_and_escalate "$pr" "reached the ${MAX_ATTEMPTS}-attempt fix cap"
+  # Gate 4 — a fix needs a coding-agent CLI in the runner.
+  if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
+    drop_label_and_escalate "$pr" "no claude or codex CLI available in the runner"
     exit 0
   fi
+
+  branch="$(gh pr view "$pr" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
 
   # Gate 5 — never write to the default branch.
   if ! assert_branch_safe "$branch" "$default_branch"; then
     drop_label_and_escalate "$pr" "refused to write to a protected branch"
+    exit 0
+  fi
+
+  # Same-repo confirmed: NOW fetch + check out the PR branch (trusted authors).
+  configure_git_identity
+  if ! git fetch origin "$branch" || ! git checkout -B "$branch" "origin/${branch}"; then
+    drop_label_and_escalate "$pr" "could not fetch/checkout the PR branch '${branch}'"
+    exit 0
+  fi
+
+  # Gate 6 — bound fix attempts (counted from trailers on the PR branch).
+  local attempts; attempts="$(count_attempts "$default_branch")"
+  if ! under_attempt_cap "$attempts" "$MAX_ATTEMPTS"; then
+    drop_label_and_escalate "$pr" "reached the ${MAX_ATTEMPTS}-attempt fix cap"
     exit 0
   fi
 
@@ -165,8 +179,12 @@ main() {
     exit 0
   fi
 
-  # Stamp the attempt so the cap advances across runs.
-  stamp_attempt "$(( attempts + 1 ))"
+  # Stamp the attempt so the cap advances across runs (guarded — a failed amend
+  # must escalate, not exit under set -e with the label armed).
+  if ! stamp_attempt "$(( attempts + 1 ))"; then
+    drop_label_and_escalate "$pr" "could not stamp the attempt trailer on the fix commit"
+    exit 0
+  fi
 
   # Push branch-only (re-assert safety immediately before the push) and escalate
   # on any push failure instead of exiting with the label still armed.

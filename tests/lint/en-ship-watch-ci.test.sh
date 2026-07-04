@@ -69,16 +69,16 @@ else
   pass "assert_branch_safe refuses an empty target"
 fi
 
-# --- fork-PR guard: same-repo allowed, fork refused ---
-if call is_same_repo_pr "acme" "acme"; then
-  pass "is_same_repo_pr allows a same-repo PR"
+# --- fork guard uses isCrossRepository (not owner comparison) ---
+if call is_cross_repository "true"; then
+  pass "is_cross_repository detects a fork/cross-repo PR"
 else
-  fail "is_same_repo_pr should allow a same-repo PR"
+  fail "is_cross_repository must detect a cross-repository PR"
 fi
-if call is_same_repo_pr "forker" "acme"; then
-  fail "is_same_repo_pr must refuse a fork PR"
+if call is_cross_repository "false"; then
+  fail "is_cross_repository must treat a same-repo PR as not-cross"
 else
-  pass "is_same_repo_pr refuses a fork PR (head owner != base owner)"
+  pass "is_cross_repository allows a same-repo PR"
 fi
 
 # --- attempt cap actually advances: stamp_attempt writes the counted trailer ---
@@ -100,6 +100,48 @@ if grep -qE 'if ! git push origin' "$CI"; then
   pass "wrapper wraps the push and escalates on failure"
 else
   fail "wrapper must escalate on push failure (not exit under set -e with label armed)"
+fi
+
+# --- SECURITY: fork rejected BEFORE any PR branch is fetched/checked out ---
+reject_line=$(grep -n "is_cross_repository" "$CI" | head -1 | cut -d: -f1)
+fetch_line=$(grep -n "git fetch origin" "$CI" | head -1 | cut -d: -f1)
+if [ -n "$reject_line" ] && [ -n "$fetch_line" ] && [ "$reject_line" -lt "$fetch_line" ]; then
+  pass "fork gate runs BEFORE any PR-branch fetch/checkout (no untrusted code run)"
+else
+  fail "fork rejection must precede fetching PR code (reject=$reject_line fetch=$fetch_line)"
+fi
+
+# --- guarded stamp + bot identity (no set -e exit with label armed) ---
+if grep -qE 'if ! stamp_attempt' "$CI" && grep -qF "configure_git_identity" "$CI"; then
+  pass "wrapper sets a bot git identity and guards stamp_attempt"
+else
+  fail "wrapper must configure a git identity and guard stamp_attempt"
+fi
+
+# --- CLI-missing escalates (not a silent job death with label armed) ---
+if grep -qiE "no claude or codex CLI" "$CI"; then
+  pass "wrapper escalates when no agent CLI is available"
+else
+  fail "wrapper must escalate when no agent CLI is present"
+fi
+
+# --- workflow checks out TRUSTED default-branch code, not the PR head ---
+if grep -qE 'ref: \$\{\{ github.event.repository.default_branch \}\}' "$WF"; then
+  pass "workflow checks out trusted default-branch code (not PR head)"
+else
+  fail "workflow must check out the default branch (never PR-head code) for the privileged run"
+fi
+if grep -qE 'ref: \$\{\{ github.event.workflow_run.head_sha \}\}' "$WF"; then
+  fail "workflow must NOT check out PR-head SHA as the run ref (pwn-request risk)"
+else
+  pass "workflow does not run from PR-head SHA (pwn-request avoided)"
+fi
+
+# --- workflow really installs a CLI (not just checks PATH) ---
+if grep -qE "npm install -g @anthropic-ai/claude-code" "$WF"; then
+  pass "workflow has a real CLI install step"
+else
+  fail "workflow must actually install an agent CLI, not only check PATH"
 fi
 
 # --- drives /en-resolve-pr headless ---

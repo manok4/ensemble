@@ -2,24 +2,24 @@
 #
 # CI-hosted self-heal for hands-off /en-ship (EN04). Event-driven: fires when one
 # of the repo's CI workflows completes with a `failure` conclusion (workflow_run).
-# The job only acts on open PRs carrying the `en-ship-watch` label (applied by
-# /en-ship when it arms the watcher); everything else is a fast no-op inside the
-# wrapper. On a labeled PR it drives /en-resolve-pr headless to fix the failing
-# CI, bounded to 3 attempts, pushes the fix BRANCH-ONLY, and escalates (drops the
-# label + comments) when it can't safely proceed. GitHub Actions is the daemon.
+#
+# SECURITY (workflow_run runs privileged — write perms + secrets):
+#   * This job checks out the TRUSTED default-branch code, NOT the PR head. The
+#     wrapper (bin/en-ship-watch-ci from the default branch) then rejects fork /
+#     cross-repository PRs via the GitHub API BEFORE fetching or running any PR
+#     branch — so untrusted fork code never executes here. Only same-repo PR
+#     branches (written by trusted collaborators) are fetched and fixed.
+#   * Do NOT change this to check out ${{ github.event.workflow_run.head_sha }}
+#     and run PR-head scripts — that reintroduces the pwn-request vulnerability.
 #
 # `{{CI_WORKFLOW_NAMES}}` is substituted by /en-setup with the repo's CI workflow
-# name(s) (default: "CI"). workflow_run only fires for those named workflows, so
-# the watcher never reacts to its OWN completion (no self-trigger loop) — a
-# correctness improvement over the check_suite trigger.
+# name(s) (default "CI"). workflow_run only fires for those workflows, so the
+# watcher never reacts to its OWN completion (no self-trigger loop).
 #
-# TOKEN REQUIREMENT (important): a fix push made with the default GITHUB_TOKEN
-# does NOT retrigger GitHub Actions CI (Actions suppresses workflow runs on
-# GITHUB_TOKEN pushes to avoid loops). So the self-heal loop needs a token that
-# CAN trigger workflows: a PAT or GitHub App token stored as the EN_SHIP_WATCH_TOKEN
-# secret, used for BOTH checkout and push below. Without it the wrapper still
-# pushes the fix but CI will not auto-rerun — the wrapper detects the missing
-# token and escalates rather than silently stalling.
+# TOKEN: a fix push with the default GITHUB_TOKEN does NOT retrigger Actions CI.
+# The self-heal loop needs a workflow-triggering token — a PAT/App token in the
+# EN_SHIP_WATCH_TOKEN secret, used for checkout + push. Without it the wrapper
+# escalates rather than pushing a fix CI would silently ignore.
 #
 # Fix-agent auth reuses en-sweep's secrets (CLAUDE_CODE_OAUTH_TOKEN /
 # ANTHROPIC_API_KEY / OPENAI_API_KEY). EN_SHIP_WATCH_TOKEN is the ONE new secret.
@@ -37,23 +37,22 @@ permissions:
   checks: read
 
 concurrency:
-  # One self-heal at a time per head SHA; a newer failure supersedes an older run.
   group: en-ship-watch-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   self-heal:
-    # Only failed CI runs; the wrapper further gates on the en-ship-watch label.
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # TRUSTED checkout: the repo's default branch, NOT the PR head. The wrapper
+      # run below is the default-branch copy; it gates forks out via the API
+      # before ever fetching PR code. See the SECURITY note above.
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0                                   # full history for the attempt-count trailer scan
-          ref: ${{ github.event.workflow_run.head_sha }}
-          # Use the workflow-triggering token so the fix push retriggers CI.
-          # Falls back to GITHUB_TOKEN (CI will NOT auto-rerun; wrapper escalates).
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
           token: ${{ secrets.EN_SHIP_WATCH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up Bun
@@ -61,16 +60,15 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install and resolve CLI
+      - name: Install agent CLI
         run: |
-          # Install the coding-agent CLI the fix agent will drive. Customize this
-          # step for your install method (mirrors en-sweep's install step). At
-          # least one of claude / codex must be on PATH after this step.
+          # Real install of the coding-agent CLI the fix agent drives. Default is
+          # the Claude CLI; switch to your codex install if that's your agent.
           if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
-            echo "ERROR: en-ship-watch requires claude or codex CLI in the runner." >&2
-            echo "       Add an install step here (see references/templates/github-workflow-en-sweep.yml)." >&2
-            exit 1
+            npm install -g @anthropic-ai/claude-code
           fi
+          # If install failed, the wrapper (not this step) drops the label and
+          # comments an escalation, so the PR never sits silently armed.
 
       - name: Run en-ship-watch self-heal
         env:
@@ -82,12 +80,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.EN_SHIP_WATCH_TOKEN || secrets.GITHUB_TOKEN }}
           EN_SHIP_WATCH_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           EN_SHIP_WATCH_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          # Signals whether a real workflow-triggering token is present. When
-          # false, the wrapper escalates instead of pushing a fix CI won't rerun.
+          # Whether a real workflow-triggering token is present; when false the
+          # wrapper escalates instead of pushing a fix CI won't rerun.
           EN_SHIP_WATCH_HAS_TRIGGER_TOKEN: ${{ secrets.EN_SHIP_WATCH_TOKEN != '' }}
         run: |
-          if [ -x "$ENSEMBLE_PLUGIN_DIR/bin/en-ship-watch-ci" ]; then
-            "$ENSEMBLE_PLUGIN_DIR/bin/en-ship-watch-ci"
-          else
-            bin/en-ship-watch-ci
-          fi
+          # Run the TRUSTED default-branch wrapper. Do NOT swap this for a PR-head
+          # copy — that would run untrusted code with these secrets.
+          bin/en-ship-watch-ci
