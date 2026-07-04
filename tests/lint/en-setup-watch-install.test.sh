@@ -38,11 +38,16 @@ else
   fail "en-setup must document an idempotent install"
 fi
 
-# --- reuses en-sweep secrets: NO new secret ---
-if grep -qiE "NO new secret|no new secret|reuse.*secret" "$SETUP"; then
-  pass "en-setup states the watcher reuses en-sweep's secrets (no new secret)"
+# --- fix-agent reuses en-sweep secrets; push needs a workflow-triggering token ---
+if grep -qiE "reuses en-sweep|no new secret for the agent" "$SETUP"; then
+  pass "en-setup states the fix agent reuses en-sweep's secrets"
 else
-  fail "en-setup must state that no new secret is needed"
+  fail "en-setup must state the fix agent reuses en-sweep's secrets"
+fi
+if grep -qF "EN_SHIP_WATCH_TOKEN" "$SETUP" && grep -qiE "does NOT retrigger|not retrigger|GITHUB_TOKEN" "$SETUP"; then
+  pass "en-setup documents EN_SHIP_WATCH_TOKEN (GITHUB_TOKEN won't retrigger CI)"
+else
+  fail "en-setup must document the EN_SHIP_WATCH_TOKEN push-token requirement"
 fi
 
 # --- auto-merge prerequisite noted ---

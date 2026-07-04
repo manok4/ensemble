@@ -1,5 +1,5 @@
 ---
-title: en-learn capture checkpoint at en-ship — spec
+title: en-learn capture checkpoint (at en-build completion since EN04) — spec
 status: draft
 owner: mano
 created: 2026-05-12
@@ -60,11 +60,13 @@ If any section of this spec uses different wording (e.g. `skipped` instead of `i
 4. **Keep `/en-build` and `/en-qa` soft prompts.** They're freshest-point capture opportunities and they work when the agent runs them. The new en-ship checkpoint is the **backstop**, not a replacement.
 5. **Update foundation §D26.** Currently *"en-learn auto-runs after en-build and en-qa."* Becomes *"en-learn auto-runs after en-build and en-qa, AND fires as a structured checkpoint in en-ship's preflight."*
 
-## Change 1 — `/en-ship` learning checkpoint
+## Change 1 — learning checkpoint
 
-**File:** `skills/en-ship/SKILL.md`
+> **HISTORICAL (superseded by EN04).** This section describes the ORIGINAL placement in `/en-ship`'s preflight. **EN04 relocated the checkpoint to `/en-build` completion** — it no longer exists in `/en-ship`, and drift guards now assert the en-build location. Read the mechanics below (baseline, scope, outcome enum, prompt) as-is, but the host file is `skills/en-build/SKILL.md` at the end-of-build `/en-learn` hand-off, NOT en-ship preflight. Do not reintroduce the en-ship step. The "before lint/typecheck/secret-scan" ordering rationale below is an en-ship-preflight concern and no longer applies at en-build.
 
-Add a new preflight step **as the FIRST preflight step — before lint, typecheck, and secret-scan.**
+**File (as implemented since EN04):** `skills/en-build/SKILL.md` (originally `skills/en-ship/SKILL.md`).
+
+Original en-ship placement: a new preflight step **as the FIRST preflight step — before lint, typecheck, and secret-scan.**
 
 **Ordering rationale.** When the user answers `yes`, `/en-learn capture` can write new files: `docs/learnings/log.md` (appended), new learning pages under `docs/learnings/{bugs,patterns,decisions,sources}/`, possibly `docs/architecture.md` or `docs/foundation.md` cross-reference updates, and the architecture-sync index updates. If the checkpoint runs AFTER lint/typecheck/secret-scan, those newly-written files get staged and committed without being scanned — they ship unchecked. Running the checkpoint FIRST guarantees every file in the final diff was inspected by every preflight check.
 

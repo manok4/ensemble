@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # en-ship-watch-ci — wrapper used by .github/workflows/en-ship-watch.yml.
 #
-# CI-hosted self-heal for hands-off /en-ship (EN04). Event-driven: the workflow
-# fires on `check_suite: completed` with conclusion `failure`. This wrapper
-# gates on the `en-ship-watch` label, bounds fix attempts, drives /en-resolve-pr
-# headless in the runner to fix the failing CI, and pushes the fix BRANCH-ONLY
-# (never the default branch, never a force-push of a protected ref). On an
-# unfixable failure or the attempt cap, it drops the label and comments an
-# escalation so a human is pulled back in.
+# CI-hosted self-heal for hands-off /en-ship (EN04). The workflow fires on a
+# failed CI `workflow_run`. This wrapper gates on the `en-ship-watch` label,
+# bounds fix attempts, drives /en-resolve-pr headless in the runner to fix the
+# failing CI, and pushes the fix BRANCH-ONLY (never the default branch, never a
+# fork's base repo, never a force-push of a protected ref). On an unfixable
+# failure, the attempt cap, a fork PR, a missing trigger token, or a push
+# failure, it drops the label and comments an escalation so a human is pulled
+# back in.
 #
-# Reuses en-sweep's auth env vars (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY /
-# OPENAI_API_KEY + GITHUB_TOKEN). No new secret.
+# Auth: the fix agent reuses en-sweep's secrets. The push/gh token must be able
+# to TRIGGER workflows (a PAT/App token in EN_SHIP_WATCH_TOKEN) — GITHUB_TOKEN
+# pushes do not retrigger Actions CI, so the wrapper escalates when no trigger
+# token is present rather than pushing a fix CI will silently ignore.
 
 set -euo pipefail
 
@@ -41,6 +44,13 @@ assert_branch_safe() {
     return 1
   fi
   return 0
+}
+
+# is_same_repo_pr <head-repo-owner> <base-repo-owner> — 0 when the PR head is in
+# the SAME repo (not a fork). Fork PRs are refused: pushing to origin would
+# mutate the base repo's branch, not the PR head.
+is_same_repo_pr() {
+  [ -n "${1:-}" ] && [ "${1:-}" = "${2:-}" ]
 }
 
 # count_attempts <default-branch> — number of prior watcher fix commits on the
@@ -82,6 +92,12 @@ drive_resolve_pr() {
   fi
 }
 
+# stamp_attempt <n> — record the attempt on the produced fix commit so the cap
+# actually advances across runs. Amends HEAD (the fix commit) with the trailer.
+stamp_attempt() {
+  git commit --amend --no-edit --trailer "${ATTEMPT_TRAILER}: ${1}" >/dev/null
+}
+
 # ---------------------------------------------------------------------------
 main() {
   # Belt-and-suspenders recursion guard: never let the watcher invoke itself.
@@ -93,8 +109,8 @@ main() {
   local head_sha="${EN_SHIP_WATCH_HEAD_SHA:-${GITHUB_SHA:-}}"
   local default_branch="${EN_SHIP_WATCH_DEFAULT_BRANCH:-$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null || echo main)}"
 
-  # Resolve the open PR whose head is this failing check_suite.
-  local pr branch labels
+  # Resolve the open PR whose head is this failing CI run.
+  local pr labels branch head_owner base_owner
   pr="$(gh pr list --state open --search "$head_sha" --json number --jq '.[0].number' 2>/dev/null || true)"
   if [ -z "$pr" ]; then
     echo "en-ship-watch: no open PR for ${head_sha}; nothing to do."; exit 0
@@ -107,15 +123,30 @@ main() {
   fi
 
   branch="$(gh pr view "$pr" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
+  head_owner="$(gh pr view "$pr" --json headRepositoryOwner --jq '.headRepositoryOwner.login' 2>/dev/null || true)"
+  base_owner="$(gh repo view --json owner --jq '.owner.login' 2>/dev/null || true)"
 
-  # Gate 2 — bound fix attempts.
+  # Gate 2 — fork PRs: origin is the base repo, so a HEAD:branch push would
+  # mutate the wrong repo. Refuse and escalate.
+  if ! is_same_repo_pr "$head_owner" "$base_owner"; then
+    drop_label_and_escalate "$pr" "PR is from a fork (${head_owner:-unknown}); self-heal only supports same-repo branches"
+    exit 0
+  fi
+
+  # Gate 3 — a fix push needs a token that retriggers CI; GITHUB_TOKEN doesn't.
+  if [ "${EN_SHIP_WATCH_HAS_TRIGGER_TOKEN:-false}" != "true" ]; then
+    drop_label_and_escalate "$pr" "no EN_SHIP_WATCH_TOKEN configured — a fix push with GITHUB_TOKEN will not retrigger CI"
+    exit 0
+  fi
+
+  # Gate 4 — bound fix attempts.
   local attempts; attempts="$(count_attempts "$default_branch")"
   if ! under_attempt_cap "$attempts" "$MAX_ATTEMPTS"; then
     drop_label_and_escalate "$pr" "reached the ${MAX_ATTEMPTS}-attempt fix cap"
     exit 0
   fi
 
-  # Gate 3 — never write to the default branch.
+  # Gate 5 — never write to the default branch.
   if ! assert_branch_safe "$branch" "$default_branch"; then
     drop_label_and_escalate "$pr" "refused to write to a protected branch"
     exit 0
@@ -128,17 +159,23 @@ main() {
     drop_label_and_escalate "$pr" "the fix agent could not resolve the failure"
     exit 0
   fi
-  # Stamp the attempt trailer onto any produced fix commit(s) so the counter advances.
   after="$(git rev-parse HEAD)"
   if [ "$before" = "$after" ]; then
     drop_label_and_escalate "$pr" "no fix was produced (judgment call)"
     exit 0
   fi
 
-  # Push branch-only (re-assert safety immediately before the push).
+  # Stamp the attempt so the cap advances across runs.
+  stamp_attempt "$(( attempts + 1 ))"
+
+  # Push branch-only (re-assert safety immediately before the push) and escalate
+  # on any push failure instead of exiting with the label still armed.
   assert_branch_safe "$branch" "$default_branch" || { drop_label_and_escalate "$pr" "branch-safety re-check failed"; exit 0; }
-  git push origin "HEAD:${branch}"
-  echo "en-ship-watch: pushed a fix to ${branch} (PR #${pr}); CI will re-run."
+  if ! git push origin "HEAD:${branch}"; then
+    drop_label_and_escalate "$pr" "the fix commit could not be pushed (non-fast-forward, protection, or permissions)"
+    exit 0
+  fi
+  echo "en-ship-watch: pushed fix attempt $(( attempts + 1 )) to ${branch} (PR #${pr}); CI will re-run."
 }
 
 # Only run when executed, not when sourced by tests.

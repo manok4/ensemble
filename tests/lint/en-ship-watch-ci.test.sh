@@ -69,6 +69,39 @@ else
   pass "assert_branch_safe refuses an empty target"
 fi
 
+# --- fork-PR guard: same-repo allowed, fork refused ---
+if call is_same_repo_pr "acme" "acme"; then
+  pass "is_same_repo_pr allows a same-repo PR"
+else
+  fail "is_same_repo_pr should allow a same-repo PR"
+fi
+if call is_same_repo_pr "forker" "acme"; then
+  fail "is_same_repo_pr must refuse a fork PR"
+else
+  pass "is_same_repo_pr refuses a fork PR (head owner != base owner)"
+fi
+
+# --- attempt cap actually advances: stamp_attempt writes the counted trailer ---
+if grep -qE "stamp_attempt" "$CI" && grep -qE "trailer \"\\\$\{ATTEMPT_TRAILER\}|--trailer \"\\\$\{ATTEMPT_TRAILER\}" "$CI"; then
+  pass "wrapper stamps the attempt trailer that count_attempts reads (cap advances)"
+else
+  fail "wrapper must stamp the en-ship-watch-attempt trailer so the cap advances"
+fi
+
+# --- trigger-token gate: escalate when GITHUB_TOKEN can't retrigger CI ---
+if grep -qE "EN_SHIP_WATCH_HAS_TRIGGER_TOKEN" "$CI"; then
+  pass "wrapper gates on a workflow-triggering token (GITHUB_TOKEN won't retrigger CI)"
+else
+  fail "wrapper must escalate when no workflow-triggering token is present"
+fi
+
+# --- push failure escalates instead of exiting with the label armed ---
+if grep -qE 'if ! git push origin' "$CI"; then
+  pass "wrapper wraps the push and escalates on failure"
+else
+  fail "wrapper must escalate on push failure (not exit under set -e with label armed)"
+fi
+
 # --- drives /en-resolve-pr headless ---
 if grep -qF "en-resolve-pr" "$CI"; then
   pass "wrapper drives /en-resolve-pr"
@@ -103,15 +136,25 @@ if grep -qE "^name: en-ship-watch" "$WF"; then
 else
   fail "workflow must be named en-ship-watch"
 fi
-if grep -qE "check_suite:" "$WF" && grep -qE "types: \[completed\]" "$WF"; then
-  pass "workflow triggers on check_suite: completed"
+if grep -qE "workflow_run:" "$WF" && grep -qE "types: \[completed\]" "$WF"; then
+  pass "workflow triggers on a CI workflow_run: completed"
 else
-  fail "workflow must trigger on check_suite: completed"
+  fail "workflow must trigger on workflow_run: completed"
 fi
-if grep -qE "conclusion == 'failure'" "$WF"; then
-  pass "workflow job guards on conclusion == failure"
+if grep -qE "workflow_run.conclusion == 'failure'" "$WF"; then
+  pass "workflow job guards on workflow_run.conclusion == failure"
 else
   fail "workflow must guard the job on a failure conclusion"
+fi
+if grep -qF "{{CI_WORKFLOW_NAMES}}" "$WF"; then
+  pass "workflow names the CI workflows via a substituted placeholder (no self-trigger)"
+else
+  fail "workflow must name the CI workflows (workflow_run avoids self-trigger)"
+fi
+if grep -qF "EN_SHIP_WATCH_TOKEN" "$WF"; then
+  pass "workflow wires the workflow-triggering token (retriggers CI)"
+else
+  fail "workflow must wire EN_SHIP_WATCH_TOKEN so the fix push retriggers CI"
 fi
 if grep -qF "en-ship-watch-ci" "$WF"; then
   pass "workflow invokes the en-ship-watch-ci wrapper"
