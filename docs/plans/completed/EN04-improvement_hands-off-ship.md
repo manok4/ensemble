@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN04
 title: Hands-off en-ship with a local self-heal loop
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-07-03
-shipped:
+shipped: 2026-07-04
 deepened:
 covers_requirements: []
 requirements_pending: false
