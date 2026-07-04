@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drift guards for en-ship CI-first self-heal (EN04 U5) + en-resolve-pr pagination (FR01 U8).
+# Drift guards for en-ship's LOCAL watch-and-fix loop (EN04 D38) + en-resolve-pr pagination (FR01 U8).
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,39 +10,39 @@ TEST_NAME="en-ship watch loop"
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
 GETPR="$REPO_ROOT/skills/en-resolve-pr/scripts/get-pr-comments"
 
-# --- CI-first: default completion arms the CI self-heal watcher ---
-if grep -qiE "Arm the CI self-heal watcher" "$EN_SHIP"; then
-  pass "en-ship default arms the CI self-heal watcher"
+# --- default is a LOCAL watch-and-fix loop ---
+if grep -qiE "Local watch-and-fix loop \(default ON\)" "$EN_SHIP"; then
+  pass "en-ship default is a local watch-and-fix loop"
 else
-  fail "en-ship must arm the CI self-heal watcher by default"
+  fail "en-ship must default to a local watch-and-fix loop"
 fi
 
-# --- watcher detection + label arming ---
-if grep -qF "en-ship-watch.yml" "$EN_SHIP" && grep -qF "en-ship-watch" "$EN_SHIP"; then
-  pass "en-ship detects the watcher workflow + applies the en-ship-watch label"
+# --- fixing is LOCAL, not in CI ---
+if grep -qiE "fix.*locally|on this machine, not in CI|the fixing happens on this machine" "$EN_SHIP"; then
+  pass "en-ship fixes findings locally (not in CI)"
 else
-  fail "en-ship must detect en-ship-watch.yml and apply the en-ship-watch label"
+  fail "en-ship must fix findings locally, not in CI"
 fi
 
-# --- graceful degradation: never claim hands-off without a watcher ---
-if grep -qiE "never report hands-off success while nothing is watching|No CI self-heal watcher installed" "$EN_SHIP"; then
-  pass "en-ship degrades gracefully (never fakes hands-off without a watcher)"
+# --- the CI-hosted fix engine is GONE (no en-ship-watch workflow/label) ---
+if grep -qF "en-ship-watch" "$EN_SHIP"; then
+  fail "en-ship must NOT reference the removed CI-hosted en-ship-watch engine"
 else
-  fail "en-ship must degrade gracefully when the watcher is absent"
+  pass "en-ship no longer references a CI-hosted self-heal engine"
 fi
 
-# --- invokes en-resolve-pr (CI watcher + fallback) ---
+# --- invokes en-resolve-pr to fix locally ---
 if grep -qF "/en-resolve-pr" "$EN_SHIP"; then
-  pass "self-heal invokes /en-resolve-pr"
+  pass "local loop invokes /en-resolve-pr"
 else
-  fail "self-heal must invoke /en-resolve-pr"
+  fail "local loop must invoke /en-resolve-pr"
 fi
 
-# --- session-bound fallback loop still bounded to 2 cycles + escalate ---
-if grep -qiE "2 cycles|2nd resolve cycle|two cycles" "$EN_SHIP" && grep -qiE "escalat|needs-human" "$EN_SHIP"; then
-  pass "session-bound fallback loop bounded to 2 cycles then escalates"
+# --- loops until clean, bounded, then escalate needs-human ---
+if grep -qiE "Loop until clean|loop until|until all checks are green" "$EN_SHIP" && grep -qiE "escalat|needs-human" "$EN_SHIP"; then
+  pass "local loop repeats until clean, bounded, then escalates"
 else
-  fail "the fallback loop must be bounded to 2 cycles then escalate"
+  fail "local loop must repeat until clean (bounded) then escalate"
 fi
 
 # --- default never auto-merges (stop at mergeable PR) ---

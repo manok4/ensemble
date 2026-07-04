@@ -86,7 +86,7 @@ Five units, sequenced so every dependency is built before its dependents. The le
 
 ## Technical design
 
-> **Note (post-build).** The CI self-heal engine below records the *original* design. It evolved materially through the branch-level review: the trigger is `workflow_run` (not `check_suite`) with a trusted default-branch checkout + fork rejection before any PR fetch; a `EN_SHIP_WATCH_TOKEN` secret is required (a `GITHUB_TOKEN` push won't retrigger CI); the attempt counter lives in PR comments and `/en-resolve-pr` owns commit+push (the watcher never commits/pushes). The authoritative shipped design is **foundation D38** plus the `review-verdict:` commits.
+> **Correction (post-build): the CI self-heal engine below was REMOVED.** During build the direction was reversed per user decision: **fixing happens locally, not in CI.** U3/U4 (the `en-ship-watch.yml` workflow + `bin/en-ship-watch-ci` wrapper + their en-setup install) were deleted. CI's role is read-only — run tests + a review model that posts findings; `/en-ship` then runs a **session-bound local watch-and-fix loop** that drives `/en-resolve-pr` on the developer's machine, loops until clean, and escalates the remainder. This keeps all repo-write access and secrets off CI. The technical-design and U3/U4/U5 sections below describe the abandoned CI-hosted design and are retained only as a record; **the authoritative shipped design is foundation D38.**
 
 ### Control flow - default `/en-ship` (hands-off)
 
