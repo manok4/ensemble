@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Drift guards for the structured learning checkpoint (en-learn-checkpoint-spec).
 # Per docs/en-learn-checkpoint-spec.md. Relocated from en-ship preflight to
-# en-build completion by EN04 — checkpoint assertions target en-build.
+# en-build completion by EN04 - checkpoint assertions target en-build.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

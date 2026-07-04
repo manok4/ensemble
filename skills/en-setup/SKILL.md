@@ -90,7 +90,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 9. **Install project-local `bin/` scripts.** **(Required for the en-sweep and en-ship-watch workflows in step 10 to actually run.)** Copy these five scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$ENSEMBLE_ROOT/bin/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
-   - `$ENSEMBLE_ROOT/bin/en-ship-watch-ci` — wrapper invoked by `.github/workflows/en-ship-watch.yml` (the CI self-heal engine for hands-off `/en-ship`, EN04).
+   - `$ENSEMBLE_ROOT/bin/en-ship-watch-ci` - wrapper invoked by `.github/workflows/en-ship-watch.yml` (the CI self-heal engine for hands-off `/en-ship`, EN04).
    - `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
    - `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
    - `$ENSEMBLE_ROOT/bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
@@ -120,11 +120,11 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
     6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check`."
 
-10a. **Install `.github/workflows/en-ship-watch.yml`** from `$ENSEMBLE_ROOT/references/templates/github-workflow-en-ship-watch.yml` — the CI-hosted self-heal engine for hands-off `/en-ship` (EN04, D38). Depends on step 9 (the `en-ship-watch-ci` wrapper).
-    1. **Ask the CI workflow name(s).** Prompt: "Which workflow(s) produce your PR's CI checks? (default `CI`)." The watcher triggers on `workflow_run` of these workflows, so it fires exactly when a real CI run fails — and never on its own completion (no self-trigger loop).
+10a. **Install `.github/workflows/en-ship-watch.yml`** from `$ENSEMBLE_ROOT/references/templates/github-workflow-en-ship-watch.yml` - the CI-hosted self-heal engine for hands-off `/en-ship` (EN04, D38). Depends on step 9 (the `en-ship-watch-ci` wrapper).
+    1. **Ask the CI workflow name(s).** Prompt: "Which workflow(s) produce your PR's CI checks? (default `CI`)." The watcher triggers on `workflow_run` of these workflows, so it fires exactly when a real CI run fails - and never on its own completion (no self-trigger loop).
     2. **Substitute** `{{CI_WORKFLOW_NAMES}}` in the template with the quoted, comma-separated name list (e.g. `"CI"` or `"CI", "e2e"`) and write the workflow file. **Idempotent:** overwrite only when content differs; if a file with different content already exists, do not overwrite (surface the same warning as en-sweep per the failure-protocol table).
     3. **Verify** the workflow file exists: `[ -f .github/workflows/en-ship-watch.yml ]`. Re-checked in step 17.
-    4. **Fix-agent auth reuses en-sweep's secrets** (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) — no new secret for the agent. **ONE new secret is required for the self-heal push, though:** surface *"Add `EN_SHIP_WATCH_TOKEN` (a fine-scoped PAT or GitHub App token with `contents: write` + `pull-requests: write`) to repo secrets. It's required because a fix push made with the default `GITHUB_TOKEN` does NOT retrigger Actions CI — without `EN_SHIP_WATCH_TOKEN` the watcher escalates instead of pushing a fix CI would silently ignore."*
+    4. **Fix-agent auth reuses en-sweep's secrets** (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) - no new secret for the agent. **ONE new secret is required for the self-heal push, though:** surface *"Add `EN_SHIP_WATCH_TOKEN` (a fine-scoped PAT or GitHub App token with `contents: write` + `pull-requests: write`) to repo secrets. It's required because a fix push made with the default `GITHUB_TOKEN` does NOT retrigger Actions CI - without `EN_SHIP_WATCH_TOKEN` the watcher escalates instead of pushing a fix CI would silently ignore."*
     5. **Note the auto-merge prerequisite:** "For `/en-ship --auto-merge` to function, the repo must allow auto-merge (Settings → General → Pull Requests → Allow auto-merge). The default hands-off flow (stop at a mergeable PR) needs no such setting."
     6. **Note the label + fork contract:** "`/en-ship` applies the `en-ship-watch` label when it arms the watcher; the workflow no-ops on any PR without it. The wrapper self-heals only **same-repo** PR branches (fork PRs escalate), drops the label + comments to escalate when it can't safely proceed."
 11. **Create `.ensemble/config.local.example.yaml`** (committed) from `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
@@ -183,11 +183,11 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
     | `.github/workflows/en-sweep.yml` | exists |
     | `.github/workflows/en-ship-watch.yml` | exists |
-    | `$ENSEMBLE_ROOT/bin/en-sweep-ci` | exists, executable (`-x`) |
-    | `$ENSEMBLE_ROOT/bin/en-ship-watch-ci` | exists, executable (`-x`) |
-    | `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` | exists, executable |
-    | `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` | exists, executable |
-    | `$ENSEMBLE_ROOT/bin/ensemble-lint` | exists, executable |
+    | `./bin/en-sweep-ci` | exists, executable (`-x`) |
+    | `./bin/en-ship-watch-ci` | exists, executable (`-x`) |
+    | `./bin/ensemble-sweep-activity-check` | exists, executable |
+    | `./bin/ensemble-doc-only-check` | exists, executable |
+    | `./bin/ensemble-lint` | exists, executable |
     | `.ensemble/config.local.example.yaml` | exists |
 
     **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
@@ -262,7 +262,7 @@ Invoke `scripts/check-health` (in the plugin's `scripts/` directory). It prints 
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Required-artifact verification** — same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `$ENSEMBLE_ROOT/bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
+- **Required-artifact verification** - same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
 - **Guardrail status** — run `skills/en-guardrail/bin/install-guardrail status`. 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
@@ -298,11 +298,11 @@ Created:
   - .github/workflows/en-sweep.yml
   - .github/workflows/en-ship-watch.yml (CI self-heal for hands-off /en-ship)
   - .github/workflows/claude-code-review.yml (Anthropic Code Review action)
-  - bin/en-sweep-ci (chmod +x)
-  - bin/en-ship-watch-ci (chmod +x)
-  - bin/ensemble-sweep-activity-check (chmod +x)
-  - bin/ensemble-doc-only-check (chmod +x)
-  - bin/ensemble-lint (chmod +x)
+  - ./bin/en-sweep-ci (chmod +x)
+  - ./bin/en-ship-watch-ci (chmod +x)
+  - ./bin/ensemble-sweep-activity-check (chmod +x)
+  - ./bin/ensemble-doc-only-check (chmod +x)
+  - ./bin/ensemble-lint (chmod +x)
   - .ensemble/config.local.example.yaml
   - .claude/settings.json (en-guardrail PreToolUse hook, project-scoped)
 
@@ -345,7 +345,7 @@ Next step:
 - `$ENSEMBLE_ROOT/references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
 - `$ENSEMBLE_ROOT/references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
 - `$ENSEMBLE_ROOT/references/templates/github-workflow-en-sweep.yml` — GH Action workflow
-- `$ENSEMBLE_ROOT/references/templates/github-workflow-en-ship-watch.yml` — GH Action workflow (CI self-heal for hands-off `/en-ship`)
+- `$ENSEMBLE_ROOT/references/templates/github-workflow-en-ship-watch.yml` - GH Action workflow (CI self-heal for hands-off `/en-ship`)
 - `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml` — committed config template
 - `$ENSEMBLE_ROOT/references/learn-index-format.md` — `learnings/index.md` empty-state seed
 - `$ENSEMBLE_ROOT/references/learn-log-format.md` — `learnings/log.md` empty-state seed

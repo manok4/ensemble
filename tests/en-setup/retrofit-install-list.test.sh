@@ -135,11 +135,11 @@ fi
 # --- The output-format example reflects the bin scripts (so report stays
 #     accurate) ---
 for script in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check ensemble-lint; do
-  # The output example block lists files with a leading "  - bin/...". Match that.
-  if grep -qE "  - bin/$script" "$SKILL"; then
-    pass "output example lists bin/$script in 'Created' section"
+  # The output example block lists target-repo files with a leading "  - ./bin/...". Match that.
+  if grep -qE "  - \./bin/$script" "$SKILL"; then
+    pass "output example lists ./bin/$script in 'Created' section"
   else
-    fail "output example should list bin/$script in 'Created' section"
+    fail "output example should list ./bin/$script in 'Created' section"
   fi
 done
 

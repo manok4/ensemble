@@ -81,11 +81,18 @@ else
   pass "is_cross_repository allows a same-repo PR"
 fi
 
-# --- attempt cap actually advances: stamp_attempt writes the counted trailer ---
-if grep -qE "stamp_attempt" "$CI" && grep -qE "trailer \"\\\$\{ATTEMPT_TRAILER\}|--trailer \"\\\$\{ATTEMPT_TRAILER\}" "$CI"; then
-  pass "wrapper stamps the attempt trailer that count_attempts reads (cap advances)"
+# --- attempt counter uses PR-comment markers (NOT git history; en-resolve-pr owns commits) ---
+if grep -qF "ATTEMPT_MARKER" "$CI" && grep -qE "gh pr view .* --json comments" "$CI"; then
+  pass "attempt cap counts PR-comment markers (independent of en-resolve-pr's commits)"
 else
-  fail "wrapper must stamp the en-ship-watch-attempt trailer so the cap advances"
+  fail "attempt counter must use PR-comment markers, not git trailers"
+fi
+
+# --- watcher does NOT commit/amend/push (en-resolve-pr owns commit+push per its SKILL step 9) ---
+if grep -qE 'git commit|git push' "$CI"; then
+  fail "watcher must NOT commit/amend/push (en-resolve-pr owns it; amend-after-push is non-fast-forward)"
+else
+  pass "watcher never commits/amends/pushes (en-resolve-pr owns commit+push)"
 fi
 
 # --- trigger-token gate: escalate when GITHUB_TOKEN can't retrigger CI ---
@@ -95,11 +102,26 @@ else
   fail "wrapper must escalate when no workflow-triggering token is present"
 fi
 
-# --- push failure escalates instead of exiting with the label armed ---
-if grep -qE 'if ! git push origin' "$CI"; then
-  pass "wrapper wraps the push and escalates on failure"
+# --- head-SHA binding: exact match to the failed run ---
+if call head_matches "abc123" "abc123"; then
+  pass "head_matches accepts an exact SHA match"
 else
-  fail "wrapper must escalate on push failure (not exit under set -e with label armed)"
+  fail "head_matches must accept an exact match"
+fi
+if call head_matches "abc123" "def456"; then
+  fail "head_matches must reject a mismatched SHA (stale/advanced PR)"
+else
+  pass "head_matches rejects a mismatched (advanced) head"
+fi
+if call head_matches "" "abc123"; then
+  fail "head_matches must reject an empty head"
+else
+  pass "head_matches rejects an empty head"
+fi
+if grep -qF "headRefOid" "$CI" && grep -qF "head_matches" "$CI"; then
+  pass "main binds to the failed head SHA (headRefOid) before acting"
+else
+  fail "main must bind the run to the failed head SHA"
 fi
 
 # --- SECURITY: fork rejected BEFORE any PR branch is fetched/checked out ---
@@ -111,11 +133,11 @@ else
   fail "fork rejection must precede fetching PR code (reject=$reject_line fetch=$fetch_line)"
 fi
 
-# --- guarded stamp + bot identity (no set -e exit with label armed) ---
-if grep -qE 'if ! stamp_attempt' "$CI" && grep -qF "configure_git_identity" "$CI"; then
-  pass "wrapper sets a bot git identity and guards stamp_attempt"
+# --- hardened escalation: label-removal failure fails the run (not exit 0 armed) ---
+if grep -qE 'drop_label_and_escalate "\$pr" ".*" \|\| exit 1' "$CI"; then
+  pass "escalation callers exit non-zero when the label can't be removed (no silent armed retry)"
 else
-  fail "wrapper must configure a git identity and guard stamp_attempt"
+  fail "escalation must fail the run when label removal fails"
 fi
 
 # --- CLI-missing escalates (not a silent job death with label armed) ---
@@ -189,13 +211,6 @@ else
   fail "wrapper must escalate (drop label + comment) on an unfixable failure"
 fi
 
-# --- branch-only push (never a bare/default push) ---
-if grep -qE 'git push origin "HEAD:\$\{branch\}"' "$CI"; then
-  pass "wrapper pushes branch-only (HEAD:<branch>)"
-else
-  fail "wrapper must push branch-only"
-fi
-
 # --- recursion guard ---
 if grep -qF "EN_SHIP_WATCH_ACTIVE" "$CI"; then
   pass "wrapper has a recursion guard"
@@ -239,5 +254,54 @@ if grep -qF "CLAUDE_CODE_OAUTH_TOKEN" "$WF" && grep -qF "GITHUB_TOKEN" "$WF"; th
 else
   fail "workflow must wire the shared auth secrets"
 fi
+
+# --- functional: run main() end-to-end with a stubbed gh (exercises the gates) ---
+STUB_DIR="$(mktemp -d)"
+cat > "$STUB_DIR/gh" <<'STUB'
+#!/usr/bin/env bash
+sub="$1 $2"; shift 2 || true
+argstr="$*"
+case "$sub" in
+  "pr list") printf '%s\n' "${FAKE_PR:-}" ;;
+  "repo view") printf 'main\n' ;;
+  "pr view")
+    if printf '%s' "$argstr" | grep -q headRefOid; then printf '%s\n' "${FAKE_OID:-}"
+    elif printf '%s' "$argstr" | grep -q labels; then printf '%s\n' ${FAKE_LABELS:-}
+    elif printf '%s' "$argstr" | grep -q isCrossRepository; then printf '%s\n' "${FAKE_CROSS:-false}"
+    elif printf '%s' "$argstr" | grep -q headRefName; then printf '%s\n' "${FAKE_BRANCH:-feat}"
+    elif printf '%s' "$argstr" | grep -q comments; then printf '0\n'
+    fi ;;
+  "pr edit"|"pr comment") : ;;
+esac
+STUB
+chmod +x "$STUB_DIR/gh"
+
+run_main() { ( export PATH="$STUB_DIR:$PATH" EN_SHIP_WATCH_ACTIVE=0; "$@" bash "$CI" 2>&1 ); }
+
+# no open PR for the failed SHA → clean no-op
+out="$(FAKE_PR="" EN_SHIP_WATCH_HEAD_SHA="deadbeef" run_main)"
+if printf '%s' "$out" | grep -q "no open PR"; then
+  pass "main() no-ops cleanly when no PR matches the failed SHA"
+else
+  fail "main() should no-op when no PR matches" "$out"
+fi
+
+# PR head advanced past the failed run → stale, no-op
+out="$(FAKE_PR="7" FAKE_OID="newsha" EN_SHIP_WATCH_HEAD_SHA="oldsha" run_main)"
+if printf '%s' "$out" | grep -q "advanced past the failed run"; then
+  pass "main() no-ops when the PR head advanced past the failed SHA (binding)"
+else
+  fail "main() should no-op on a stale head" "$out"
+fi
+
+# labeled check: bound head, but label absent → no-op
+out="$(FAKE_PR="7" FAKE_OID="s1" EN_SHIP_WATCH_HEAD_SHA="s1" FAKE_LABELS="other" run_main)"
+if printf '%s' "$out" | grep -q "not labeled"; then
+  pass "main() no-ops when the en-ship-watch label is absent"
+else
+  fail "main() should no-op when unlabeled" "$out"
+fi
+
+rm -rf "$STUB_DIR"
 
 report

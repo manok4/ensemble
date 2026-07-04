@@ -58,10 +58,25 @@ else
 fi
 
 # --- verification table + summary include the new artifacts ---
-if grep -qE "\.github/workflows/en-ship-watch\.yml" "$SETUP"; then
-  pass "en-setup verification/summary lists the en-ship-watch workflow"
+verification_block="$(awk '
+  /Required artifacts/ {in_block=1}
+  /Optional artifacts/ {in_block=0}
+  in_block {print}
+' "$SETUP")"
+if printf '%s\n' "$verification_block" | grep -qE "\.github/workflows/en-ship-watch\.yml"; then
+  pass "en-setup verification lists the en-ship-watch workflow"
 else
-  fail "en-setup must list en-ship-watch.yml in verification/summary"
+  fail "en-setup must list en-ship-watch.yml in verification"
+fi
+if printf '%s\n' "$verification_block" | grep -qF '`./bin/en-ship-watch-ci`'; then
+  pass "en-setup verification checks the repo-local en-ship-watch-ci wrapper"
+else
+  fail "en-setup must verify repo-local ./bin/en-ship-watch-ci"
+fi
+if grep -qF "./bin/en-ship-watch-ci (chmod +x)" "$SETUP"; then
+  pass "en-setup summary lists the repo-local en-ship-watch-ci wrapper"
+else
+  fail "en-setup summary must list repo-local ./bin/en-ship-watch-ci"
 fi
 
 report

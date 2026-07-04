@@ -3,21 +3,21 @@
 # CI-hosted self-heal for hands-off /en-ship (EN04). Event-driven: fires when one
 # of the repo's CI workflows completes with a `failure` conclusion (workflow_run).
 #
-# SECURITY (workflow_run runs privileged — write perms + secrets):
+# SECURITY (workflow_run runs privileged - write perms + secrets):
 #   * This job checks out the TRUSTED default-branch code, NOT the PR head. The
 #     wrapper (bin/en-ship-watch-ci from the default branch) then rejects fork /
 #     cross-repository PRs via the GitHub API BEFORE fetching or running any PR
-#     branch — so untrusted fork code never executes here. Only same-repo PR
+#     branch - so untrusted fork code never executes here. Only same-repo PR
 #     branches (written by trusted collaborators) are fetched and fixed.
 #   * Do NOT change this to check out ${{ github.event.workflow_run.head_sha }}
-#     and run PR-head scripts — that reintroduces the pwn-request vulnerability.
+#     and run PR-head scripts - that reintroduces the pwn-request vulnerability.
 #
 # `{{CI_WORKFLOW_NAMES}}` is substituted by /en-setup with the repo's CI workflow
 # name(s) (default "CI"). workflow_run only fires for those workflows, so the
 # watcher never reacts to its OWN completion (no self-trigger loop).
 #
 # TOKEN: a fix push with the default GITHUB_TOKEN does NOT retrigger Actions CI.
-# The self-heal loop needs a workflow-triggering token — a PAT/App token in the
+# The self-heal loop needs a workflow-triggering token - a PAT/App token in the
 # EN_SHIP_WATCH_TOKEN secret, used for checkout + push. Without it the wrapper
 # escalates rather than pushing a fix CI would silently ignore.
 #
@@ -57,7 +57,7 @@ jobs:
 
       - name: Install agent CLI
         # NONFATAL by design: a failed install must NOT abort the job before the
-        # wrapper runs — otherwise the PR sits silently armed with no escalation.
+        # wrapper runs - otherwise the PR sits silently armed with no escalation.
         # The wrapper's Gate 4 detects a missing CLI and drops the label + comments.
         continue-on-error: true
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - name: Run en-ship-watch self-heal
         env:
-          # Fix-agent auth — shared with en-sweep (whichever CLI is on PATH picks up its var).
+          # Fix-agent auth - shared with en-sweep (whichever CLI is on PATH picks up its var).
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -82,5 +82,5 @@ jobs:
           EN_SHIP_WATCH_HAS_TRIGGER_TOKEN: ${{ secrets.EN_SHIP_WATCH_TOKEN != '' }}
         run: |
           # Run the TRUSTED default-branch wrapper. Do NOT swap this for a PR-head
-          # copy — that would run untrusted code with these secrets.
+          # copy - that would run untrusted code with these secrets.
           bin/en-ship-watch-ci

@@ -21,14 +21,14 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    - **Merge conflict check** — `git status` for `UU` markers. On detection: stop and surface; do not attempt to ship a conflicted tree.
    - **Default-branch protection** — if `HEAD == main`, ask explicitly: "Pushing directly to `main`. Confirm? (y/N)". Default no.
 
-4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04) — you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The interactive checkpoints below **auto-resolve**; only the hard-stop safety floor pauses.
+4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04) - you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The interactive checkpoints below **auto-resolve**; only the hard-stop safety floor pauses.
 
    - **Learning capture is NOT decided here.** It was relocated to `/en-build`'s completion checkpoint (EN04; see `docs/en-learn-checkpoint-spec.md` and foundation D38) so capture happens at the point of insight. `/en-ship` no longer prompts for learnings on the default path.
    - **Auto-resolved under hands-off:** the scope-confirm (step 7) is auto-accepted; the plan-completion checkpoint (step 8) auto-flips a verifiably-complete plan and passes informationally otherwise (see those steps).
-   - **Safety floor — always hard-stops, even hands-off (never auto-resolved):**
-     - **Secret-scan match** (step 6) — stop; do not ship secrets.
-     - **Push to the default branch** (`HEAD == main`/default, step 3) — explicit confirmation required.
-     - **Destructive-guardrail hit** (`en-guardrail` intercept on any command) — its prompt fires regardless.
+   - **Safety floor - always hard-stops, even hands-off (never auto-resolved):**
+     - **Secret-scan match** (step 6) - stop; do not ship secrets.
+     - **Push to the default branch** (`HEAD == main`/default, step 3) - explicit confirmation required.
+     - **Destructive-guardrail hit** (`en-guardrail` intercept on any command) - its prompt fires regardless.
    - **`--interactive` escape hatch** restores the prior stop-and-ask flow: it re-enables the scope-confirm and plan-completion prompts AND surfaces a lightweight learning prompt for the **direct-to-ship path** (a change hand-committed without `/en-build`, where no build-time learning checkpoint ran). Under `--interactive`, ask: *"No en-build ran this session; anything worth filing as a learning before shipping? (yes / skip)"*.
 
 5. **Lint + typecheck + targeted tests on changed files.**
@@ -68,7 +68,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
        The audit walks commits on the branch since `git merge-base HEAD <default-branch>`, extracts U-IDs via regex from each subject, and only counts commits whose subject matches a U-ID in the plan AND that have evidence trailers. Non-unit commits are ignored — they're not part of the build-completeness signal.
 
-   5. **Surface the checkpoint prompt** (structured). **Hands-off (default):** do NOT prompt — when the build is verifiably complete, auto-select `y` (the recommended action) and perform the flip in sub-step 6; when it is `incomplete_build`, the informational outcome is already recorded (no prompt, PR still opens). **`--interactive`:** surface the prompt and let the user choose:
+   5. **Surface the checkpoint prompt** (structured). **Hands-off (default):** do NOT prompt - when the build is verifiably complete, auto-select `y` (the recommended action) and perform the flip in sub-step 6; when it is `incomplete_build`, the informational outcome is already recorded (no prompt, PR still opens). **`--interactive`:** surface the prompt and let the user choose:
       ```
       Plan completion checkpoint
       ──────────────────────────
@@ -130,16 +130,16 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
         - `skipped_by_user`, `incomplete_build`, `not_applicable` → use `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (plan stayed in active/).
     - Use HEREDOC for body to preserve formatting.
     - On PR-creation success → return URL.
-13. **Arm the CI self-heal watcher (default).** This is the hands-off completion: instead of a session-bound watch loop, en-ship hands the PR to a CI-hosted self-heal workflow (EN04, D38) so it self-heals CI failures after the session ends — GitHub Actions is the daemon. **Never report hands-off success while nothing is watching.**
+13. **Arm the CI self-heal watcher (default).** This is the hands-off completion: instead of a session-bound watch loop, en-ship hands the PR to a CI-hosted self-heal workflow (EN04, D38) so it self-heals CI failures after the session ends - GitHub Actions is the daemon. **Never report hands-off success while nothing is watching.**
 
     1. **Detect the watcher.** Check whether `.github/workflows/en-ship-watch.yml` exists in the repo.
-    2. **Watcher present → arm it.** Apply the `en-ship-watch` label to the PR (`gh pr edit <pr> --add-label en-ship-watch`). The workflow fires on the next `check_suite: completed` failure and drives `/en-resolve-pr` in the runner, bounded to 3 attempts, branch-only, escalating (dropping the label + commenting) when it can't safely proceed. Surface: *"Watcher armed — PR #<n> will self-heal CI failures and land at a mergeable state. Nothing left for you to do."* Then **stop at PR-ready** (default: do not merge).
-    3. **Watcher absent → degrade, never fake it.** Surface: *"No CI self-heal watcher installed — run `/en-setup` to install `.github/workflows/en-ship-watch.yml`."* Then either:
-       - fall back to the **session-bound watch loop** (the pre-EN04 behavior — bounded to 2 cycles, driving `/en-resolve-pr` on failing checks / new review comments, escalating on the cap, and **never** auto-merging), which lasts only as long as this session; or
+    2. **Watcher present → arm it.** Apply the `en-ship-watch` label to the PR (`gh pr edit <pr> --add-label en-ship-watch`). The workflow fires on the next `check_suite: completed` failure and drives `/en-resolve-pr` in the runner, bounded to 3 attempts, branch-only, escalating (dropping the label + commenting) when it can't safely proceed. Surface: *"Watcher armed - PR #<n> will self-heal CI failures and land at a mergeable state. Nothing left for you to do."* Then **stop at PR-ready** (default: do not merge).
+    3. **Watcher absent → degrade, never fake it.** Surface: *"No CI self-heal watcher installed - run `/en-setup` to install `.github/workflows/en-ship-watch.yml`."* Then either:
+       - fall back to the **session-bound watch loop** (the pre-EN04 behavior - bounded to 2 cycles, driving `/en-resolve-pr` on failing checks / new review comments, escalating on the cap, and **never** auto-merging), which lasts only as long as this session; or
        - with `--no-watch`, open the PR and stop cleanly at PR-ready.
-       Either way, do **not** claim hands-off success — say plainly that self-heal isn't installed.
+       Either way, do **not** claim hands-off success - say plainly that self-heal isn't installed.
     - `--no-watch` skips both the arm step and the fallback loop: open the PR and stop.
-14. **Auto-merge (`--auto-merge`).** Opt-in full walk-away. After the PR opens (and the watcher is armed, when present), run `gh pr merge --auto --squash` (or `--rebase` per repo convention) so GitHub merges the PR once checks pass and required approvals clear. Surface: *"Auto-merge armed; PR will merge itself when green."* Requires the repo to allow auto-merge (Settings → Pull Requests → Allow auto-merge). **Default OFF** — the default stops at a green, mergeable PR for you to merge.
+14. **Auto-merge (`--auto-merge`).** Opt-in full walk-away. After the PR opens (and the watcher is armed, when present), run `gh pr merge --auto --squash` (or `--rebase` per repo convention) so GitHub merges the PR once checks pass and required approvals clear. Surface: *"Auto-merge armed; PR will merge itself when green."* Requires the repo to allow auto-merge (Settings → Pull Requests → Allow auto-merge). **Default OFF** - the default stops at a green, mergeable PR for you to merge.
 
 ## Flags
 
@@ -148,7 +148,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 | `--draft` | Open as draft PR |
 | `--no-pr` | Push but don't open a PR (e.g., for branches that aren't user-facing) |
 | `--auto-merge` | Opt-in full walk-away: arm `gh pr merge --auto --squash` so the PR merges itself once green + approvals clear. Requires the repo to allow auto-merge. Default OFF (stop at a mergeable PR). |
-| `--no-watch` | Open the PR and stop — skip arming the CI watcher AND the session-bound fallback loop (step 13). |
+| `--no-watch` | Open the PR and stop - skip arming the CI watcher AND the session-bound fallback loop (step 13). |
 | `--allow-secrets` | Bypass the secret scan (use sparingly; surface warning) |
 | `--base <branch>` | Override PR target base |
 | `--reviewers <list>` | Request reviewers via `gh pr create --reviewer` |
