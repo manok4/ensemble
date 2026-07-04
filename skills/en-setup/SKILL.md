@@ -87,9 +87,10 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Optionally `docs/learnings/archive/` — ask the user.
 
    This step is verified again in the final-verification phase (step 17). Both checks must pass.
-9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these four scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+9. **Install project-local `bin/` scripts.** **(Required for the en-sweep and en-ship-watch workflows in step 10 to actually run.)** Copy these five scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$ENSEMBLE_ROOT/bin/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
+   - `$ENSEMBLE_ROOT/bin/en-ship-watch-ci` — wrapper invoked by `.github/workflows/en-ship-watch.yml` (the CI self-heal engine for hands-off `/en-ship`, EN04).
    - `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
    - `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
    - `$ENSEMBLE_ROOT/bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
@@ -99,7 +100,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
      - The skill's own load path: `dirname(realpath(<this SKILL.md>))/../../bin/`.
      - `~/.claude/plugins/<plugin-id>/bin/` for Claude Code's default layout (fallback).
 
-   For each of the four scripts: copy from `<plugin>/bin/<name>` to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
+   For each of the five scripts: copy from `<plugin>/bin/<name>` to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
 
    **Verification:** after copying, confirm with `[ -x bin/<name> ]` for each. Re-checked in the final-verification phase (step 17).
 
@@ -118,6 +119,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 17.
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
     6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check`."
+
+10a. **Install `.github/workflows/en-ship-watch.yml`** from `$ENSEMBLE_ROOT/references/templates/github-workflow-en-ship-watch.yml` — the CI-hosted self-heal engine for hands-off `/en-ship` (EN04, D38). Depends on step 9 (the `en-ship-watch-ci` wrapper).
+    1. **Copy** the template verbatim to `.github/workflows/en-ship-watch.yml` — no substitution needed (the workflow is event-driven, not scheduled). **Idempotent:** overwrite only when content differs; if a file with different content already exists, do not overwrite (surface the same warning as en-sweep per the failure-protocol table).
+    2. **Verify** the workflow file exists: `[ -f .github/workflows/en-ship-watch.yml ]`. Re-checked in step 17.
+    3. **Reuse en-sweep's secrets — NO new secret.** The watcher reads the same auth secrets already surfaced in step 10.5 (`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) plus the built-in `GITHUB_TOKEN`. If en-sweep is installed, nothing further is needed; if not, surface the same one-secret note from step 10.5.
+    4. **Note the auto-merge prerequisite:** "For `/en-ship --auto-merge` to function, the repo must allow auto-merge (Settings → General → Pull Requests → Allow auto-merge). The default hands-off flow (stop at a mergeable PR) needs no such setting."
+    5. **Note the label contract:** "`/en-ship` applies the `en-ship-watch` label when it arms the watcher; the workflow no-ops on any PR without it. The wrapper drops the label + comments to escalate when it can't safely self-heal."
 11. **Create `.ensemble/config.local.example.yaml`** (committed) from `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
 12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.). Choose:
@@ -173,7 +181,9 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
     | `.github/workflows/en-sweep.yml` | exists |
+    | `.github/workflows/en-ship-watch.yml` | exists |
     | `$ENSEMBLE_ROOT/bin/en-sweep-ci` | exists, executable (`-x`) |
+    | `$ENSEMBLE_ROOT/bin/en-ship-watch-ci` | exists, executable (`-x`) |
     | `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` | exists, executable |
     | `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` | exists, executable |
     | `$ENSEMBLE_ROOT/bin/ensemble-lint` | exists, executable |
@@ -285,8 +295,10 @@ Created:
   - CLAUDE.md (from template)
   - REVIEW.md (review-only instructions; from template)
   - .github/workflows/en-sweep.yml
+  - .github/workflows/en-ship-watch.yml (CI self-heal for hands-off /en-ship)
   - .github/workflows/claude-code-review.yml (Anthropic Code Review action)
   - bin/en-sweep-ci (chmod +x)
+  - bin/en-ship-watch-ci (chmod +x)
   - bin/ensemble-sweep-activity-check (chmod +x)
   - bin/ensemble-doc-only-check (chmod +x)
   - bin/ensemble-lint (chmod +x)
@@ -332,6 +344,7 @@ Next step:
 - `$ENSEMBLE_ROOT/references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
 - `$ENSEMBLE_ROOT/references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
 - `$ENSEMBLE_ROOT/references/templates/github-workflow-en-sweep.yml` — GH Action workflow
+- `$ENSEMBLE_ROOT/references/templates/github-workflow-en-ship-watch.yml` — GH Action workflow (CI self-heal for hands-off `/en-ship`)
 - `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml` — committed config template
 - `$ENSEMBLE_ROOT/references/learn-index-format.md` — `learnings/index.md` empty-state seed
 - `$ENSEMBLE_ROOT/references/learn-log-format.md` — `learnings/log.md` empty-state seed
