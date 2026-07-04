@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drift guards for en-ship watch loop + en-resolve-pr pagination (FR01 U8).
+# Drift guards for en-ship CI-first self-heal (EN04 U5) + en-resolve-pr pagination (FR01 U8).
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,32 +10,53 @@ TEST_NAME="en-ship watch loop"
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
 GETPR="$REPO_ROOT/skills/en-resolve-pr/scripts/get-pr-comments"
 
-# --- watch loop documented, default on ---
-if grep -qiE "Watch loop \(default ON\)" "$EN_SHIP"; then
-  pass "en-ship has a default-on watch loop"
+# --- CI-first: default completion arms the CI self-heal watcher ---
+if grep -qiE "Arm the CI self-heal watcher" "$EN_SHIP"; then
+  pass "en-ship default arms the CI self-heal watcher"
 else
-  fail "en-ship must have a default-on watch loop"
+  fail "en-ship must arm the CI self-heal watcher by default"
 fi
 
-# --- invokes en-resolve-pr ---
+# --- watcher detection + label arming ---
+if grep -qF "en-ship-watch.yml" "$EN_SHIP" && grep -qF "en-ship-watch" "$EN_SHIP"; then
+  pass "en-ship detects the watcher workflow + applies the en-ship-watch label"
+else
+  fail "en-ship must detect en-ship-watch.yml and apply the en-ship-watch label"
+fi
+
+# --- graceful degradation: never claim hands-off without a watcher ---
+if grep -qiE "never report hands-off success while nothing is watching|No CI self-heal watcher installed" "$EN_SHIP"; then
+  pass "en-ship degrades gracefully (never fakes hands-off without a watcher)"
+else
+  fail "en-ship must degrade gracefully when the watcher is absent"
+fi
+
+# --- invokes en-resolve-pr (CI watcher + fallback) ---
 if grep -qF "/en-resolve-pr" "$EN_SHIP"; then
-  pass "watch loop invokes /en-resolve-pr"
+  pass "self-heal invokes /en-resolve-pr"
 else
-  fail "watch loop must invoke /en-resolve-pr"
+  fail "self-heal must invoke /en-resolve-pr"
 fi
 
-# --- bounded to 2 cycles + escalate ---
-if grep -qiE "2 cycles|2nd resolve cycle|two cycles" "$EN_SHIP" && grep -qiE "escalate|needs-human" "$EN_SHIP"; then
-  pass "watch loop bounded to 2 cycles then escalates"
+# --- session-bound fallback loop still bounded to 2 cycles + escalate ---
+if grep -qiE "2 cycles|2nd resolve cycle|two cycles" "$EN_SHIP" && grep -qiE "escalat|needs-human" "$EN_SHIP"; then
+  pass "session-bound fallback loop bounded to 2 cycles then escalates"
 else
-  fail "watch loop must be bounded to 2 cycles then escalate"
+  fail "the fallback loop must be bounded to 2 cycles then escalate"
 fi
 
-# --- never auto-merges in the watch loop ---
-if grep -qiE "[Nn]ever auto-merge|never runs .gh pr merge.|No auto-merge" "$EN_SHIP"; then
-  pass "watch loop never auto-merges"
+# --- default never auto-merges (stop at mergeable PR) ---
+if grep -qiE "never auto-merg|Default OFF" "$EN_SHIP"; then
+  pass "default stops at a mergeable PR (no auto-merge)"
 else
-  fail "watch loop must never auto-merge"
+  fail "default must not auto-merge"
+fi
+
+# --- --auto-merge arms native gh auto-merge ---
+if grep -qF -- "--auto-merge" "$EN_SHIP" && grep -qF "gh pr merge --auto --squash" "$EN_SHIP"; then
+  pass "--auto-merge arms gh pr merge --auto --squash"
+else
+  fail "--auto-merge must arm gh pr merge --auto --squash"
 fi
 
 # --- --no-watch flag ---

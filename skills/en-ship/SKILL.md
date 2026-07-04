@@ -130,17 +130,16 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
         - `skipped_by_user`, `incomplete_build`, `not_applicable` → use `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (plan stayed in active/).
     - Use HEREDOC for body to preserve formatting.
     - On PR-creation success → return URL.
-13. **Watch loop (default ON).** After the PR opens, watch it for issues and resolve them automatically — bounded. **Never auto-merges** (the user merges when the PR is ready).
-    1. Poll the PR for new review comments and CI status: `gh pr checks` (CI) and `gh pr view --json reviewDecision,comments` (reviews). Re-poll on a sensible cadence (e.g. `gh pr checks --watch` for CI; re-fetch reviews between rounds).
-    2. When issues appear (failing checks OR new review comments), invoke `/en-resolve-pr` to address them. en-resolve-pr applies fixes, replies, and resolves threads per its 6-verdict rubric.
-    3. **Bounded to 2 cycles.** After the 2nd resolve cycle, stop and **escalate**: surface remaining unresolved items as needs-human (mirrors `/en-resolve-pr`'s own cap and ce-resolve-pr-feedback). Do not loop indefinitely.
-    4. **Exit conditions:** all checks green AND no unresolved review threads → surface *"PR is green and clean — ready for your review/merge."*; PR merged/closed externally → stop; 2-cycle cap hit → escalate and stop.
-    5. **No auto-merge.** The watch loop never runs `gh pr merge`. Merging is the user's explicit action.
-    - Disable with `--no-watch` (open the PR and stop).
-14. **Optional auto-merge.** Only when the user explicitly opts in with `--auto-merge` AND CI is green AND branch protection allows:
-    - `gh pr merge --auto --squash` (or `--rebase` per repo convention).
-    - Surface: "Auto-merge enabled; PR will merge when CI passes."
-    - **Default OFF**, and mutually exclusive with the default watch loop — `--auto-merge` implies you want hands-off merging instead of the watch-and-fix loop.
+13. **Arm the CI self-heal watcher (default).** This is the hands-off completion: instead of a session-bound watch loop, en-ship hands the PR to a CI-hosted self-heal workflow (EN04, D38) so it self-heals CI failures after the session ends — GitHub Actions is the daemon. **Never report hands-off success while nothing is watching.**
+
+    1. **Detect the watcher.** Check whether `.github/workflows/en-ship-watch.yml` exists in the repo.
+    2. **Watcher present → arm it.** Apply the `en-ship-watch` label to the PR (`gh pr edit <pr> --add-label en-ship-watch`). The workflow fires on the next `check_suite: completed` failure and drives `/en-resolve-pr` in the runner, bounded to 3 attempts, branch-only, escalating (dropping the label + commenting) when it can't safely proceed. Surface: *"Watcher armed — PR #<n> will self-heal CI failures and land at a mergeable state. Nothing left for you to do."* Then **stop at PR-ready** (default: do not merge).
+    3. **Watcher absent → degrade, never fake it.** Surface: *"No CI self-heal watcher installed — run `/en-setup` to install `.github/workflows/en-ship-watch.yml`."* Then either:
+       - fall back to the **session-bound watch loop** (the pre-EN04 behavior — bounded to 2 cycles, driving `/en-resolve-pr` on failing checks / new review comments, escalating on the cap, and **never** auto-merging), which lasts only as long as this session; or
+       - with `--no-watch`, open the PR and stop cleanly at PR-ready.
+       Either way, do **not** claim hands-off success — say plainly that self-heal isn't installed.
+    - `--no-watch` skips both the arm step and the fallback loop: open the PR and stop.
+14. **Auto-merge (`--auto-merge`).** Opt-in full walk-away. After the PR opens (and the watcher is armed, when present), run `gh pr merge --auto --squash` (or `--rebase` per repo convention) so GitHub merges the PR once checks pass and required approvals clear. Surface: *"Auto-merge armed; PR will merge itself when green."* Requires the repo to allow auto-merge (Settings → Pull Requests → Allow auto-merge). **Default OFF** — the default stops at a green, mergeable PR for you to merge.
 
 ## Flags
 
@@ -148,8 +147,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 |---|---|
 | `--draft` | Open as draft PR |
 | `--no-pr` | Push but don't open a PR (e.g., for branches that aren't user-facing) |
-| `--auto-merge` | Enable auto-merge after CI passes (hands-off merge; replaces the default watch loop). |
-| `--no-watch` | Open the PR and stop — skip the default post-PR watch-and-resolve loop (step 13). |
+| `--auto-merge` | Opt-in full walk-away: arm `gh pr merge --auto --squash` so the PR merges itself once green + approvals clear. Requires the repo to allow auto-merge. Default OFF (stop at a mergeable PR). |
+| `--no-watch` | Open the PR and stop — skip arming the CI watcher AND the session-bound fallback loop (step 13). |
 | `--allow-secrets` | Bypass the secret scan (use sparingly; surface warning) |
 | `--base <branch>` | Override PR target base |
 | `--reviewers <list>` | Request reviewers via `gh pr create --reviewer` |
