@@ -61,14 +61,16 @@ jobs:
           bun-version: latest
 
       - name: Install agent CLI
+        # NONFATAL by design: a failed install must NOT abort the job before the
+        # wrapper runs — otherwise the PR sits silently armed with no escalation.
+        # The wrapper's Gate 4 detects a missing CLI and drops the label + comments.
+        continue-on-error: true
         run: |
           # Real install of the coding-agent CLI the fix agent drives. Default is
           # the Claude CLI; switch to your codex install if that's your agent.
           if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
-            npm install -g @anthropic-ai/claude-code
+            npm install -g @anthropic-ai/claude-code || true
           fi
-          # If install failed, the wrapper (not this step) drops the label and
-          # comments an escalation, so the PR never sits silently armed.
 
       - name: Run en-ship-watch self-heal
         env:

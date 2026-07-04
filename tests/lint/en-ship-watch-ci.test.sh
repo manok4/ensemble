@@ -168,6 +168,13 @@ else
   fail "workflow must actually install an agent CLI, not only check PATH"
 fi
 
+# --- CLI install is NONFATAL (so a failed install still reaches the wrapper's escalation) ---
+if grep -qE "continue-on-error: true" "$WF" && grep -qE "npm install -g @anthropic-ai/claude-code \|\| true" "$WF"; then
+  pass "CLI install is nonfatal (wrapper always runs to escalate on missing CLI)"
+else
+  fail "CLI install must be nonfatal so the wrapper's missing-CLI escalation fires"
+fi
+
 # --- drives /en-resolve-pr headless ---
 if grep -qF "en-resolve-pr" "$CI"; then
   pass "wrapper drives /en-resolve-pr"
