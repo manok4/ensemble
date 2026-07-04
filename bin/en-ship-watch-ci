@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# en-ship-watch-ci — wrapper used by .github/workflows/en-ship-watch.yml.
+#
+# CI-hosted self-heal for hands-off /en-ship (EN04). Event-driven: the workflow
+# fires on `check_suite: completed` with conclusion `failure`. This wrapper
+# gates on the `en-ship-watch` label, bounds fix attempts, drives /en-resolve-pr
+# headless in the runner to fix the failing CI, and pushes the fix BRANCH-ONLY
+# (never the default branch, never a force-push of a protected ref). On an
+# unfixable failure or the attempt cap, it drops the label and comments an
+# escalation so a human is pulled back in.
+#
+# Reuses en-sweep's auth env vars (CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY /
+# OPENAI_API_KEY + GITHUB_TOKEN). No new secret.
+
+set -euo pipefail
+
+WATCH_LABEL="en-ship-watch"
+MAX_ATTEMPTS="${EN_SHIP_WATCH_MAX_ATTEMPTS:-3}"
+ATTEMPT_TRAILER="en-ship-watch-attempt"
+
+# ---------------------------------------------------------------------------
+# Pure, testable decision guards (no side effects — safe to source in tests).
+# ---------------------------------------------------------------------------
+
+# has_watch_label <newline-separated labels> — 0 if the watch label is present.
+has_watch_label() {
+  printf '%s\n' "${1:-}" | grep -qx "$WATCH_LABEL"
+}
+
+# under_attempt_cap <count> <cap> — 0 while attempts remain (count < cap).
+under_attempt_cap() {
+  [ "${1:-0}" -lt "${2:-3}" ]
+}
+
+# assert_branch_safe <target-branch> <default-branch> — refuse (non-zero) when
+# the push target is empty or is the default branch. Branch-only writes.
+assert_branch_safe() {
+  local target="${1:-}" default="${2:-}"
+  if [ -z "$target" ] || [ "$target" = "$default" ]; then
+    echo "REFUSED: en-ship-watch will not write to '$target' (default: '$default'); branch-only." >&2
+    return 1
+  fi
+  return 0
+}
+
+# count_attempts <default-branch> — number of prior watcher fix commits on the
+# current branch, read from the PR-visible commit trailers.
+count_attempts() {
+  local default="${1:-main}"
+  git log "origin/${default}..HEAD" --format='%(trailers:key='"$ATTEMPT_TRAILER"',valueonly)' 2>/dev/null \
+    | grep -c . || true
+}
+
+# ---------------------------------------------------------------------------
+# Side-effecting helpers (thin wrappers over gh/git; skipped under tests).
+# ---------------------------------------------------------------------------
+
+drop_label_and_escalate() {
+  local pr="$1" reason="$2"
+  gh pr edit "$pr" --remove-label "$WATCH_LABEL" >/dev/null 2>&1 || true
+  gh pr comment "$pr" --body "🛑 en-ship-watch stopped self-healing this PR: ${reason}. Removing the \`${WATCH_LABEL}\` label — a human decision is needed. Re-add the label to resume." >/dev/null 2>&1 || true
+  echo "en-ship-watch: escalated PR #${pr} (${reason})"
+}
+
+# drive_resolve_pr — invoke /en-resolve-pr headless via whichever CLI is on PATH,
+# mirroring en-sweep-ci's CLI resolution. Returns the CLI exit status.
+drive_resolve_pr() {
+  local pr="$1" plugin_dir="${ENSEMBLE_PLUGIN_DIR:-}"
+  if command -v claude >/dev/null 2>&1; then
+    set -- -p --output-format json --max-turns 50 --skill en-resolve-pr "resolve the failing CI on PR #${pr}"
+    [ -n "$plugin_dir" ] && set -- --plugin-dir "$plugin_dir" "$@"
+    claude "$@"
+  elif command -v codex >/dev/null 2>&1; then
+    if [ -n "$plugin_dir" ]; then
+      codex exec --json --plugin-dir "$plugin_dir" --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null
+    else
+      codex exec --json --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null
+    fi
+  else
+    echo "ERROR: en-ship-watch requires claude or codex CLI in the runner." >&2
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+main() {
+  # Belt-and-suspenders recursion guard: never let the watcher invoke itself.
+  if [ "${EN_SHIP_WATCH_ACTIVE:-0}" = "1" ]; then
+    echo "en-ship-watch: already active (recursion guard); exiting."; exit 0
+  fi
+  export EN_SHIP_WATCH_ACTIVE=1
+
+  local head_sha="${EN_SHIP_WATCH_HEAD_SHA:-${GITHUB_SHA:-}}"
+  local default_branch="${EN_SHIP_WATCH_DEFAULT_BRANCH:-$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null || echo main)}"
+
+  # Resolve the open PR whose head is this failing check_suite.
+  local pr branch labels
+  pr="$(gh pr list --state open --search "$head_sha" --json number --jq '.[0].number' 2>/dev/null || true)"
+  if [ -z "$pr" ]; then
+    echo "en-ship-watch: no open PR for ${head_sha}; nothing to do."; exit 0
+  fi
+  labels="$(gh pr view "$pr" --json labels --jq '.labels[].name' 2>/dev/null || true)"
+
+  # Gate 1 — only act on labeled PRs.
+  if ! has_watch_label "$labels"; then
+    echo "en-ship-watch: PR #${pr} is not labeled '${WATCH_LABEL}'; no-op."; exit 0
+  fi
+
+  branch="$(gh pr view "$pr" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
+
+  # Gate 2 — bound fix attempts.
+  local attempts; attempts="$(count_attempts "$default_branch")"
+  if ! under_attempt_cap "$attempts" "$MAX_ATTEMPTS"; then
+    drop_label_and_escalate "$pr" "reached the ${MAX_ATTEMPTS}-attempt fix cap"
+    exit 0
+  fi
+
+  # Gate 3 — never write to the default branch.
+  if ! assert_branch_safe "$branch" "$default_branch"; then
+    drop_label_and_escalate "$pr" "refused to write to a protected branch"
+    exit 0
+  fi
+
+  # Drive the fix. If /en-resolve-pr produces no commit, escalate.
+  local before after
+  before="$(git rev-parse HEAD)"
+  if ! drive_resolve_pr "$pr"; then
+    drop_label_and_escalate "$pr" "the fix agent could not resolve the failure"
+    exit 0
+  fi
+  # Stamp the attempt trailer onto any produced fix commit(s) so the counter advances.
+  after="$(git rev-parse HEAD)"
+  if [ "$before" = "$after" ]; then
+    drop_label_and_escalate "$pr" "no fix was produced (judgment call)"
+    exit 0
+  fi
+
+  # Push branch-only (re-assert safety immediately before the push).
+  assert_branch_safe "$branch" "$default_branch" || { drop_label_and_escalate "$pr" "branch-safety re-check failed"; exit 0; }
+  git push origin "HEAD:${branch}"
+  echo "en-ship-watch: pushed a fix to ${branch} (PR #${pr}); CI will re-run."
+}
+
+# Only run when executed, not when sourced by tests.
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+  main "$@"
+fi
