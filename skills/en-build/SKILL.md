@@ -253,7 +253,25 @@ If the agent has a real concern that's outside the seven cases AND not caught by
       The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails, the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-cross-review on the failing units, then re-audit`.
 
     - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict, any per-unit (destructive/gated) peer verdicts. Per-phase summary if phasing was on.
-    - **Auto-invoke `/en-learn`** (soft prompt — A3): "Build complete. Capture learnings? (yes / skip)". User accepts → invoke; user declines → no-op. **If the peer-evidence audit failed, /en-learn should be deferred** until the failing commits are addressed.
+    - **Learning checkpoint** (structured, non-droppable - A3, D26). This is the primary capture point (freshest context, user present) AND the anti-drop backstop that a soft post-build prompt cannot guarantee: it emits a visible `learning_checkpoint:` outcome line in the build summary, so the capture decision can never be silently dropped under context pressure. Relocated here from `/en-ship`'s preflight by EN04 (see `docs/en-learn-checkpoint-spec.md`) - capture belongs at the point of insight, not the point of ship.
+      1. **Deferral guard.** If the peer-evidence audit (above) failed, **defer** the checkpoint until the failing commits are addressed - do not fire it on a build with missing evidence. Surface a one-line note that the learning checkpoint is deferred (peer-evidence audit failed) and skip the rest. This emits **no** `learning_checkpoint:` outcome value - the checkpoint did not run, so none of the four canonical outcomes applies.
+      2. **CI short-circuit.** If `CI=true`, record `learning_checkpoint: ci_environment` in the build summary; skip the prompt (no interactive prompt in CI).
+      3. **Determine the capture baseline.** Read `docs/learnings/log.md`; find the latest `## [YYYY-MM-DD] capture | <subject> | <head-sha>` entry. If a `<head-sha>` is present, baseline = that SHA (`git log <sha>..HEAD`). Legacy entry without a SHA → one-line imprecise-baseline notice + `git log --since=<date>` fallback. No capture entries at all → baseline = `git merge-base HEAD <default-branch>` (since branch creation).
+      4. **Idempotency check.** If the scope is zero commits since the last capture, record `learning_checkpoint: up_to_date` and skip the prompt silently.
+      5. **Surface the checkpoint prompt** (structured, not a soft prompt):
+         ```
+         Learning checkpoint
+         ───────────────────
+         <N> commits since last /en-learn capture (<baseline date or "branch creation">).
+         Diff: <X> files changed, <Y> lines.
+         Recent commits touch: <comma-separated areas from changed files>
+
+         Worth filing learnings from this build? (yes / skip / details)
+         ```
+      6. **Handle response.** `yes` → invoke `/en-learn capture`; record `learning_checkpoint: captured (<N> learnings)`. `skip` → record `learning_checkpoint: intentionally_skipped` (auditable). `details` → print the commit list + per-area summary; re-prompt.
+      7. **Flag override.** `--no-learning-checkpoint` skips the whole step (records `learning_checkpoint: intentionally_skipped (--no-learning-checkpoint flag)`).
+
+      The four canonical outcome values are `captured (N learnings)` / `intentionally_skipped` / `up_to_date` / `ci_environment` (never the bare word `skipped`). This step fires at the `/en-learn` hand-off - after step 10's audit, **outside** the inter-unit autonomy-contract window - so it is a legitimate terminal checkpoint, not an inserted inter-unit pause.
     - Suggest next: `/en-review` → `/en-qa` → `/en-ship` — but only if the audit passed. Otherwise: `/en-cross-review` on the failing commits.
 
 ## Flags
@@ -277,6 +295,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 | `--strict-destructive` | Add literal-string confirmation for `risk: high` and Phase 3 in addition to P4 / `risk: destructive` (which always require it). |
 | `--no-finalize` | Disable the recovery offer for `draft + revise` plans; refuse on draft as today. |
 | `--finalize-only` | Run finalize loop and stop without building. |
+| `--no-learning-checkpoint` | Skip the structured learning checkpoint; record `learning_checkpoint: intentionally_skipped (--no-learning-checkpoint flag)`. |
 | `--commit-wip` | After a stopped run (Ctrl-C, gate-failure, etc.), create a `wip/<plan_id>-phase<N>` branch and commit current state. Explicit user invocation only — never automatic. |
 | `--re-baseline` | After reviewing an external plan-file diff, accept the new state as the build's baseline `peer_review_plan_hash`. |
 
@@ -341,8 +360,7 @@ Typecheck: clean.
 
 Code-simplifier: 4 of 5 units; 7 file changes total.
 Peer review: cross-agent (codex). 4 findings applied, 2 deferred to tech-debt-tracker (TD11, TD12).
-
-Auto-invoking /en-learn (capture learnings? y/n) →
+learning_checkpoint: captured (2 learnings)
 ```
 
 ## Reference files

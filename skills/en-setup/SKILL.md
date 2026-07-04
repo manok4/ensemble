@@ -118,6 +118,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 17.
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
     6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check`."
+
 11. **Create `.ensemble/config.local.example.yaml`** (committed) from `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
 12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.). Choose:
@@ -173,10 +174,10 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
     | `.github/workflows/en-sweep.yml` | exists |
-    | `$ENSEMBLE_ROOT/bin/en-sweep-ci` | exists, executable (`-x`) |
-    | `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` | exists, executable |
-    | `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` | exists, executable |
-    | `$ENSEMBLE_ROOT/bin/ensemble-lint` | exists, executable |
+    | `./bin/en-sweep-ci` | exists, executable (`-x`) |
+    | `./bin/ensemble-sweep-activity-check` | exists, executable |
+    | `./bin/ensemble-doc-only-check` | exists, executable |
+    | `./bin/ensemble-lint` | exists, executable |
     | `.ensemble/config.local.example.yaml` | exists |
 
     **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
@@ -251,7 +252,7 @@ Invoke `scripts/check-health` (in the plugin's `scripts/` directory). It prints 
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Required-artifact verification** — same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `$ENSEMBLE_ROOT/bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
+- **Required-artifact verification** - same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
 - **Guardrail status** — run `skills/en-guardrail/bin/install-guardrail status`. 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
@@ -286,10 +287,10 @@ Created:
   - REVIEW.md (review-only instructions; from template)
   - .github/workflows/en-sweep.yml
   - .github/workflows/claude-code-review.yml (Anthropic Code Review action)
-  - bin/en-sweep-ci (chmod +x)
-  - bin/ensemble-sweep-activity-check (chmod +x)
-  - bin/ensemble-doc-only-check (chmod +x)
-  - bin/ensemble-lint (chmod +x)
+  - ./bin/en-sweep-ci (chmod +x)
+  - ./bin/ensemble-sweep-activity-check (chmod +x)
+  - ./bin/ensemble-doc-only-check (chmod +x)
+  - ./bin/ensemble-lint (chmod +x)
   - .ensemble/config.local.example.yaml
   - .claude/settings.json (en-guardrail PreToolUse hook, project-scoped)
 

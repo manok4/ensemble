@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Drift guards for the /en-ship learning checkpoint (en-learn-checkpoint-spec).
-# Per the spec at docs/en-learn-checkpoint-spec.md.
+# Drift guards for the structured learning checkpoint (en-learn-checkpoint-spec).
+# Per docs/en-learn-checkpoint-spec.md. Relocated from en-ship preflight to
+# en-build completion by EN04 - checkpoint assertions target en-build.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,57 +9,55 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-learn checkpoint"
 
-EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
+EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
 EN_QA="$REPO_ROOT/skills/en-qa/SKILL.md"
 EN_LEARN="$REPO_ROOT/skills/en-learn/SKILL.md"
 LOG_FORMAT="$REPO_ROOT/references/learn-log-format.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
-# --- en-ship preflight has a learning checkpoint ---
-if grep -qF "Learning checkpoint" "$EN_SHIP"; then
-  pass "en-ship has Learning checkpoint heading"
+# --- en-build completion has a learning checkpoint ---
+if grep -qF "Learning checkpoint" "$EN_BUILD"; then
+  pass "en-build has Learning checkpoint heading"
 else
-  fail "en-ship missing Learning checkpoint heading"
+  fail "en-build missing Learning checkpoint heading"
 fi
 
-# --- All four canonical outcome values present in en-ship ---
+# --- All four canonical outcome values present in en-build ---
 for outcome in "captured" "intentionally_skipped" "up_to_date" "ci_environment"; do
-  if grep -qF "learning_checkpoint: $outcome" "$EN_SHIP"; then
-    pass "en-ship documents outcome: $outcome"
+  if grep -qF "learning_checkpoint: $outcome" "$EN_BUILD"; then
+    pass "en-build documents outcome: $outcome"
   else
-    fail "en-ship missing outcome: $outcome"
+    fail "en-build missing outcome: $outcome"
   fi
 done
 
 # --- Bare word "skipped" must NOT appear as the outcome value (must be intentionally_skipped) ---
-if grep -qE "learning_checkpoint:[[:space:]]+skipped[[:space:]]*$" "$EN_SHIP" \
-   || grep -qE "learning_checkpoint:[[:space:]]+skipped[[:space:]]*\(" "$EN_SHIP"; then
-  fail "en-ship uses bare 'skipped' as outcome (must be intentionally_skipped per the canonical enum)"
+if grep -qE "learning_checkpoint:[[:space:]]+skipped[[:space:]]*$" "$EN_BUILD" \
+   || grep -qE "learning_checkpoint:[[:space:]]+skipped[[:space:]]*\(" "$EN_BUILD"; then
+  fail "en-build uses bare 'skipped' as outcome (must be intentionally_skipped per the canonical enum)"
 else
-  pass "en-ship doesn't use bare 'skipped' as outcome value"
+  pass "en-build doesn't use bare 'skipped' as outcome value"
 fi
 
-# --- Checkpoint runs BEFORE lint/typecheck/secret-scan (so en-learn writes go through them) ---
-checkpoint_line=$(grep -n "Learning checkpoint" "$EN_SHIP" | head -1 | cut -d: -f1)
-lint_line=$(grep -n "Lint + typecheck" "$EN_SHIP" | head -1 | cut -d: -f1)
-if [ -n "$checkpoint_line" ] && [ -n "$lint_line" ] && [ "$checkpoint_line" -lt "$lint_line" ]; then
-  pass "en-ship checkpoint runs BEFORE lint+typecheck (per spec ordering rationale)"
+# --- Checkpoint fires at build completion (at the /en-learn hand-off, after the audit) ---
+if grep -qiE "hand-off|completion|after step 10" "$EN_BUILD"; then
+  pass "en-build checkpoint fires at build completion (en-learn hand-off)"
 else
-  fail "en-ship checkpoint should run BEFORE lint+typecheck" "checkpoint=$checkpoint_line lint=$lint_line"
+  fail "en-build checkpoint should fire at build completion"
 fi
 
-# --- --no-learning-checkpoint flag is documented ---
-if grep -qF -- "--no-learning-checkpoint" "$EN_SHIP"; then
-  pass "en-ship documents --no-learning-checkpoint flag"
+# --- --no-learning-checkpoint flag is documented in en-build ---
+if grep -qF -- "--no-learning-checkpoint" "$EN_BUILD"; then
+  pass "en-build documents --no-learning-checkpoint flag"
 else
-  fail "en-ship missing --no-learning-checkpoint flag"
+  fail "en-build missing --no-learning-checkpoint flag"
 fi
 
-# --- en-ship report output includes the learning_checkpoint line ---
-if grep -qE "learning_checkpoint:.*captured|✓ learning_checkpoint" "$EN_SHIP"; then
-  pass "en-ship report output template includes learning_checkpoint line"
+# --- en-build summary includes the learning_checkpoint line ---
+if grep -qE "learning_checkpoint:" "$EN_BUILD"; then
+  pass "en-build summary includes learning_checkpoint outcome"
 else
-  fail "en-ship report output template should include a learning_checkpoint example"
+  fail "en-build should include a learning_checkpoint outcome line"
 fi
 
 # --- en-qa prompt broadened (not anchored on "N bugs" alone) ---
@@ -98,23 +97,23 @@ else
   fail "en-learn step 3 should write | <head-sha> on capture mode"
 fi
 
-# --- en-ship baseline detection uses git log <sha>..HEAD precisely, with legacy date fallback ---
-if grep -qE "git log <baseline-sha>\.\.HEAD|git log.*<head-sha>\.\.HEAD" "$EN_SHIP"; then
-  pass "en-ship baseline uses precise sha..HEAD scan"
+# --- en-build baseline detection uses git log <sha>..HEAD precisely, with legacy date fallback ---
+if grep -qE "git log <sha>\.\.HEAD|git log <baseline-sha>\.\.HEAD|<head-sha>.*for scope|<head-sha>.*entry" "$EN_BUILD"; then
+  pass "en-build baseline uses precise sha..HEAD scan"
 else
-  fail "en-ship checkpoint should use 'git log <baseline-sha>..HEAD' for precise scan"
+  fail "en-build checkpoint should use 'git log <sha>..HEAD' for precise scan"
 fi
-if grep -qE "imprecise baseline|legacy.*fallback|fall back to.*git log --since" "$EN_SHIP"; then
-  pass "en-ship documents legacy date-based fallback"
+if grep -qE "imprecise-baseline|legacy.*fallback|since=<date>" "$EN_BUILD"; then
+  pass "en-build documents legacy date-based fallback"
 else
-  fail "en-ship should document the legacy date-based fallback for SHA-less entries"
+  fail "en-build should document the legacy date-based fallback for SHA-less entries"
 fi
 
-# --- foundation §D26 updated to mention en-ship as backstop ---
-if grep -E "^- \*\*D26\." "$FOUNDATION" | grep -qF "en-ship"; then
-  pass "foundation §D26 mentions en-ship backstop"
+# --- foundation §D26 updated to reference en-build completion ---
+if grep -E "^- \*\*D26\." "$FOUNDATION" | grep -qF "en-build"; then
+  pass "foundation §D26 references en-build completion checkpoint"
 else
-  fail "foundation §D26 should mention en-ship as the checkpoint backstop"
+  fail "foundation §D26 should reference the en-build completion checkpoint"
 fi
 if grep -E "^- \*\*D26\." "$FOUNDATION" | grep -qF "structured checkpoint"; then
   pass "foundation §D26 calls it a 'structured checkpoint' (not soft prompt)"
@@ -131,10 +130,10 @@ else
 fi
 
 # --- Idempotency rule documented: re-runs yield up_to_date, not double-prompt ---
-if grep -qiE "(up_to_date.*proceed|re-prompt|don't re-prompt|runs twice on the same branch)" "$EN_SHIP"; then
-  pass "en-ship documents idempotency (re-runs yield up_to_date)"
+if grep -qiE "(up_to_date.*skip|zero commits|skip the prompt silently)" "$EN_BUILD"; then
+  pass "en-build documents idempotency (zero commits yield up_to_date)"
 else
-  fail "en-ship should document idempotency for re-runs"
+  fail "en-build should document idempotency for re-runs"
 fi
 
 report

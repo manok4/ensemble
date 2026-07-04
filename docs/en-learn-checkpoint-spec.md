@@ -1,5 +1,5 @@
 ---
-title: en-learn capture checkpoint at en-ship — spec
+title: en-learn capture checkpoint (at en-build completion since EN04) - spec
 status: draft
 owner: mano
 created: 2026-05-12
@@ -11,7 +11,9 @@ related:
   - docs/foundation.md
 ---
 
-# en-learn capture checkpoint at en-ship
+# en-learn capture checkpoint at en-build completion (relocated from en-ship by EN04)
+
+> **AUTHORITATIVE LOCATION: `/en-build` completion.** EN04 relocated this checkpoint from `/en-ship`'s preflight to the end of `/en-build`. The mechanics below (a structured, non-droppable checkpoint with the four canonical outcome values) are unchanged and still load-bearing — only the *location* moved, so capture happens at the point of insight while the user is present and `/en-ship` stays hands-off. **Throughout this document, every "en-ship preflight" / "en-ship report" reference is HISTORICAL — read it as "en-build completion" / "en-build report."** The checkpoint no longer exists in `/en-ship`; drift guards assert the en-build location. Canonical records: foundation D26 + D38, `skills/en-build/SKILL.md`.
 
 ## Problem
 
@@ -39,7 +41,7 @@ This spec went through one round of review on PR #18. Three findings, all addres
 
 ## Outcome enum (canonical)
 
-The en-ship report's `learning_checkpoint:` field accepts exactly these four values. Every other section of this spec, the foundation update, the SKILL.md changes, and the drift-guard tests MUST use these exact strings:
+The **en-build report's** `learning_checkpoint:` field accepts exactly these four values. Every other section of this spec, the foundation update, the SKILL.md changes, and the drift-guard tests MUST use these exact strings:
 
 | Value | Meaning |
 |---|---|
@@ -52,17 +54,19 @@ If any section of this spec uses different wording (e.g. `skipped` instead of `i
 
 ## Resolved decisions
 
-1. **Add a learning checkpoint to `/en-ship`'s preflight.** Not a post-flight soft prompt — a numbered, structured preflight step with a visible outcome line in the en-ship report. The agent must surface one of the four canonical outcome values — no silent drop possible.
+1. **Add a structured learning checkpoint at `/en-build` completion** (relocated from `/en-ship`'s preflight by EN04). Not a post-flight soft prompt - a numbered, structured step with a visible `learning_checkpoint:` outcome line in the build summary. The agent must surface one of the four canonical outcome values - no silent drop possible. (Originally specified in `/en-ship`'s preflight; EN04 moved it to en-build completion so capture happens at the point of insight and en-ship stays hands-off. The non-droppable-structured-step requirement is unchanged.)
 2. **Always prompt; make skip cheap.** Don't gate on diff-size or commit-count thresholds. Prompt on every `/en-ship` invocation; the user types `skip` if nothing's worth filing. Cost of acknowledging "nothing this time" is much lower than cost of a missed capture.
 3. **Broaden `/en-qa`'s anchor.** Replace *"QA found and fixed N bugs. Capture as learnings?"* with *"QA wrapped. Anything worth filing as a learning from this pass? (yes / skip)"* so the prompt fires even when zero bugs were found.
 4. **Keep `/en-build` and `/en-qa` soft prompts.** They're freshest-point capture opportunities and they work when the agent runs them. The new en-ship checkpoint is the **backstop**, not a replacement.
-5. **Update foundation §D26.** Currently *"en-learn auto-runs after en-build and en-qa."* Becomes *"en-learn auto-runs after en-build and en-qa, AND fires as a structured checkpoint in en-ship's preflight."*
+5. **Update foundation §D26** (as shipped, EN04): *"en-learn auto-runs after en-qa, AND fires as a structured checkpoint at `/en-build` completion."* (The original EN04 draft said "en-ship's preflight"; the relocation to en-build is the shipped state.)
 
-## Change 1 — `/en-ship` learning checkpoint
+## Change 1 - learning checkpoint
 
-**File:** `skills/en-ship/SKILL.md`
+> **HISTORICAL (superseded by EN04).** This section describes the ORIGINAL placement in `/en-ship`'s preflight. **EN04 relocated the checkpoint to `/en-build` completion** - it no longer exists in `/en-ship`, and drift guards now assert the en-build location. Read the mechanics below (baseline, scope, outcome enum, prompt) as-is, but the host file is `skills/en-build/SKILL.md` at the end-of-build `/en-learn` hand-off, NOT en-ship preflight. Do not reintroduce the en-ship step. The "before lint/typecheck/secret-scan" ordering rationale below is an en-ship-preflight concern and no longer applies at en-build.
 
-Add a new preflight step **as the FIRST preflight step — before lint, typecheck, and secret-scan.**
+**File (as implemented since EN04):** `skills/en-build/SKILL.md` (originally `skills/en-ship/SKILL.md`).
+
+Original en-ship placement: a new preflight step **as the FIRST preflight step - before lint, typecheck, and secret-scan.**
 
 **Ordering rationale.** When the user answers `yes`, `/en-learn capture` can write new files: `docs/learnings/log.md` (appended), new learning pages under `docs/learnings/{bugs,patterns,decisions,sources}/`, possibly `docs/architecture.md` or `docs/foundation.md` cross-reference updates, and the architecture-sync index updates. If the checkpoint runs AFTER lint/typecheck/secret-scan, those newly-written files get staged and committed without being scanned — they ship unchecked. Running the checkpoint FIRST guarantees every file in the final diff was inspected by every preflight check.
 
@@ -150,7 +154,7 @@ Current:
 
 Replace with:
 
-> **D26. `en-learn` auto-runs after `en-build` and `en-qa`, AND fires as a structured checkpoint in `en-ship`'s preflight.** The en-build and en-qa auto-invokes are soft prompts at the freshest point (right after the work is done); they're the preferred capture point when they fire. The en-ship checkpoint is the **backstop** — a structured preflight step (not a soft prompt) that surfaces a "what changed since last capture?" prompt before code leaves the local environment. Records `learning_checkpoint: <captured|intentionally_skipped|up_to_date>` in en-ship's report (with `ci_environment` as a fourth value when running under `CI=true`), so missed captures are auditable rather than silently dropped. Together: capture at point of insight when it fires; backstop at point of ship when it doesn't.
+> **D26 (as shipped since EN04). `en-learn` auto-runs after `en-qa`, AND fires as a structured checkpoint at `/en-build` completion.** The en-qa auto-invoke is a soft prompt at the freshest point. The **en-build completion checkpoint** is the structured, non-droppable capture point (not a soft prompt) that surfaces a "what changed since last capture?" prompt at build completion. Records `learning_checkpoint: <captured|intentionally_skipped|up_to_date>` in the en-build report (with `ci_environment` as a fourth value under `CI=true`), so missed captures are auditable rather than silently dropped. *(The original EN04 draft placed this in en-ship's preflight; the shipped D26 in `docs/foundation.md` is the authoritative wording.)*
 
 ## Drift guards
 
