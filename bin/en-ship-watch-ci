@@ -80,16 +80,29 @@ drop_label_and_escalate() {
   echo "en-ship-watch: escalated PR #${pr} (${reason})"
 }
 
+# skill_resolved <cli-output> — non-zero when the CLI reports the en-resolve-pr
+# skill was not registered (green-but-inert). Mirrors en-sweep-ci's guard.
+skill_resolved() {
+  ! printf '%s' "${1:-}" | grep -qi 'unknown command'
+}
+
 # drive_resolve_pr — invoke /en-resolve-pr headless via whichever CLI is on PATH.
+# Passes --plugin-dir on BOTH paths when ENSEMBLE_PLUGIN_DIR is set so the skill
+# resolves. Returns 2 when the skill was not registered, 1 on CLI error.
 drive_resolve_pr() {
-  local pr="$1" plugin_dir="${ENSEMBLE_PLUGIN_DIR:-}"
+  local pr="$1" plugin_dir="${ENSEMBLE_PLUGIN_DIR:-}" out
   if command -v claude >/dev/null 2>&1; then
     set -- -p --output-format json --max-turns 50 --skill en-resolve-pr "resolve the failing CI on PR #${pr}"
     [ -n "$plugin_dir" ] && set -- --plugin-dir "$plugin_dir" "$@"
-    claude "$@"
+    out="$(claude "$@")" || return 1
+  elif [ -n "$plugin_dir" ]; then
+    out="$(codex exec --json --plugin-dir "$plugin_dir" --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null)" || return 1
   else
-    codex exec --json --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null
+    out="$(codex exec --json --skill en-resolve-pr "resolve the failing CI on PR #${pr}" < /dev/null)" || return 1
   fi
+  printf '%s\n' "$out"
+  skill_resolved "$out" || return 2
+  return 0
 }
 
 # stamp_attempt <n> — record the attempt on the produced fix commit so the cap
@@ -167,9 +180,14 @@ main() {
   fi
 
   # Drive the fix. If /en-resolve-pr produces no commit, escalate.
-  local before after
+  local before after rc=0
   before="$(git rev-parse HEAD)"
-  if ! drive_resolve_pr "$pr"; then
+  drive_resolve_pr "$pr" || rc=$?
+  if [ "$rc" = "2" ]; then
+    drop_label_and_escalate "$pr" "the en-resolve-pr skill is not available in the runner — install/register the Ensemble plugin (ENSEMBLE_PLUGIN_DIR)"
+    exit 0
+  fi
+  if [ "$rc" != "0" ]; then
     drop_label_and_escalate "$pr" "the fix agent could not resolve the failure"
     exit 0
   fi

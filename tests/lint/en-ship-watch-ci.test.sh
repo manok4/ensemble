@@ -125,6 +125,30 @@ else
   fail "wrapper must escalate when no agent CLI is present"
 fi
 
+# --- skill-resolution guard: unregistered skill escalates (not green-but-inert) ---
+if call skill_resolved "some normal output"; then
+  pass "skill_resolved passes on normal output"
+else
+  fail "skill_resolved should pass on normal output"
+fi
+if call skill_resolved "Unknown command: /en-resolve-pr"; then
+  fail "skill_resolved must fail when the skill is unregistered"
+else
+  pass "skill_resolved detects an unregistered skill (green-but-inert guard)"
+fi
+if grep -qiE "en-resolve-pr skill is not available" "$CI"; then
+  pass "wrapper escalates clearly when the skill isn't registered"
+else
+  fail "wrapper must escalate with a clear message when the skill isn't registered"
+fi
+
+# --- codex path also passes --plugin-dir (regression guard) ---
+if grep -qE 'codex exec --json --plugin-dir' "$CI"; then
+  pass "codex path passes --plugin-dir when ENSEMBLE_PLUGIN_DIR is set"
+else
+  fail "codex path must pass --plugin-dir (skill resolution)"
+fi
+
 # --- workflow checks out TRUSTED default-branch code, not the PR head ---
 if grep -qE 'ref: \$\{\{ github.event.repository.default_branch \}\}' "$WF"; then
   pass "workflow checks out trusted default-branch code (not PR head)"
