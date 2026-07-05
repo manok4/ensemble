@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN05
 title: Brainstorm rigor upgrades from ce-brainstorm + explicit priority principle
-status: open
+status: in_progress
 location: active
 created: 2026-07-04
 shipped:
