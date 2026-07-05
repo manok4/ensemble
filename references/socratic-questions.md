@@ -90,7 +90,8 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 ## Question style guidelines
 
 - **One per turn.** Don't bundle.
-- **Multiple-choice when natural.** Open-ended when the answer is genuinely free-form.
+- **Default to `AskUserQuestion`** (the blocking question tool, with free-text fallback) for narrowing / single-select questions — scaffolded options without confining the answer.
+- **Open-vs-closed discipline.** Reserve open-ended questions for genuinely-narrative answers, or when you can't write 3–4 distinct, plausibly-correct options without padding ("if you'd strain to fill the slots, ask it open-ended"). Fall back to numbered chat options only when no blocking tool exists in the harness — never silently skip the question.
 - **Recommend a default.** Phrase as "Lean A or B?" with a brief why for each, not "What do you think?"
 - **No "what should we do?" questions.** Decide a recommendation; ask the user to push back.
 - **Skip rituals.** No "Are you ready to begin?" or "Let me know if you have questions" filler.
