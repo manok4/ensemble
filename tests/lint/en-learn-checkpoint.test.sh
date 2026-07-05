@@ -60,21 +60,27 @@ else
   fail "en-build should include a learning_checkpoint outcome line"
 fi
 
-# --- en-qa prompt broadened (not anchored on "N bugs" alone) ---
-if grep -qF "QA wrapped" "$EN_QA"; then
-  pass "en-qa prompt uses broadened 'QA wrapped' framing"
+# --- consolidation: en-qa does NOT prompt for learnings (capture is en-build-only) ---
+if grep -qiE "does (\*\*)?not(\*\*)? prompt for learnings" "$EN_QA"; then
+  pass "en-qa does not prompt for learnings (capture is en-build-only)"
 else
-  fail "en-qa prompt should use 'QA wrapped' not 'QA found and fixed N bugs'"
+  fail "en-qa must not prompt for learnings (consolidated to en-build completion)"
 fi
 
-# --- en-qa documents the four capture categories ---
-for category in "Bugs found" "Tests stabilized" "Patterns discovered" "Library footguns"; do
-  if grep -qF "$category" "$EN_QA"; then
-    pass "en-qa documents capture category: $category"
-  else
-    fail "en-qa missing capture category: $category"
-  fi
-done
+# --- consolidation: en-ship does NOT prompt for learnings ---
+EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
+if grep -qiE "never handles it|not decided here|no longer prompts for learnings" "$EN_SHIP"; then
+  pass "en-ship does not prompt for learnings"
+else
+  fail "en-ship must not prompt for learnings (consolidated to en-build completion)"
+fi
+
+# --- en-build checkpoint is the SOLE capture point, after the branch-level review ---
+if grep -qiE "SOLE learning-capture point" "$EN_BUILD" && grep -qiE "after the branch-level" "$EN_BUILD"; then
+  pass "en-build checkpoint is the sole capture point, after the branch-level review"
+else
+  fail "en-build checkpoint must be the sole capture point, fired after the branch-level review"
+fi
 
 # --- learn-log-format documents the <head-sha> field on capture entries ---
 if grep -qF "<head-sha>" "$LOG_FORMAT"; then
@@ -115,10 +121,10 @@ if grep -E "^- \*\*D26\." "$FOUNDATION" | grep -qF "en-build"; then
 else
   fail "foundation §D26 should reference the en-build completion checkpoint"
 fi
-if grep -E "^- \*\*D26\." "$FOUNDATION" | grep -qF "structured checkpoint"; then
-  pass "foundation §D26 calls it a 'structured checkpoint' (not soft prompt)"
+if grep -E "^- \*\*D26\." "$FOUNDATION" | grep -qiE "structured (step|checkpoint).*not.*soft prompt|structured and non-droppable"; then
+  pass "foundation §D26 describes a structured (non-soft-prompt) checkpoint"
 else
-  fail "foundation §D26 should use 'structured checkpoint' language"
+  fail "foundation §D26 should describe a structured (not soft-prompt) checkpoint"
 fi
 
 # --- foundation §D26 uses canonical enum spelling (intentionally_skipped, NOT bare 'skipped') ---
