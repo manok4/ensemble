@@ -20,6 +20,20 @@ A pool of well-formed questions for the brainstorm skill to draw from. **One que
 | What pain are existing solutions causing? | Helps surface differentiation |
 | Have you seen this solved well anywhere? | Activates prior-art research |
 
+## Product rigor gaps
+
+Used by en-brainstorm's **Product pressure test** (step 5a) — internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero. Adapted from `ce-brainstorm`'s product-pressure-test lenses.
+
+| Gap | Fires when the opening… | Open-ended probe |
+|---|---|---|
+| **Evidence** | asserts a want but points to nothing anyone has *done* about it | "What's the most concrete thing someone's already done — paid for it, built a workaround, quit a tool over it?" |
+| **Specificity** | describes the beneficiary too abstractly to design for | "Name a specific person or narrow segment — and what changes for them when this ships?" |
+| **Counterfactual** | doesn't make visible what users do today, or the cost of shipping nothing | "What's the current workaround, even if messy — and what does it cost them?" |
+| **Attachment** | treats a solution *shape* as the thing, not the value it delivers | "What's the smallest version that still delivers real value?" |
+| **Durability** (Deep / strategic only) | rests on a state of the world that may shift | "How does this fare under the most plausible near-term shifts?" (push past rising-tide answers) |
+
+Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals which answers "count"). One probe per gap. If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than dropping it.
+
 ## Constraints
 
 | Q | Use when |
