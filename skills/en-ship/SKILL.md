@@ -29,7 +29,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
      - **Secret-scan match** (step 6) - stop; do not ship secrets.
      - **Push to the default branch** (`HEAD == main`/default, step 3) - explicit confirmation required.
      - **Destructive-guardrail hit** (`en-guardrail` intercept on any command) - its prompt fires regardless.
-   - **`--interactive` escape hatch** restores the prior stop-and-ask flow: it re-enables the scope-confirm and plan-completion prompts AND surfaces a lightweight learning prompt for the **direct-to-ship path** (a change hand-committed without `/en-build`, where no build-time learning checkpoint ran). Under `--interactive`, ask: *"No en-build ran this session; anything worth filing as a learning before shipping? (yes / skip)"*.
+   - **`--interactive` escape hatch** restores the prior stop-and-ask flow: it re-enables the scope-confirm and plan-completion prompts. (It does **not** prompt for learnings — learning capture is a single checkpoint at `/en-build` completion; `/en-ship` never handles it.)
 
 5. **Lint + typecheck + targeted tests on changed files.**
    - Project `lint` command (from `AGENTS.md`).
@@ -158,7 +158,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 | `--base <branch>` | Override PR target base |
 | `--reviewers <list>` | Request reviewers via `gh pr create --reviewer` |
 | `--no-test-on-changed` | Skip targeted-test step (rare; usually leave on) |
-| `--interactive` | Restore the pre-EN04 stop-and-ask flow: re-enable the scope-confirm (step 7) and plan-completion (step 8) prompts, and surface a lightweight learning prompt on the direct-to-ship path (no en-build ran). Opposite of the hands-off default. |
+| `--interactive` | Restore the pre-EN04 stop-and-ask flow: re-enable the scope-confirm (step 7) and plan-completion (step 8) prompts. Opposite of the hands-off default. (Does not prompt for learnings — that's an en-build-completion checkpoint only.) |
 | `--no-plan-completion-checkpoint` | Skip the plan-completion checkpoint (step 8). Records `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)` for audit. |
 
 ## Cross-review

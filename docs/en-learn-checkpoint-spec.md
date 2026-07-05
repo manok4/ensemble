@@ -13,7 +13,9 @@ related:
 
 # en-learn capture checkpoint at en-build completion (relocated from en-ship by EN04)
 
-> **AUTHORITATIVE LOCATION: `/en-build` completion.** EN04 relocated this checkpoint from `/en-ship`'s preflight to the end of `/en-build`. The mechanics below (a structured, non-droppable checkpoint with the four canonical outcome values) are unchanged and still load-bearing — only the *location* moved, so capture happens at the point of insight while the user is present and `/en-ship` stays hands-off. **Throughout this document, every "en-ship preflight" / "en-ship report" reference is HISTORICAL — read it as "en-build completion" / "en-build report."** The checkpoint no longer exists in `/en-ship`; drift guards assert the en-build location. Canonical records: foundation D26 + D38, `skills/en-build/SKILL.md`.
+> **AUTHORITATIVE LOCATION: `/en-build` completion — and it is the SOLE capture point.** EN04 relocated this checkpoint from `/en-ship`'s preflight to the end of `/en-build`, and the EN04 follow-up **consolidated it to en-build only**: `/en-qa` and `/en-ship` no longer prompt for learnings. It fires at the very end of en-build's post-build phase — **after the branch-level simplify + Outside Voice review + evidence audit** — so capture reflects the fully reviewed build. The mechanics below (a structured, non-droppable checkpoint with the four canonical outcome values) are unchanged and still load-bearing.
+>
+> **Two things in this document are now HISTORICAL / superseded:** (1) every "en-ship preflight" / "en-ship report" reference — read it as "en-build completion" / "en-build report" (the checkpoint no longer exists in en-ship); (2) **Decisions #3/#4 and "Change 2" below (broaden + keep `/en-qa`'s prompt) — the en-qa prompt was REMOVED, not broadened.** Drift guards assert the en-build-only location. Canonical records: foundation D26 + D38, `skills/en-build/SKILL.md`.
 
 ## Problem
 

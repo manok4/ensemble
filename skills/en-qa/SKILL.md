@@ -101,22 +101,9 @@ Why scope this way: the autonomy bug class is the same as en-build's — agent-i
 
 If uncertain, continue. The pause cases above and Phase 1's system checks are the safety net. Agent-initiated checkpoints add no protection on top — they just add friction.
 
-## Auto-invoke `/en-learn`
+## Learning capture
 
-After QA wraps, soft-prompt:
-
-> "QA wrapped (N bugs found+fixed, M flows verified). Worth filing any learnings from this pass? (yes / skip)"
-
-Anchor the prompt on *"QA wrapped"*, not on "N bugs" — that broader framing catches non-bug captures too:
-
-- **Bugs found and fixed.** The classic case; highest-signal source of learnings.
-- **Tests stabilized.** A flaky test got pinned down (worth capturing root cause + fix).
-- **Patterns discovered.** A QA pass exposed a recurring shape worth filing under `patterns/`.
-- **Library footguns.** Browser-side behavior of a third-party widget that surprised you.
-
-User accepts → invoke `/en-learn capture` per item. User declines → no-op; the `/en-ship` learning-checkpoint backstop will catch it at ship time if anything was missed.
-
-Note: this is the **freshest-point capture** (immediately after the work, while context is hot). The en-ship checkpoint is the backstop for cases where this prompt was skipped or dropped. Both fire by design — complementary signal.
+`/en-qa` does **not** prompt for learnings. Learning capture is a single, structured checkpoint at **`/en-build` completion** (after the branch-level review — see foundation D26). If a QA pass surfaces something worth filing, capture it with an explicit `/en-learn capture`; otherwise the en-build checkpoint is the one place the decision is made.
 
 ## Output format
 
@@ -154,7 +141,6 @@ URL: https://preview-fr07.vercel.app
 - 1 bug found and fixed.
 - 1 regression test added.
 - 4 screenshots captured under `.test-output/qa/`.
-- Auto-invoking /en-learn (capture? y/n) →
 ```
 
 ## Reference files
