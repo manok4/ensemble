@@ -10,6 +10,8 @@ description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs
 
 Concrete implementation plan with stable U-IDs and Outside Voice peer review. Hands off to `/en-build`.
 
+> **Priority principle (D39): performance > speed ≥ cost.** Optimize first for plan quality (does the plan lead to the right thing, built well), then for speed, then for token/tool cost. Research depth, peer-review iterations, and plan-content rigor are worth their cost when they lift build quality; keep them self-gating so lightweight work stays fast.
+
 > **Hard gate.** Plan only — no code, no commits, no PR. Output is a markdown plan file plus the peer-review verdict.
 
 ## Process
