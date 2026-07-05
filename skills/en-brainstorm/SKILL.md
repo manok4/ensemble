@@ -10,6 +10,8 @@ description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-awa
 
 Lightweight idea-exploration skill. **No code written; no implementation; no peer review.** The point is to leave with clarity, not artifacts.
 
+> **Priority principle (D39): performance > speed ≥ cost.** Optimize first for the quality of the brainstorm→plan outcome (does the resulting plan build the right thing well), then for speed, then for token/tool cost. The rigor upgrades below (pressure test, integration check, verify-before-claiming) spend a little time up front because a sharper design doc pays for itself many times over downstream — but each is self-gating so simple work stays fast.
+
 > Hard gate: this skill never edits source code, runs tests, opens PRs, or invokes implementation skills. Output is a design doc and a recommendation.
 
 ## Process
