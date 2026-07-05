@@ -34,9 +34,9 @@ related_plan:
 
 ## Assumptions & unverified claims
 
-<Per en-brainstorm's verify-before-claiming rule: any claim that something is ABSENT in the codebase (a missing table/endpoint/dependency/config option) that was not verified against the repo goes here, labeled as an unverified assumption — so `/en-plan` doesn't inherit it as fact. Verified claims can be stated inline in the sections above with a `file:line` pointer. Omit this section if there are no unverified absence-claims.>
+<Per en-brainstorm's verify-before-claiming rule: any claim that something is ABSENT in the codebase (a missing table/endpoint/dependency/config option) that was not verified against the repo goes here, labeled as an unverified assumption, so `/en-plan` doesn't inherit it as fact. Verified claims can be stated inline in the sections above with a `file:line` pointer. Omit this section if there are no unverified absence-claims.>
 
-- <assumption — e.g. "assumes no retry logic exists on the client (not verified)">
+- <assumption, e.g. "assumes no retry logic exists on the client (not verified)">
 
 ## Approaches considered
 

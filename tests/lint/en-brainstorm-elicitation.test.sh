@@ -10,11 +10,17 @@ TEST_NAME="en-brainstorm elicitation"
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
 SOCRATIC="$REPO_ROOT/references/socratic-questions.md"
 
-# --- Q&A loop defaults to AskUserQuestion for narrowing questions ---
-if grep -qiE "Default to .AskUserQuestion.|default.*AskUserQuestion" "$SKILL" && grep -qF "AskUserQuestion" "$SOCRATIC"; then
-  pass "Q&A loop defaults to AskUserQuestion (SKILL + socratic-questions)"
+# --- Q&A loop defaults to the HOST-NEUTRAL blocking question tool (QUESTION_TOOL), not hardcoded ---
+if grep -qF 'QUESTION_TOOL' "$SKILL" && grep -qiE "request_user_input" "$SKILL" && grep -qF 'QUESTION_TOOL' "$SOCRATIC"; then
+  pass "Q&A loop defaults to host-neutral \$QUESTION_TOOL (AskUserQuestion / request_user_input)"
 else
-  fail "Q&A loop must default to AskUserQuestion"
+  fail "Q&A loop must default to host-neutral \$QUESTION_TOOL, not a hardcoded tool"
+fi
+# guard against re-hardcoding: the SKILL must NOT say "default to AskUserQuestion" as the contract
+if grep -qiE "Default to .?AskUserQuestion" "$SKILL"; then
+  fail "must not hardcode 'default to AskUserQuestion' (breaks Codex host portability)"
+else
+  pass "does not hardcode AskUserQuestion as the default (host-portable)"
 fi
 
 # --- open-vs-closed discipline (reserve open-ended for genuinely-open) ---

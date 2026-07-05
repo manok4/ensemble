@@ -66,4 +66,32 @@ else
   fail "socratic-questions must document the Product rigor gaps section"
 fi
 
+# --- the actual probe CONTRACT is present, not just gap names (each gap ships its probe) ---
+probe_ok=1
+grep -qiE "concrete thing someone.s already done" "$SOCRATIC" || probe_ok=0   # evidence
+grep -qiE "specific person or narrow segment" "$SOCRATIC" || probe_ok=0        # specificity
+grep -qiE "current workaround" "$SOCRATIC" || probe_ok=0                       # counterfactual
+grep -qiE "smallest version that still delivers real value" "$SOCRATIC" || probe_ok=0  # attachment
+grep -qiE "near-term shifts" "$SOCRATIC" || probe_ok=0                         # durability
+if [ "$probe_ok" -eq 1 ]; then
+  pass "each rigor gap ships its actual open-ended probe (not just a name)"
+else
+  fail "socratic-questions must carry the actual probe for each gap, not just the gap name"
+fi
+
+# --- one-probe-per-gap contract stated ---
+if grep -qiE "one probe (per gap|satisfies one gap)|per gap that actually exists" "$SOCRATIC"; then
+  pass "one-probe-per-gap contract stated"
+else
+  fail "the one-probe-per-gap contract must be stated"
+fi
+
+# --- depth budget rule: rigor probes count toward the budget; Lightweight caps at one ---
+if grep -qiE "count toward the depth question budget|counts? toward the.*budget" "$SKILL" \
+   && grep -qiE "Lightweight.*at most one|at most \*\*one\*\*|Lightweight caps at one" "$SKILL"; then
+  pass "rigor probes count toward the depth budget; Lightweight capped at one"
+else
+  fail "must state rigor probes count toward the depth budget with a Lightweight cap"
+fi
+
 report

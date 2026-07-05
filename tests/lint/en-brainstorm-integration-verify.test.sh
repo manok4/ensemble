@@ -33,11 +33,14 @@ else
   fail "integration check must be distinguished from the devil's-advocate pass"
 fi
 
-# --- verify-before-claiming rule present ---
-if grep -qiE "Verify-before-claiming" "$SKILL" && grep -qiE "absent.*codebase|verified against the repo|unverified assumption" "$SKILL"; then
-  pass "verify-before-claiming rule present (absence claims verified or labeled)"
+# --- verify-before-claiming requires the FULL verify-OR-label behavior (both arms) ---
+if grep -qiE "Verify-before-claiming" "$SKILL" \
+   && grep -qiE "absent" "$SKILL" \
+   && grep -qiE "verified against the repo" "$SKILL" \
+   && grep -qiE "unverified assumption" "$SKILL"; then
+  pass "verify-before-claiming: absence claim → verified against repo OR labeled unverified assumption"
 else
-  fail "verify-before-claiming rule must require verifying/labeling absence claims"
+  fail "verify-before-claiming must require BOTH verify-against-repo AND label-as-unverified-assumption"
 fi
 
 # --- verify-before-claiming is lightweight (NOT a verifier sub-agent) ---

@@ -22,13 +22,13 @@ A pool of well-formed questions for the brainstorm skill to draw from. **One que
 
 ## Product rigor gaps
 
-Used by en-brainstorm's **Product pressure test** (step 5a) — internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero. Adapted from `ce-brainstorm`'s product-pressure-test lenses.
+Used by en-brainstorm's **Product pressure test** (step 5a), internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero. Adapted from `ce-brainstorm`'s product-pressure-test lenses.
 
 | Gap | Fires when the opening… | Open-ended probe |
 |---|---|---|
-| **Evidence** | asserts a want but points to nothing anyone has *done* about it | "What's the most concrete thing someone's already done — paid for it, built a workaround, quit a tool over it?" |
-| **Specificity** | describes the beneficiary too abstractly to design for | "Name a specific person or narrow segment — and what changes for them when this ships?" |
-| **Counterfactual** | doesn't make visible what users do today, or the cost of shipping nothing | "What's the current workaround, even if messy — and what does it cost them?" |
+| **Evidence** | asserts a want but points to nothing anyone has *done* about it | "What's the most concrete thing someone's already done, paid for it, built a workaround, quit a tool over it?" |
+| **Specificity** | describes the beneficiary too abstractly to design for | "Name a specific person or narrow segment, and what changes for them when this ships?" |
+| **Counterfactual** | doesn't make visible what users do today, or the cost of shipping nothing | "What's the current workaround, even if messy, and what does it cost them?" |
 | **Attachment** | treats a solution *shape* as the thing, not the value it delivers | "What's the smallest version that still delivers real value?" |
 | **Durability** (Deep / strategic only) | rests on a state of the world that may shift | "How does this fare under the most plausible near-term shifts?" (push past rising-tide answers) |
 
@@ -90,8 +90,8 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 ## Question style guidelines
 
 - **One per turn.** Don't bundle.
-- **Default to `AskUserQuestion`** (the blocking question tool, with free-text fallback) for narrowing / single-select questions — scaffolded options without confining the answer.
-- **Open-vs-closed discipline.** Reserve open-ended questions for genuinely-narrative answers, or when you can't write 3–4 distinct, plausibly-correct options without padding ("if you'd strain to fill the slots, ask it open-ended"). Fall back to numbered chat options only when no blocking tool exists in the harness — never silently skip the question.
+- **Default to the host's blocking question tool** — `$QUESTION_TOOL` per host-detect (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), with free-text fallback — for narrowing / single-select questions; scaffolded options without confining the answer.
+- **Open-vs-closed discipline.** Reserve open-ended questions for genuinely-narrative answers, or when you can't write 3–4 distinct, plausibly-correct options without padding ("if you'd strain to fill the slots, ask it open-ended"). Fall back to numbered chat options only when no blocking tool exists in the harness, never silently skip the question.
 - **Recommend a default.** Phrase as "Lean A or B?" with a brief why for each, not "What do you think?"
 - **No "what should we do?" questions.** Decide a recommendation; ask the user to push back.
 - **Skip rituals.** No "Are you ready to begin?" or "Let me know if you have questions" filler.
