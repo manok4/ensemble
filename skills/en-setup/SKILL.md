@@ -1,6 +1,6 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
+description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / gnhf CLI / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 ---
 
 > **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
@@ -141,6 +141,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `n` → record in the report; skip.
 
     Idempotent — if the workflow already exists, note it and don't overwrite.
+13a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` uses the `gnhf` CLI (an agent-agnostic autonomous-loop engine) for bounded, overnight, objective-driven loops. Detect it with `command -v gnhf`. If absent, offer (optional, never blocking):
+    > "`/en-loop` uses the `gnhf` CLI for bounded autonomous loops. Install now? (`npm i -g gnhf`) (`y` / `n`)
+    > gnhf is agent-agnostic and only needed for `/en-loop` — every other Ensemble skill works without it."
+
+    On `y` → run `npm i -g gnhf`; surface the result (and any npm error verbatim). On `n` → record in the report; skip. **Never a hard gate** — gnhf is optional, so declining (or a failed npm install) does not fail setup.
+
+    Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence and skip the prompt.
 14. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
     - `true` → record 🟢 "Auto-merge enabled at repo level."
     - `false` or empty → surface advisory (not blocking):
@@ -192,6 +199,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | Dependency | Check | Repair if missing |
     |---|---|---|
     | `timeout` or `gtimeout` on PATH (GNU coreutils) | `command -v timeout \|\| command -v gtimeout` | macOS: `brew install coreutils`. Linux distros typically already have it. |
+    | `gnhf` on PATH (optional; only for `/en-loop`) | `command -v gnhf` | `npm i -g gnhf` (agent-agnostic loop engine; every other skill works without it) |
 
     Surface the timeout-binary check as an advisory in the report — do NOT block install on missing it. Users may have legitimate reasons to defer (offline, restricted brew, container without coreutils). The 🟡 line in the report tells them what to install:
 
@@ -257,6 +265,7 @@ In addition to file-shape and lint checks, the diagnostic includes:
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
 - **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by `/en-build`'s peer-review subprocess hang protection. Advisory-only because `/en-build` already fails fast with the install instruction on the first peer call — never silently degraded.
+- **`gnhf` CLI (optional; only for `/en-loop`)** — `command -v gnhf`. 🟢 if present; 🟡 advisory if absent (surface `npm i -g gnhf`). Agent-agnostic loop engine that `/en-loop` wraps; only needed for `/en-loop`, so its absence is never 🔴 — every other skill works without it.
 
 For each 🟡 / 🔴 check, the user can opt-in to repair:
 

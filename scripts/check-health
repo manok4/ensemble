@@ -55,6 +55,9 @@ command -v git >/dev/null 2>&1 && check "git on PATH" green || check "git on PAT
 command -v gh >/dev/null 2>&1 && check "gh on PATH" green || check "gh on PATH" yellow "Install GitHub CLI"
 command -v jq >/dev/null 2>&1 && check "jq on PATH" green || check "jq on PATH" yellow "Install jq for config parsing"
 
+# Optional CLIs
+command -v gnhf >/dev/null 2>&1 && check "gnhf on PATH (optional; /en-loop)" green || check "gnhf on PATH (optional; /en-loop)" yellow "Optional: npm i -g gnhf (only needed for /en-loop; agent-agnostic loop engine)"
+
 # At least one host CLI
 HAS_CLAUDE=false; HAS_CODEX=false
 command -v claude >/dev/null 2>&1 && HAS_CLAUDE=true

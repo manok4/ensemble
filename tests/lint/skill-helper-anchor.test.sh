@@ -28,7 +28,8 @@ TEST_NAME="skill helper-path anchoring"
 # en-ship) ALSO have process steps like "Source references/host-detect.md"
 # that were anchoring incorrectly at the skill dir on the install layout
 # this PR documents. Per PR #15 review, the drift guard now covers all 14.
-TARGET_SKILLS="en-brainstorm en-build en-cross-review en-debug en-foundation en-guardrail en-learn en-plan en-qa en-resolve-pr en-review en-setup en-ship en-sweep"
+# EN06 adds en-loop (its preflight sources references/host-detect.md).
+TARGET_SKILLS="en-brainstorm en-build en-cross-review en-debug en-foundation en-guardrail en-learn en-loop en-plan en-qa en-resolve-pr en-review en-setup en-ship en-sweep"
 
 # Sentinel that says "this skill has the helper-resolution preamble."
 PREAMBLE_SENTINEL='**Helper resolution.**'
