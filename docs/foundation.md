@@ -753,12 +753,12 @@ Default-safe configuration:
   1. Preflight: host-detect the worker agent (host-neutral: `claude` on Claude, `codex` on Codex); verify `gnhf` on PATH (else print `npm i -g gnhf` and stop, never native-fallback); clean git; resolve project test / lint commands; require an evidence-based `--stop-when`.
   2. Compose the per-iteration test-gate worker prompt (implement one slice, run test + lint, commit only on green, no fake success).
   3. Launch gnhf with the prompt + caps + `--stop-when` (feature branch or `--worktree`).
-  4. Every `--review-every N` iterations and at loop end: `/en-review --peer-only --mode headless` over the branch diff; findings become the next iterations' acceptance criteria.
-  5. On exit: Morning Review (reconstruct state from git / logs / processes, never memory) → `/en-learn capture` → hand off `/en-review` → `/en-qa` → `/en-ship`. Never auto-merge.
-- **Modes.** Hands-Off (bounded, walk away), Companion (steer between iterations via `/en-review`, findings become the next bounded prompt), plus Morning Review on return.
-- **Dependency.** The `gnhf` CLI (`npm i -g gnhf`), agent-agnostic; surfaced as an optional, non-blocking install by `/en-setup`. en-loop wraps gnhf rather than reimplementing the loop (the EN04 lesson, D40).
+  4. Checkpoint cadence is en-loop's own mechanic (gnhf has no mid-run callback): run gnhf in bounded chunks capped at `--review-every N` iterations; at each chunk boundary and at loop end run `/en-review --peer-only --mode headless` over the branch diff, record a `review-verdict:` trailer, then relaunch on the same branch with findings folded in as the next chunk's acceptance criteria.
+  5. On final exit: Morning Review (reconstruct state from git / logs / processes, never memory) → `/en-learn capture` → hand off `/en-review` → `/en-qa` → `/en-ship`. Never auto-merge.
+- **Modes.** Hands-Off (bounded, walk away), Companion (steer between chunks via `/en-review`, findings become the next bounded prompt), plus Morning Review on return.
+- **Dependency.** The `gnhf` CLI (`npm i -g gnhf`), agent-agnostic; surfaced as an optional, non-blocking install by `/en-setup` (including a `scripts/check-health` advisory). en-loop wraps gnhf rather than reimplementing the loop (the EN04 lesson, D40).
 - **Cross-review.** Branch-level at checkpoints (every `--review-every N` and at loop end), not per iteration; per-iteration is a fast test-gate only (D39 `performance > speed ≥ cost`).
-- **Safety.** Preserve user changes; no destructive git; `en-guardrail` intercepts destructive Bash inside the worker; bounded caps (`--max-iterations` / `--max-tokens` / `--max-runtime`); never auto-merge; completion is not acceptance.
+- **Safety.** Preserve user changes; no destructive git (worker-prompt rule for every worker); `en-guardrail` covers a `claude` worker (Claude Code PreToolUse hook) while `codex` / other workers rely on the worker-prompt rules + gnhf rollback + `--worktree`; bounded caps (`--max-iterations` / `--max-tokens`, plus en-loop-owned `--max-runtime` via `timeout` / `gtimeout`); never auto-merge; completion is not acceptance.
 - **Reference files.**
   - `references/host-detect.md`
   - gnhf CLI (external; `npm i -g gnhf`) — the loop engine this skill wraps

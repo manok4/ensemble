@@ -11,6 +11,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-loop setup install"
 
 SETUP="$REPO_ROOT/skills/en-setup/SKILL.md"
+CHECK_HEALTH="$REPO_ROOT/scripts/check-health"
 
 # --- en-setup mentions gnhf at all ---
 if grep -qF "gnhf" "$SETUP"; then
@@ -60,6 +61,15 @@ if grep -qiE "agent-agnostic|agent agnostic" "$SETUP"; then
   pass "gnhf noted as agent-agnostic"
 else
   fail "en-setup should note gnhf is agent-agnostic"
+fi
+
+# --- State 3 reality: scripts/check-health actually EMITS a gnhf advisory ---
+# (SKILL.md says State 3 invokes check-health; the diagnostic runner must
+#  really check gnhf, not just the SKILL.md prose — else the doc is aspirational.)
+if [ -f "$CHECK_HEALTH" ] && grep -qE "command -v gnhf" "$CHECK_HEALTH" && grep -qiE "check .gnhf" "$CHECK_HEALTH"; then
+  pass "scripts/check-health emits a gnhf status check (State 3 diagnostic is real)"
+else
+  fail "scripts/check-health must actually check gnhf (State 3 gnhf advisory must be emitted, not just documented)"
 fi
 
 report

@@ -33,7 +33,7 @@ Ensemble's value-add is exactly two things, not the loop plumbing:
 
 ## Preflight (before launching a loop)
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve the worker agent host-neutrally: `claude` on a Claude Code host, `codex` on a Codex host (unless the user overrides with `--agent`). Never hardcode a single agent.
+1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve the worker agent host-neutrally: `claude` on a Claude Code host, `codex` on a Codex host (unless the user overrides with `--agent`). Never hardcode a single agent. **Note guardrail applicability in the launch report:** `en-guardrail` (a Claude Code `PreToolUse` hook) covers the worker only when the worker runtime honors that hook — that is a `claude` worker. A `codex` (or other) worker is **not** covered by the Claude hook; for those runs the safety floor is the worker-prompt rules + gnhf rollback + `--worktree` (see Safety).
 2. **Verify gnhf is installed.** Run `gnhf --help`. If gnhf is not on PATH, **print the install command and stop**:
    > `/en-loop` needs the gnhf CLI. Install it with `npm i -g gnhf`, then re-run. (`/en-setup` also offers this install.)
 
@@ -51,9 +51,9 @@ Choose exactly one mode for the run.
 Use when the objective is bounded, verification is clear, and the user wants one configured run to proceed without steering (the walk-away / overnight case).
 
 - Compose a precise worker prompt (the per-iteration test-gate contract below) with constraints, non-goals, verification commands, and the stop condition.
-- Launch gnhf with the prompt, the caps, and `--stop-when`. Wait for exit.
+- Launch gnhf in **bounded chunks** of `--review-every N` iterations (see Checkpoint review); between chunks, run the checkpoint review and relaunch on the same branch until `--stop-when` holds or an overall cap is hit.
 - Intervene early only for hard failure, runaway scope, destructive behavior, or an impossible prerequisite.
-- On exit, run Morning Review before reporting anything as done.
+- On final exit, run Morning Review before reporting anything as done.
 
 ### Companion
 
@@ -96,15 +96,16 @@ Stop only when: <evidence-based condition>.
 
 ## Checkpoint review (the branch-level review layer)
 
-Ordinary iterations are test-gated but not peer-reviewed (a full Outside Voice pass every iteration is too slow and expensive for a long overnight loop — this is the D39 `performance > speed ≥ cost` trade-off: keep overnight throughput high while still producing a peer-reviewed, evidenced branch).
+Ordinary iterations are test-gated but not peer-reviewed (a full Outside Voice pass every iteration is too slow and expensive for a long overnight loop — the D39 `performance > speed ≥ cost` trade-off: keep overnight throughput high while still producing a peer-reviewed, evidenced branch).
 
-Instead, review runs at **checkpoints** (branch-level model, D35):
+**How the cadence is driven (this is en-loop's mechanic, not a gnhf feature).** gnhf runs to its own stop condition and has **no mid-run callback** to invoke a reviewer, so en-loop drives the checkpoint cadence itself by running gnhf in **bounded chunks**. Do NOT assume gnhf calls `/en-review` mid-run — it does not. Each chunk:
 
-- **Every `--review-every N` iterations, and at loop end**, run `/en-review --peer-only --mode headless` over the branch diff (`git diff <merge-base>..HEAD`). This dispatches the cross-agent Outside Voice peer as the sole reviewer (Claude host → Codex reviews; Codex host → Claude reviews).
-- Record the outcome as a `review-verdict:` trailer on a checkpoint commit.
-- **Findings become the next iterations' acceptance criteria** — feed them into the next worker prompt as the bounded corrections to make.
+1. **Launch gnhf capped at `--review-every N` iterations** (via gnhf's own `--max-iterations`, so the process stops at the chunk boundary), with the worker prompt and `--stop-when`.
+2. When the chunk stops (cap reached or `--stop-when` self-reported), **run `/en-review --peer-only --mode headless`** over the branch diff (`git diff <merge-base>..HEAD`). This dispatches the cross-agent Outside Voice peer as the sole reviewer (Claude host → Codex reviews; Codex host → Claude reviews).
+3. **Record the outcome as a `review-verdict:` trailer** on a checkpoint commit.
+4. If the real `--stop-when` condition is not yet met, **relaunch gnhf on the same branch** for the next chunk with the review findings folded into the worker prompt as the bounded corrections to make (the gnhf Companion-review / relaunch pattern). **Findings become the next chunk's acceptance criteria.**
 
-Default `--review-every` is 5 iterations. A review always runs at loop end regardless of the interval.
+Repeat until `--stop-when` holds or an overall cap (total `--max-iterations`, `--max-tokens`, `--max-runtime`) is hit. A review always runs at the final loop end regardless of where the last chunk boundary fell. Default `--review-every` is 5 iterations.
 
 ## Stop-condition discipline
 
@@ -133,7 +134,7 @@ gnhf \
   "<the Ensemble worker prompt>"
 ```
 
-If gnhf has no `--model` flag, put model requirements in the worker prompt or the backend config; do not invent a `--model` flag. If `--worktree` is requested, launch gnhf in an isolated worktree so the loop does not disturb the primary checkout.
+Forward only the caps `gnhf --help` advertises; if gnhf has no `--model` flag, put model requirements in the worker prompt or the backend config, and do not invent a `--model` flag. Enforce `--max-runtime` yourself by wrapping the gnhf process in `timeout` / `gtimeout` when gnhf has no native runtime cap. If `--worktree` is requested, launch gnhf in an isolated worktree so the loop does not disturb the primary checkout.
 
 ## Flags
 
@@ -141,14 +142,16 @@ If gnhf has no `--model` flag, put model requirements in the worker prompt or th
 |---|---|
 | `--objective "<X>"` | The one concrete outcome the loop drives toward. Required. |
 | `--stop-when "<cond>"` | Evidence-based, Ensemble-observable stop condition. Required; vague conditions are rejected. |
-| `--max-iterations <n>` | Cap on loop iterations. |
-| `--max-tokens <n>` | Token budget cap for the run. |
-| `--max-runtime <dur>` | Wall-clock cap (e.g. `8h`). |
+| `--max-iterations <n>` | Overall cap on loop iterations (gnhf pass-through per chunk = `--review-every`). |
+| `--max-tokens <n>` | Token budget cap for the run (gnhf pass-through, if gnhf advertises it). |
+| `--max-runtime <dur>` | Wall-clock cap (e.g. `8h`). **en-loop-owned**: enforced by wrapping the gnhf process in `timeout` / `gtimeout` when gnhf has no native runtime cap. |
 | `--worktree` | Run the loop in an isolated git worktree. |
 | `--push` | Allow the loop to push the feature branch (still never auto-merges). |
 | `--agent <claude\|codex>` | Override the host-detected worker agent. |
-| `--review-every <N>` | Run the checkpoint `/en-review --peer-only` every N iterations (default 5; a review always runs at loop end). |
+| `--review-every <N>` | Run the checkpoint `/en-review --peer-only` every N iterations (default 5; a review always runs at loop end). Drives the per-chunk `--max-iterations` cap passed to gnhf. |
 | `--mode <hands-off\|companion>` | Select the run mode (default `hands-off`). |
+
+**Flag ownership.** `--objective`, `--stop-when`, `--review-every`, `--mode`, and `--max-runtime` are **en-loop's own** (en-loop interprets them; it does not forward them to gnhf verbatim). The pass-through caps (`--max-iterations`, `--max-tokens`, `--worktree`, `--push`) are forwarded to gnhf **only if `gnhf --help` advertises them** — gnhf's flag surface is version-dependent, so never forward a flag gnhf does not list. `--max-runtime` is enforced by en-loop itself via `command -v timeout || command -v gtimeout` (macOS: `brew install coreutils`), stopping the current chunk gracefully at the cap rather than relying on a gnhf runtime flag that may not exist.
 
 ## Lifecycle and hand-offs
 
@@ -159,7 +162,7 @@ If gnhf has no `--model` flag, put model requirements in the worker prompt or th
 ## Safety
 
 - **Preserve user changes.** Never run destructive git commands to clean up a loop branch.
-- **No destructive git** inside the loop; `en-guardrail` still intercepts destructive Bash commands the worker attempts (the guardrail hook applies inside the worker too).
+- **No destructive git** inside the loop (enforced by the worker prompt for every worker). **Guardrail coverage is conditional:** `en-guardrail` is a Claude Code `PreToolUse` hook, so it intercepts destructive Bash **only for a `claude` worker** that honors that hook. A `codex` (or other) gnhf worker is **not** covered by the Claude hook — for those runs the protection is the worker prompt's no-destructive-git / preserve-changes rules, gnhf's rollback-on-failure, `--worktree` isolation, and the bounded caps. Preflight reports which applies for the selected worker; prefer `--worktree` for a non-`claude` worker.
 - **Per-iteration test-gate** — nothing commits red; a blocked iteration leaves an evidenced note and stops rather than faking success.
 - **Bounded caps** — `--max-iterations` / `--max-tokens` / `--max-runtime` keep an unattended run from running away.
 - **Never auto-merge, never irreversible while the user is away.** Produce a reviewed branch and an exit summary, not merged or deployed changes, unless the user explicitly authorized it.

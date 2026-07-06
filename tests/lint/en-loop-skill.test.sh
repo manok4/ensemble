@@ -135,4 +135,31 @@ else
   fail "skill-helper-anchor.test.sh must add en-loop to TARGET_SKILLS"
 fi
 
+# --- Checkpoint cadence is en-loop's own bounded-chunk mechanic (gnhf has no ---
+#     mid-run callback); the skill must not imply gnhf calls /en-review mid-run.
+if grep -qiE "bounded chunk" "$SKILL" && grep -qiE "no mid-run callback|not a gnhf feature|does not.*call.*/en-review|relaunch on the same branch" "$SKILL"; then
+  pass "checkpoint review is driven by bounded-chunk relaunch (no gnhf mid-run callback)"
+else
+  fail "must document the bounded-chunk relaunch mechanic (gnhf has no mid-run reviewer callback)"
+fi
+
+# --- Flag ownership: pass-through only if gnhf --help advertises; --max-runtime ---
+#     is en-loop-owned via timeout/gtimeout (do not advertise unsupported gnhf flags).
+if grep -qiE "Flag ownership" "$SKILL" \
+   && grep -qiE "only if .gnhf --help|advertises|version-dependent" "$SKILL" \
+   && grep -qiE "en-loop-owned|en-loop.s own" "$SKILL" \
+   && grep -qE "timeout .? *gtimeout|command -v timeout \|\| command -v gtimeout" "$SKILL"; then
+  pass "distinguishes gnhf pass-through vs en-loop-owned flags; --max-runtime via timeout/gtimeout"
+else
+  fail "must distinguish gnhf pass-through vs en-loop-owned flags and own --max-runtime via timeout/gtimeout"
+fi
+
+# --- Guardrail coverage is conditional: claude worker covered, codex/other not ---
+if grep -qiE "[Gg]uardrail coverage is conditional|covers.*only.*claude worker|only for a .+claude.+ worker|only when the worker runtime honors" "$SKILL" \
+   && grep -qiE "covered by the Claude hook" "$SKILL"; then
+  pass "guardrail coverage is conditioned on a claude worker (codex/other not covered by the Claude hook)"
+else
+  fail "must condition en-guardrail coverage on a claude worker (codex/other are not covered)"
+fi
+
 report
