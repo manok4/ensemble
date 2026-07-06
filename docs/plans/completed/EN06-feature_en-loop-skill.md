@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN06
 title: en-loop — bounded autonomous-loop orchestrator wrapping gnhf
-status: open
+status: completed
 location: active
 created: 2026-07-05
-shipped:
+shipped: 2026-07-05
 deepened:
 covers_requirements: []
 requirements_pending: false
