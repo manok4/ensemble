@@ -268,6 +268,12 @@ peer-verdict: {"verdict":"approve","peer_mode":"cross-agent","iteration":1,"find
   review-verdict: {"verdict":"approve","reviewer":"en-review","mode":"headless","units_covered":["U1","U2","U3"],"findings_count":1}
   ```
 
+- **`simplify-verdict:`** (EN07) — BRANCH-LEVEL simplify evidence, emitted on the **same** post-build commit as `review-verdict:` so the `/en-simplify` pass is auditable, not prose. Required keys: `outcome` (`completed` / `not_applicable` / `failed`), `reason` (non-empty and REQUIRED when `not_applicable` or `failed` — e.g. `docs-only`, `--no-simplify`, `all-destructive-gated`), `findings_count`, `units_covered`. The verify gate derives `simplify_pass` + `branch_review_pass` from these trailers; `ensemble-verify-peer-evidence --branch-coverage <range> --require-simplify` (passed by `/en-build` step 10.5) fails when either is `missing`/`failed`. A fallback `review-verdict.reviewer` (`single-agent-fallback` / `en-review-host-fallback`) maps to `branch_review_pass: fallback_completed` — valid because the reviewer field records why the cross-agent peer was not used. See `references/build-orchestration.md` for the full schema and the shared verify gate.
+
+  ```
+  simplify-verdict: {"outcome":"completed","reason":"","findings_count":2,"units_covered":["U1","U2","U3"]}
+  ```
+
 Why trailers: `git interpret-trailers --parse` and `git log --grep="^peer-verdict:"` (or `peer-resolution:`, or `peer-skipped:`) are stable, scriptable, and don't require per-unit metadata files. Reviewers can audit by greppable history; future automation (e.g. `/en-resolve-pr` mining what got deferred) reads trailers cleanly.
 
 ### `peer-skipped:` trailer (for documented skip cases)

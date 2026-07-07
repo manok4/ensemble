@@ -414,4 +414,107 @@ assert_eq "1" "$inv" "branch-coverage reports the malformed trailer as invalid"
 covered=$(jq -c '.covered_units' /tmp/bc_out.json)
 assert_eq '[]' "$covered" "branch-coverage does not count a malformed trailer's units"
 
+# === EN07: post-build simplify+review gate (simplify-verdict trailer) ===
+
+# --- Happy path: cross-agent review + completed simplify → both pass, --require-simplify exit 0
+cat > /tmp/msg.txt <<'EOF'
+chore(build): post-build simplify + review (happy)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1","U2"],"findings_count":1}
+simplify-verdict: {"outcome":"completed","reason":"","findings_count":3,"units_covered":["U1","U2"]}
+EOF
+ok_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${ok_sha}~1..${ok_sha}" --json)
+assert_eq "completed" "$(echo "$out" | jq -r .simplify_pass)" "EN07 happy: simplify_pass=completed"
+assert_eq "completed" "$(echo "$out" | jq -r .branch_review_pass)" "EN07 happy: branch_review_pass=completed"
+rc=0; "$VERIFY" --branch-coverage "${ok_sha}~1..${ok_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "0" "$rc" "EN07 happy: --require-simplify exits 0"
+
+# --- not_applicable with a recorded reason → passes the gate
+cat > /tmp/msg.txt <<'EOF'
+chore(build): post-build simplify + review (docs-only)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1"],"findings_count":0}
+simplify-verdict: {"outcome":"not_applicable","reason":"docs-only","findings_count":0,"units_covered":[]}
+EOF
+na_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${na_sha}~1..${na_sha}" --json)
+assert_eq "not_applicable" "$(echo "$out" | jq -r .simplify_pass)" "EN07 n/a: simplify_pass=not_applicable"
+rc=0; "$VERIFY" --branch-coverage "${na_sha}~1..${na_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "0" "$rc" "EN07 n/a: recorded not_applicable passes --require-simplify"
+
+# --- Fallback review (single-agent-fallback) → fallback_completed, still passes
+cat > /tmp/msg.txt <<'EOF'
+chore(build): post-build simplify + review (fallback)
+
+review-verdict: {"verdict":"approve","reviewer":"single-agent-fallback","mode":"headless","units_covered":["U1"],"findings_count":0}
+simplify-verdict: {"outcome":"completed","reason":"","findings_count":1,"units_covered":["U1"]}
+EOF
+fb_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${fb_sha}~1..${fb_sha}" --json)
+assert_eq "fallback_completed" "$(echo "$out" | jq -r .branch_review_pass)" "EN07 fallback: branch_review_pass=fallback_completed"
+rc=0; "$VERIFY" --branch-coverage "${fb_sha}~1..${fb_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "0" "$rc" "EN07 fallback: recorded fallback passes --require-simplify"
+
+# --- Missing simplify (review present, no simplify-verdict) → the exact EN06 hole
+cat > /tmp/msg.txt <<'EOF'
+chore(build): post-build review only (missing simplify)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1"],"findings_count":0}
+EOF
+miss_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${miss_sha}~1..${miss_sha}" --json)
+assert_eq "missing" "$(echo "$out" | jq -r .simplify_pass)" "EN07 missing: simplify_pass=missing"
+rc=0; "$VERIFY" --branch-coverage "${miss_sha}~1..${miss_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "1" "$rc" "EN07 missing: --require-simplify FAILS on missing simplify (the EN06 hole)"
+# Backward-compat: WITHOUT the flag, a missing simplify does not fail (existing callers unaffected)
+rc=0; "$VERIFY" --branch-coverage "${miss_sha}~1..${miss_sha}" --json >/dev/null 2>&1 || rc=$?
+assert_eq "0" "$rc" "EN07 backward-compat: missing simplify exits 0 without --require-simplify"
+
+# --- Malformed simplify (not_applicable missing its reason) → failed
+cat > /tmp/msg.txt <<'EOF'
+chore(build): post-build (malformed simplify)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1"],"findings_count":0}
+simplify-verdict: {"outcome":"not_applicable","reason":"","findings_count":0,"units_covered":[]}
+EOF
+badsv_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${badsv_sha}~1..${badsv_sha}" --json)
+assert_eq "failed" "$(echo "$out" | jq -r .simplify_pass)" "EN07 malformed: not_applicable without reason → simplify_pass=failed"
+rc=0; "$VERIFY" --branch-coverage "${badsv_sha}~1..${badsv_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "1" "$rc" "EN07 malformed: --require-simplify FAILS on an invalid simplify-verdict"
+
+# --- Explicit failed simplify outcome → gate blocks
+cat > /tmp/msg.txt <<'EOF'
+chore(build): post-build (simplify failed)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1"],"findings_count":0}
+simplify-verdict: {"outcome":"failed","reason":"simplifier reverted: gate-2 regression","findings_count":0,"units_covered":["U1"]}
+EOF
+failsv_sha=$(make_commit /tmp/msg.txt)
+rc=0; "$VERIFY" --branch-coverage "${failsv_sha}~1..${failsv_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "1" "$rc" "EN07 failed-outcome: --require-simplify FAILS on outcome:failed"
+
+# --- Unpaired trailers across DIFFERENT commits must NOT satisfy the gate
+#     (EN07 U1 review finding: simplify-verdict on a commit without a review-verdict
+#      is not a valid post-build checkpoint). Commit A = review only; commit B =
+#      simplify only. The gate pairs on the latest review commit (A), which has
+#      NO simplify → simplify_pass=missing, --require-simplify FAILS.
+cat > /tmp/msg.txt <<'EOF'
+chore(build): review-only commit (A)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1"],"findings_count":0}
+EOF
+pairA_sha=$(make_commit /tmp/msg.txt)
+cat > /tmp/msg.txt <<'EOF'
+chore(cleanup): unrelated simplify-only commit (B)
+
+simplify-verdict: {"outcome":"completed","reason":"","findings_count":1,"units_covered":["U1"]}
+EOF
+pairB_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${pairA_sha}~1..${pairB_sha}" --json)
+assert_eq "missing" "$(echo "$out" | jq -r .simplify_pass)" "EN07 unpaired: simplify on a non-review commit → simplify_pass=missing"
+rc=0; "$VERIFY" --branch-coverage "${pairA_sha}~1..${pairB_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "1" "$rc" "EN07 unpaired: --require-simplify FAILS when no single commit carries BOTH trailers"
+
 report

@@ -16,9 +16,21 @@
 #                               is present. Used for destructive (P4) and
 #                               `gated: true` units where peer review is
 #                               mandatory and cannot be replaced by `peer-skipped:`.
+#   --require-simplify          (branch-coverage mode only) Fail the audit unless
+#                               the branch carries BOTH a valid post-build
+#                               simplify pass (simplify_pass in {completed,
+#                               not_applicable}) AND a completed branch review
+#                               (branch_review_pass in {completed,
+#                               fallback_completed}). Passed by /en-build step 10.5
+#                               so a skipped /en-simplify or a missing branch
+#                               review fails the build. NOT passed by en-ship's
+#                               read-only coverage read, so that caller is
+#                               unaffected.
 #   --json                      Emit JSON to stdout for skill consumption:
 #                                 {"commit","u_id","peer_resolutions","peer_skipped",
 #                                  "skipped_reasons","verdict","detail"}
+#                               In --branch-coverage mode the object also carries
+#                               "simplify_pass" and "branch_review_pass".
 #                               Without --json, emit human-readable lines.
 #
 # Exit codes:
@@ -71,6 +83,23 @@
 #       A unit is "covered" when its U-ID appears in some review-verdict's
 #       units_covered array on the branch. Use --branch-coverage to enumerate.
 #
+#   simplify-verdict: <single-line JSON>   (EN07)
+#       BRANCH-LEVEL simplify evidence. Emitted once on the same post-build
+#       commit as review-verdict, recording whether /en-simplify ran. Required keys:
+#         outcome        — "completed" | "not_applicable" | "failed"
+#         reason         — non-empty string; REQUIRED when outcome is
+#                          not_applicable or failed (e.g. "docs-only",
+#                          "trivial:<10-lines", "--no-simplify",
+#                          "all-destructive-gated"); may be empty for completed
+#         findings_count — integer >= 0 (simplifier changes applied)
+#         units_covered  — JSON array of U-IDs the simplify pass spanned
+#       Derived, in --branch-coverage output, into:
+#         simplify_pass       — completed | not_applicable | failed | missing
+#         branch_review_pass  — completed | fallback_completed | failed | missing
+#       A fallback branch review (reviewer single-agent-fallback /
+#       en-review-host-fallback) yields fallback_completed and is valid ONLY
+#       because the reviewer field records WHY the cross-agent peer was not used.
+#
 # Evidence rules:
 #   - "ok" requires at least one of: peer-verdict, peer-resolution, peer-skipped,
 #     review-verdict.
@@ -86,12 +115,14 @@
 #     findings_count MUST match the peer-resolution count.
 #
 # Branch-coverage mode:
-#   ensemble-verify-peer-evidence --branch-coverage <range> [--json]
+#   ensemble-verify-peer-evidence --branch-coverage <range> [--json] [--require-simplify]
 #       Scan a commit range (e.g. main..HEAD) for review-verdict trailers and
 #       emit the set of U-IDs covered by branch-level review. Used by the
 #       end-of-build audit and en-ship's plan-completion checkpoint to confirm
 #       every plan unit is covered by either per-unit evidence or a branch-level
-#       review pass.
+#       review pass. Also derives simplify_pass + branch_review_pass (see the
+#       simplify-verdict schema above); --require-simplify turns a missing/failed
+#       simplify or branch review into a non-zero exit (the EN07 post-build gate).
 
 set -u
 
@@ -124,14 +155,43 @@ validate_review_verdict() {
   return 0
 }
 
+# Validate a simplify-verdict JSON payload by VALUE and TYPE (EN07). Echoes an
+# error string (and returns 1) when invalid; silent + 0 when valid. A malformed
+# trailer is treated as missing/invalid by the branch-coverage derivation, so a
+# skipped simplify pass can never masquerade as coverage.
+validate_simplify_verdict() {
+  vjson="$1"
+  if ! printf '%s' "$vjson" | jq empty 2>/dev/null; then
+    echo "malformed simplify-verdict JSON: $(printf '%s' "$vjson" | head -c 80)"; return 1
+  fi
+  o=$(printf '%s' "$vjson" | jq -r '.outcome // empty' 2>/dev/null || true)
+  case "$o" in completed|not_applicable|failed) ;; *) echo "simplify-verdict.outcome must be completed|not_applicable|failed, got: ${o:-<missing>}"; return 1 ;; esac
+  # reason is REQUIRED (non-empty) when the pass did not simply complete — a
+  # not_applicable or failed outcome must record WHY (docs-only, --no-simplify, etc.).
+  if [ "$o" = "not_applicable" ] || [ "$o" = "failed" ]; then
+    if ! printf '%s' "$vjson" | jq -e '(.reason | type == "string" and (length > 0))' >/dev/null 2>&1; then
+      echo "simplify-verdict.reason must be a non-empty string when outcome is $o"; return 1
+    fi
+  fi
+  if ! printf '%s' "$vjson" | jq -e '(.findings_count | type == "number" and . >= 0 and (floor == .))' >/dev/null 2>&1; then
+    echo "simplify-verdict.findings_count must be a non-negative integer"; return 1
+  fi
+  if ! printf '%s' "$vjson" | jq -e '(.units_covered | type == "array" and all(type == "string"))' >/dev/null 2>&1; then
+    echo "simplify-verdict.units_covered must be an array of strings"; return 1
+  fi
+  return 0
+}
+
 REF="HEAD"
 REQUIRE_RESOLUTION="false"
+REQUIRE_SIMPLIFY="false"
 EMIT_JSON="false"
 BRANCH_COVERAGE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --require-peer-resolution) REQUIRE_RESOLUTION="true"; shift ;;
+    --require-simplify) REQUIRE_SIMPLIFY="true"; shift ;;
     --json) EMIT_JSON="true"; shift ;;
     --branch-coverage) BRANCH_COVERAGE="$2"; shift 2 ;;
     -h|--help)
@@ -152,33 +212,98 @@ if [ -n "$BRANCH_COVERAGE" ]; then
   covered="[]"
   verdict_commits="[]"
   invalid_commits="[]"
+  # The simplify+review gate is derived from the LATEST commit that carries a
+  # valid review-verdict (rev-list is newest-first). simplify_pass comes from the
+  # simplify-verdict on that SAME commit — an unpaired simplify-verdict on another
+  # commit does NOT satisfy the gate (the post-build checkpoint is one commit).
+  gate_captured="false" # captured the latest valid review-verdict commit yet?
+  gate_reviewer=""      # that commit's reviewer
+  gate_sv=""            # that commit's paired simplify outcome (or missing/invalid)
   while IFS= read -r sha; do
     [ -z "$sha" ] && continue
     cmsg=$(git log -1 --format=%B "$sha")
-    rv=$(printf '%s\n' "$cmsg" | git interpret-trailers --parse | grep '^review-verdict:' | head -n1)
-    [ -z "$rv" ] && continue
-    rvjson="${rv#review-verdict: }"
-    # Fail closed: a malformed review-verdict trailer is NOT counted as coverage
-    # (parity with the single-commit `malformed` verdict).
-    if [ -n "$(validate_review_verdict "$rvjson" || true)" ]; then
-      invalid_commits=$(jq -cn --argjson a "$invalid_commits" --arg s "$sha" '$a + [$s]')
-      continue
+    trailers=$(printf '%s\n' "$cmsg" | git interpret-trailers --parse)
+    rv=$(printf '%s\n' "$trailers" | grep '^review-verdict:' | head -n1)
+    sv=$(printf '%s\n' "$trailers" | grep '^simplify-verdict:' | head -n1)
+    if [ -n "$rv" ]; then
+      rvjson="${rv#review-verdict: }"
+      # Fail closed: a malformed review-verdict trailer is NOT counted as coverage
+      # (parity with the single-commit `malformed` verdict).
+      if [ -n "$(validate_review_verdict "$rvjson" || true)" ]; then
+        invalid_commits=$(jq -cn --argjson a "$invalid_commits" --arg s "$sha" '$a + [$s]')
+      else
+        units=$(printf '%s' "$rvjson" | jq -c '.units_covered // []')
+        covered=$(jq -cn --argjson a "$covered" --argjson b "$units" '($a + $b) | unique')
+        verdict_commits=$(jq -cn --argjson a "$verdict_commits" --arg s "$sha" '$a + [$s]')
+        # Capture the gate from the FIRST valid review-verdict seen (newest, since
+        # rev-list is newest-first), pairing it with THIS commit's simplify-verdict.
+        if [ "$gate_captured" = "false" ]; then
+          gate_captured="true"
+          gate_reviewer=$(printf '%s' "$rvjson" | jq -r '.reviewer')
+          if [ -z "$sv" ]; then
+            gate_sv="missing"
+          elif [ -n "$(validate_simplify_verdict "${sv#simplify-verdict: }" || true)" ]; then
+            gate_sv="invalid"
+          else
+            gate_sv=$(printf '%s' "${sv#simplify-verdict: }" | jq -r '.outcome')
+          fi
+        fi
+      fi
     fi
-    units=$(printf '%s' "$rvjson" | jq -c '.units_covered // []')
-    covered=$(jq -cn --argjson a "$covered" --argjson b "$units" '($a + $b) | unique')
-    verdict_commits=$(jq -cn --argjson a "$verdict_commits" --arg s "$sha" '$a + [$s]')
   done < <(git rev-list "$BRANCH_COVERAGE" 2>/dev/null)
+
+  invalid_count=$(printf '%s' "$invalid_commits" | jq -r 'length')
+
+  # Derive branch_review_pass from the paired gate commit: failed (a malformed
+  # review-verdict present) | missing (no valid review) | fallback_completed
+  # (the gate reviewer is a fallback) | completed.
+  if [ "$invalid_count" != "0" ]; then
+    branch_review_pass="failed"
+  elif [ "$gate_captured" = "false" ]; then
+    branch_review_pass="missing"
+  elif printf '%s' "$gate_reviewer" | grep -qwE 'cross-agent|en-review'; then
+    branch_review_pass="completed"
+  elif printf '%s' "$gate_reviewer" | grep -qwE 'single-agent-fallback|en-review-host-fallback'; then
+    branch_review_pass="fallback_completed"
+  else
+    branch_review_pass="completed"
+  fi
+
+  # Derive simplify_pass from the simplify-verdict on that SAME gate commit:
+  # missing (no post-build commit, or the review commit carried no simplify) |
+  # failed (malformed or outcome:failed) | not_applicable | completed.
+  if [ "$gate_captured" = "false" ]; then
+    simplify_pass="missing"
+  else
+    case "$gate_sv" in
+      completed) simplify_pass="completed" ;;
+      not_applicable) simplify_pass="not_applicable" ;;
+      failed|invalid) simplify_pass="failed" ;;
+      *) simplify_pass="missing" ;;
+    esac
+  fi
 
   if [ "$EMIT_JSON" = "true" ]; then
     jq -n --argjson covered "$covered" --argjson commits "$verdict_commits" --argjson invalid "$invalid_commits" \
-      '{covered_units: $covered, review_verdict_commits: $commits, invalid_review_verdict_commits: $invalid}'
+      --arg sp "$simplify_pass" --arg brp "$branch_review_pass" \
+      '{covered_units: $covered, review_verdict_commits: $commits, invalid_review_verdict_commits: $invalid, simplify_pass: $sp, branch_review_pass: $brp}'
   else
     printf 'covered_units: %s\n' "$(printf '%s' "$covered" | jq -r 'join(", ")')"
     printf 'review-verdict commits: %s\n' "$(printf '%s' "$verdict_commits" | jq -r 'length')"
-    printf 'invalid review-verdict commits: %s\n' "$(printf '%s' "$invalid_commits" | jq -r 'length')"
+    printf 'invalid review-verdict commits: %s\n' "$invalid_count"
+    printf 'simplify_pass: %s\n' "$simplify_pass"
+    printf 'branch_review_pass: %s\n' "$branch_review_pass"
   fi
-  # Fail closed if any malformed branch-level trailer was found.
-  [ "$(printf '%s' "$invalid_commits" | jq -r 'length')" != "0" ] && exit 1
+
+  # Fail closed if any malformed branch-level review trailer was found.
+  [ "$invalid_count" != "0" ] && exit 1
+  # --require-simplify: the post-build simplify + review gate. A missing or failed
+  # simplify pass (not a RECORDED not_applicable), or a missing/failed branch
+  # review, fails the audit so /en-build cannot reach the success path.
+  if [ "$REQUIRE_SIMPLIFY" = "true" ]; then
+    case "$simplify_pass" in missing|failed) exit 1 ;; esac
+    case "$branch_review_pass" in missing|failed) exit 1 ;; esac
+  fi
   exit 0
 fi
 

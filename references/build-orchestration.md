@@ -150,13 +150,18 @@ After all units commit, en-build runs one post-build phase instead of per-unit s
 
 1. `/en-simplify` over the branch diff (`git diff <merge-base>..HEAD`) — leaves changes in the working tree, does not commit. (Simplification is refinement, not review, so it may run host-side.)
 2. **`/en-review --peer-only --mode headless`** over the branch diff — the host implemented every ordinary unit, so the review runs on the **peer** (Claude host → Codex; Codex host → Claude; D23), NOT host-side personas. en-review's peer-only mode owns the dispatch (`bin/ensemble-build-peer-prompt --artifact-type code` → `$PEER_CMD`, `ENSEMBLE_PEER_REVIEW=true`) and returns the findings envelope; the host applies eligible findings (D30). Fallbacks (handled inside en-review): single CLI → fresh-subprocess (`single-agent-fallback`); no peer at all → host persona roster (`reviewer: en-review-host-fallback`).
-3. Commit the resulting changes with a single `review-verdict:` trailer:
+3. Commit the resulting changes with **two** trailers - `review-verdict:` AND `simplify-verdict:` (EN07) - so both the review and the simplify pass are durable, auditable evidence rather than prose:
 
    ```
    chore(build): post-build simplify + review
 
    review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"branch-level","units_covered":["U1","U2","U5"],"findings_count":1}
+   simplify-verdict: {"outcome":"completed","reason":"","findings_count":2,"units_covered":["U1","U2","U5"]}
    ```
 
-   `reviewer` is `cross-agent` when the peer ran (the normal case), else `single-agent-fallback` / `en-review-host-fallback`. `units_covered` lists every **ordinary** U-ID built this run. If steps 1–2 produced no changes, make an empty commit (`--allow-empty`) carrying the trailer so the branch records the pass. Destructive/`gated:true` units are NOT listed here — they carry their own per-unit `peer-verdict:`/`peer-resolution:` evidence from step 9e.
-4. Audit via `ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD`; every plan unit must be covered branch-level OR have per-unit evidence.
+   **`review-verdict:`** - `reviewer` is `cross-agent` when the peer ran (the normal case), else `single-agent-fallback` / `en-review-host-fallback`. The `reviewer` value IS the recorded reason a fallback was used (the single-agent path is only a fallback for `/en-review`); a fallback maps to `branch_review_pass: fallback_completed`. `units_covered` lists every **ordinary** U-ID built this run. Destructive/`gated:true` units are NOT listed here - they carry their own per-unit `peer-verdict:`/`peer-resolution:` evidence from step 9e.
+
+   **`simplify-verdict:`** - `outcome` is `completed` | `not_applicable` | `failed`; `reason` is REQUIRED (non-empty) for `not_applicable` (`docs-only`, `trivial:<10-lines`, `--no-simplify`, `all-destructive-gated`) and `failed`, and may be empty for `completed`. `findings_count` is the simplifier changes applied; `units_covered` the U-IDs it spanned. A **missing** `simplify-verdict:` is not a legitimate skip - `--no-simplify` must record `not_applicable`.
+
+   If steps 1–2 produced no changes, make an empty commit (`--allow-empty`) carrying **both** trailers so the branch records both passes.
+4. Audit via `ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify`; every plan unit must be covered branch-level OR have per-unit evidence, AND `simplify_pass` + `branch_review_pass` must both be non-`missing`/non-`failed` (the EN07 gate).
