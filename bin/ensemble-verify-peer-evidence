@@ -212,9 +212,13 @@ if [ -n "$BRANCH_COVERAGE" ]; then
   covered="[]"
   verdict_commits="[]"
   invalid_commits="[]"
-  rv_valid=0            # count of valid review-verdict trailers
-  rv_reviewers=""       # space-separated reviewers of valid review-verdicts
-  sv_outcomes=""        # space-separated simplify outcomes (+ "invalid" for malformed)
+  # The simplify+review gate is derived from the LATEST commit that carries a
+  # valid review-verdict (rev-list is newest-first). simplify_pass comes from the
+  # simplify-verdict on that SAME commit — an unpaired simplify-verdict on another
+  # commit does NOT satisfy the gate (the post-build checkpoint is one commit).
+  gate_captured="false" # captured the latest valid review-verdict commit yet?
+  gate_reviewer=""      # that commit's reviewer
+  gate_sv=""            # that commit's paired simplify outcome (or missing/invalid)
   while IFS= read -r sha; do
     [ -z "$sha" ] && continue
     cmsg=$(git log -1 --format=%B "$sha")
@@ -231,46 +235,52 @@ if [ -n "$BRANCH_COVERAGE" ]; then
         units=$(printf '%s' "$rvjson" | jq -c '.units_covered // []')
         covered=$(jq -cn --argjson a "$covered" --argjson b "$units" '($a + $b) | unique')
         verdict_commits=$(jq -cn --argjson a "$verdict_commits" --arg s "$sha" '$a + [$s]')
-        rv_valid=$((rv_valid + 1))
-        rv_reviewers="$rv_reviewers $(printf '%s' "$rvjson" | jq -r '.reviewer')"
-      fi
-    fi
-    if [ -n "$sv" ]; then
-      svjson="${sv#simplify-verdict: }"
-      if [ -n "$(validate_simplify_verdict "$svjson" || true)" ]; then
-        sv_outcomes="$sv_outcomes invalid"
-      else
-        sv_outcomes="$sv_outcomes $(printf '%s' "$svjson" | jq -r '.outcome')"
+        # Capture the gate from the FIRST valid review-verdict seen (newest, since
+        # rev-list is newest-first), pairing it with THIS commit's simplify-verdict.
+        if [ "$gate_captured" = "false" ]; then
+          gate_captured="true"
+          gate_reviewer=$(printf '%s' "$rvjson" | jq -r '.reviewer')
+          if [ -z "$sv" ]; then
+            gate_sv="missing"
+          elif [ -n "$(validate_simplify_verdict "${sv#simplify-verdict: }" || true)" ]; then
+            gate_sv="invalid"
+          else
+            gate_sv=$(printf '%s' "${sv#simplify-verdict: }" | jq -r '.outcome')
+          fi
+        fi
       fi
     fi
   done < <(git rev-list "$BRANCH_COVERAGE" 2>/dev/null)
 
   invalid_count=$(printf '%s' "$invalid_commits" | jq -r 'length')
 
-  # Derive branch_review_pass: missing (no valid review) | failed (a malformed
-  # review-verdict present) | fallback_completed (only fallback reviewers) | completed.
+  # Derive branch_review_pass from the paired gate commit: failed (a malformed
+  # review-verdict present) | missing (no valid review) | fallback_completed
+  # (the gate reviewer is a fallback) | completed.
   if [ "$invalid_count" != "0" ]; then
     branch_review_pass="failed"
-  elif [ "$rv_valid" -eq 0 ]; then
+  elif [ "$gate_captured" = "false" ]; then
     branch_review_pass="missing"
-  elif printf '%s' "$rv_reviewers" | grep -qwE 'cross-agent|en-review'; then
+  elif printf '%s' "$gate_reviewer" | grep -qwE 'cross-agent|en-review'; then
     branch_review_pass="completed"
-  elif printf '%s' "$rv_reviewers" | grep -qwE 'single-agent-fallback|en-review-host-fallback'; then
+  elif printf '%s' "$gate_reviewer" | grep -qwE 'single-agent-fallback|en-review-host-fallback'; then
     branch_review_pass="fallback_completed"
   else
     branch_review_pass="completed"
   fi
 
-  # Derive simplify_pass: failed (malformed or outcome:failed) | completed |
-  # not_applicable | missing (no valid simplify-verdict on the branch).
-  if printf '%s' "$sv_outcomes" | grep -qwE 'invalid|failed'; then
-    simplify_pass="failed"
-  elif printf '%s' "$sv_outcomes" | grep -qw 'completed'; then
-    simplify_pass="completed"
-  elif printf '%s' "$sv_outcomes" | grep -qw 'not_applicable'; then
-    simplify_pass="not_applicable"
-  else
+  # Derive simplify_pass from the simplify-verdict on that SAME gate commit:
+  # missing (no post-build commit, or the review commit carried no simplify) |
+  # failed (malformed or outcome:failed) | not_applicable | completed.
+  if [ "$gate_captured" = "false" ]; then
     simplify_pass="missing"
+  else
+    case "$gate_sv" in
+      completed) simplify_pass="completed" ;;
+      not_applicable) simplify_pass="not_applicable" ;;
+      failed|invalid) simplify_pass="failed" ;;
+      *) simplify_pass="missing" ;;
+    esac
   fi
 
   if [ "$EMIT_JSON" = "true" ]; then

@@ -495,4 +495,26 @@ failsv_sha=$(make_commit /tmp/msg.txt)
 rc=0; "$VERIFY" --branch-coverage "${failsv_sha}~1..${failsv_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
 assert_eq "1" "$rc" "EN07 failed-outcome: --require-simplify FAILS on outcome:failed"
 
+# --- Unpaired trailers across DIFFERENT commits must NOT satisfy the gate
+#     (EN07 U1 review finding: simplify-verdict on a commit without a review-verdict
+#      is not a valid post-build checkpoint). Commit A = review only; commit B =
+#      simplify only. The gate pairs on the latest review commit (A), which has
+#      NO simplify → simplify_pass=missing, --require-simplify FAILS.
+cat > /tmp/msg.txt <<'EOF'
+chore(build): review-only commit (A)
+
+review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1"],"findings_count":0}
+EOF
+pairA_sha=$(make_commit /tmp/msg.txt)
+cat > /tmp/msg.txt <<'EOF'
+chore(cleanup): unrelated simplify-only commit (B)
+
+simplify-verdict: {"outcome":"completed","reason":"","findings_count":1,"units_covered":["U1"]}
+EOF
+pairB_sha=$(make_commit /tmp/msg.txt)
+out=$("$VERIFY" --branch-coverage "${pairA_sha}~1..${pairB_sha}" --json)
+assert_eq "missing" "$(echo "$out" | jq -r .simplify_pass)" "EN07 unpaired: simplify on a non-review commit → simplify_pass=missing"
+rc=0; "$VERIFY" --branch-coverage "${pairA_sha}~1..${pairB_sha}" --require-simplify --json >/dev/null 2>&1 || rc=$?
+assert_eq "1" "$rc" "EN07 unpaired: --require-simplify FAILS when no single commit carries BOTH trailers"
+
 report
