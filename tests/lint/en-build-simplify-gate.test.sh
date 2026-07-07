@@ -12,6 +12,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build simplify gate"
 
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
+BUILD_ORCH="$REPO_ROOT/references/build-orchestration.md"
+BUILD_HANDOFF="$REPO_ROOT/references/build-handoff.md"
 
 # --- step 10.4: emits the simplify-verdict trailer with the outcome enum ---
 if grep -qF "simplify-verdict:" "$EN_BUILD" \
@@ -91,6 +93,18 @@ if grep -qiE "fallback_completed" "$EN_BUILD" \
   pass "fallback review maps to fallback_completed and must record which fallback"
 else
   fail "must document the fallback-review mapping (single-agent path is a recorded fallback for /en-review)"
+fi
+
+# --- reference docs carry the canonical simplify-verdict schema (U3) ---
+if grep -qF "simplify-verdict:" "$BUILD_ORCH" && grep -qF -- "--require-simplify" "$BUILD_ORCH"; then
+  pass "build-orchestration.md documents the simplify-verdict trailer + --require-simplify"
+else
+  fail "build-orchestration.md must document the simplify-verdict trailer schema"
+fi
+if grep -qF "simplify-verdict:" "$BUILD_HANDOFF" && grep -qiE "simplify_pass|branch_review_pass" "$BUILD_HANDOFF"; then
+  pass "build-handoff.md documents the simplify-verdict trailer + derived fields"
+else
+  fail "build-handoff.md must document the simplify-verdict trailer"
 fi
 
 report
