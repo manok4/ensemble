@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN07
 title: en-build post-build simplify+review gate (auditable, not prose)
-status: open
+status: completed
 location: active
 created: 2026-07-07
-shipped:
+shipped: 2026-07-07
 deepened:
 covers_requirements: []
 requirements_pending: false
