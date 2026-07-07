@@ -14,6 +14,7 @@ TEST_NAME="en-build simplify gate"
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
 BUILD_ORCH="$REPO_ROOT/references/build-orchestration.md"
 BUILD_HANDOFF="$REPO_ROOT/references/build-handoff.md"
+FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- step 10.4: emits the simplify-verdict trailer with the outcome enum ---
 if grep -qF "simplify-verdict:" "$EN_BUILD" \
@@ -105,6 +106,25 @@ if grep -qF "simplify-verdict:" "$BUILD_HANDOFF" && grep -qiE "simplify_pass|bra
   pass "build-handoff.md documents the simplify-verdict trailer + derived fields"
 else
   fail "build-handoff.md must document the simplify-verdict trailer"
+fi
+
+# --- foundation D41 records the auditable simplify+review gate (U4) ---
+d41="$(grep -E "^- \*\*D41\." "$FOUNDATION" || true)"
+if [ -n "$d41" ] && printf '%s' "$d41" | grep -qF "simplify-verdict:"; then
+  pass "foundation D41 records the simplify-verdict trailer"
+else
+  fail "foundation must add D41 naming the simplify-verdict trailer"
+fi
+if [ -n "$d41" ] && printf '%s' "$d41" | grep -qF -- "--require-simplify" \
+   && printf '%s' "$d41" | grep -qiE "block.*(success path|learning checkpoint)|BLOCKED"; then
+  pass "D41 records --require-simplify and the blocked success path / learning checkpoint"
+else
+  fail "D41 must record --require-simplify and that the gate blocks the success path / learning checkpoint"
+fi
+if [ -n "$d41" ] && printf '%s' "$d41" | grep -qiE "silence, not the skip|defect was the silence"; then
+  pass "D41 records the root-cause framing (the defect was the silence, not the skip)"
+else
+  fail "D41 should record the root-cause framing (silence, not skip)"
 fi
 
 report
