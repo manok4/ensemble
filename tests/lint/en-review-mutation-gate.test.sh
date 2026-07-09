@@ -14,6 +14,7 @@ TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
 DIFFSIG="$REPO_ROOT/references/diff-signal-detection.md"
+DISPATCH="$REPO_ROOT/references/persona-dispatch.md"
 
 # === U1: lite-gate transparency ===
 
@@ -71,6 +72,94 @@ if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "lit
   pass "markdown-summary example includes a lite_gate line"
 else
   fail "the markdown-summary example must include a lite_gate line"
+fi
+
+# === U2: auditable mutation boundary ===
+
+# --- mandatory review_fixes: line, all three forms ---
+if grep -qE 'review_fixes: applied <N>|review_fixes: applied [0-9]' "$SKILL" \
+   && grep -qF "review_fixes: none" "$SKILL" \
+   && grep -qF "review_fixes: none (report-only)" "$SKILL"; then
+  pass "review_fixes: line documented with applied/none/none(report-only) forms"
+else
+  fail "SKILL must document all three review_fixes: forms"
+fi
+
+# --- applied_fixes[] envelope field with the entry shape ---
+if grep -qF '"applied_fixes"' "$SKILL" && grep -qE '\{finding_id, tier, files\[\]\}|"finding_id": "rev' "$SKILL"; then
+  pass "envelope carries applied_fixes[] with {finding_id, tier, files[]} entries"
+else
+  fail "the JSON envelope must carry applied_fixes[] entries {finding_id, tier, files[]}"
+fi
+
+# --- two-phase protocol: baseline + frozen set BEFORE any edit; delta-derived; pre-existing excluded ---
+twophase_ok=1
+grep -qiE "before ANY edit" "$SKILL" || twophase_ok=0
+grep -qiE "freeze the mode-permitted finding set|frozen set" "$SKILL" || twophase_ok=0
+grep -qiE "ACTUAL before-vs-after tree delta|before-vs-after" "$SKILL" || twophase_ok=0
+grep -qiE "excluding pre-existing|pre-existing dirty" "$SKILL" || twophase_ok=0
+if [ "$twophase_ok" -eq 1 ]; then
+  pass "two-phase protocol: baseline + frozen set precede edits; applied_fixes derives from the delta"
+else
+  fail "SKILL must define the two-phase protocol (baseline, freeze, delta-derived, pre-existing excluded)"
+fi
+
+# --- consistency invariants: N == unique entries; line derived; none => empty array ---
+invariants_ok=1
+grep -qiE "MUST equal the count of unique" "$SKILL" || invariants_ok=0
+grep -qiE "DERIVED from the array|derived from the array" "$SKILL" || invariants_ok=0
+grep -qiE "ascending ID order" "$SKILL" || invariants_ok=0
+grep -qiE 'MUST be `\[\]`|applied_fixes.*MUST be' "$SKILL" || invariants_ok=0
+grep -qiE "sorted and deduplicated|sorted \+ dedup" "$SKILL" || invariants_ok=0
+if [ "$invariants_ok" -eq 1 ]; then
+  pass "consistency invariants: N==unique count, line derived, ascending order, none=>[] , files sorted+deduped"
+else
+  fail "SKILL must state the review_fixes/applied_fixes consistency invariants"
+fi
+
+# --- per-mode boundaries: headless safe_auto-ONLY; manual never without the pick ---
+if grep -qiE "safe_auto.*ONLY, silently|safe_auto. ONLY" "$SKILL" \
+   && grep -qiE "NEVER applied without the user.s explicit pick" "$SKILL"; then
+  pass "per-mode boundaries: headless safe_auto-only; manual never without the user's pick"
+else
+  fail "SKILL must state headless=safe_auto-only and manual-requires-explicit-pick"
+fi
+
+# --- P0 halts ALL automatic mutation (even safe_auto / gated_auto) ---
+if grep -qiE "P0 finding halts ALL automatic mutation" "$SKILL" && grep -qiE "including .safe_auto. and .gated_auto." "$SKILL"; then
+  pass "P0 halts all automatic mutation until the severity.md pause-and-ask"
+else
+  fail "SKILL must pin the P0-halts-all-auto-mutation rule"
+fi
+
+# --- scoped implementation boundary (not a blanket 'never implements') ---
+if grep -qiE "MUST NOT implement findings outside the mode-permitted, announced, and recorded" "$SKILL" \
+   && grep -qiE "wholesale implementation .*contract violation" "$SKILL"; then
+  pass "scoped boundary: no implementing outside the recorded applied_fixes set; wholesale = violation"
+else
+  fail "SKILL must carry the scoped implementation boundary (not a blanket prohibition)"
+fi
+
+# --- working-tree delta must not exceed the recorded set ---
+if grep -qiE "MUST NOT exceed the recorded .applied_fixes" "$SKILL"; then
+  pass "working-tree delta bounded by the recorded applied_fixes[]"
+else
+  fail "SKILL must bound the review-attributable tree delta by applied_fixes[]"
+fi
+
+# --- severity.md referenced for tiers (not duplicated); persona-dispatch mirrors the boundary ---
+if grep -qiE "severity.md.*referenced, not duplicated|Tier definitions live in" "$SKILL" \
+   && grep -qiE "must not implement findings outside the mode-permitted" "$DISPATCH"; then
+  pass "severity.md referenced for tiers; persona-dispatch mirrors the mutation boundary"
+else
+  fail "severity.md must stay the tier source and persona-dispatch must mirror the boundary"
+fi
+
+# --- markdown-summary example shows a review_fixes line ---
+if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "review_fixes:"; then
+  pass "markdown-summary example includes a review_fixes line"
+else
+  fail "the markdown-summary example must include a review_fixes line"
 fi
 
 report

@@ -63,10 +63,23 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
     - Conflict detection: same location, incompatible reasons → mark `conflict: true`.
     - Severity reorder: P0 → P3, then confidence, then persona priority.
 11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `$ENSEMBLE_ROOT/references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
-12. **Apply / surface.**
-    - In `interactive` mode: auto-apply `safe_auto`; surface `gated_auto`/`manual`/`advisory` to user. After user picks, apply chosen fixes; re-verify.
-    - In `headless` mode: auto-apply `safe_auto` silently; return JSON envelope with all findings.
+12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
+
+    **Phase 1 — baseline + freeze (before ANY edit).** Capture the pre-review working-tree state (`git status --porcelain` + a snapshot ref via `git stash create` or equivalent), then **freeze the mode-permitted finding set** — the ONLY findings whose fixes may be applied this run, per the severity.md action matrix and the mode rules below. Pre-existing dirty-tree changes belong to the user, never to the review.
+
+    **Phase 2 — apply within the frozen set.**
+    - In `interactive` mode: auto-apply `safe_auto`; apply `gated_auto` only with the severity.md one-line announcement (user can decline/revert); surface `manual`/`advisory` to user. After user picks, apply chosen fixes; re-verify. **`manual` findings are NEVER applied without the user's explicit pick.**
+    - In `headless` mode: auto-apply `safe_auto` ONLY, silently; return JSON envelope with all findings.
     - In `report-only` mode: never apply anything; return JSON only.
+    - **P0 halt:** any P0 finding halts ALL automatic mutation — including `safe_auto` and `gated_auto` — until severity.md's P0 pause-and-ask handling occurs.
+    - Stop before touching any finding or file outside the frozen set. **en-review MUST NOT implement findings outside the mode-permitted, announced, and recorded `applied_fixes[]` set — wholesale implementation of findings is a contract violation.** Permitted auto-fixes per the severity.md matrix are in-contract; anything beyond them is *implementing*, which belongs to `/en-build` / `/en-resolve-pr`, not review.
+
+    **Record.** Derive `applied_fixes[]` from the ACTUAL before-vs-after tree delta (baseline vs post-review), excluding pre-existing changes — never from intent. The working-tree delta attributable to the review MUST NOT exceed the recorded `applied_fixes[]`.
+
+    **Mandatory `review_fixes:` outcome line.** Every run emits exactly one:
+    - `review_fixes: applied <N> (<finding-ids with tiers>)` — `<N>` MUST equal the count of unique `applied_fixes[]` entries; the list is DERIVED from the array: finding IDs in ascending ID order, each rendered `<finding_id>/<tier>`, comma+space separated. Example: `review_fixes: applied 2 (rev-1-3/safe_auto, rev-1-7/safe_auto)`.
+    - `review_fixes: none` — nothing applied (and `applied_fixes` MUST be `[]`).
+    - `review_fixes: none (report-only)` — report-only mode (and `applied_fixes` MUST be `[]`).
 13. **Output report.** Markdown summary (for human consumption) plus JSON envelope (for programmatic callers). Both include a `sub_threshold_filed_count` line indicating how many findings were filed as TD entries (or surfaced separately in `report-only`).
 
 ## Flags
@@ -91,6 +104,8 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 
 `report-only` is the **mandatory** mode when `en-sweep` invokes `en-review` in CI — see `$ENSEMBLE_ROOT/references/sweep-checks.md`.
 
+**Auditable boundary (EN08).** Every application is recorded in `applied_fixes[]` (each entry `{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` outcome line (see step 12). Tier definitions live in `$ENSEMBLE_ROOT/references/severity.md` — referenced, not duplicated.
+
 ## Re-verification
 
 If the skill applies any code edits in `interactive` or `headless` mode, run unit tests + lint after. On failure: revert the applied edits; surface the regression.
@@ -108,6 +123,9 @@ If the skill applies any code edits in `interactive` or `headless` mode, run uni
   "diff_files_count": 12,
   "lint_findings_count": 0,
   "applied_safe_auto_count": 3,
+  "applied_fixes": [
+    {"finding_id": "rev-1-3", "tier": "safe_auto", "files": ["src/auth/refresh.ts"]}
+  ],
   "findings": [
     {
       "severity": "P1",
@@ -136,6 +154,7 @@ Always emit a markdown summary alongside the JSON, even in `headless`/`report-on
 **Pre-flight lint:** clean
 **Auto-applied:** 3 safe_auto fixes
 lite_gate: not-requested
+review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto)
 
 ### High (P1)
 
