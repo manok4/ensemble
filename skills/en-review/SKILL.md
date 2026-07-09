@@ -42,6 +42,14 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
    - Plus `learnings-research` to query `docs/learnings/` for relevant prior bugs/patterns/decisions.
 
    **7a. Lite roster (`--lite`).** When `--lite` is passed, classify the diff via `$ENSEMBLE_ROOT/references/diff-signal-detection.md`. If `is_small_and_safe` is `true` (1–39 executable lines, zero uncounted files, no risk signals, **and** no conditional persona was triggered above), collapse the roster to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens** — skip `testing`, `maintainability`, `learnings`, and all conditionals. **Fail closed:** if `is_small_and_safe` is `false` for any reason (unknown line count, any uncounted non-code file, any risk signal, or any conditional persona fired), run the **full roster regardless of `--lite`** — the gate wins, the flag is advisory. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `$ENSEMBLE_ROOT/references/persona-dispatch.md`).
+
+   **Mandatory `lite_gate:` outcome line (EN08).** EVERY run emits exactly ONE `lite_gate:` line in the markdown summary — so a missing line is always distinguishable from a not-requested lite, and the gate's decision is **never a silent override**:
+
+   - `lite_gate: applied` — `--lite` requested, roster collapsed.
+   - `lite_gate: overridden (<reasons>)` — `--lite` requested but the fail-closed gate won. `<reasons>` uses the **canonical override-reason identifiers from `$ENSEMBLE_ROOT/references/diff-signal-detection.md`** (`unknown-line-count`, `exec-lines-out-of-range`, `uncounted-files`, `risk-signal`, `conditional-persona:<names>`), deduplicated, in that fixed canonical order, comma+space separated, with exactly one space before the paren. Persona names in `conditional-persona:` are alphabetically sorted and `+`-joined. Example: `lite_gate: overridden (risk-signal, conditional-persona:performance+security)`.
+   - `lite_gate: not-requested` — the run had no `--lite` flag.
+
+   The JSON envelope carries the structured form (see envelope shape): `"lite_gate": {"outcome": "applied" | "overridden" | "not-requested", "reasons": []}` with `reasons` in the same canonical order (empty for `applied` / `not-requested`); the markdown line is DERIVED from that object, never composed independently.
 8. **Parallel dispatch.** Single message, multiple `Agent` tool calls. Wait for all to return.
 9. **Outside Voice peer (`--peer` adds it on top; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (build-by-orchestration: peer is the other agent per D23):
    - Build the prompt: `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`. Set `ENSEMBLE_PEER_REVIEW=true`; pipe into `$PEER_CMD` (wrapped in `$ENSEMBLE_TIMEOUT_BIN`). Parse findings per `$ENSEMBLE_ROOT/references/finding-schema.md`.
@@ -95,6 +103,7 @@ If the skill applies any code edits in `interactive` or `headless` mode, run uni
   "summary": "<2-3 sentence overall>",
   "personas": ["correctness", "testing", "maintainability", "standards", "security"],
   "mode": "interactive | headless | report-only",
+  "lite_gate": {"outcome": "applied | overridden | not-requested", "reasons": []},
   "diff_base": "main",
   "diff_files_count": 12,
   "lint_findings_count": 0,
@@ -126,6 +135,7 @@ Always emit a markdown summary alongside the JSON, even in `headless`/`report-on
 **Personas fired:** correctness, testing, maintainability, standards, security
 **Pre-flight lint:** clean
 **Auto-applied:** 3 safe_auto fixes
+lite_gate: not-requested
 
 ### High (P1)
 
