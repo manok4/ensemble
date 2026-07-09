@@ -65,11 +65,14 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `$ENSEMBLE_ROOT/references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
 12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
 
-    **Phase 1 — baseline + freeze (before ANY edit).** Capture the pre-review working-tree state (`git status --porcelain` + a snapshot ref via `git stash create` or equivalent), then **freeze the mode-permitted finding set** — the ONLY findings whose fixes may be applied this run, per the severity.md action matrix and the mode rules below. Pre-existing dirty-tree changes belong to the user, never to the review.
+    **Phase 1 — authorize, then baseline + freeze (before ANY edit).** Authorization comes FIRST, so the frozen set never changes after mutation begins:
+    1. **Collect ALL authorizations up front.** In `interactive` mode, surface every finding before touching anything: `gated_auto` announcements (user can decline) and `manual` picks are gathered NOW — not mid-run. In `headless` mode there is no user, so the authorized set is `safe_auto` findings ONLY. In `report-only` the authorized set is empty.
+    2. **Freeze one final authorized set** — the ONLY findings whose fixes may be applied this run, per the severity.md action matrix. A finding not in the frozen set is not applied this run, period; if the user wants more later, that is a NEW run with a new baseline.
+    3. **Capture the pre-review baseline** with a non-mutating snapshot that covers **content of tracked AND untracked files** — e.g. a temporary-index tree (`GIT_INDEX_FILE=<tmp> git add -A && git write-tree` against a throwaway index) or a content-hash manifest over every working-tree path (`git ls-files -co --exclude-standard` + per-file hashes). `git status --porcelain` alone is NOT sufficient (it records that an untracked path exists, not its content) and `git stash create` does NOT preserve untracked content — without content coverage, a review edit to a pre-existing untracked file could not be distinguished from the user's original work. Pre-existing dirty-tree changes belong to the user, never to the review.
 
     **Phase 2 — apply within the frozen set.**
-    - In `interactive` mode: auto-apply `safe_auto`; apply `gated_auto` only with the severity.md one-line announcement (user can decline/revert); surface `manual`/`advisory` to user. After user picks, apply chosen fixes; re-verify. **`manual` findings are NEVER applied without the user's explicit pick.**
-    - In `headless` mode: auto-apply `safe_auto` ONLY, silently; return JSON envelope with all findings.
+    - In `interactive` mode: apply the frozen set (auto-tier `safe_auto`; `gated_auto` entries the user did not decline; `manual` entries the user explicitly picked in Phase 1). Re-verify after. **`manual` findings are NEVER applied without the user's explicit pick, and the pick always precedes mutation.**
+    - In `headless` mode: apply `safe_auto` ONLY, silently; return JSON envelope with all findings.
     - In `report-only` mode: never apply anything; return JSON only.
     - **P0 halt:** any P0 finding halts ALL automatic mutation — including `safe_auto` and `gated_auto` — until severity.md's P0 pause-and-ask handling occurs.
     - Stop before touching any finding or file outside the frozen set. **en-review MUST NOT implement findings outside the mode-permitted, announced, and recorded `applied_fixes[]` set — wholesale implementation of findings is a contract violation.** Permitted auto-fixes per the severity.md matrix are in-contract; anything beyond them is *implementing*, which belongs to `/en-build` / `/en-resolve-pr`, not review.
@@ -124,7 +127,9 @@ If the skill applies any code edits in `interactive` or `headless` mode, run uni
   "lint_findings_count": 0,
   "applied_safe_auto_count": 3,
   "applied_fixes": [
-    {"finding_id": "rev-1-3", "tier": "safe_auto", "files": ["src/auth/refresh.ts"]}
+    {"finding_id": "rev-1-2", "tier": "safe_auto", "files": ["src/auth/refresh.ts"]},
+    {"finding_id": "rev-1-5", "tier": "safe_auto", "files": ["src/lib/redis.ts"]},
+    {"finding_id": "rev-1-8", "tier": "safe_auto", "files": ["tests/auth/refresh.test.ts"]}
   ],
   "findings": [
     {

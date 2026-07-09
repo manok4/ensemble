@@ -49,7 +49,7 @@ fi
 
 # --- deterministic multi-reason grammar (order, dedup, separator, persona encoding) ---
 grammar_ok=1
-grep -qiE "canonical order|fixed canonical order|fixed table order" "$SKILL" || grammar_ok=0
+grep -qiE "canonical order|fixed table order" "$SKILL" || grammar_ok=0
 grep -qiE "dedup" "$SKILL" || grammar_ok=0
 grep -qiE "comma\+space" "$SKILL" || grammar_ok=0
 grep -qiE "alphabetically.sorted.*\+.*joined" "$SKILL" || grammar_ok=0
@@ -96,7 +96,7 @@ fi
 twophase_ok=1
 grep -qiE "before ANY edit" "$SKILL" || twophase_ok=0
 grep -qiE "freeze the mode-permitted finding set|frozen set" "$SKILL" || twophase_ok=0
-grep -qiE "ACTUAL before-vs-after tree delta|before-vs-after" "$SKILL" || twophase_ok=0
+grep -qiE "before-vs-after" "$SKILL" || twophase_ok=0
 grep -qiE "excluding pre-existing|pre-existing dirty" "$SKILL" || twophase_ok=0
 if [ "$twophase_ok" -eq 1 ]; then
   pass "two-phase protocol: baseline + frozen set precede edits; applied_fixes derives from the delta"
@@ -107,7 +107,7 @@ fi
 # --- consistency invariants: N == unique entries; line derived; none => empty array ---
 invariants_ok=1
 grep -qiE "MUST equal the count of unique" "$SKILL" || invariants_ok=0
-grep -qiE "DERIVED from the array|derived from the array" "$SKILL" || invariants_ok=0
+grep -qiE "DERIVED from the array" "$SKILL" || invariants_ok=0
 grep -qiE "ascending ID order" "$SKILL" || invariants_ok=0
 grep -qiE 'MUST be `\[\]`|applied_fixes.*MUST be' "$SKILL" || invariants_ok=0
 grep -qiE "sorted and deduplicated|sorted \+ dedup" "$SKILL" || invariants_ok=0
@@ -160,6 +160,44 @@ if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "rev
   pass "markdown-summary example includes a review_fixes line"
 else
   fail "the markdown-summary example must include a review_fixes line"
+fi
+
+# === Branch-review hardening (EN08-CR-01..03) ===
+
+# --- CR-01: the baseline must cover untracked file CONTENT (stash create is not enough) ---
+if grep -qiE "tracked AND untracked" "$SKILL" \
+   && grep -qiE "git stash create. does NOT preserve untracked|not preserve untracked" "$SKILL" \
+   && grep -qiE "write-tree|content-hash manifest" "$SKILL"; then
+  pass "baseline covers untracked content (temp-index tree / content-hash manifest)"
+else
+  fail "the Phase-1 baseline must explicitly include untracked file content"
+fi
+
+# --- CR-02: authorization precedes mutation; one final frozen set ---
+if grep -qiE "Collect ALL authorizations up front|authorizations? .*before touching anything" "$SKILL" \
+   && grep -qiE "never changes after mutation begins|freeze one final authorized set" "$SKILL" \
+   && grep -qiE "pick always precedes mutation" "$SKILL"; then
+  pass "authorization (gated announcements + manual picks) precedes mutation; frozen set is final"
+else
+  fail "Phase 1 must collect all authorizations BEFORE any edit and freeze one final set"
+fi
+
+# --- CR-03: the normative examples are internally coherent ---
+# The JSON example's applied_fixes finding IDs must match the markdown example's
+# review_fixes line, and applied_safe_auto_count must equal the safe_auto entries.
+json_ids=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -oE '"finding_id": "[^"]+"' | grep -oE 'rev-[0-9-]+' | sort)
+md_ids=$(sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -F "review_fixes:" | grep -oE 'rev-[0-9-]+' | sort)
+count_field=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -oE '"applied_safe_auto_count": [0-9]+' | grep -oE '[0-9]+')
+json_safe_auto=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -c '"tier": "safe_auto"')
+if [ -n "$json_ids" ] && [ "$json_ids" = "$md_ids" ]; then
+  pass "example coherence: JSON applied_fixes IDs match the markdown review_fixes line"
+else
+  fail "the JSON and markdown examples must show the SAME applied finding IDs" "json=[$json_ids] md=[$md_ids]"
+fi
+if [ -n "$count_field" ] && [ "$count_field" = "$json_safe_auto" ]; then
+  pass "example coherence: applied_safe_auto_count ($count_field) equals safe_auto entries ($json_safe_auto)"
+else
+  fail "applied_safe_auto_count must equal the number of safe_auto applied_fixes entries" "count=$count_field entries=$json_safe_auto"
 fi
 
 # === U3: foundation D42 ===
