@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN08
 title: en-review lite-gate transparency + auditable mutation boundary
-status: open
+status: completed
 location: active
 created: 2026-07-07
-shipped:
+shipped: 2026-07-09
 deepened:
 covers_requirements: []
 requirements_pending: false
