@@ -162,4 +162,24 @@ else
   fail "the markdown-summary example must include a review_fixes line"
 fi
 
+# === U3: foundation D42 ===
+
+FOUNDATION="$REPO_ROOT/docs/foundation.md"
+d42="$(grep -E "^- \*\*D42\." "$FOUNDATION" || true)"
+if [ -n "$d42" ] && printf '%s' "$d42" | grep -qF "lite_gate:" && printf '%s' "$d42" | grep -qF "review_fixes:"; then
+  pass "foundation D42 names both outcome lines (lite_gate, review_fixes)"
+else
+  fail "foundation must add D42 naming the lite_gate and review_fixes outcome lines"
+fi
+if [ -n "$d42" ] && printf '%s' "$d42" | grep -qiE "two-phase" && printf '%s' "$d42" | grep -qiE "P0 finding halts ALL automatic mutation"; then
+  pass "D42 records the two-phase boundary + the P0 halt"
+else
+  fail "D42 must record the two-phase mutation boundary and the P0 halt"
+fi
+if [ -n "$d42" ] && printf '%s' "$d42" | grep -qF "D41"; then
+  pass "D42 cross-references D41's prose-to-auditable-gate pattern"
+else
+  fail "D42 must cross-reference D41"
+fi
+
 report
