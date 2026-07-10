@@ -140,6 +140,11 @@ When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `r
 - **Roster:** `correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
 - **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides.
 - **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
+- **Outcome line (EN08):** the gate's decision is reported by the mandatory `lite_gate:` line in en-review's summary (`applied` / `overridden (<reasons>)` / `not-requested`) — never a silent override.
+
+## Mutation boundary (EN08)
+
+Whatever the mode, **en-review must not implement findings outside the mode-permitted, announced, and recorded `applied_fixes[]` set** — wholesale implementation of findings is a contract violation. The permitted set is frozen BEFORE any edit (two-phase protocol, see en-review step 12); `applied_fixes[]` derives from the actual before-vs-after tree delta; a P0 finding halts all automatic mutation until severity.md's P0 pause-and-ask occurs. Review reports and applies bounded fixes; implementing belongs to `/en-build` / `/en-resolve-pr`.
 
 ## Failure protocol
 

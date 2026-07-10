@@ -49,6 +49,18 @@ A diff has a **risk signal** when paths or content touch any of:
 
 Otherwise `false` — **fail closed**. Specifically, any of these forces `false`: unknown line count, ANY uncounted file (a 5-line code change plus one `.md` → not small), any risk signal. A `--lite` request does not override a `false` result; the gate wins.
 
+**Canonical override-reason identifiers.** When a `--lite` request is overridden, the caller reports WHY using these stable enum values (one per failed condition; `/en-review`'s `lite_gate:` outcome line consumes them verbatim):
+
+| Reason ID | Failed condition |
+|---|---|
+| `unknown-line-count` | `EXEC_LINES` could not be computed |
+| `exec-lines-out-of-range` | `EXEC_LINES` outside `1..39` |
+| `uncounted-files` | `UNCOUNTED_FILES > 0` |
+| `risk-signal` | `RISK_SIGNALS` non-empty |
+| `conditional-persona:<names>` | (caller-added, en-review) a conditional review persona fired independently; `<names>` is the alphabetically-sorted `+`-joined persona list, e.g. `conditional-persona:performance+security` |
+
+When multiple conditions fail, report all of them, deduplicated, in the fixed table order above, comma+space separated — one deterministic encoding so equivalent runs produce identical output.
+
 ### `needs_browser` (en-qa Phase 2 eligibility)
 
 `true` when `FRONTEND_FILES > 0`. Otherwise `false` — **but** the caller's explicit `--browser` flag forces `true` regardless, and an undetermined diff (can't compute `FRONTEND_FILES`, e.g. no base ref) is treated as `true` (fail closed — run the browser pass rather than skip it).
