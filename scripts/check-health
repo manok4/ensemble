@@ -70,6 +70,22 @@ else
   check "Host CLI on PATH" red "Install at least one of claude or codex"
 fi
 
+# en-guardrail hook (Bash + MCP DB-tool matchers) — EN09
+if [ -x skills/en-guardrail/bin/install-guardrail ]; then
+  guardrail_state=$(skills/en-guardrail/bin/install-guardrail status 2>/dev/null | grep -qiE ": yes" && echo installed || echo absent)
+  mcp_state=absent
+  for sf in "$HOME/.claude/settings.json" ".claude/settings.json"; do
+    [ -f "$sf" ] && grep -q 'mcp__.*run_sql' "$sf" 2>/dev/null && mcp_state=installed
+  done
+  if [ "$guardrail_state" = installed ] && [ "$mcp_state" = installed ]; then
+    check "en-guardrail hook (Bash + MCP DB-tool matchers)" green "Destructive Bash and DB-writing MCP tools are gated"
+  elif [ "$guardrail_state" = installed ]; then
+    check "en-guardrail hook (MCP DB-tool matcher)" yellow "Bash matcher present; re-run install-guardrail to add the MCP DB-tool matcher (EN09)"
+  else
+    check "en-guardrail hook" yellow "Not installed; run /en-setup or install-guardrail install-project"
+  fi
+fi
+
 # Lint
 if [ -x bin/ensemble-lint ] || [ -f bin/ensemble-lint ]; then
   if (cd "$repo_root" && bin/ensemble-lint --quiet --scope docs/ 2>/dev/null); then

@@ -38,19 +38,39 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 | `terraform destroy` | `terraform destroy -auto-approve` | Infrastructure teardown |
 | `aws s3 rm … --recursive` | `aws s3 rm s3://bkt/ --recursive` | Bulk object delete |
 | `gcloud … delete` | `gcloud compute instances delete x` | Cloud-resource delete |
+| `find … -delete` / `-exec rm` | `find / -name x -delete` | Bulk file delete (EN09) |
+| `rsync … --delete` | `rsync -a --delete src/ dst/` | Destination file delete (EN09) |
+| `shred` / `truncate -s 0` / `unlink` | `shred secret.pem` | File destruction (EN09) |
+| `>` truncation of an existing file / symlink | `echo x > important.log` | Overwrite existing file (EN09) |
+| `UPDATE …` without a top-level `WHERE` | `UPDATE users SET active=false` | Silent mass-update (EN09) |
+| SQL from a file / stdin / pipe (non-local) | `psql -h prod -f migrate.sql` | Un-inspectable SQL (EN09) |
+| ORM destroyers | `prisma migrate reset`, `rails db:drop` | Database wipe (EN09) |
+| DB-writing **MCP tools** | `mcp__Neon__run_sql` running `DROP TABLE` | MCP DB write (EN09) |
 
-Single-file `rm` (e.g. `rm foo.ts`) is **not** flagged — too noisy for routine cleanup.
+Single-file `rm` (e.g. `rm foo.ts`) is **not** flagged — too noisy for routine cleanup. `UPDATE`/`DELETE` **with** a real top-level `WHERE`, `>>` append, and new-file `>` creation are likewise not flagged.
 
 ## Safe exceptions
 
 These pass without prompting:
 
-- `rm -rf` of common build artifacts: `node_modules`, `.next`, `dist`, `__pycache__`, `.cache`, `build`, `.turbo`, `coverage`.
-- `DROP` / `TRUNCATE` / `DELETE-without-WHERE` against an explicit local test/dev DB. Both signals must be present in the same command:
+- `rm -rf` of common build artifacts: `node_modules`, `.next`, `dist`, `__pycache__`, `.cache`, `build`, `.turbo`, `coverage` — **only as a plain, in-tree relative path** (EN09). An absolute (`/build`), home (`~/dist`, `$HOME/…`), shell-expanded (`${HOME}/dist`, `$PWD/dist`, `$(pwd)/dist`), globbed (`/*`), or parent-escaping (`../dist`) target is NOT exempt and prompts — the exemption is a positive allowlist that fails closed, so a "safe" artifact name can never greenlight a delete outside the working tree.
+- `DROP` / `TRUNCATE` / `DELETE`- or `UPDATE`-without-WHERE / SQL-from-file / ORM-reset against an explicit local test/dev DB. Both signals must be present in the same command:
   - **Localhost connection** — `-h localhost`, `-h 127.0.0.1`, `@localhost`, `@127.0.0.1`, or `host=localhost|127.0.0.1`.
   - **Test/dev/local DB name** — DB name (after `/`, `-d`, `dbname=`, or `database=`) contains `test`, `dev`, or `local`.
 
   Examples that exempt: `psql -h localhost -d test_app -c 'DROP TABLE users'`, `psql postgresql://app@127.0.0.1/myapp_test -c 'TRUNCATE orders'`. Examples that **don't** exempt: `psql -h localhost -d production`, `psql -h staging-db -d test_app`.
+
+## MCP database tools (EN09)
+
+A second `PreToolUse` matcher routes DB-writing MCP tools (e.g. `mcp__Neon__run_sql`, `mcp__Postgres__execute`) to the same hook, so a `DROP TABLE` issued through an MCP tool is caught the same as one via `psql`. The hook resolves the statement and the tool's **controlling target field** through a per-tool adapter; the local test/dev exemption is decided ONLY from that authoritative field, never from the SQL text (a `localhost`/`test` string in a comment can't spoof it). **Remote-only providers (e.g. Neon) never exempt** — a destructive statement there always prompts. A DB-write-named tool with no adapter, or unresolvable input, fails closed.
+
+## Scope (what the guardrail is, and is not)
+
+The guardrail is a **pattern-based accident brake**, not a path sandbox or a policy wall:
+
+- **It does not enforce the working-folder boundary.** Which directories the agent may read/write is the **host permission system's** job (Claude Code). The guardrail adds a destructive-pattern prompt on top; it does not, on its own, confine deletes to the repo.
+- **"Production" is inferred by exemption, not a positive detector.** Anything not provably a local test/dev target is treated as potentially production and prompts. A configurable positive production-marker (`production_hosts` / URL patterns) is a possible future extension, not implemented today.
+- **Coverage is a maintained list, not exhaustive.** New destructive tools/verbs are added as they're identified; the behavioral test suite (`tests/en-guardrail/`) is the source of truth for exactly what's covered.
 
 ## Temporary disable (human-only, out-of-band — EN09)
 

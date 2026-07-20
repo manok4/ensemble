@@ -121,16 +121,16 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
 11. **Create `.ensemble/config.local.example.yaml`** (committed) from `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
 12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
-    > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.). Choose:
+    > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`). Choose:
     >   `p` — install project-scoped now (writes to `<repo>/.claude/settings.json`).
     >   `g` — print the global one-liner for me to run from my terminal (active everywhere; agents can't write `~/.claude/` themselves).
     >   `s` — skip for now."
 
-    On `p` → run `skills/en-guardrail/bin/install-guardrail install-project`.
+    On `p` → run `skills/en-guardrail/bin/install-guardrail install-project` (installs **both** the Bash matcher and the MCP DB-tool matcher — EN09).
     On `g` → run `skills/en-guardrail/bin/install-guardrail install-global` (no `--apply`) and surface its output verbatim.
     On `s` → record in the report; don't ask again this session.
 
-    Idempotent — if the status check reports any scope active, skip the prompt and note it in the report.
+    Idempotent — if the status check reports any scope active, skip the prompt and note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
 13. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
     > "Anthropic's Claude Code Review GitHub Action isn't installed. It runs Claude on every PR and posts inline review comments — these are exactly what `/en-resolve-pr` is built to handle. Install? (`y` / `n`)
     > Auth options:
