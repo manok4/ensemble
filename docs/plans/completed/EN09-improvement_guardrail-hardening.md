@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN09
 title: en-guardrail hardening - close verified destructive-op gaps
-status: in_progress
+status: completed
 location: active
 created: 2026-07-20
-shipped:
+shipped: 2026-07-20
 deepened:
 covers_requirements: []
 requirements_pending: false
