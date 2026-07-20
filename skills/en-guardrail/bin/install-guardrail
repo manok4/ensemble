@@ -43,43 +43,63 @@ hooks = data.get("hooks", {}).get("PreToolUse", [])
 def is_guardrail_command(cmd):
     return "en-guardrail" in cmd and "check-guardrail.sh" in cmd
 
-def already_installed():
+HOOK_CMD = 'bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"'
+# EN09 U4/B2: a second matcher routes DB-writing MCP tools to the same hook.
+# Action-specific families are server-agnostic (run_sql, apply_migration, ...);
+# the ambiguous generic-named tools (query/execute) are server-QUALIFIED so the
+# matcher doesn't intercept unrelated MCP tools (F15). The hook's adapter
+# registry makes the precise ask/allow decision.
+MCP_MATCHER = (r"mcp__.*__(run_sql|run_sql_transaction|execute_sql|"
+               r"apply_migration|prepare_database_migration)|"
+               r"mcp__Postgres__(query|execute)")
+
+def matcher_installed(matcher):
     for entry in hooks:
-        if entry.get("matcher") != "Bash":
+        if entry.get("matcher") != matcher:
             continue
         for h in entry.get("hooks", []):
             if is_guardrail_command(h.get("command", "")):
                 return True
     return False
 
+def already_installed():
+    # "Installed" for status purposes = the primary Bash matcher is present.
+    return matcher_installed("Bash")
+
+def make_hook(matcher, msg):
+    return {
+        "matcher": matcher,
+        "hooks": [{"type": "command", "command": HOOK_CMD, "statusMessage": msg}],
+    }
+
 if mode == "status":
     print("yes" if already_installed() else "no")
     sys.exit(0)
 
 if mode == "install":
-    if already_installed():
+    added = False
+    pre = data.setdefault("hooks", {}).setdefault("PreToolUse", [])
+    if not matcher_installed("Bash"):
+        pre.append(make_hook("Bash", "Checking for destructive commands..."))
+        added = True
+    if not matcher_installed(MCP_MATCHER):
+        pre.append(make_hook(MCP_MATCHER, "Checking MCP DB tool for destructive statements..."))
+        added = True
+    if not added:
         print("noop")
         sys.exit(0)
-    hook = {
-        "matcher": "Bash",
-        "hooks": [{
-            "type": "command",
-            "command": 'bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"',
-            "statusMessage": "Checking for destructive commands...",
-        }],
-    }
-    data.setdefault("hooks", {}).setdefault("PreToolUse", []).append(hook)
 
 elif mode == "uninstall":
     pre = data.get("hooks", {}).get("PreToolUse", [])
     new_pre = []
     for entry in pre:
-        if entry.get("matcher") == "Bash":
-            kept = [h for h in entry.get("hooks", []) if not is_guardrail_command(h.get("command", ""))]
-            if kept:
-                entry["hooks"] = kept
-                new_pre.append(entry)
-        else:
+        # Strip guardrail commands from ANY matcher (Bash or the MCP matcher).
+        kept = [h for h in entry.get("hooks", []) if not is_guardrail_command(h.get("command", ""))]
+        if kept:
+            entry["hooks"] = kept
+            new_pre.append(entry)
+        elif not entry.get("hooks"):
+            # entry had no hooks list at all; preserve as-is
             new_pre.append(entry)
     if new_pre:
         data["hooks"]["PreToolUse"] = new_pre

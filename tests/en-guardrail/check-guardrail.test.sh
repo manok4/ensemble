@@ -227,4 +227,30 @@ else
   fail "[ask]   wrong bypass value" "got: $wrong_out"
 fi
 
+# ===================================================================
+# EN09 U4 — MCP DB-writing tools (B2). Full tool_name+tool_input JSON fed
+# directly to the hook (no real DB is ever touched — side-effect-free, F13).
+# ===================================================================
+mcp() {
+  local label="$1" expect="$2" payload="$3" out
+  out=$(printf '%s' "$payload" | bash "$HOOK")
+  case "$expect" in
+    ask)   echo "$out" | grep -q '"permissionDecision":"ask"' && pass "[ask]   $label" || fail "[ask]   $label" "got: $out" ;;
+    allow) [ "$out" = "{}" ] && pass "[allow] $label" || fail "[allow] $label" "got: $out" ;;
+  esac
+}
+mcp "Neon run_sql DROP on prod project"       ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users","project":"prod-app"}}'
+mcp "Neon run_sql DROP on dev (remote=ask,F12)" ask '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users","project":"dev-sandbox"}}'
+mcp "Neon run_sql plain SELECT"               allow '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"SELECT * FROM users","project":"prod"}}'
+mcp "F2 spoof: localhost inside SQL comment"  ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users -- localhost test","project":"prod"}}'
+mcp "F6 conflict: local label + prod project" ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users","label":"localhost-test","project":"prod-app"}}'
+mcp "Neon params.sql nesting DROP"            ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"params":{"sql":"DROP TABLE t","project":"prod"}}}'
+mcp "Neon run_sql UPDATE no WHERE"            ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"UPDATE users SET a=1","project":"prod"}}'
+mcp "Postgres execute DROP on local test"     allow '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DROP TABLE users","connectionString":"postgres://localhost/appdev_test"}}'
+mcp "Postgres execute DROP on prod host"      ask   '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DROP TABLE users","connectionString":"postgres://prod.rds.aws/app"}}'
+mcp "F8 un-adapted write-name (fail closed)"  ask   '{"tool_name":"mcp__Foo__run_sql","tool_input":{"sql":"DROP TABLE x"}}'
+mcp "F8 un-adapted write-name, no sql field"  ask   '{"tool_name":"mcp__Foo__apply_migration","tool_input":{"foo":"bar"}}'
+mcp "F15 unrelated MCP tool not prompted"     allow '{"tool_name":"mcp__foo__read","tool_input":{"path":"/x"}}'
+mcp "malformed MCP input fails closed"        ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":"not-an-object"}'
+
 report

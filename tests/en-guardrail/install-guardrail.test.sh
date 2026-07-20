@@ -145,4 +145,50 @@ else
   fail "no backup created on install-project" "backups=$backup_count"
 fi
 
+# --- EN09 U4: install writes BOTH the Bash matcher AND the MCP DB-tool matcher ---
+mcp_matcher_present() {  # arg: settings file -> prints 1 if an MCP guardrail matcher exists
+  python3 - "$1" <<'PY'
+import json, sys, re
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print(0); sys.exit(0)
+n = 0
+for e in d.get("hooks", {}).get("PreToolUse", []):
+    m = e.get("matcher", "")
+    if not m.startswith("mcp__"):
+        continue
+    if any("check-guardrail.sh" in h.get("command", "") for h in e.get("hooks", [])):
+        # must be a compilable regex that targets run_sql-family DB writers
+        try: re.compile(m)
+        except re.error: continue
+        if "run_sql" in m:
+            n += 1
+print(n)
+PY
+}
+F6="$TMP/case6/.claude/settings.json"
+GUARDRAIL_SETTINGS_FILE="$F6" "$INSTALLER" install-project >/dev/null
+if [ "$(mcp_matcher_present "$F6")" = "1" ] && [ "$(count_guardrail_entries "$F6")" = "1" ]; then
+  pass "install-project writes both the Bash and the MCP DB-tool matcher"
+else
+  fail "install-project missing the MCP matcher (or Bash matcher)" "$(cat "$F6")"
+fi
+
+# idempotent for the MCP matcher too (no duplicate on re-run)
+GUARDRAIL_SETTINGS_FILE="$F6" "$INSTALLER" install-project >/dev/null
+if [ "$(mcp_matcher_present "$F6")" = "1" ]; then
+  pass "MCP matcher install is idempotent"
+else
+  fail "MCP matcher duplicated or lost on re-run" "$(cat "$F6")"
+fi
+
+# uninstall removes BOTH matchers
+GUARDRAIL_SETTINGS_FILE="$F6" "$INSTALLER" uninstall-project >/dev/null
+if [ "$(mcp_matcher_present "$F6")" = "0" ] && [ "$(count_guardrail_entries "$F6")" = "0" ]; then
+  pass "uninstall-project removes both the Bash and MCP guardrail matchers"
+else
+  fail "uninstall left a guardrail matcher behind" "$(cat "$F6")"
+fi
+
 report

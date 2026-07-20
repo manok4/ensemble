@@ -30,22 +30,88 @@ try:
 except Exception:
     pass' 2>/dev/null || true)
 
-# Empty command — nothing to inspect.
-if [ -z "$CMD" ]; then
-  echo '{}'
-  exit 0
-fi
-
 # Bypass (EN09 A3/F1): read ONLY from the hook's own inherited process
 # environment, which the human exports in their shell BEFORE launching the
 # agent. Never parsed from the command string and never from an agent-writable
 # file, so a command-level `VAR=value <cmd>` assignment (which only scopes the
 # subprocess) cannot activate it and the agent cannot self-exempt within the
 # session. The old inline `ENSEMBLE_GUARDRAIL=off` command prefix no longer
-# bypasses.
+# bypasses. Applies to Bash AND MCP tool calls.
 if [ "${ENSEMBLE_GUARDRAIL_BYPASS:-}" = "on" ]; then
   echo '{}'
   exit 0
+fi
+
+# --- Empty tool_input.command: a non-Bash tool. Cover DB-writing MCP tools ---
+# (EN09 U4/B2). The Bash matchers below all key off $CMD, so without this an MCP
+# `run_sql` executing DROP TABLE would sail through. Per-tool adapters (F6) name
+# the statement field AND the controlling target field; the local exemption is
+# from that field ONLY (never SQL text, F2); remote-only providers never exempt
+# (F12); a write-named tool with no adapter fails closed (F8/F15).
+if [ -z "$CMD" ]; then
+  MCP_VERDICT=$(python3 -c '
+import sys, json, re
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    print("ask"); sys.exit(0)          # malformed on a tool call -> fail closed
+tool = d.get("tool_name", "") or ""
+ti = d.get("tool_input", {}) or {}
+if not isinstance(ti, dict): ti = {}
+# Server-qualified, adapter-backed registry (F8/F15): stmt field, controlling
+# target fields, local_capable. Only these tools are treated as DB writers.
+ADAPTERS = {
+    "mcp__Neon__run_sql":                    ("sql",            ["project","projectId","branch","branchId"], False),
+    "mcp__Neon__run_sql_transaction":        ("sql_statements", ["project","projectId","branch","branchId"], False),
+    "mcp__Neon__prepare_database_migration": ("migration_sql",  ["project","projectId"],                     False),
+    "mcp__Postgres__query":                  ("sql",            ["connectionString","connection","database"], True),
+    "mcp__Postgres__execute":                ("sql",            ["connectionString","connection","database"], True),
+}
+# Conservative fail-closed naming policy for un-adapted but clearly DB-writing tools.
+WRITE_NAME = re.compile(r"^mcp__.+__(run_sql|run_sql_transaction|execute_sql|apply_migration|prepare_database_migration)(_.*)?$", re.I)
+if tool not in ADAPTERS:
+    print("ask" if WRITE_NAME.match(tool) else "na"); sys.exit(0)
+stmt_field, ctrl_fields, local_capable = ADAPTERS[tool]
+def getf(obj, name):
+    if isinstance(obj, dict):
+        if name in obj: return obj[name]
+        p = obj.get("params")
+        if isinstance(p, dict) and name in p: return p[name]
+    return None
+stmt = getf(ti, stmt_field)
+if stmt is None:
+    print("ask"); sys.exit(0)           # unresolvable statement on a write tool
+if isinstance(stmt, list): stmt = " ; ".join(str(x) for x in stmt)
+low = str(stmt).lower()
+destructive = bool(re.search(r"\bdrop\s+(table|database|schema)\b|\btruncate\b|\bdelete\s+from\b|\balter\s+table\b|\bupdate\s+\w+\s+set\b", low))
+if not destructive:
+    print("allow"); sys.exit(0)
+if not local_capable:
+    print("ask"); sys.exit(0)           # remote-only provider (e.g. Neon) never exempts
+def proves_local_testdev():
+    for f in ctrl_fields:               # controlling target fields ONLY (not SQL text, F2)
+        v = getf(ti, f)
+        if not isinstance(v, str): continue
+        vl = v.lower()
+        if ("localhost" in vl or "127.0.0.1" in vl) and any(k in vl for k in ("test","dev","local")):
+            return True
+    return False
+print("allow" if proves_local_testdev() else "ask")
+' "$INPUT" 2>/dev/null || echo "ask")
+  case "$MCP_VERDICT" in
+    allow|na)
+      echo '{}'
+      exit 0
+      ;;
+    *)   # ask, or any error -> fail closed
+      mkdir -p ~/.ensemble/analytics 2>/dev/null || true
+      TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+      printf '{"event":"hook_fire","skill":"en-guardrail","pattern":"mcp_db_write","ts":"%s","repo":"unknown"}\n' \
+        "$TS" >> ~/.ensemble/analytics/guardrail.jsonl 2>/dev/null || true
+      printf '{"permissionDecision":"ask","message":"[guardrail] MCP database tool: a destructive or non-locally-targeted statement. Confirm before running."}\n'
+      exit 0
+      ;;
+  esac
 fi
 
 CMD_LOWER=$(printf '%s' "$CMD" | tr '[:upper:]' '[:lower:]')
