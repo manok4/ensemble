@@ -59,22 +59,66 @@ is_local_test_db() {
   return 0
 }
 
-# --- Safe exception: rm -rf of build artifacts ---
+# --- Helper: does the command truncate an EXISTING file via `>` redirection? ---
+# Returns 0 (ask) when a truncating redirect (`>`, `1>`, `2>`, `&>`, NOT `>>`)
+# targets an existing regular file OR a symlink (redirection follows symlinks,
+# so a link can truncate a file outside the tree), OR the target can't be safely
+# resolved (shell expansion). Returns 1 (allow) for new-file creation or no
+# truncating redirect. Paths resolve against the hook's cwd (best-effort). (EN09 A2/F9/F14)
+redir_truncates_existing() {
+  local cmd="$1" targets t
+  targets=$(printf '%s' "$cmd" \
+    | sed -E 's/>>/@APPEND@/g' \
+    | grep -oE '([0-9]*|&)>[[:space:]]*[^[:space:]|&;<>]+' 2>/dev/null \
+    | sed -E 's/^([0-9]*|&)>[[:space:]]*//')
+  [ -z "$targets" ] && return 1
+  set -f
+  for t in $targets; do
+    case "$t" in
+      *'$'*|*'`'*|*'~'*|*'*'*|*'?'*) set +f; return 0 ;;   # unresolvable -> fail closed
+    esac
+    if [ -L "$t" ]; then set +f; return 0; fi              # symlink -> may escape tree
+    if [ -f "$t" ]; then set +f; return 0; fi              # existing regular file
+  done
+  set +f
+  return 1
+}
+
+# --- Safe exception: rm -rf of build artifacts (positive allowlist, EN09) ---
+# A target is exempt ONLY if it is a literal, plain, in-tree RELATIVE path whose
+# final segment is a known build artifact. Any absolute (`/…`), home (`~…`),
+# shell expansion (`$`, `${}`, `$()`, backtick), glob (`*` `?` `[`), quote, or
+# `..` escape disqualifies the WHOLE command from the exemption -> it falls
+# through to the recursive-rm prompt (fail closed). This closes EN09 A1/F5:
+# the old `*/build|build` globs matched `/build` and `~/dist` and greenlit
+# filesystem-root / home-dir deletes.
 if printf '%s' "$CMD" | grep -qE 'rm[[:space:]]+(-[a-zA-Z]*r[a-zA-Z]*[[:space:]]+|--recursive[[:space:]]+)' 2>/dev/null; then
   SAFE_ONLY=true
   RM_ARGS=$(printf '%s' "$CMD" | sed -E 's/.*rm[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*//;s/--recursive[[:space:]]*//')
-  for target in $RM_ARGS; do
-    case "$target" in
-      */node_modules|node_modules|*/.next|.next|*/dist|dist|*/__pycache__|__pycache__|*/.cache|.cache|*/build|build|*/.turbo|.turbo|*/coverage|coverage)
-        ;;
-      -*)
-        ;;
-      *)
-        SAFE_ONLY=false
-        break
-        ;;
-    esac
-  done
+  # Any shell expansion / substitution / home ref anywhere in the command voids
+  # the exemption (a resolved target could land outside the tree).
+  case "$CMD" in
+    *'$'*|*'`'*|*'~'*|*'"'*|*"'"*) SAFE_ONLY=false ;;
+  esac
+  if [ "$SAFE_ONLY" = true ]; then
+    set -f  # no globbing while we word-split RM_ARGS
+    for target in $RM_ARGS; do
+      case "$target" in
+        -*) continue ;;                                  # a flag, not a target
+      esac
+      case "$target" in
+        /*|~*|..|../*|*/..|*/../*|*'*'*|*'?'*|*'['*)      # absolute / escape / glob
+          SAFE_ONLY=false; break ;;
+      esac
+      base=${target%/}          # tolerate a trailing slash (dist/)
+      base=${base##*/}          # final path segment
+      case "$base" in
+        node_modules|.next|dist|__pycache__|.cache|build|.turbo|coverage) ;;
+        *) SAFE_ONLY=false; break ;;
+      esac
+    done
+    set +f
+  fi
   if [ "$SAFE_ONLY" = true ]; then
     echo '{}'
     exit 0
@@ -88,6 +132,33 @@ PATTERN=""
 if printf '%s' "$CMD" | grep -qE 'rm[[:space:]]+(-[a-zA-Z]*r|--recursive)' 2>/dev/null; then
   WARN="recursive delete (rm -r). This permanently removes files."
   PATTERN="rm_recursive"
+fi
+
+# --- Non-recursive destructive deleters (EN09 A2) ---
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])find[[:space:]].*(-delete\b|-exec[[:space:]]+rm\b)' 2>/dev/null; then
+  WARN="find -delete / -exec rm removes every matched file."
+  PATTERN="find_delete"
+fi
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])rsync[[:space:]].*--delete' 2>/dev/null; then
+  WARN="rsync --delete removes destination files not present in the source."
+  PATTERN="rsync_delete"
+fi
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])shred([[:space:]]|$)' 2>/dev/null; then
+  WARN="shred irrecoverably destroys file contents."
+  PATTERN="shred"
+fi
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])truncate[[:space:]]+.*-s[[:space:]=]*0(\b|$)' 2>/dev/null; then
+  WARN="truncate -s 0 empties a file."
+  PATTERN="truncate_zero"
+fi
+if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])unlink([[:space:]]|$)' 2>/dev/null; then
+  WARN="unlink removes a file."
+  PATTERN="unlink"
+fi
+# Output-redirection truncation of an existing file / symlink (not new-file creation).
+if [ -z "$WARN" ] && redir_truncates_existing "$CMD"; then
+  WARN="output redirection (>) truncates an existing file."
+  PATTERN="redir_truncate"
 fi
 
 # DROP TABLE / DROP DATABASE — exempt explicit local test/dev DBs

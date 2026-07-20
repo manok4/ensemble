@@ -116,4 +116,56 @@ check "kubectl delete inside double quotes" ask   'kubectl exec pod -- bash -c "
 # Exemption preserved — escaped quotes around localhost+test DB still allow
 check "DROP on localhost test_db (double-quoted)" allow 'psql -h localhost -d test_app -c "DROP TABLE users"'
 
+# ===================================================================
+# EN09 U1 — safe-exception is a POSITIVE allowlist (A1/F5)
+# ===================================================================
+# Absolute / home / shell-expansion / parent-escape targets must NEVER be
+# exempted by the artifact allowlist — they fall through to the rm -r prompt.
+check "rm -rf /build (absolute)"              ask   "rm -rf /build"
+check "rm -rf ~/dist (home)"                  ask   "rm -rf ~/dist"
+check 'rm -rf $HOME/.cache (home var)'        ask   'rm -rf $HOME/.cache'
+check 'rm -rf ${HOME}/dist (brace expand)'    ask   'rm -rf ${HOME}/dist'
+check 'rm -rf $PWD/dist (var expand)'         ask   'rm -rf $PWD/dist'
+check 'rm -rf $(pwd)/dist (cmd subst)'        ask   'rm -rf $(pwd)/dist'
+check "rm -rf ../dist (parent escape)"        ask   "rm -rf ../dist"
+check "rm -rf /* (glob at root)"              ask   "rm -rf /*"
+# Relative in-tree artifacts still exempt (regression).
+check "rm -rf ./dist (relative)"              allow "rm -rf ./dist"
+check "rm -rf build/ (trailing slash)"        allow "rm -rf build/"
+check "rm -rf packages/app/node_modules"      allow "rm -rf packages/app/node_modules"
+# A non-artifact relative path is NOT exempt.
+check "rm -rf src (non-artifact)"             ask   "rm -rf src"
+
+# EN09 U1 — non-recursive destructive deleters (A2)
+check "find -delete"                          ask   "find . -name '*.log' -delete"
+check "find -exec rm"                         ask   "find / -name x -exec rm {} +"
+check "rsync --delete"                        ask   "rsync -a --delete src/ dst/"
+check "shred"                                 ask   "shred -u secret.pem"
+check "truncate -s 0"                         ask   "truncate -s 0 db.sqlite"
+check "unlink"                                ask   "unlink important.sock"
+
+# EN09 U1 — output-redirection truncation contract (A2/F9/F14).
+# These need real filesystem state, so run the hook from a temp dir.
+RTMP=$(mktemp -d)
+( cd "$RTMP" && echo data > existing.log && ln -s existing.log inlink.log \
+    && ln -s /etc/hosts outlink.log && ln -s nonexistent broken.log )
+redir() {
+  local label="$1" expect="$2" cmd="$3" out
+  out=$(cd "$RTMP" && printf '{"tool_input":{"command":%s}}' \
+    "$(printf '%s' "$cmd" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+    | bash "$HOOK")
+  case "$expect" in
+    ask)   echo "$out" | grep -q '"permissionDecision":"ask"' && pass "[ask]   $label" || fail "[ask]   $label" "got: $out" ;;
+    allow) [ "$out" = "{}" ] && pass "[allow] $label" || fail "[allow] $label" "got: $out" ;;
+  esac
+}
+redir "redirect creates a new file"           allow "echo x > newfile.log"
+redir "redirect appends (>>)"                 allow "echo x >> existing.log"
+redir "redirect truncates existing file"      ask   "echo x > existing.log"
+redir "redirect via symlink to in-tree file"  ask   "echo x > inlink.log"
+redir "redirect via symlink out of tree"      ask   "echo x > outlink.log"
+redir "redirect via broken symlink"           ask   "echo x > broken.log"
+redir "redirect target has expansion"         ask   'echo x > $DIR/out.log'
+rm -rf "$RTMP"
+
 report
