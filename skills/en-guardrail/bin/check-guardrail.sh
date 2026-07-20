@@ -187,6 +187,66 @@ if [ -z "$WARN" ] && printf '%s' "$CMD_LOWER" | grep -qE 'delete[[:space:]]+from
   fi
 fi
 
+# --- UPDATE without a TOP-LEVEL WHERE (EN09 B3/F7/F11) — exempt local test/dev ---
+# A word-boundary WHERE test is defeated by a WHERE in a comment, a string
+# literal, a subquery, or a later statement. Delegate the scope analysis to
+# python (already a dependency): strip comments + literals, split on `;`, and
+# require a WHERE at parenthesis-depth 0 in the UPDATE's own statement.
+# Gated behind a cheap grep so the common case pays no python cost.
+if [ -z "$WARN" ] && printf '%s' "$CMD_LOWER" | grep -qE '\bupdate\b' 2>/dev/null; then
+  UPDATE_UNSCOPED=$(printf '%s' "$CMD" | python3 -c '
+import sys, re
+s = sys.stdin.read()
+s = re.sub(r"/\*.*?\*/", " ", s, flags=re.S)   # block comments
+s = re.sub(r"--[^\n]*", " ", s)                # line comments
+# Strip SQL SINGLE-quoted string literals only. Double quotes here are the
+# shell quoting around the -c payload (and SQL double quotes are identifiers,
+# not strings), so stripping them would delete the SQL itself.
+s = re.sub(r"\x27(?:\x27\x27|[^\x27])*\x27", "\x27\x27", s)
+out = "no"
+for stmt in s.split(";"):
+    m = re.search(r"\bupdate\b\s+[a-zA-Z_][\w.$]*\s+set\b", stmt, re.I)
+    if not m:
+        continue
+    depth = 0; has_where = False
+    for mm in re.finditer(r"[()]|\bwhere\b", stmt[m.end():], re.I):
+        t = mm.group(0)
+        if t == "(": depth += 1
+        elif t == ")": depth = max(0, depth - 1)
+        elif depth == 0: has_where = True; break
+    if not has_where:
+        out = "yes"; break
+print(out)
+' 2>/dev/null || echo "no")
+  if [ "$UPDATE_UNSCOPED" = "yes" ] && ! is_local_test_db "$CMD_LOWER"; then
+    WARN="UPDATE without a top-level WHERE modifies every row in the table."
+    PATTERN="update_no_where"
+  fi
+fi
+
+# --- SQL from a file / stdin / pipe that the hook can't inspect (EN09 B1/F4) ---
+# A DB client fed SQL via -f/--file, input redirection, a heredoc, a client
+# file command (\i / \. / source), or a pipe can carry a hidden DROP. Against a
+# non-local target, fail closed (ask). Exempt the explicit local test/dev target.
+if [ -z "$WARN" ] \
+   && printf '%s' "$CMD_LOWER" | grep -qE '(^|[[:space:]|(])(psql|mysql|mariadb|mongosh|sqlite3|cockroach|clickhouse-client|usql)([[:space:]]|$)' 2>/dev/null; then
+  if printf '%s' "$CMD" | grep -qE '(-f[[:space:]=]|--file([[:space:]=])|[[:space:]]-f[^[:space:]]|[[:space:]]<[[:space:]]|<<|\\i[[:space:]]|\\\.[[:space:]]|[[:space:]]source[[:space:]]|(-e|--execute)[[:space:]=][^[:space:]]*\.sql)' 2>/dev/null \
+     || printf '%s' "$CMD_LOWER" | grep -qE '\|[[:space:]]*(psql|mysql|mariadb|mongosh|sqlite3|cockroach)([[:space:]]|$)' 2>/dev/null; then
+    if ! is_local_test_db "$CMD_LOWER"; then
+      WARN="SQL from a file / stdin / pipe can't be inspected; it may contain destructive statements."
+      PATTERN="sql_from_file"
+    fi
+  fi
+fi
+
+# --- ORM / framework destructive migrations (EN09 B3) — exempt local test/dev ---
+if [ -z "$WARN" ] && printf '%s' "$CMD_LOWER" | grep -qE '(prisma[[:space:]]+migrate[[:space:]]+reset|rails[[:space:]]+db:(drop|reset)|drizzle-kit[[:space:]]+push|sequelize[[:space:]]+db:drop|php[[:space:]]+artisan[[:space:]]+migrate:(fresh|reset)|alembic[[:space:]]+downgrade[[:space:]]+base)' 2>/dev/null; then
+  if ! is_local_test_db "$CMD_LOWER"; then
+    WARN="ORM destructive migration (reset / drop / fresh) can wipe the database."
+    PATTERN="orm_destructive"
+  fi
+fi
+
 # git push --force / -f
 if [ -z "$WARN" ] && printf '%s' "$CMD" | grep -qE 'git[[:space:]]+push[[:space:]]+.*(-f\b|--force)' 2>/dev/null; then
   WARN="git force-push rewrites remote history. Other contributors may lose work."

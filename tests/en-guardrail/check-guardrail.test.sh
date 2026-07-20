@@ -168,4 +168,35 @@ redir "redirect via broken symlink"           ask   "echo x > broken.log"
 redir "redirect target has expansion"         ask   'echo x > $DIR/out.log'
 rm -rf "$RTMP"
 
+# ===================================================================
+# EN09 U2 — UPDATE without a top-level WHERE (B3/F7/F11)
+# ===================================================================
+check "UPDATE no WHERE (prod)"                ask   'psql -h prod.db -c "UPDATE users SET active=false"'
+check "UPDATE WHERE only in comment"          ask   'psql -h prod.db -c "UPDATE users SET active=false -- reset WHERE nobody"'
+check "UPDATE WHERE only in literal"          ask   "psql -h prod.db -c \"UPDATE users SET note='delete WHERE x'\""
+check "UPDATE WHERE only in subquery"         ask   'psql -h prod.db -c "UPDATE users SET a=(SELECT e FROM d WHERE id=1)"'
+check "UPDATE WHERE in later statement"       ask   'psql -h prod.db -c "UPDATE users SET x=1; SELECT * FROM t WHERE y=2"'
+check "UPDATE scoped (top-level WHERE)"       allow 'psql -h prod.db -c "UPDATE users SET x=1 WHERE id=2"'
+check "UPDATE no WHERE on localhost test"     allow 'psql -h localhost -d test_app -c "UPDATE u SET a=false"'
+
+# EN09 U2 — SQL from a file / stdin / pipe against a non-local target (B1/F4)
+check "psql -f file (prod)"                   ask   "psql -h prod.db -f migrate.sql"
+check "psql --file= (prod)"                   ask   "psql -h prod.db --file=migrate.sql"
+check "psql < redirect (prod)"                ask   "psql -h prod.db < migrate.sql"
+check "cat file | psql (prod)"                ask   "cat migrate.sql | psql -h prod.db"
+check "mysql < redirect (prod)"               ask   "mysql -h prod.db appdb < dump.sql"
+check "psql -f on localhost test (exempt)"    allow "psql -h localhost -d appdev -f migrate.sql"
+
+# EN09 U2 — ORM / framework destructive migrations (B3)
+check "prisma migrate reset"                  ask   "prisma migrate reset --force"
+check "rails db:drop"                         ask   "rails db:drop"
+check "rails db:reset"                        ask   "rails db:reset"
+check "drizzle-kit push"                      ask   "drizzle-kit push"
+check "sequelize db:drop"                     ask   "npx sequelize db:drop"
+
+# EN09 U2 — regressions (must NOT over-fire)
+check "npm run update-deps (not SQL)"         allow "npm run update-deps"
+check "DELETE WITH WHERE stays allow"         allow "psql -h prod-db -c 'DELETE FROM users WHERE id=1'"
+check "plain SELECT with a file"              allow "psql -h localhost -d appdev -f query.sql"
+
 report
