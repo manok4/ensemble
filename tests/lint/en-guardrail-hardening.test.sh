@@ -13,6 +13,7 @@ TEST_NAME="en-guardrail hardening"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 SKILL="$REPO_ROOT/skills/en-guardrail/SKILL.md"
 HOOK="$REPO_ROOT/skills/en-guardrail/bin/check-guardrail.sh"
+ANALYZER="$REPO_ROOT/skills/en-guardrail/bin/guardrail_analyze.py"
 INSTALLER="$REPO_ROOT/skills/en-guardrail/bin/install-guardrail"
 SETUP="$REPO_ROOT/skills/en-setup/SKILL.md"
 HEALTH="$REPO_ROOT/scripts/check-health"
@@ -38,35 +39,42 @@ else
   fail "D43 should cross-reference D41/D42"
 fi
 
-# --- the hook actually implements what the docs claim ---
-# positive-allowlist safe exception (not the old bare-name globs)
-if grep -qiE "positive allowlist" "$HOOK"; then
-  pass "hook implements a positive-allowlist safe exception"
+# --- the wrapper delegates to the analyzer + reads the env bypass ---
+if grep -qF 'ENSEMBLE_GUARDRAIL_BYPASS' "$HOOK" && grep -qF 'guardrail_analyze.py' "$HOOK"; then
+  pass "wrapper reads the env bypass and delegates to guardrail_analyze.py"
 else
-  fail "hook must implement the positive-allowlist safe exception"
+  fail "check-guardrail.sh must read ENSEMBLE_GUARDRAIL_BYPASS and call guardrail_analyze.py"
 fi
-# bypass is read from the hook's OWN env, and the inline prefix grep is gone
-if grep -qF 'ENSEMBLE_GUARDRAIL_BYPASS' "$HOOK" \
-   && ! grep -qE "grep -qE '\(\^\|\[\[:space:\]\]\)ENSEMBLE_GUARDRAIL=off" "$HOOK"; then
-  pass "hook reads bypass from its process env; inline-prefix grep removed"
+# the wrapper must NOT re-introduce the inline-prefix bypass LOGIC (a comment
+# explaining that it is gone is fine; a grep/case that acts on it is not).
+if grep -qE '(grep|case).*ENSEMBLE_GUARDRAIL=off' "$HOOK"; then
+  fail "wrapper still has inline ENSEMBLE_GUARDRAIL=off matching logic"
 else
-  fail "hook must read ENSEMBLE_GUARDRAIL_BYPASS from env and drop the inline-prefix check"
+  pass "wrapper has no inline ENSEMBLE_GUARDRAIL=off bypass logic (comment-only ref is fine)"
+fi
+# --- the analyzer implements what the docs claim ---
+[ -f "$ANALYZER" ] || { fail "guardrail_analyze.py missing"; report; }
+# positive-allowlist safe exception (ARTIFACTS set + structural rm analysis)
+if grep -qF "ARTIFACTS" "$ANALYZER" && grep -qF "rm_recursive_unsafe" "$ANALYZER"; then
+  pass "analyzer implements the positive-allowlist rm analysis"
+else
+  fail "analyzer must implement the positive-allowlist rm analysis"
 fi
 # per-tool MCP adapter registry present
-if grep -qF "ADAPTERS" "$HOOK" && grep -qF "mcp__Neon__run_sql" "$HOOK"; then
-  pass "hook carries the MCP per-tool adapter registry"
+if grep -qF "ADAPTERS" "$ANALYZER" && grep -qF "mcp__Neon__run_sql" "$ANALYZER"; then
+  pass "analyzer carries the MCP per-tool adapter registry"
 else
-  fail "hook must carry the MCP adapter registry"
+  fail "analyzer must carry the MCP adapter registry"
 fi
-# non-recursive deleters + UPDATE-scope patterns present
-deleters_ok=1
-for p in "rsync" "shred" "truncate" "unlink" "redir_truncates_existing" "update_no_where" "sql_from_file" "orm_destructive"; do
-  grep -qF "$p" "$HOOK" || deleters_ok=0
+# non-recursive deleters + SQL/UPDATE/ORM + redirection + local-target parsing
+analyzer_ok=1
+for p in "rsync" "shred" "unlink" "redir_truncates" "update_no_where" "sql_from_uninspectable" "orm" "parse_target"; do
+  grep -qF "$p" "$ANALYZER" || analyzer_ok=0
 done
-if [ "$deleters_ok" -eq 1 ]; then
-  pass "hook carries the non-recursive deleter + SQL/UPDATE/ORM matchers"
+if [ "$analyzer_ok" -eq 1 ]; then
+  pass "analyzer carries the deleter + SQL/UPDATE/ORM + target-parse logic"
 else
-  fail "hook missing one of the EN09 deleter/SQL matchers"
+  fail "analyzer missing one of the EN09 matchers"
 fi
 
 # --- installer registers the MCP matcher ---

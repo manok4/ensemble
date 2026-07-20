@@ -253,4 +253,42 @@ mcp "F8 un-adapted write-name, no sql field"  ask   '{"tool_name":"mcp__Foo__app
 mcp "F15 unrelated MCP tool not prompted"     allow '{"tool_name":"mcp__foo__read","tool_input":{"path":"/x"}}'
 mcp "malformed MCP input fails closed"        ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":"not-an-object"}'
 
+# ===================================================================
+# EN09 branch-review bypasses (CR1-CR6) — each must now be closed.
+# ===================================================================
+# CR2: rm option ordering + compound commands
+check "rm -f -r absolute (option order)"      ask   "rm -f -r /important"
+check "rm --force --recursive absolute"       ask   "rm --force --recursive /important"
+check "compound rm: destructive then safe"    ask   "rm -rf /important; rm -rf dist"
+check "compound rm: safe then destructive"    ask   "rm -rf node_modules && rm -rf ~/data"
+check "compound both-safe still allowed"      allow "rm -rf node_modules && rm -rf dist"
+# CR1: spoofed localhost host must NOT exempt
+check "spoof host localhost.example.com"      ask   "psql -h localhost.example.com -d app_test -c 'DROP TABLE users'"
+mcp "MCP spoof host localhost.example.com"    ask   '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DROP TABLE users","connectionString":"postgres://localhost.example.com/app_test"}}'
+# CR4: quoted / aliased UPDATE table
+check "UPDATE quoted table no WHERE"          ask   'psql -h prod -c "UPDATE \"users\" SET active=false"'
+check "UPDATE aliased table no WHERE"         ask   'psql -h prod -c "UPDATE users u SET u.active=false"'
+# CR5: piped SQL through a wrapper, and compact input redirection
+check "piped SQL through env wrapper"         ask   "cat migrate.sql | env DATABASE_URL=x psql -h prod"
+check "piped SQL through timeout wrapper"     ask   "cat migrate.sql | timeout 30 psql -h prod"
+check "compact input redirection <file"       ask   "psql -h prod <migrate.sql"
+# CR6: MCP scoped DELETE/UPDATE should NOT prompt (matches the documented contract)
+mcp "MCP scoped DELETE (WHERE) allowed"       allow '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DELETE FROM users WHERE id=1","connectionString":"postgres://prod/app"}}'
+mcp "MCP scoped UPDATE (WHERE) allowed"       allow '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"UPDATE users SET x=1 WHERE id=2","connectionString":"postgres://prod/app"}}'
+mcp "MCP unscoped DELETE prompts"             ask   '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DELETE FROM users","connectionString":"postgres://prod/app"}}'
+
+# CR3: quoted redirection target with a space — must see the real existing file.
+# Use an absolute path so the check is independent of the hook's cwd.
+CRTMP=$(mktemp -d)
+printf data > "$CRTMP/important file"
+crpayload=$(printf 'echo x > "%s/important file"' "$CRTMP" \
+  | python3 -c 'import sys,json; print(json.dumps({"tool_input":{"command":sys.stdin.read()}}))')
+crredir_out=$(printf '%s' "$crpayload" | bash "$HOOK")
+if echo "$crredir_out" | grep -q '"permissionDecision":"ask"'; then
+  pass "[ask]   CR3 quoted redirection truncates existing 'important file'"
+else
+  fail "[ask]   CR3 quoted redirection" "got: $crredir_out"
+fi
+rm -rf "$CRTMP"
+
 report

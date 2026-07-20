@@ -1,6 +1,6 @@
 ---
 name: en-guardrail
-description: "Always-on safety guardrail. PreToolUse hook on Bash inspects each command for destructive patterns (recursive rm, DROP TABLE, DELETE-without-WHERE, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and forces a permission prompt. Build artifacts and localhost+test/dev databases pass without prompting. Per-command bypass via ENSEMBLE_GUARDRAIL=off. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
+description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writing MCP tools inspect each command/statement for destructive patterns (recursive rm, non-recursive deleters, DROP TABLE, TRUNCATE, DELETE/UPDATE-without-WHERE, SQL-from-file, ORM resets, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and force a permission prompt. In-tree build artifacts and localhost+test/dev databases pass without prompting. Human-only bypass via exporting ENSEMBLE_GUARDRAIL_BYPASS=on before launch (the old inline ENSEMBLE_GUARDRAIL=off prefix no longer works). Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
 ---
 
 > **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
@@ -131,4 +131,4 @@ The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffec
 | Hook script missing or unreadable | Claude Code's hook runner skips it silently — surface a warning when `/en-guardrail` runs |
 | Pattern false positive (legitimate command flagged) | Override the prompt manually; if it recurs, tighten the regex in `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` |
 | Pattern false negative (destructive command not flagged) | Open a tech-debt entry; add the pattern. Do **not** widen the safe-exceptions list reactively |
-| `ENSEMBLE_GUARDRAIL=off` exported globally | `/en-guardrail` warns that the bypass is set session-wide; suggest `unset ENSEMBLE_GUARDRAIL` |
+| `ENSEMBLE_GUARDRAIL_BYPASS=on` set in the launch environment | `/en-guardrail` warns that the bypass is active session-wide; suggest `unset ENSEMBLE_GUARDRAIL_BYPASS` and relaunch |
