@@ -85,8 +85,10 @@ check "DELETE WITH WHERE clause"              allow "psql -h prod-db -c 'DELETE 
 check "single-file rm"                        allow "rm foo.ts"
 check "rm with multiple files (no -r)"        allow "rm foo.ts bar.ts baz.ts"
 
-# --- Should ALLOW: per-command bypass ---
-check "ENSEMBLE_GUARDRAIL=off rm -rf"         allow "ENSEMBLE_GUARDRAIL=off rm -rf /tmp/foo"
+# --- EN09 U3 (A3/F1): the inline command-prefix bypass NO LONGER works ---
+# A model-writable prefix must not be able to self-exempt.
+check "inline ENSEMBLE_GUARDRAIL=off (no bypass)"     ask "ENSEMBLE_GUARDRAIL=off rm -rf /tmp/foo"
+check "inline ENSEMBLE_GUARDRAIL_BYPASS=on (no bypass)" ask "ENSEMBLE_GUARDRAIL_BYPASS=on rm -rf /tmp/foo"
 
 # --- Should ALLOW: routine commands ---
 check "git status"                            allow "git status"
@@ -198,5 +200,31 @@ check "sequelize db:drop"                     ask   "npx sequelize db:drop"
 check "npm run update-deps (not SQL)"         allow "npm run update-deps"
 check "DELETE WITH WHERE stays allow"         allow "psql -h prod-db -c 'DELETE FROM users WHERE id=1'"
 check "plain SELECT with a file"              allow "psql -h localhost -d appdev -f query.sql"
+
+# ===================================================================
+# EN09 U3 — bypass is read ONLY from the hook's own process env (A3/F1)
+# ===================================================================
+# With the env var set on the HOOK PROCESS (as a human's shell export would do),
+# a matched destructive command is allowed through.
+env_out=$(printf '{"tool_input":{"command":"rm -rf /tmp/foo"}}' | ENSEMBLE_GUARDRAIL_BYPASS=on bash "$HOOK")
+if [ "$env_out" = "{}" ]; then
+  pass "[allow] hook-process env ENSEMBLE_GUARDRAIL_BYPASS=on bypasses"
+else
+  fail "[allow] hook-process env bypass" "got: $env_out"
+fi
+# Without it, the same command asks (regression: bypass is opt-in only).
+noenv_out=$(printf '{"tool_input":{"command":"rm -rf /tmp/foo"}}' | bash "$HOOK")
+if echo "$noenv_out" | grep -q '"permissionDecision":"ask"'; then
+  pass "[ask]   no bypass env -> destructive command still asks"
+else
+  fail "[ask]   no bypass env" "got: $noenv_out"
+fi
+# A wrong value does not bypass.
+wrong_out=$(printf '{"tool_input":{"command":"rm -rf /tmp/foo"}}' | ENSEMBLE_GUARDRAIL_BYPASS=yes bash "$HOOK")
+if echo "$wrong_out" | grep -q '"permissionDecision":"ask"'; then
+  pass "[ask]   ENSEMBLE_GUARDRAIL_BYPASS=yes (wrong value) does not bypass"
+else
+  fail "[ask]   wrong bypass value" "got: $wrong_out"
+fi
 
 report

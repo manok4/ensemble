@@ -36,8 +36,14 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Per-command bypass: ENSEMBLE_GUARDRAIL=off prefix.
-if printf '%s' "$CMD" | grep -qE '(^|[[:space:]])ENSEMBLE_GUARDRAIL=off([[:space:]]|$)'; then
+# Bypass (EN09 A3/F1): read ONLY from the hook's own inherited process
+# environment, which the human exports in their shell BEFORE launching the
+# agent. Never parsed from the command string and never from an agent-writable
+# file, so a command-level `VAR=value <cmd>` assignment (which only scopes the
+# subprocess) cannot activate it and the agent cannot self-exempt within the
+# session. The old inline `ENSEMBLE_GUARDRAIL=off` command prefix no longer
+# bypasses.
+if [ "${ENSEMBLE_GUARDRAIL_BYPASS:-}" = "on" ]; then
   echo '{}'
   exit 0
 fi

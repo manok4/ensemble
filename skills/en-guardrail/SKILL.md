@@ -52,15 +52,19 @@ These pass without prompting:
 
   Examples that exempt: `psql -h localhost -d test_app -c 'DROP TABLE users'`, `psql postgresql://app@127.0.0.1/myapp_test -c 'TRUNCATE orders'`. Examples that **don't** exempt: `psql -h localhost -d production`, `psql -h staging-db -d test_app`.
 
-## Temporary disable
+## Temporary disable (human-only, out-of-band — EN09)
 
-For a single shell:
+The bypass is read **only from the hook's own process environment**, set by **you** in your shell **before launching** the agent:
 
 ```bash
-ENSEMBLE_GUARDRAIL=off <your-command>
+export ENSEMBLE_GUARDRAIL_BYPASS=on   # in your shell, then start Claude Code
 ```
 
-The hook honors `ENSEMBLE_GUARDRAIL=off` for the **single command's environment**. Don't `export` it globally — that defeats the guardrail for the rest of the session.
+**Why not an inline prefix or a config file:** the old `ENSEMBLE_GUARDRAIL=off <command>` prefix was **model-writable** — an agent could prepend it to self-exempt — so it no longer bypasses anything (it now prompts like any other destructive command). A command-level `VAR=value <command>` assignment only scopes that subprocess and cannot reach the hook's environment, and the agent cannot mutate the already-running parent process's env. This makes the bypass a genuine human-only control within a session.
+
+> **Agents: never set, export, or write `ENSEMBLE_GUARDRAIL_BYPASS`, and never edit shell profiles (`~/.zshrc`, `~/.bashrc`) to set it.** The bypass exists for the human operator only. (Editing a profile affects only *future* shells, not the running session, but it is still off-limits.)
+
+To turn the guard back on, `unset ENSEMBLE_GUARDRAIL_BYPASS` (or start a new shell without the export).
 
 ## Installation
 
