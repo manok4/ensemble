@@ -145,6 +145,14 @@ shellesc() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"
 }
 
+# Per-agent turn cap (EN10): `claude -p` supports `--max-turns`; `codex exec`
+# removed it and is single-shot (runs to completion), so it needs no cap.
+# Consumers use `$PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"` — empty for Codex.
+case "$PEER_CMD" in
+  claude*) PEER_TURNS="--max-turns 1" ;;
+  *)       PEER_TURNS="" ;;
+esac
+
 EMITTED=$(cat <<EOF
 HOST=$(shellesc "$HOST")
 HOST_CMD=$(shellesc "$HOST_CMD")
@@ -153,6 +161,7 @@ PEER=$(shellesc "$PEER")
 PEER_MODE=$(shellesc "$PEER_MODE")
 PEER_CMD=$(shellesc "$PEER_CMD")
 PEER_FORMAT=$(shellesc "$PEER_FORMAT")
+PEER_TURNS=$(shellesc "$PEER_TURNS")
 PEER_AVAILABLE=$(shellesc "$PEER_AVAILABLE")
 PEER_OVERRIDE=$(shellesc "$PEER_OVERRIDE")
 EOF
