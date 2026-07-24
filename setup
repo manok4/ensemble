@@ -219,23 +219,29 @@ EOF
   log "Created $HOME/.ensemble/config.json with defaults"
 fi
 
-# Smoke-test CLI flags if CLIs are present
+# Smoke-test CLI flags if CLIs are present.
+# On failure, classify the cause from stderr instead of always blaming flags
+# (EN10): an un-authenticated CLI on a fresh machine is not a flag mismatch.
+smoke_probe() {
+  # $1 = label, $2.. = command. Prints a classified result line.
+  local label="$1"; shift
+  local err rc
+  err=$("$@" </dev/null 2>&1 >/dev/null); rc=$?
+  if [ "$rc" -eq 0 ]; then
+    log "  $label: ✓ flags accepted"
+  elif printf '%s' "$err" | grep -qiE 'unexpected argument|unrecognized (option|argument|subcommand)|invalid (option|value)|USAGE:|error: unknown'; then
+    log "  $label: ⚠ flag drift — the installed CLI rejected a flag; check references/cli-wrappers.md"
+  elif printf '%s' "$err" | grep -qiE 'not logged in|unauthorized|authentication|not authenticated|please (run )?login|setup-token|sign in'; then
+    log "  $label: ⚠ not authenticated — sign in first (Claude: 'claude' / 'claude setup-token'; Codex: 'codex login'), then re-run"
+  else
+    log "  $label: ⚠ probe failed — $(printf '%s' "$err" | head -n1)"
+  fi
+}
 if [ "$QUIET" != "true" ]; then
   log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
-  if $HAS_CLAUDE_CLI; then
-    if echo "ping" | claude -p --output-format json --max-turns 1 >/dev/null 2>&1; then
-      log "  Claude CLI: ✓ flags accepted"
-    else
-      log "  Claude CLI: ⚠ flag mismatch — check references/cli-wrappers.md"
-    fi
-  fi
-  if $HAS_CODEX_CLI; then
-    if echo "ping" | codex exec --json --max-turns 1 >/dev/null 2>&1; then
-      log "  Codex CLI: ✓ flags accepted"
-    else
-      log "  Codex CLI: ⚠ flag mismatch — check references/cli-wrappers.md"
-    fi
-  fi
+  # claude -p supports --max-turns; codex exec does not (single-shot) — EN10.
+  $HAS_CLAUDE_CLI && smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "ping"
+  $HAS_CODEX_CLI && smoke_probe "Codex CLI" codex exec --json "ping"
   log ""
 fi
 

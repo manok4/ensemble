@@ -142,7 +142,7 @@ peer-resolution: {"finding_id":"u3-1-2","u_id":"U3","iteration":1,"severity":"P2
 ## Environment
 
 - `ENSEMBLE_PEER_REVIEW=true` is **not** set for worker dispatch — that env var is the recursion guard for *peer review*, not workers. Workers can perform their full operations.
-- Pass `--max-turns` aggressively (e.g., 30) so Codex has room to iterate on tests within the unit.
+- **No turn cap for the Codex worker (EN10):** `codex exec` has no `--max-turns` flag and is single-shot — it runs the unit's work to completion and exits — so there is nothing to cap. (An earlier draft told workers to "pass `--max-turns` aggressively (e.g. 30)"; that flag does not exist on `codex exec` and would error.)
 
 ## Post-build phase (branch-level review model, D35)
 
