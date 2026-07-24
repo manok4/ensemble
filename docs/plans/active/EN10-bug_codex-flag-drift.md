@@ -3,7 +3,7 @@ type: plan
 plan_type: bug
 plan_id: EN10
 title: fix Codex --max-turns flag drift in the cross-agent peer contract
-status: open
+status: in_progress
 location: active
 created: 2026-07-20
 shipped:
