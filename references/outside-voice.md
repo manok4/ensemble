@@ -128,7 +128,7 @@ ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
   --artifact-file docs/plans/active/EN07-feature_auth-rotation.md \
   --peer-mode "$PEER_MODE" \
   | "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \
-      $PEER_CMD $PEER_FORMAT --max-turns 1 \
+      $PEER_CMD $PEER_FORMAT $PEER_TURNS \
         --strict-mcp-config \
         --mcp-config '{"mcpServers":{}}' \
         --disable-slash-commands \
@@ -196,7 +196,7 @@ see `bin/ensemble-build-peer-prompt --help` for full args.
 # WRONG — argv-inlined large prompt, produced the silent-hang failure
 # mode in the field:
 prompt=$(bin/ensemble-build-peer-prompt ...)
-$PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
+$PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"
 
 # WRONG — --bare bypasses subscription auth; fails with
 # "Not logged in · Please run /login" on hosts without a valid
@@ -227,7 +227,7 @@ binary, never run unwrapped.
 Notes:
 
 - `ENSEMBLE_PEER_REVIEW=true` is the recursion guard — see `references/recursion-guard.md`.
-- `--max-turns 1` keeps the peer's turn budget to a single response.
+- `$PEER_TURNS` keeps the peer's turn budget to a single response: `--max-turns 1` for a `claude -p` peer; empty for `codex exec`, which is single-shot (it removed `--max-turns`).
 - The host parses the JSON, applies findings it agrees with (per `references/severity.md`), defers to `tech-debt-tracker.md`, or disagrees with rationale.
 - Timeout: respect `peer_timeout_seconds` from `~/.ensemble/config.json` (default 600 seconds).
 

@@ -145,7 +145,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 14. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `$ENSEMBLE_ROOT/references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
-    - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
+    - Invoke `$PEER_CMD $PEER_FORMAT $PEER_TURNS` with the prompt.
     - Parse JSON per `$ENSEMBLE_ROOT/references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
