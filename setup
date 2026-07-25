@@ -219,23 +219,17 @@ EOF
   log "Created $HOME/.ensemble/config.json with defaults"
 fi
 
-# Smoke-test CLI flags if CLIs are present
+# Smoke-test CLI flags if CLIs are present. The probe + failure classifier live
+# in a shared, sourceable helper (EN10) so the drift test exercises the REAL
+# classifier. On failure it distinguishes flag drift from an un-authenticated
+# CLI (a fresh machine is not a flag mismatch).
+# shellcheck source=bin/ensemble-cli-smoke
+. "$SOURCE_DIR/bin/ensemble-cli-smoke"
 if [ "$QUIET" != "true" ]; then
   log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
-  if $HAS_CLAUDE_CLI; then
-    if echo "ping" | claude -p --output-format json --max-turns 1 >/dev/null 2>&1; then
-      log "  Claude CLI: ✓ flags accepted"
-    else
-      log "  Claude CLI: ⚠ flag mismatch — check references/cli-wrappers.md"
-    fi
-  fi
-  if $HAS_CODEX_CLI; then
-    if echo "ping" | codex exec --json --max-turns 1 >/dev/null 2>&1; then
-      log "  Codex CLI: ✓ flags accepted"
-    else
-      log "  Codex CLI: ⚠ flag mismatch — check references/cli-wrappers.md"
-    fi
-  fi
+  # claude -p supports --max-turns; codex exec does not (single-shot) — EN10.
+  $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "ping"
+  $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "ping"
   log ""
 fi
 

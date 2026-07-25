@@ -60,7 +60,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
     - Build the Outside Voice prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type "markdown artifact" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
     - Set `ENSEMBLE_PEER_REVIEW=true` env var.
-    - Invoke `$PEER_CMD $PEER_FORMAT --max-turns 1` with the prompt.
+    - Invoke `$PEER_CMD $PEER_FORMAT $PEER_TURNS` with the prompt.
     - Parse the JSON response (per `$ENSEMBLE_ROOT/references/finding-schema.md`).
     - Apply, defer, or disagree per `$ENSEMBLE_ROOT/references/severity.md`.
     - Surface the verdict + applied changes to the user.

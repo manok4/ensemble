@@ -51,13 +51,13 @@ Inline in bash:
 
 ```bash
 ENSEMBLE_PEER_REVIEW=true \
-  $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
+  $PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"
 ```
 
 Or via `env`:
 
 ```bash
-env ENSEMBLE_PEER_REVIEW=true $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
+env ENSEMBLE_PEER_REVIEW=true $PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"
 ```
 
 The host must **not** set the var globally (e.g., in `~/.zshrc`) — that would disable cross-review for normal use.

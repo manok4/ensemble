@@ -30,7 +30,7 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │                                                  install coreutils │
 │         $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt ... | \      │
 │           "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \ │
-│             claude -p --output-format json --max-turns 1 \        │
+│             claude -p --output-format json $PEER_TURNS \        │
 │               --strict-mcp-config \                                │
 │               --mcp-config '{"mcpServers":{}}' \                   │
 │               --disable-slash-commands \                           │
@@ -104,7 +104,7 @@ ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
   --artifact-file /tmp/en-build-unit-artifact.txt \
   --peer-mode "$PEER_MODE" \
   | "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \
-      claude -p --output-format json --max-turns 1 \
+      claude -p --output-format json $PEER_TURNS \
         --strict-mcp-config \
         --mcp-config '{"mcpServers":{}}' \
         --disable-slash-commands \
