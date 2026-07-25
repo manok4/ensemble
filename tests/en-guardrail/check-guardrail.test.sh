@@ -85,8 +85,10 @@ check "DELETE WITH WHERE clause"              allow "psql -h prod-db -c 'DELETE 
 check "single-file rm"                        allow "rm foo.ts"
 check "rm with multiple files (no -r)"        allow "rm foo.ts bar.ts baz.ts"
 
-# --- Should ALLOW: per-command bypass ---
-check "ENSEMBLE_GUARDRAIL=off rm -rf"         allow "ENSEMBLE_GUARDRAIL=off rm -rf /tmp/foo"
+# --- EN09 U3 (A3/F1): the inline command-prefix bypass NO LONGER works ---
+# A model-writable prefix must not be able to self-exempt.
+check "inline ENSEMBLE_GUARDRAIL=off (no bypass)"     ask "ENSEMBLE_GUARDRAIL=off rm -rf /tmp/foo"
+check "inline ENSEMBLE_GUARDRAIL_BYPASS=on (no bypass)" ask "ENSEMBLE_GUARDRAIL_BYPASS=on rm -rf /tmp/foo"
 
 # --- Should ALLOW: routine commands ---
 check "git status"                            allow "git status"
@@ -115,5 +117,178 @@ check "kubectl delete inside double quotes" ask   'kubectl exec pod -- bash -c "
 
 # Exemption preserved — escaped quotes around localhost+test DB still allow
 check "DROP on localhost test_db (double-quoted)" allow 'psql -h localhost -d test_app -c "DROP TABLE users"'
+
+# ===================================================================
+# EN09 U1 — safe-exception is a POSITIVE allowlist (A1/F5)
+# ===================================================================
+# Absolute / home / shell-expansion / parent-escape targets must NEVER be
+# exempted by the artifact allowlist — they fall through to the rm -r prompt.
+check "rm -rf /build (absolute)"              ask   "rm -rf /build"
+check "rm -rf ~/dist (home)"                  ask   "rm -rf ~/dist"
+check 'rm -rf $HOME/.cache (home var)'        ask   'rm -rf $HOME/.cache'
+check 'rm -rf ${HOME}/dist (brace expand)'    ask   'rm -rf ${HOME}/dist'
+check 'rm -rf $PWD/dist (var expand)'         ask   'rm -rf $PWD/dist'
+check 'rm -rf $(pwd)/dist (cmd subst)'        ask   'rm -rf $(pwd)/dist'
+check "rm -rf ../dist (parent escape)"        ask   "rm -rf ../dist"
+check "rm -rf /* (glob at root)"              ask   "rm -rf /*"
+# Relative in-tree artifacts still exempt (regression).
+check "rm -rf ./dist (relative)"              allow "rm -rf ./dist"
+check "rm -rf build/ (trailing slash)"        allow "rm -rf build/"
+check "rm -rf packages/app/node_modules"      allow "rm -rf packages/app/node_modules"
+# A non-artifact relative path is NOT exempt.
+check "rm -rf src (non-artifact)"             ask   "rm -rf src"
+
+# EN09 U1 — non-recursive destructive deleters (A2)
+check "find -delete"                          ask   "find . -name '*.log' -delete"
+check "find -exec rm"                         ask   "find / -name x -exec rm {} +"
+check "rsync --delete"                        ask   "rsync -a --delete src/ dst/"
+check "shred"                                 ask   "shred -u secret.pem"
+check "truncate -s 0"                         ask   "truncate -s 0 db.sqlite"
+check "unlink"                                ask   "unlink important.sock"
+
+# EN09 U1 — output-redirection truncation contract (A2/F9/F14).
+# These need real filesystem state, so run the hook from a temp dir.
+RTMP=$(mktemp -d)
+( cd "$RTMP" && echo data > existing.log && ln -s existing.log inlink.log \
+    && ln -s /etc/hosts outlink.log && ln -s nonexistent broken.log )
+redir() {
+  local label="$1" expect="$2" cmd="$3" out
+  out=$(cd "$RTMP" && printf '{"tool_input":{"command":%s}}' \
+    "$(printf '%s' "$cmd" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+    | bash "$HOOK")
+  case "$expect" in
+    ask)   echo "$out" | grep -q '"permissionDecision":"ask"' && pass "[ask]   $label" || fail "[ask]   $label" "got: $out" ;;
+    allow) [ "$out" = "{}" ] && pass "[allow] $label" || fail "[allow] $label" "got: $out" ;;
+  esac
+}
+redir "redirect creates a new file"           allow "echo x > newfile.log"
+redir "redirect appends (>>)"                 allow "echo x >> existing.log"
+redir "redirect truncates existing file"      ask   "echo x > existing.log"
+redir "redirect via symlink to in-tree file"  ask   "echo x > inlink.log"
+redir "redirect via symlink out of tree"      ask   "echo x > outlink.log"
+redir "redirect via broken symlink"           ask   "echo x > broken.log"
+redir "redirect target has expansion"         ask   'echo x > $DIR/out.log'
+rm -rf "$RTMP"
+
+# ===================================================================
+# EN09 U2 — UPDATE without a top-level WHERE (B3/F7/F11)
+# ===================================================================
+check "UPDATE no WHERE (prod)"                ask   'psql -h prod.db -c "UPDATE users SET active=false"'
+check "UPDATE WHERE only in comment"          ask   'psql -h prod.db -c "UPDATE users SET active=false -- reset WHERE nobody"'
+check "UPDATE WHERE only in literal"          ask   "psql -h prod.db -c \"UPDATE users SET note='delete WHERE x'\""
+check "UPDATE WHERE only in subquery"         ask   'psql -h prod.db -c "UPDATE users SET a=(SELECT e FROM d WHERE id=1)"'
+check "UPDATE WHERE in later statement"       ask   'psql -h prod.db -c "UPDATE users SET x=1; SELECT * FROM t WHERE y=2"'
+check "UPDATE scoped (top-level WHERE)"       allow 'psql -h prod.db -c "UPDATE users SET x=1 WHERE id=2"'
+check "UPDATE no WHERE on localhost test"     allow 'psql -h localhost -d test_app -c "UPDATE u SET a=false"'
+
+# EN09 U2 — SQL from a file / stdin / pipe against a non-local target (B1/F4)
+check "psql -f file (prod)"                   ask   "psql -h prod.db -f migrate.sql"
+check "psql --file= (prod)"                   ask   "psql -h prod.db --file=migrate.sql"
+check "psql < redirect (prod)"                ask   "psql -h prod.db < migrate.sql"
+check "cat file | psql (prod)"                ask   "cat migrate.sql | psql -h prod.db"
+check "mysql < redirect (prod)"               ask   "mysql -h prod.db appdb < dump.sql"
+check "psql -f on localhost test (exempt)"    allow "psql -h localhost -d appdev -f migrate.sql"
+
+# EN09 U2 — ORM / framework destructive migrations (B3)
+check "prisma migrate reset"                  ask   "prisma migrate reset --force"
+check "rails db:drop"                         ask   "rails db:drop"
+check "rails db:reset"                        ask   "rails db:reset"
+check "drizzle-kit push"                      ask   "drizzle-kit push"
+check "sequelize db:drop"                     ask   "npx sequelize db:drop"
+
+# EN09 U2 — regressions (must NOT over-fire)
+check "npm run update-deps (not SQL)"         allow "npm run update-deps"
+check "DELETE WITH WHERE stays allow"         allow "psql -h prod-db -c 'DELETE FROM users WHERE id=1'"
+check "plain SELECT with a file"              allow "psql -h localhost -d appdev -f query.sql"
+
+# ===================================================================
+# EN09 U3 — bypass is read ONLY from the hook's own process env (A3/F1)
+# ===================================================================
+# With the env var set on the HOOK PROCESS (as a human's shell export would do),
+# a matched destructive command is allowed through.
+env_out=$(printf '{"tool_input":{"command":"rm -rf /tmp/foo"}}' | ENSEMBLE_GUARDRAIL_BYPASS=on bash "$HOOK")
+if [ "$env_out" = "{}" ]; then
+  pass "[allow] hook-process env ENSEMBLE_GUARDRAIL_BYPASS=on bypasses"
+else
+  fail "[allow] hook-process env bypass" "got: $env_out"
+fi
+# Without it, the same command asks (regression: bypass is opt-in only).
+noenv_out=$(printf '{"tool_input":{"command":"rm -rf /tmp/foo"}}' | bash "$HOOK")
+if echo "$noenv_out" | grep -q '"permissionDecision":"ask"'; then
+  pass "[ask]   no bypass env -> destructive command still asks"
+else
+  fail "[ask]   no bypass env" "got: $noenv_out"
+fi
+# A wrong value does not bypass.
+wrong_out=$(printf '{"tool_input":{"command":"rm -rf /tmp/foo"}}' | ENSEMBLE_GUARDRAIL_BYPASS=yes bash "$HOOK")
+if echo "$wrong_out" | grep -q '"permissionDecision":"ask"'; then
+  pass "[ask]   ENSEMBLE_GUARDRAIL_BYPASS=yes (wrong value) does not bypass"
+else
+  fail "[ask]   wrong bypass value" "got: $wrong_out"
+fi
+
+# ===================================================================
+# EN09 U4 — MCP DB-writing tools (B2). Full tool_name+tool_input JSON fed
+# directly to the hook (no real DB is ever touched — side-effect-free, F13).
+# ===================================================================
+mcp() {
+  local label="$1" expect="$2" payload="$3" out
+  out=$(printf '%s' "$payload" | bash "$HOOK")
+  case "$expect" in
+    ask)   echo "$out" | grep -q '"permissionDecision":"ask"' && pass "[ask]   $label" || fail "[ask]   $label" "got: $out" ;;
+    allow) [ "$out" = "{}" ] && pass "[allow] $label" || fail "[allow] $label" "got: $out" ;;
+  esac
+}
+mcp "Neon run_sql DROP on prod project"       ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users","project":"prod-app"}}'
+mcp "Neon run_sql DROP on dev (remote=ask,F12)" ask '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users","project":"dev-sandbox"}}'
+mcp "Neon run_sql plain SELECT"               allow '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"SELECT * FROM users","project":"prod"}}'
+mcp "F2 spoof: localhost inside SQL comment"  ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users -- localhost test","project":"prod"}}'
+mcp "F6 conflict: local label + prod project" ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"DROP TABLE users","label":"localhost-test","project":"prod-app"}}'
+mcp "Neon params.sql nesting DROP"            ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"params":{"sql":"DROP TABLE t","project":"prod"}}}'
+mcp "Neon run_sql UPDATE no WHERE"            ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":{"sql":"UPDATE users SET a=1","project":"prod"}}'
+mcp "Postgres execute DROP on local test"     allow '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DROP TABLE users","connectionString":"postgres://localhost/appdev_test"}}'
+mcp "Postgres execute DROP on prod host"      ask   '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DROP TABLE users","connectionString":"postgres://prod.rds.aws/app"}}'
+mcp "F8 un-adapted write-name (fail closed)"  ask   '{"tool_name":"mcp__Foo__run_sql","tool_input":{"sql":"DROP TABLE x"}}'
+mcp "F8 un-adapted write-name, no sql field"  ask   '{"tool_name":"mcp__Foo__apply_migration","tool_input":{"foo":"bar"}}'
+mcp "F15 unrelated MCP tool not prompted"     allow '{"tool_name":"mcp__foo__read","tool_input":{"path":"/x"}}'
+mcp "malformed MCP input fails closed"        ask   '{"tool_name":"mcp__Neon__run_sql","tool_input":"not-an-object"}'
+
+# ===================================================================
+# EN09 branch-review bypasses (CR1-CR6) — each must now be closed.
+# ===================================================================
+# CR2: rm option ordering + compound commands
+check "rm -f -r absolute (option order)"      ask   "rm -f -r /important"
+check "rm --force --recursive absolute"       ask   "rm --force --recursive /important"
+check "compound rm: destructive then safe"    ask   "rm -rf /important; rm -rf dist"
+check "compound rm: safe then destructive"    ask   "rm -rf node_modules && rm -rf ~/data"
+check "compound both-safe still allowed"      allow "rm -rf node_modules && rm -rf dist"
+# CR1: spoofed localhost host must NOT exempt
+check "spoof host localhost.example.com"      ask   "psql -h localhost.example.com -d app_test -c 'DROP TABLE users'"
+mcp "MCP spoof host localhost.example.com"    ask   '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DROP TABLE users","connectionString":"postgres://localhost.example.com/app_test"}}'
+# CR4: quoted / aliased UPDATE table
+check "UPDATE quoted table no WHERE"          ask   'psql -h prod -c "UPDATE \"users\" SET active=false"'
+check "UPDATE aliased table no WHERE"         ask   'psql -h prod -c "UPDATE users u SET u.active=false"'
+# CR5: piped SQL through a wrapper, and compact input redirection
+check "piped SQL through env wrapper"         ask   "cat migrate.sql | env DATABASE_URL=x psql -h prod"
+check "piped SQL through timeout wrapper"     ask   "cat migrate.sql | timeout 30 psql -h prod"
+check "compact input redirection <file"       ask   "psql -h prod <migrate.sql"
+# CR6: MCP scoped DELETE/UPDATE should NOT prompt (matches the documented contract)
+mcp "MCP scoped DELETE (WHERE) allowed"       allow '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DELETE FROM users WHERE id=1","connectionString":"postgres://prod/app"}}'
+mcp "MCP scoped UPDATE (WHERE) allowed"       allow '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"UPDATE users SET x=1 WHERE id=2","connectionString":"postgres://prod/app"}}'
+mcp "MCP unscoped DELETE prompts"             ask   '{"tool_name":"mcp__Postgres__execute","tool_input":{"sql":"DELETE FROM users","connectionString":"postgres://prod/app"}}'
+
+# CR3: quoted redirection target with a space — must see the real existing file.
+# Use an absolute path so the check is independent of the hook's cwd.
+CRTMP=$(mktemp -d)
+printf data > "$CRTMP/important file"
+crpayload=$(printf 'echo x > "%s/important file"' "$CRTMP" \
+  | python3 -c 'import sys,json; print(json.dumps({"tool_input":{"command":sys.stdin.read()}}))')
+crredir_out=$(printf '%s' "$crpayload" | bash "$HOOK")
+if echo "$crredir_out" | grep -q '"permissionDecision":"ask"'; then
+  pass "[ask]   CR3 quoted redirection truncates existing 'important file'"
+else
+  fail "[ask]   CR3 quoted redirection" "got: $crredir_out"
+fi
+rm -rf "$CRTMP"
 
 report

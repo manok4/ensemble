@@ -1,6 +1,6 @@
 ---
 name: en-guardrail
-description: "Always-on safety guardrail. PreToolUse hook on Bash inspects each command for destructive patterns (recursive rm, DROP TABLE, DELETE-without-WHERE, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and forces a permission prompt. Build artifacts and localhost+test/dev databases pass without prompting. Per-command bypass via ENSEMBLE_GUARDRAIL=off. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
+description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writing MCP tools inspect each command/statement for destructive patterns (recursive rm, non-recursive deleters, DROP TABLE, TRUNCATE, DELETE/UPDATE-without-WHERE, SQL-from-file, ORM resets, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and force a permission prompt. In-tree build artifacts and localhost+test/dev databases pass without prompting. Human-only bypass via exporting ENSEMBLE_GUARDRAIL_BYPASS=on before launch (the old inline ENSEMBLE_GUARDRAIL=off prefix no longer works). Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
 ---
 
 > **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
@@ -38,29 +38,53 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 | `terraform destroy` | `terraform destroy -auto-approve` | Infrastructure teardown |
 | `aws s3 rm … --recursive` | `aws s3 rm s3://bkt/ --recursive` | Bulk object delete |
 | `gcloud … delete` | `gcloud compute instances delete x` | Cloud-resource delete |
+| `find … -delete` / `-exec rm` | `find / -name x -delete` | Bulk file delete (EN09) |
+| `rsync … --delete` | `rsync -a --delete src/ dst/` | Destination file delete (EN09) |
+| `shred` / `truncate -s 0` / `unlink` | `shred secret.pem` | File destruction (EN09) |
+| `>` truncation of an existing file / symlink | `echo x > important.log` | Overwrite existing file (EN09) |
+| `UPDATE …` without a top-level `WHERE` | `UPDATE users SET active=false` | Silent mass-update (EN09) |
+| SQL from a file / stdin / pipe (non-local) | `psql -h prod -f migrate.sql` | Un-inspectable SQL (EN09) |
+| ORM destroyers | `prisma migrate reset`, `rails db:drop` | Database wipe (EN09) |
+| DB-writing **MCP tools** | `mcp__Neon__run_sql` running `DROP TABLE` | MCP DB write (EN09) |
 
-Single-file `rm` (e.g. `rm foo.ts`) is **not** flagged — too noisy for routine cleanup.
+Single-file `rm` (e.g. `rm foo.ts`) is **not** flagged — too noisy for routine cleanup. `UPDATE`/`DELETE` **with** a real top-level `WHERE`, `>>` append, and new-file `>` creation are likewise not flagged.
 
 ## Safe exceptions
 
 These pass without prompting:
 
-- `rm -rf` of common build artifacts: `node_modules`, `.next`, `dist`, `__pycache__`, `.cache`, `build`, `.turbo`, `coverage`.
-- `DROP` / `TRUNCATE` / `DELETE-without-WHERE` against an explicit local test/dev DB. Both signals must be present in the same command:
+- `rm -rf` of common build artifacts: `node_modules`, `.next`, `dist`, `__pycache__`, `.cache`, `build`, `.turbo`, `coverage` — **only as a plain, in-tree relative path** (EN09). An absolute (`/build`), home (`~/dist`, `$HOME/…`), shell-expanded (`${HOME}/dist`, `$PWD/dist`, `$(pwd)/dist`), globbed (`/*`), or parent-escaping (`../dist`) target is NOT exempt and prompts — the exemption is a positive allowlist that fails closed, so a "safe" artifact name can never greenlight a delete outside the working tree.
+- `DROP` / `TRUNCATE` / `DELETE`- or `UPDATE`-without-WHERE / SQL-from-file / ORM-reset against an explicit local test/dev DB. Both signals must be present in the same command:
   - **Localhost connection** — `-h localhost`, `-h 127.0.0.1`, `@localhost`, `@127.0.0.1`, or `host=localhost|127.0.0.1`.
   - **Test/dev/local DB name** — DB name (after `/`, `-d`, `dbname=`, or `database=`) contains `test`, `dev`, or `local`.
 
   Examples that exempt: `psql -h localhost -d test_app -c 'DROP TABLE users'`, `psql postgresql://app@127.0.0.1/myapp_test -c 'TRUNCATE orders'`. Examples that **don't** exempt: `psql -h localhost -d production`, `psql -h staging-db -d test_app`.
 
-## Temporary disable
+## MCP database tools (EN09)
 
-For a single shell:
+A second `PreToolUse` matcher routes DB-writing MCP tools (e.g. `mcp__Neon__run_sql`, `mcp__Postgres__execute`) to the same hook, so a `DROP TABLE` issued through an MCP tool is caught the same as one via `psql`. The hook resolves the statement and the tool's **controlling target field** through a per-tool adapter; the local test/dev exemption is decided ONLY from that authoritative field, never from the SQL text (a `localhost`/`test` string in a comment can't spoof it). **Remote-only providers (e.g. Neon) never exempt** — a destructive statement there always prompts. A DB-write-named tool with no adapter, or unresolvable input, fails closed.
+
+## Scope (what the guardrail is, and is not)
+
+The guardrail is a **pattern-based accident brake**, not a path sandbox or a policy wall:
+
+- **It does not enforce the working-folder boundary.** Which directories the agent may read/write is the **host permission system's** job (Claude Code). The guardrail adds a destructive-pattern prompt on top; it does not, on its own, confine deletes to the repo.
+- **"Production" is inferred by exemption, not a positive detector.** Anything not provably a local test/dev target is treated as potentially production and prompts. A configurable positive production-marker (`production_hosts` / URL patterns) is a possible future extension, not implemented today.
+- **Coverage is a maintained list, not exhaustive.** New destructive tools/verbs are added as they're identified; the behavioral test suite (`tests/en-guardrail/`) is the source of truth for exactly what's covered.
+
+## Temporary disable (human-only, out-of-band — EN09)
+
+The bypass is read **only from the hook's own process environment**, set by **you** in your shell **before launching** the agent:
 
 ```bash
-ENSEMBLE_GUARDRAIL=off <your-command>
+export ENSEMBLE_GUARDRAIL_BYPASS=on   # in your shell, then start Claude Code
 ```
 
-The hook honors `ENSEMBLE_GUARDRAIL=off` for the **single command's environment**. Don't `export` it globally — that defeats the guardrail for the rest of the session.
+**Why not an inline prefix or a config file:** the old `ENSEMBLE_GUARDRAIL=off <command>` prefix was **model-writable** — an agent could prepend it to self-exempt — so it no longer bypasses anything (it now prompts like any other destructive command). A command-level `VAR=value <command>` assignment only scopes that subprocess and cannot reach the hook's environment, and the agent cannot mutate the already-running parent process's env. This makes the bypass a genuine human-only control within a session.
+
+> **Agents: never set, export, or write `ENSEMBLE_GUARDRAIL_BYPASS`, and never edit shell profiles (`~/.zshrc`, `~/.bashrc`) to set it.** The bypass exists for the human operator only. (Editing a profile affects only *future* shells, not the running session, but it is still off-limits.)
+
+To turn the guard back on, `unset ENSEMBLE_GUARDRAIL_BYPASS` (or start a new shell without the export).
 
 ## Installation
 
@@ -107,4 +131,4 @@ The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffec
 | Hook script missing or unreadable | Claude Code's hook runner skips it silently — surface a warning when `/en-guardrail` runs |
 | Pattern false positive (legitimate command flagged) | Override the prompt manually; if it recurs, tighten the regex in `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` |
 | Pattern false negative (destructive command not flagged) | Open a tech-debt entry; add the pattern. Do **not** widen the safe-exceptions list reactively |
-| `ENSEMBLE_GUARDRAIL=off` exported globally | `/en-guardrail` warns that the bypass is set session-wide; suggest `unset ENSEMBLE_GUARDRAIL` |
+| `ENSEMBLE_GUARDRAIL_BYPASS=on` set in the launch environment | `/en-guardrail` warns that the bypass is active session-wide; suggest `unset ENSEMBLE_GUARDRAIL_BYPASS` and relaunch |
