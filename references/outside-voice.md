@@ -128,15 +128,20 @@ ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
   --artifact-file docs/plans/active/EN07-feature_auth-rotation.md \
   --peer-mode "$PEER_MODE" \
   | "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \
-      $PEER_CMD $PEER_FORMAT --max-turns 1 \
-        --strict-mcp-config \
-        --mcp-config '{"mcpServers":{}}' \
-        --disable-slash-commands \
-        --no-session-persistence \
-        --setting-sources project \
-        --tools '' \
+      $PEER_CMD $PEER_FORMAT $PEER_TURNS "${CLAUDE_ISOLATION[@]}" \
       > /tmp/peer-response.json \
       2>/tmp/peer-stderr.log
+```
+
+**The isolation flags are Claude-CLI-only and must be applied conditionally (EN10).** `--strict-mcp-config`, `--mcp-config`, `--disable-slash-commands`, `--no-session-persistence`, `--setting-sources`, and `--tools ''` are **Claude flags**; passing them to `codex exec` errors on argument parsing. Resolve them per peer as a bash array (an array is required because `--tools ''` is an empty argument that cannot survive unquoted string-splitting):
+
+```bash
+if [ "$PEER_CMD" = "claude -p" ]; then
+  CLAUDE_ISOLATION=(--strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+    --disable-slash-commands --no-session-persistence --setting-sources project --tools '')
+else
+  CLAUDE_ISOLATION=()   # codex exec is already lightweight + single-shot; no hardening flags
+fi
 ```
 
 > **Required on PATH:** `timeout` or `gtimeout` (GNU coreutils). macOS: `brew install coreutils`. Linux distros typically ship coreutils by default. Without it, peer review fails fast with a clear install instruction — never runs unwrapped.
@@ -196,7 +201,7 @@ see `bin/ensemble-build-peer-prompt --help` for full args.
 # WRONG — argv-inlined large prompt, produced the silent-hang failure
 # mode in the field:
 prompt=$(bin/ensemble-build-peer-prompt ...)
-$PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
+$PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"
 
 # WRONG — --bare bypasses subscription auth; fails with
 # "Not logged in · Please run /login" on hosts without a valid
@@ -227,7 +232,7 @@ binary, never run unwrapped.
 Notes:
 
 - `ENSEMBLE_PEER_REVIEW=true` is the recursion guard — see `references/recursion-guard.md`.
-- `--max-turns 1` keeps the peer's turn budget to a single response.
+- `$PEER_TURNS` keeps the peer's turn budget to a single response: `--max-turns 1` for a `claude -p` peer; empty for `codex exec`, which is single-shot (it removed `--max-turns`).
 - The host parses the JSON, applies findings it agrees with (per `references/severity.md`), defers to `tech-debt-tracker.md`, or disagrees with rationale.
 - Timeout: respect `peer_timeout_seconds` from `~/.ensemble/config.json` (default 600 seconds).
 

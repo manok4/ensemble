@@ -34,7 +34,7 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
 8. **Invoke peer.**
    ```bash
    ENSEMBLE_PEER_REVIEW=true \
-     $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt" \
+     $PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt" \
      > /tmp/peer-response.json 2>/tmp/peer-stderr.log
    ```
    Honor `peer_timeout_seconds` from `~/.ensemble/config.json` (default 600).

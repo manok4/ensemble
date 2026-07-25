@@ -46,7 +46,8 @@ Headless command-execution mode.
 | `<prompt>` | The prompt | Positional |
 | `--json` | Return structured JSON | Required for parseable peer responses |
 | `--skill <name>` | Pre-load a specific skill | Used by `bin/en-sweep-ci` |
-| `--max-turns <N>` | Cap on conversation turns | Use `1` for peer review |
+
+> **No `--max-turns` (EN10).** `codex exec` has **no** turn/iteration flag — it removed `--max-turns` and is inherently **single-shot** (runs the agent to completion and exits), so a peer pass needs no cap. Passing `--max-turns` to `codex exec` errors with `unexpected argument`. This is why the turn cap is host-resolved via `PEER_TURNS` (see `host-detect.md`): `--max-turns 1` for a `claude -p` peer, **empty** for `codex exec`.
 
 ### Canonical peer-review invocation
 
@@ -54,7 +55,6 @@ Headless command-execution mode.
 ENSEMBLE_PEER_REVIEW=true \
   codex exec \
   --json \
-  --max-turns 1 \
   "$prompt"
 ```
 
@@ -74,7 +74,7 @@ Skills don't embed flags. They reference variables set by `references/host-detec
 A skill builds its peer call as:
 
 ```bash
-ENSEMBLE_PEER_REVIEW=true $PEER_CMD $PEER_FORMAT --max-turns 1 "$prompt"
+ENSEMBLE_PEER_REVIEW=true $PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"
 ```
 
 When a flag changes upstream, this file and `host-detect.md` get updated; skills don't.
@@ -88,7 +88,7 @@ echo "ping" | claude -p --output-format json --max-turns 1 >/dev/null 2>&1 \
   && echo "  Claude CLI: ✓" \
   || echo "  Claude CLI: flag mismatch — check references/cli-wrappers.md"
 
-echo "ping" | codex exec --json --max-turns 1 >/dev/null 2>&1 \
+echo "ping" | codex exec --json >/dev/null 2>&1 \
   && echo "  Codex CLI: ✓" \
   || echo "  Codex CLI: flag mismatch — check references/cli-wrappers.md"
 ```
