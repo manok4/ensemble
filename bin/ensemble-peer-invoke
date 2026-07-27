@@ -49,19 +49,36 @@ _epi_attribute() {
   echo ""
 }
 
+# Escape a value for embedding in a JSON string. Without this a configured
+# alias containing a quote, backslash, or control character would emit invalid
+# JSON and silently defeat the structured contract (EN11-CR-003).
+_epi_json_escape() {
+  printf '%s' "${1:-}" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' \
+    | tr -d '\000-\010\013\014\016-\037' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
 # Emit the peer_decision object. Values come from the caller's resolved state,
 # so this helper never re-derives policy.
 _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias
   local _alias
-  if [ -n "${5:-}" ]; then _alias="\"$5\""; else _alias="null"; fi
+  if [ -n "${5:-}" ]; then _alias="\"$(_epi_json_escape "$5")\""; else _alias="null"; fi
   printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s}\n' \
-    "$1" "$2" "${3:-off}" "${4:-medium}" "$_alias"
+    "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
+    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias"
+}
+
+# Resolve a timeout wrapper once. Same convention as references/outside-voice.md.
+_epi_timeout_bin() {
+  command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true
 }
 
 ensemble_peer_invoke() {
   local peer_cmd="" peer_format="" peer_turns="" peer_model="" peer_effort=""
   local prompt_file="" out_file="/dev/null" peer_mode="cross-agent"
   local effort="medium" model_alias="" reason_on="default-on"
+  local timeout_secs="${peer_timeout_seconds:-600}"
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -76,6 +93,7 @@ ensemble_peer_invoke() {
       --effort)       effort="$2";       shift 2 ;;
       --model-alias)  model_alias="$2";  shift 2 ;;
       --reason-on)    reason_on="$2";    shift 2 ;;
+      --timeout)      timeout_secs="$2"; shift 2 ;;
       *) echo "ensemble_peer_invoke: unknown flag $1" >&2; return 2 ;;
     esac
   done
@@ -85,8 +103,14 @@ ensemble_peer_invoke() {
     return 2
   fi
 
+  # A stuck peer must not block a default-on review forever (EN11-CR-002).
+  # `timeout` exits 124 when it fires, which maps to the published
+  # peer-failed:timeout reason.
+  local _tb; _tb=$(_epi_timeout_bin)
+
   # --- attempt 1 ---------------------------------------------------------
   local _epi_argv=() _err _rc _class
+  [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
   _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
   _epi_push "$peer_model"; _epi_push "$peer_effort"
 
@@ -97,6 +121,11 @@ ensemble_peer_invoke() {
     return 0
   else
     _rc=$?
+  fi
+
+  if [ "$_rc" -eq 124 ]; then
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+    return 1
   fi
 
   _class=$(ensemble_smoke_classify "$_err" "$_rc")
@@ -126,7 +155,9 @@ ensemble_peer_invoke() {
   fi
 
   _epi_argv=()
+  [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
   _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
+  # Drop ONLY the rejected fragment; the other one is retained deliberately.
   if [ "$_target" = "model" ]; then
     _dropped="dropped-model-fragment"
     _epi_push "$peer_effort"
@@ -138,6 +169,10 @@ ensemble_peer_invoke() {
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias"
     return 0
+  fi
+  if [ "$?" -eq 124 ]; then
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+    return 1
   fi
 
   _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias"

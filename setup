@@ -243,7 +243,12 @@ else
   # non-empty object BEFORE it replaces anything, mv only after that validation,
   # and the original left untouched on every failure path.
   cfg_tmp=""
+  # The trap is the guarantee, not the explicit rm: an interrupt or unexpected
+  # exit between mktemp and mv would otherwise strand a .config.json.* artifact
+  # despite the documented no-stray-temp contract.
+  cleanup_cfg_tmp() { [ -z "${cfg_tmp:-}" ] || rm -f "$cfg_tmp"; }
   if cfg_tmp=$(mktemp "$CONFIG_DIR/.config.json.XXXXXX" 2>/dev/null); then
+    trap cleanup_cfg_tmp EXIT INT TERM HUP
     if config_defaults | jq -s '.[0] * .[1]' - "$CONFIG_FILE" > "$cfg_tmp" 2>/dev/null \
        && [ -s "$cfg_tmp" ] \
        && jq -e 'type == "object" and (keys | length) > 0' "$cfg_tmp" >/dev/null 2>&1; then
@@ -256,7 +261,9 @@ else
     else
       log "  ⚠ Could not merge defaults into $CONFIG_FILE (unreadable, malformed, or not a JSON object); left unchanged."
     fi
-    [ -z "$cfg_tmp" ] || rm -f "$cfg_tmp"
+    cleanup_cfg_tmp
+    cfg_tmp=""
+    trap - EXIT INT TERM HUP
   fi
 fi
 

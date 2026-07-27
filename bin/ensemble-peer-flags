@@ -80,8 +80,15 @@ PEER_EFFORT=""
 
 case "$PEER_CMD_IN" in
   claude*)
+    # Validate the alias BEFORE it reaches argv (EN11-CR-003). The fragment is
+    # word-split by the caller, so an alias containing a space would silently
+    # become extra CLI arguments; quotes and backslashes would also corrupt the
+    # emitted shell and JSON. Narrow grammar, and anything else is treated as
+    # absent so we fall back to the default rather than emitting garbage.
     alias_to_use="$MODEL_ALIAS"
-    [ -n "$alias_to_use" ] || alias_to_use="$DEFAULT_CLAUDE_ALIAS"
+    case "$alias_to_use" in
+      ''|*[!A-Za-z0-9._-]*) alias_to_use="$DEFAULT_CLAUDE_ALIAS" ;;
+    esac
     PEER_MODEL="--model $alias_to_use"
     PEER_EFFORT="--effort $EFFORT"
     ;;

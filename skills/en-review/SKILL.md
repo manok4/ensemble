@@ -30,10 +30,10 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
    Two carve-outs are deliberate, not oversights. **`report-only` never runs a peer**: `/en-sweep` invokes `/en-review` in that mode inside CI, and D38 deliberately keeps API secrets and repo-write off CI, so defaulting a peer on there would silently require peer CLI credentials. **`single-agent-fallback` defaults off** because en-review's personas are already fresh-context instances of the host stack, so a same-model subprocess adds cost without an independent perspective; `--peer` still opts in. (The calculus differs in `/en-build`, where the alternative is the host reviewing its own inline work.)
 
-2b. **Resolve effort and model alias — this skill is the SOLE resolver** (`peer-model-policy.md` (b)). Walk the precedence chain and produce one final tier plus one final alias:
+2b. **Read the effort/alias config overrides** (the two high-precedence layers only). This skill is the **SOLE resolver** (`peer-model-policy.md` (b)), but resolution is deliberately **split across two points** because the ladder's inputs do not exist yet at step 2:
 
-   - **Effort:** `--effort <low|medium|high>` flag → `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_effort_override --allowed low,medium,high` → the ladder (`high` when `security-reviewer`/`migrations-reviewer` fired, an architectural trigger is present, or the unit is `risk: destructive`/`gated: true`; `low` when `is_small_and_safe`; else `medium`).
-   - **Model alias:** `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design.
+   - **Overrides, read here:** the `--effort <low|medium|high>` flag, then `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_effort_override --allowed low,medium,high`. If either yields a tier, that tier is final and step 7b skips the ladder.
+   - **Model alias, read here:** `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design, and the alias does not depend on diff signals.
 
    The repo-then-global cascade inside each lookup belongs to `$ENSEMBLE_ROOT/bin/ensemble-config-get`, and translating the resolved tier into CLI syntax belongs to `$ENSEMBLE_ROOT/bin/ensemble-peer-flags`. Neither re-derives policy, so precedence exists in exactly one place.
 3. **Determine mode** (per `$ENSEMBLE_ROOT/references/persona-dispatch.md` and the §5.2.5 contract):
@@ -72,6 +72,12 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - `lite_gate: not-requested` — the run had no `--lite` flag.
 
    The JSON envelope carries the structured form (see envelope shape): `"lite_gate": {"outcome": "applied" | "overridden" | "not-requested", "reasons": []}` with `reasons` in the same canonical order (empty for `applied` / `not-requested`); the markdown line is DERIVED from that object, never composed independently.
+7b. **Finalize the effort tier against the ladder** (EN11-CR-001). The ladder's inputs — which conditional personas fired, `is_small_and_safe`, and the unit's `risk`/`gated` metadata — only exist once steps 7 and 7a have run, so resolving the tier at step 2 would let a diff resolve `low`/`medium` **before** a security, migration, architectural, destructive, or gated signal established that `high` was required. Resolve here, after classification and before step 8's dispatch:
+
+   - If step 2b produced a tier from `--effort` or config, **use it** (higher precedence than the ladder).
+   - Otherwise apply the ordered cascade from `$ENSEMBLE_ROOT/references/peer-model-policy.md` (a): **`high`** when `security-reviewer` or `migrations-reviewer` fired, an architectural trigger is present, or the unit is `risk: destructive` / `gated: true`; **`low`** when `is_small_and_safe` is `true`; **`medium`** otherwise.
+
+   `high` is evaluated first, so a small-and-safe diff that is nonetheless gated or architectural still resolves `high`. Record the final tier in `peer_decision.effort`.
 8. **Parallel dispatch — personas AND the peer in ONE batch.** Single message, multiple `Agent` tool calls, **plus the peer subprocess from step 9 launched in the same batch**. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the persona roster, so serializing it would add its latency to every review for no benefit (`peer_timeout_seconds` defaults to 600). Wait for all to return.
 9. **Outside Voice peer (on by default per step 2a; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
    - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid. Any change that feeds persona findings to the peer must also re-serialize step 8 and invalidate the corroboration weighting in step 10.

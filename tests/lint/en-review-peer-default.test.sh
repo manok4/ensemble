@@ -122,6 +122,16 @@ assert_eq "PEER_MODEL='' PEER_EFFORT='-c model_reasoning_effort=\"low\"' " \
 assert_eq "PEER_MODEL='' PEER_EFFORT='' " \
           "$(pf medium 'futurecli run')" "unknown CLI degrades to inherit-everything"
 
+# A configured alias is untrusted input (EN11-CR-003): a space would become
+# extra argv once the fragment is word-split, and quotes would corrupt the
+# emitted shell. Invalid aliases fall back to the default rather than leaking.
+assert_eq "PEER_MODEL='--model sonnet' PEER_EFFORT='--effort medium' " \
+          "$(pf medium 'claude -p' 'opus --dangerously-skip')" "alias with a space is rejected, falls back to default"
+assert_eq "PEER_MODEL='--model sonnet' PEER_EFFORT='--effort medium' " \
+          "$(pf medium 'claude -p' 'op\"us')" "alias with a quote is rejected"
+assert_eq "PEER_MODEL='--model claude-tier_1.5' PEER_EFFORT='--effort medium' " \
+          "$(pf medium 'claude -p' 'claude-tier_1.5')" "alias with safe punctuation is accepted"
+
 out=$("$FLAGS" --peer-cmd 'claude -p' 2>/dev/null); rc=$?
 assert_exit_code 2 "$rc" "missing --effort exits non-zero"
 assert_eq "" "$out" "missing --effort emits no partial output"
@@ -237,9 +247,16 @@ fi
 # ============================================================
 assert_file_exists "$INVOKE" "bin/ensemble-peer-invoke exists"
 
-IT=$(mktemp -d); echo "prompt" > "$IT/p"; CALLS="$IT/calls"
+IT=$(mktemp -d); echo "prompt" > "$IT/p"; CALLS="$IT/calls"; ARGV="$IT/argv"
+# Each stub records BOTH a call marker and its complete argv. Recording argv is
+# what makes the degradation contract testable (EN11-CR-005): a stub that only
+# counts calls would pass an implementation that dropped BOTH fragments, which
+# is exactly the behavior the contract forbids.
 mkstub() {  # mkstub <name> <body>
-  { echo '#!/usr/bin/env bash'; echo "echo call >> \"$CALLS\""; echo "$2"; } > "$IT/$1"
+  { echo '#!/usr/bin/env bash'
+    echo "echo call >> \"$CALLS\""
+    echo "echo \"\$*\" >> \"$ARGV\""
+    echo "$2"; } > "$IT/$1"
   chmod +x "$IT/$1"
 }
 mkstub ok       'exit 0'
@@ -252,7 +269,7 @@ mkstub unkf     'echo "network unreachable" >&2; exit 1'
 # Drive the REAL helper in a clean shell (a caller IFS without space must not
 # change behavior — the helper splits fragments under a controlled IFS).
 inv() {  # inv <stub> -> "<calls>|<decision json>"
-  : > "$CALLS"
+  : > "$CALLS"; : > "$ARGV"
   local d
   d=$(bash --noprofile --norc -c '
         set -eu
@@ -272,11 +289,21 @@ assert_contains "${r#*|}" '"reason":"default-on"' "success reason is default-on"
 r=$(inv drift_e)
 assert_eq "2" "${r%%|*}" "effort rejection retries EXACTLY once"
 assert_contains "${r#*|}" '"peer":"degraded"' "effort rejection degrades rather than failing"
-assert_contains "${r#*|}" 'dropped-effort-fragment' "only the effort fragment was dropped"
+assert_contains "${r#*|}" 'dropped-effort-fragment' "effort rejection reports the effort fragment"
+# Inspect the RETRY argv (EN11-CR-005). Counting calls alone would pass an
+# implementation that dropped both fragments; these assertions would not.
+retry_argv=$(sed -n '2p' "$ARGV")
+assert_not_contains "$retry_argv" "--effort" "retry omits the REJECTED effort fragment"
+assert_contains     "$retry_argv" "--model sonnet" "retry RETAINS the model fragment"
+assert_contains     "$retry_argv" "--json" "retry retains the peer format"
 
 r=$(inv drift_m)
 assert_eq "2" "${r%%|*}" "model rejection retries EXACTLY once"
-assert_contains "${r#*|}" 'dropped-model-fragment' "only the model fragment was dropped"
+assert_contains "${r#*|}" 'dropped-model-fragment' "model rejection reports the model fragment"
+retry_argv=$(sed -n '2p' "$ARGV")
+assert_not_contains "$retry_argv" "--model" "retry omits the REJECTED model fragment"
+assert_contains     "$retry_argv" "--effort medium" "retry RETAINS the effort fragment"
+assert_contains     "$retry_argv" "--json" "retry retains the peer format"
 
 r=$(inv drift_x)
 assert_eq "2" "${r%%|*}" "total rejection stops after ONE retry (no unbounded loop)"
@@ -289,6 +316,29 @@ assert_contains "${r#*|}" 'peer-failed:auth' "auth failure is recorded distinctl
 r=$(inv unkf)
 assert_eq "1" "${r%%|*}" "unknown failure never triggers a flag retry"
 assert_contains "${r#*|}" 'peer-failed:unknown' "unknown failure is recorded distinctly"
+
+# Timeout must be ENFORCED, not merely documented (EN11-CR-002): a stuck peer
+# cannot be allowed to block a default-on review forever.
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+  mkstub blocker 'sleep 30'
+  : > "$CALLS"; : > "$ARGV"
+  start=$(date +%s)
+  d=$(bash --noprofile --norc -c '
+        set -eu
+        . "$1"
+        ensemble_peer_invoke --peer-cmd "$2" --peer-format "--json" \
+          --prompt-file "$3" --out-file /dev/null --timeout 2 || true
+      ' _ "$INVOKE" "$IT/blocker" "$IT/p" 2>/dev/null)
+  elapsed=$(( $(date +%s) - start ))
+  assert_contains "$d" 'peer-failed:timeout' "a stuck peer resolves peer-failed:timeout"
+  if [ "$elapsed" -lt 15 ]; then
+    pass "timeout is bounded (returned in ${elapsed}s, not the stub's 30s)"
+  else
+    fail "timeout not enforced" "took ${elapsed}s against a 2s timeout"
+  fi
+else
+  pass "timeout checks skipped (no timeout/gtimeout on PATH)"
+fi
 rm -rf "$IT"
 
 # Every reason the helper can emit must be a member of the published enum
