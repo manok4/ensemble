@@ -73,11 +73,51 @@ In Codex: equivalent `spawn_agent` calls in a batch.
 After all personas return:
 
 1. **Validate each response** — must parse as JSON, must follow `references/finding-schema.md`. Drop malformed responses with a stderr log; don't fail the whole review.
-2. **Collect findings** — flatten into one list with the persona attribution preserved (`finding.persona = "correctness"`).
-3. **Dedup** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-confidence variant; merge `personas` field.
-4. **Boost confidence on overlap** — if two personas independently surfaced the same finding, boost confidence by +1 (capped at 10). Strong signal.
-5. **Conflict detection** — same `location` flagged for incompatible reasons → leave both; mark `conflict: true` for user judgment.
-6. **Severity reordering** — sort by severity (P0 → P3), then confidence (high → low), then persona priority (`correctness` > `security` > `testing` > `standards` > `maintainability` > `performance` > `migrations`).
+2. **Collect findings** — flatten into one list with the persona attribution preserved (`finding.persona = "correctness"`) and the originating side tagged (`finding.source = "host"`).
+3. **Dedup within the host set** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-confidence variant; merge `personas` field.
+4. **Boost confidence on same-source overlap** — if two personas independently surfaced the same finding, boost confidence by +1 (capped at 10). Note this is *same-stack* agreement; cross-source agreement is weighted higher (see Two-source reconciliation).
+5. **Severity reordering** — sort by severity (P0 → P3), then confidence (high → low), then persona priority (`correctness` > `security` > `testing` > `standards` > `maintainability` > `performance` > `migrations`).
+
+## Two-source reconciliation (EN11)
+
+When the peer runs (the default — see `skills/en-review/SKILL.md` step 2a), the host set and the peer set are reconciled into **reconciliation records** rather than flattened into one pool. A single `source` field cannot express a corroborated pair, so the record carries provenance for both sides:
+
+```json
+{"bucket": "corroborated | peer-only | host-only | conflicting",
+ "sources": ["host", "peer"],
+ "canonical": { "<the finding presented to the user>" },
+ "contributing": [{"source": "host", "finding_id": "..."},
+                  {"source": "peer", "finding_id": "..."}],
+ "confidence": 9,
+ "conflict": false}
+```
+
+### One global algorithm (so the buckets partition)
+
+Conflict and corroboration are two stages of a **single pass over one shared consumption pool**, in a fixed order:
+
+1. **Conflict stage first.** Within each `location`, enumerate cross-source pairs whose claims are **contradictory**, ordered by ascending `(host finding_id, peer finding_id)`. Greedily allocate each pair to a `conflicting` record, **consuming both members**. Conflict runs first because a contradiction is the more consequential classification and must not be masked by a similarity match.
+2. **Corroboration stage on the remainder.** Among findings not consumed in stage 1, order cross-source candidate pairs within a `location` by descending title-similarity (`>= 0.7` — the same predicate as host-set dedup, not a second matcher), greedily match **one-to-one**, and consume both members.
+3. **Singles.** Every finding still unconsumed becomes a `host-only` or `peer-only` record.
+
+Ties break on ascending `finding_id` at every stage, so identical input yields identical buckets across runs. `canonical` selection is highest-severity, then highest-confidence, then the host-source member.
+
+**Partition invariant (assert it, don't assume it):** every raw finding contributes to **exactly one** reconciliation record. A finding is never both corroborated and conflicting, and none is dropped. The total count of `contributing[]` entries across all records MUST equal the count of raw findings.
+
+**Worked example.** At `src/auth.ts:42` the host surfaced `H1` ("token compared with ==") and `H2` ("missing null guard"); the peer surfaced `P1` ("timing-unsafe token comparison") and `P2` ("null guard here is unreachable, remove it"). `H2`/`P2` contradict each other (add vs remove) and are allocated first as `conflicting`, consuming both. `H1`/`P1` then match on similarity and become `corroborated`. Nothing is left over. Had `P2` been absent, `H2` would have fallen through to `host-only`.
+
+### Bucket semantics
+
+| Bucket | Meaning | Handling |
+|---|---|---|
+| `corroborated` | Host AND peer independently found it | Rank first; confidence **+2** (capped at 10) |
+| `peer-only` | Only the cross-agent peer found it | Surface prominently — empirically where the value has been (EN09's 6 parser bypasses, EN10's 4 findings were all peer-only) |
+| `host-only` | Only the host personas found it | Normal ranking; skews to standards/testing/maintainability where project context beats fresh eyes |
+| `conflicting` | Same `location`, incompatible claims | Surface **both**, `conflict: true`, **never auto-applied** |
+
+**Why cross-source agreement outranks same-source.** Two host personas agreeing are the same model with correlated blind spots; host and peer agreeing are independent architectures. Hence `+2` across sources versus `+1` within. This repo already encodes the principle that not all agreement is equal: `fast-pass` findings are barred from corroboration promotion entirely, and that carve-out is preserved.
+
+**Conflict detection is independent of the similarity predicate.** Two findings at one `location` whose claims are incompatible are frequently *dissimilar* in title (as in the worked example above), so keying conflict off the `>= 0.7` corroboration predicate would systematically miss them. Conflict is evaluated on contradictory assertions at a shared `location` regardless of similarity.
 
 ## Output envelope
 
@@ -108,15 +148,24 @@ Aggregate `verdict` is the most-severe of the personas:
 - Any persona returns `revise` and none returns `reject` → aggregate is `revise`.
 - All return `approve` → aggregate is `approve`.
 
-## Optional Outside Voice on top
+## Outside Voice: on by default, and BLIND (EN11)
 
-`/en-review --peer` adds a cross-agent peer pass on top of the personas. The peer reads:
+The cross-agent peer runs **by default** (see `skills/en-review/SKILL.md` step 2a for the mode and availability scoping). It produces a second finding set, tagged `source: "peer"`, which reconciles with the host set per Two-source reconciliation above.
+
+**Blind-peer invariant.** The peer reads:
 
 - The diff.
-- The persona findings (so it can confirm or counter them).
+- The project context and goal.
 - The plan.
 
-The peer pass produces an **additional** finding set merged into the envelope with `persona: "peer"`. Useful for genuinely ambiguous reviews; off by default to keep the standard `en-review` cost low.
+It does **NOT** read the host persona findings. This is a deliberate, load-bearing invariant, not an omission:
+
+- **Independence is what makes overlap mean anything.** Anchoring the peer on host findings turns independent discovery into confirmation, and the `corroborated` bucket would then measure suggestibility rather than agreement.
+- **It licenses concurrent dispatch.** Because the peer needs nothing from the persona batch, `/en-review` fires it in the *same* parallel batch (step 8) instead of serializing after it.
+
+An earlier version of this file described the peer as receiving the host roster's output for confirmation. That behavior was never implemented: `bin/ensemble-build-peer-prompt` has no flag for it and `/en-review` never passed them. The **implementation was right and the prose was wrong**, so the prose was corrected rather than the feature built.
+
+Any future change that feeds persona findings to the peer must also re-serialize step 8 and re-derive the corroboration weighting, because both depend on this invariant.
 
 ## Cost characteristics
 

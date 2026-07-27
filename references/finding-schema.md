@@ -59,7 +59,6 @@ When `en-review` runs multiple persona agents and aggregates their findings:
 
 - Findings are merged, deduped (by location + title similarity), and re-classified.
 - Same finding from two personas → boost confidence (+1, capped at 10).
-- Same location flagged for incompatible reasons → leave both, mark `conflict: true` for user judgment.
 - The synthesis layer emits a single envelope with the same shape, plus a `personas` field listing which personas contributed:
 
 ```json
@@ -70,6 +69,40 @@ When `en-review` runs multiple persona agents and aggregates their findings:
   "findings": [...]
 }
 ```
+
+## Two-source reconciliation (EN11)
+
+When the cross-agent peer runs alongside the host personas (the `/en-review` default), every raw finding carries a `source`, and the two sets reconcile into **reconciliation records**. The full algorithm, including the conflict-before-corroboration ordering and the partition invariant, lives in `references/persona-dispatch.md`; this file defines the shapes.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `findings[].source` | yes when a peer ran | `host` or `peer`. Which side produced this raw finding. Omit when no peer ran (all findings are host). |
+| `reconciliation[].bucket` | yes | `corroborated` \| `peer-only` \| `host-only` \| `conflicting` |
+| `reconciliation[].sources` | yes | Array of contributing sides. `["host","peer"]` for corroborated and conflicting; a single-element array otherwise. **An array, not the scalar `source`** — a corroborated record represents both sides and a scalar cannot express that. |
+| `reconciliation[].canonical` | yes | The finding object presented to the user. Selected highest-severity, then highest-confidence, then host-source. |
+| `reconciliation[].contributing` | yes | `[{source, finding_id}]` for every raw finding folded into this record. Summing these across all records MUST equal the raw finding count (the partition invariant). |
+| `reconciliation[].confidence` | yes | Post-boost confidence: `+2` for cross-source corroboration, `+1` for same-source overlap, capped at 10. |
+| `reconciliation[].conflict` | yes | `true` only for the `conflicting` bucket. Conflicting records are **never auto-applied**. |
+
+```json
+{
+  "verdict": "revise",
+  "summary": "...",
+  "personas": ["correctness", "testing"],
+  "peer_decision": {"peer": "on", "reason": "default-on", "peer_mode": "cross-agent",
+                    "effort": "medium", "model_alias": null},
+  "findings": [ { "source": "peer", "finding_id": "p-1", "severity": "P1", "...": "..." } ],
+  "reconciliation": [
+    {"bucket": "corroborated", "sources": ["host", "peer"],
+     "canonical": { "severity": "P1", "location": "src/auth.ts:42", "...": "..." },
+     "contributing": [{"source": "host", "finding_id": "c-2"},
+                      {"source": "peer", "finding_id": "p-1"}],
+     "confidence": 10, "conflict": false}
+  ]
+}
+```
+
+`peer_decision` is defined once in `references/peer-model-policy.md` section (e); the envelope echoes it verbatim so callers never re-derive it.
 
 ## Examples
 

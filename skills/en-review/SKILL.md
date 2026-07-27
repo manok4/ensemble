@@ -83,11 +83,14 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
 9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `$ENSEMBLE_ROOT/references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
-10. **Synthesize.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
+10. **Synthesize, then reconcile the two sources.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
     - Validate each response (drop malformed).
-    - Collect findings; preserve persona attribution.
-    - Dedup by location + title-similarity ≥ 0.7 (merge personas; boost confidence).
-    - Conflict detection: same location, incompatible reasons → mark `conflict: true`.
+    - Collect findings; preserve persona attribution and tag `source: host | peer`.
+    - Dedup **within** the host set by location + title-similarity ≥ 0.7 (merge personas; same-source overlap boosts confidence +1).
+    - **Two-source reconciliation** (when a peer ran): one global pass over a shared consumption pool — **conflict stage first** (contradictory cross-source pairs at a `location`, consuming both members, so a contradiction is never masked by a similarity match), then **corroboration** on the remainder (same `>= 0.7` predicate, one-to-one, greedy by descending similarity), then **singles**. Ties break on ascending `finding_id`. Emit `reconciliation[]` records with `bucket` / `sources[]` / `canonical` / `contributing[]` per `$ENSEMBLE_ROOT/references/finding-schema.md`.
+    - **Assert the partition invariant:** the total `contributing[]` count across all records equals the raw finding count. Every finding lands in exactly one record; none is both corroborated and conflicting, and none is dropped.
+    - Cross-source corroboration boosts confidence **+2** (capped at 10) versus **+1** for same-source, because independent architectures agreeing is stronger evidence than two same-stack personas agreeing. `fast-pass` findings remain barred from corroboration promotion.
+    - Rank `corroborated` first, then surface `peer-only` prominently. `conflicting` records surface both sides and are **never auto-applied** (they are excluded from the frozen authorized set in step 12).
     - Severity reorder: P0 → P3, then confidence, then persona priority.
 11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `$ENSEMBLE_ROOT/references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
 12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
