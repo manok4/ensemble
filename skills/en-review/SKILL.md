@@ -1,6 +1,6 @@
 ---
 name: en-review
-description: "Multi-persona code review of the current branch. Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
+description: "Multi-persona code review of the current branch, with the cross-agent peer ON BY DEFAULT (skip via --no-peer). Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Host and peer findings reconcile into four buckets (corroborated / peer-only / host-only / conflicting). Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep; never runs a peer). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
 ---
 
 > **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
@@ -8,12 +8,34 @@ description: "Multi-persona code review of the current branch. Always-on persona
 
 # `/en-review`
 
-Multi-persona, confidence-gated code review. Optional cross-agent peer review on top.
+Multi-persona, confidence-gated code review **with the cross-agent peer on by default** (EN11). Host personas and the blind peer run concurrently; their findings reconcile into four explicit buckets.
 
 ## Process
 
 1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, do not invoke `--peer` even if requested.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, no peer is dispatched (it would recurse) regardless of the default or an explicit `--peer`. Resolves `peer_decision.reason: recursion-guard`.
+
+2a. **Resolve the peer decision** (EN11). Produce ONE `peer_decision` object per the schema in `$ENSEMBLE_ROOT/references/peer-model-policy.md` section (e), and carry it into the report rather than recomputing it later.
+
+   | Condition | `peer` | `reason` |
+   |---|---|---|
+   | `PEER_MODE=cross-agent` AND mode is `interactive`/`headless` | `on` | `default-on` (or `explicit-flag` if `--peer` was passed) |
+   | `--no-peer` passed | `off` | `no-peer-flag` |
+   | `PEER_MODE=single-agent-fallback` (unless `--peer`) | `off` | `single-agent-fallback` |
+   | mode is `report-only` | `off` | `report-only-mode` |
+   | `ENSEMBLE_PEER_REVIEW=true` | `off` | `recursion-guard` |
+   | `PEER_AVAILABLE=false` | `off` | `peer-unavailable` |
+   | Diff below `skip_peer_below_lines` | `off` | `auto-skip:diff-below-threshold` |
+   | Lightweight depth AND `skip_peer_on_lightweight` | `off` | `auto-skip:lightweight-depth` |
+
+   Two carve-outs are deliberate, not oversights. **`report-only` never runs a peer**: `/en-sweep` invokes `/en-review` in that mode inside CI, and D38 deliberately keeps API secrets and repo-write off CI, so defaulting a peer on there would silently require peer CLI credentials. **`single-agent-fallback` defaults off** because en-review's personas are already fresh-context instances of the host stack, so a same-model subprocess adds cost without an independent perspective; `--peer` still opts in. (The calculus differs in `/en-build`, where the alternative is the host reviewing its own inline work.)
+
+2b. **Resolve effort and model alias — this skill is the SOLE resolver** (`peer-model-policy.md` (b)). Walk the precedence chain and produce one final tier plus one final alias:
+
+   - **Effort:** `--effort <low|medium|high>` flag → `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_effort_override --allowed low,medium,high` → the ladder (`high` when `security-reviewer`/`migrations-reviewer` fired, an architectural trigger is present, or the unit is `risk: destructive`/`gated: true`; `low` when `is_small_and_safe`; else `medium`).
+   - **Model alias:** `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design.
+
+   The repo-then-global cascade inside each lookup belongs to `$ENSEMBLE_ROOT/bin/ensemble-config-get`, and translating the resolved tier into CLI syntax belongs to `$ENSEMBLE_ROOT/bin/ensemble-peer-flags`. Neither re-derives policy, so precedence exists in exactly one place.
 3. **Determine mode** (per `$ENSEMBLE_ROOT/references/persona-dispatch.md` and the §5.2.5 contract):
    - **`interactive`** — direct user invocation. Auto-applies `safe_auto` fixes; surfaces `gated_auto` / `manual` to user. May write to working tree.
    - **`headless`** — invoked by another skill (`en-build` per-unit, `en-cross-review`). Auto-applies `safe_auto` silently; returns structured JSON. May write to working tree.
@@ -50,12 +72,17 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
    - `lite_gate: not-requested` — the run had no `--lite` flag.
 
    The JSON envelope carries the structured form (see envelope shape): `"lite_gate": {"outcome": "applied" | "overridden" | "not-requested", "reasons": []}` with `reasons` in the same canonical order (empty for `applied` / `not-requested`); the markdown line is DERIVED from that object, never composed independently.
-8. **Parallel dispatch.** Single message, multiple `Agent` tool calls. Wait for all to return.
-9. **Outside Voice peer (`--peer` adds it on top; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (build-by-orchestration: peer is the other agent per D23):
-   - Build the prompt: `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`. Set `ENSEMBLE_PEER_REVIEW=true`; pipe into `$PEER_CMD` (wrapped in `$ENSEMBLE_TIMEOUT_BIN`). Parse findings per `$ENSEMBLE_ROOT/references/finding-schema.md`.
-   - **`--peer`** (on top of personas): add the peer's findings tagged `persona: "peer"` to the persona envelope.
-   - **`--peer-only`** (sole reviewer): the peer's findings ARE the envelope. Record the reviewer in the result: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` (no other CLI at all) — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
-   - **Recursion guard:** if `ENSEMBLE_PEER_REVIEW=true` at entry, do not dispatch a peer (would recurse). Under `--peer-only` that means falling back to the host roster (or, in a subprocess that can't review itself, returning the empty envelope with `reviewer: recursion-guard`).
+8. **Parallel dispatch — personas AND the peer in ONE batch.** Single message, multiple `Agent` tool calls, **plus the peer subprocess from step 9 launched in the same batch**. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the persona roster, so serializing it would add its latency to every review for no benefit (`peer_timeout_seconds` defaults to 600). Wait for all to return.
+9. **Outside Voice peer (on by default per step 2a; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
+   - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid. Any change that feeds persona findings to the peer must also re-serialize step 8 and invalidate the corroboration weighting in step 10.
+   - Build the prompt: `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`.
+   - Translate the tier resolved in step 2b: `eval "$($ENSEMBLE_ROOT/bin/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
+   - **Invoke via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. **Do not restate the retry algorithm here** — the helper owns invocation, classification, the single bounded retry that drops only the rejected fragment, and the fallback, so the behavior is executable and testable rather than prose (EN11-PR-006). It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `$ENSEMBLE_ROOT/references/finding-schema.md`, tagged `source: "peer"`.
+   - **Default (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10.
+   - **`--peer-only`** (sole reviewer): the peer's findings ARE the envelope; no reconciliation is needed. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
+   - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
+
+9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `$ENSEMBLE_ROOT/references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
 10. **Synthesize.** Per `$ENSEMBLE_ROOT/references/persona-dispatch.md`:
     - Validate each response (drop malformed).
     - Collect findings; preserve persona attribution.
@@ -90,7 +117,9 @@ Multi-persona, confidence-gated code review. Optional cross-agent peer review on
 | Flag | Effect |
 |---|---|
 | `--mode interactive\|headless\|report-only` | Override default mode |
-| `--peer` | Add cross-agent peer pass on top of the host personas |
+| `--no-peer` | Skip the cross-agent peer entirely; host personas only. Resolves `peer_decision: off (no-peer-flag)`. (Same spelling as `/en-plan`'s flag.) |
+| `--effort low\|medium\|high` | Pin the peer's reasoning-effort tier for this run, the highest-precedence layer in `$ENSEMBLE_ROOT/references/peer-model-policy.md` (b). Omit to let repo config, then user config, then the ladder decide. |
+| `--peer` | **Back-compat no-op when the peer is already on by default** (EN11). Still meaningful where the default is off: it opts a `single-agent-fallback` run into a fresh same-model subprocess. Resolves `reason: explicit-flag`. |
 | `--peer-only` | Cross-agent peer is the **sole** reviewer; skip host personas entirely (implementer ≠ reviewer). Used by `/en-build`'s post-build phase. Falls back to host roster only when no peer CLI exists. Mutually exclusive with `--lite`. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
