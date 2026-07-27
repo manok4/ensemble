@@ -14,7 +14,7 @@ related_design:
 peer_review_verdict: revise
 peer_review_iterations: 2
 peer_review_last_run: 2026-07-27
-peer_review_plan_hash: bc8ce1956c7edf5f344d8acba9579b322f1e8e2fd17256292248a1ab7fa719bd
+peer_review_plan_hash: 036d65286465665adfa40cf1feb46f584b93bbaa12576b84c74d1cabc7c0c915
 peer_review_cap_hit: true
 peer_review_resolutions:
   - finding_id: EN11-PR-001
@@ -201,7 +201,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Goal:** Establish the stable risk ladder and its config surface as the single source of policy truth.
 - **Requirements covered:** none (skill-behavior improvement)
 - **Dependencies:** none
-- **Files:** `references/peer-model-policy.md` (new), `setup` (config defaults block), `references/doc-lints.md` (register the new reference in the pointer map if applicable)
+- **Files:** `references/peer-model-policy.md` (new), `references/doc-lints.md` (register the new reference in the pointer map if applicable). **No `setup` edits: U9 owns the entire config block** (EN11-PR-013), so the two units never touch the same code.
 - **Approach:** Write `references/peer-model-policy.md` defining four things.
 
   **(a) The effort ladder, as an ordered first-match cascade.** Evaluation order is fixed and `high` is tested first, so a diff that satisfies more than one condition always resolves to the strongest:
@@ -214,9 +214,9 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 
   Ordering `high` first is belt-and-braces rather than redundant: `is_small_and_safe` already requires `RISK_SIGNALS` to be empty and no conditional persona to have fired, so security and migrations cannot collide with `low`, but the **architectural**, **destructive**, and **gated** conditions are *not* inputs to `is_small_and_safe` and genuinely could. A small, signal-free diff on a `gated: true` unit must still resolve `high`.
 
-  **(b) The resolution order and its single owner.** `/en-review` is the **only** resolver. It evaluates, first hit wins, the `--effort` flag, then `<repo>/.ensemble/config.local.yaml`, then `~/.ensemble/config.json`, then the ladder above, and produces **one final tier**. `bin/ensemble-peer-flags` is a pure translator: it accepts that already-resolved tier and never reads config itself, so precedence exists in exactly one place and is testable there.
+  **(b) The resolution order and its single owner.** `/en-review` is the **only** resolver. It evaluates, first hit wins, the `--effort` flag, then the config layers **via `bin/ensemble-config-get` (U9)**, which owns the repo-then-global cascade, then the ladder above, producing **one final tier**. `bin/ensemble-peer-flags` is a pure translator: it accepts that already-resolved tier and never reads config itself, so precedence exists in exactly one place and is testable there. Config keys are **flat**, matching the seven existing keys: `review_peer_effort_override` and `review_peer_model_alias`.
 
-  **(c) The model-binding rule:** alias for Claude, inherit for Codex, with an explicit prohibition on storing a concrete model ID anywhere in Ensemble. **`review.peer.model_alias` resolves through the same owner and the same chain as effort** (EN11-PR-009): `/en-review` reads `<repo>/.ensemble/config.local.yaml` then `~/.ensemble/config.json`, falls back to the documented default alias, and forwards the result to `bin/ensemble-peer-flags --model-alias <alias>`. There is deliberately no `--model` CLI flag on `/en-review` (model choice is an operator setting, not a per-run one), and the resolved alias is **ignored entirely** on a Codex peer, which inherits the operator's model by design. So the key is never silently unused: it governs on Claude and is documented as inert on Codex.
+  **(c) The model-binding rule:** alias for Claude, inherit for Codex, with an explicit prohibition on storing a concrete model ID anywhere in Ensemble. **`review_peer_model_alias` resolves through the same owner and the same chain as effort** (EN11-PR-009): `/en-review` reads it via `bin/ensemble-config-get` (U9), falls back to the documented default alias, and forwards the result to `bin/ensemble-peer-flags --model-alias <alias>`. There is deliberately no `--model` CLI flag on `/en-review` (model choice is an operator setting, not a per-run one), and the resolved alias is **ignored entirely** on a Codex peer, which inherits the operator's model by design. So the key is never silently unused: it governs on Claude and is documented as inert on Codex.
 
   **(e) The `peer_decision` schema and its closed reason enum** (EN11-PR-008), published here once and consumed verbatim by U3 and U6 so there is one definition to drift from:
 
@@ -238,7 +238,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 
   **(d) The fail-soft rule and its owner.** Degradation is handled at the **invocation layer** (`/en-review` step 9, U3), not in the translator. On a peer invocation that fails, the classifier from `bin/ensemble-cli-smoke` (EN10, reused rather than duplicated) distinguishes a rejected flag from an auth or transport failure. A `flagdrift` classification triggers a **bounded single retry** that drops **only** the rejected fragment (`PEER_MODEL` or `PEER_EFFORT`, not both, not the prompt), so the peer degrades to inherited defaults and the review still gets its cross-agent pass. The degraded outcome is recorded in `peer_decision.reason`, never silently swallowed. Any other classification is an ordinary peer failure and falls back to persona-only.
 
-  Add `review.peer.model_alias` and `review.peer.effort_override` to the `~/.ensemble/config.json` defaults written by `setup`, both defaulting to unset so the ladder governs.
+  The policy **names** the two settings, `review_peer_model_alias` and `review_peer_effort_override`, both unset by default so the ladder governs. Writing them into `~/.ensemble/config.json` and delivering them to existing installs is entirely **U9's** concern (EN11-PR-013), since `setup`'s current `[ ! -f ]` guard would otherwise leave every already-configured machine without them.
 - **Risk:** low
 - **Category:** feature
 - **Reversibility:** trivial
@@ -248,7 +248,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Test scenarios:**
   - *Happy path:* `references/peer-model-policy.md` exists and names all three tiers plus the four resolution-order layers in order; a drift test asserts each tier string and the ordered layer list are present.
   - *Edge case (combined signals, EN11-PR-001):* The policy states `high` is evaluated first. A drift test asserts the ladder table lists `high` above `low`, and asserts the stated resolution for each combined case: small-and-safe **plus** `gated: true` resolves `high`; small-and-safe plus an architectural trigger resolves `high`; small-and-safe plus `risk: destructive` resolves `high`; small-and-safe alone resolves `low`.
-  - *Edge case (config):* A fresh `./setup` run on a machine with no `~/.ensemble/config.json` writes the file containing both new keys unset, and an existing config file is not clobbered (the existing `[ ! -f ]` guard still holds).
+  - *Edge case (naming):* The policy names both settings in their flat form (`review_peer_effort_override`, `review_peer_model_alias`) and states both are unset by default; a drift test asserts the flat spelling so the doc cannot drift back to a dotted form that no reader supports. Config-file delivery is asserted in U9, not here.
   - *Error / failure path:* The policy file must state the fail-soft rule, name `bin/ensemble-cli-smoke`, assign degradation to the invocation layer, and specify the single bounded retry that drops only the rejected fragment; a drift test fails if the policy describes erroring the whole review instead of degrading.
   - *Integration:* The policy file's low-tier condition must cite `is_small_and_safe` verbatim so it cannot drift from `references/diff-signal-detection.md`; a drift test greps both files for the shared identifier. The policy must also name `/en-review` as the sole resolver and state that `bin/ensemble-peer-flags` never reads config.
 - **Verification:** `bin/ensemble-lint --scope docs/` clean; new drift assertions pass; `bash -n setup` valid.
@@ -271,18 +271,18 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   - *Edge case:* `--effort high` and `--effort low` produce the corresponding tier in both branches; an unknown `--peer-cmd "futurecli run"` emits both variables empty and exits 0.
   - *Error / failure path:* A missing `--effort` exits non-zero with a usage message; an invalid tier such as `--effort turbo` exits non-zero and does not emit partial output.
   - *Integration:* `eval "$(bin/ensemble-peer-flags --effort medium --peer-cmd 'codex exec')"` round-trips under `set -u` without unbound-variable errors, and the emitted `PEER_EFFORT` survives with its embedded quotes intact (the shellesc contract).
-  - *Integration (purity, EN11-PR-004):* Running the helper with a `~/.ensemble/config.json` containing `review.peer.effort_override: "high"` and `--effort low` still emits the `low` tier, proving the helper does not resolve config and that precedence lives solely in `/en-review`.
+  - *Integration (purity, EN11-PR-004):* Running the helper with a `~/.ensemble/config.json` containing `review_peer_effort_override: "high"` and `--effort low` still emits the `low` tier, proving the helper does not resolve config and that precedence lives solely in `/en-review`.
 - **Verification:** New `tests/lint/en-review-peer-default.test.sh` assertions pass with stub PATH isolation (the EN10 `mkstub` hermetic pattern); `bash -n bin/ensemble-peer-flags`; full suite green.
 
 ### U3. `/en-review` default-on peer, `--no-peer`, and mode scoping
 
 - **Goal:** Peer runs by default when a real cross-agent peer exists and the mode permits, with an explicit opt-out.
 - **Requirements covered:** none
-- **Dependencies:** U1, U2, U8
+- **Dependencies:** U1, U2, U8, U9
 - **Files:** `skills/en-review/SKILL.md` (steps 2, 3, 9; Flags table)
 - **Approach:** Add a peer-decision resolution step producing the `peer_decision` struct. On by default when `PEER_MODE=cross-agent` **and** mode is `interactive` or `headless`. Off when `--no-peer` is passed, when `PEER_MODE=single-agent-fallback` (the personas are already fresh-context host instances, so a redundant same-model subprocess is not worth defaulting on; `--peer` still opts in), when mode is `report-only`, or when the existing `ENSEMBLE_PEER_REVIEW=true` recursion guard is set. **`report-only` is off unconditionally**: `/en-sweep` invokes `/en-review` in that mode inside CI, and D38 deliberately keeps API secrets and peer CLI credentials off CI, so a naive default-flip would silently require them. Honor the existing `skip_peer_below_lines` and `skip_peer_on_lightweight` config keys rather than inventing new ones. Add `--no-peer` to the Flags table (naming already consistent with `/en-plan`), and keep `--peer` accepted as a back-compat no-op when the default already turned it on.
 
-  **This step is the sole resolver (U1(b), U1(c)).** It walks the precedence chain for the effort tier (`--effort` flag, repo config, user config, ladder) and for `model_alias` (repo config, user config, default alias), producing one final tier and one alias, and passes both to `bin/ensemble-peer-flags`. Add **`--effort <low|medium|high>`** to the Flags table so the highest-precedence layer is actually reachable by a user.
+  **This step is the sole resolver (U1(b), U1(c)).** It walks the precedence chain for the effort tier (`--effort` flag, then `bin/ensemble-config-get review_peer_effort_override`, then the ladder) and for the model alias (`bin/ensemble-config-get review_peer_model_alias`, then the default alias), producing one final tier and one alias, and passes both to `bin/ensemble-peer-flags`. The repo-then-global cascade inside each config lookup belongs to **U9's reader**, not to this step, so there is one implementation of layering rather than one per consumer. Add **`--effort <low|medium|high>`** to the Flags table so the highest-precedence layer is actually reachable by a user.
 
   **Invocation and degradation are delegated to `bin/ensemble-peer-invoke` (U8), not restated here.** EN11-PR-006: the retry state machine must be executable to be testable, so this step *calls* the helper and consumes its `peer_decision` result rather than describing the algorithm in prose. The skill's job is resolution and reporting. Emit a mandatory one-line `peer_decision:` outcome in every summary using the U1(e) schema and its closed reason enum verbatim, following the EN08 `lite_gate:` precedent so neither a skip nor a degradation is ever silent.
 - **Risk:** medium
@@ -297,7 +297,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   - *Error / failure path (delegation, EN11-PR-006):* A drift test asserts step 9 **calls** `bin/ensemble-peer-invoke` and does not restate the retry algorithm, so the executable helper stays the single implementation. The retry behavior itself is proven by U8's behavioral tests, not by asserting on this prose.
   - *Error / failure path (CI posture):* A drift test fails if `report-only` is described anywhere as running a peer by default, guarding the D38 CI posture; the recursion-guard override is still stated.
   - *Integration (effort precedence, EN11-PR-004):* The precedence chain is asserted end to end: `--effort high` on a small-and-safe diff yields `high` (flag beats ladder); with no flag, a repo `config.local.yaml` value beats a `~/.ensemble/config.json` value; with neither, the ladder governs.
-  - *Integration (model_alias precedence, EN11-PR-009):* A configured `review.peer.model_alias` reaches `bin/ensemble-peer-flags` and appears in `PEER_MODEL` on a Claude peer; repo config beats user config; with neither set the documented default alias is used; and on a Codex peer the resolved alias is ignored and `PEER_MODEL` stays empty.
+  - *Integration (model_alias precedence, EN11-PR-009):* A configured `review_peer_model_alias` reaches `bin/ensemble-peer-flags` and appears in `PEER_MODEL` on a Claude peer; repo config beats user config (via U9's reader); with neither set the documented default alias is used; and on a Codex peer the resolved alias is ignored and `PEER_MODEL` stays empty.
   - *Integration:* The `peer_decision:` outcome line is documented as mandatory and uses the U1(e) schema and enum verbatim; the skill still references `skip_peer_below_lines` / `skip_peer_on_lightweight` rather than new keys.
 - **Verification:** Drift assertions pass; `bin/ensemble-lint` clean; full suite green.
 
@@ -371,9 +371,9 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 
 ### U6. Drift tests
 
-- **Goal:** Make every invariant in U1 to U5 and U8 mechanically enforced rather than prose.
+- **Goal:** Make every invariant in U1 to U5, U8, and U9 mechanically enforced rather than prose.
 - **Requirements covered:** none
-- **Dependencies:** U1, U2, U3, U4, U5, U8
+- **Dependencies:** U1, U2, U3, U4, U5, U8, U9
 - **Files:** `tests/lint/en-review-peer-default.test.sh` (new)
 - **Approach:** One drift-test file covering every unit, following the EN08 and EN10 precedent. The enforcement tier is **mixed by design**: text-level drift assertions where the surface is genuinely prose (the skill's default resolution, the CI carve-out, the reconciliation contract), and **behavioral checks driving the real executables** where behavior is claimed. Per EN11-PR-006, any claim of the form "exactly one retry" or "only the rejected fragment is dropped" MUST be proven against `bin/ensemble-peer-invoke` (U8) with stub CLIs and an invocation counter, never against skill prose. Drive the **real** `bin/ensemble-peer-flags` and `bin/ensemble-peer-invoke` with a hermetic stub PATH (the EN10 `mkstub` pattern) rather than reimplementing their logic. **Self-test every grep pattern used as a guard**: EN10-CR-003 showed that a `[^\n]` character class is not a newline exclusion in POSIX ERE and silently fails to guard on GNU grep, so each drift pattern must be proven to match a known-bad string and to not match a known-good prose string before it is trusted. End the file with the mandatory `report` call (a `tests/lint/*.test.sh` without it silently always passes).
 - **Risk:** medium
@@ -385,8 +385,8 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Test scenarios:**
   - *Happy path:* The full suite runs the new file and all assertions pass; `tests/run.sh` file count increases by one.
   - *Edge case:* Each drift pattern's self-test proves it matches a synthetic regression string and does not match a synthetic prose string, so a guard cannot silently stop guarding.
-  - *Error / failure path:* Temporarily reverting any one of U1 to U5's or U8's key strings makes the corresponding assertion fail rather than silently pass, confirmed during the build.
-  - *Integration:* The file sources `tests/lib/assert.sh` and ends with `report`; helper checks run against the real `bin/ensemble-peer-flags` and `bin/ensemble-peer-invoke` on an isolated PATH so a host CLI on the machine cannot influence the result.
+  - *Error / failure path:* Temporarily reverting any one of U1 to U5's, U8's, or U9's key strings makes the corresponding assertion fail rather than silently pass, confirmed during the build.
+  - *Integration:* The file sources `tests/lib/assert.sh` and ends with `report`; helper checks run against the real `bin/ensemble-peer-flags`, `bin/ensemble-peer-invoke`, and `bin/ensemble-config-get` on an isolated PATH so a host CLI or the operator's own `~/.ensemble/config.json` cannot influence the result (config fixtures are pointed at a temp `HOME`).
   - *Integration (enum coherence, EN11-PR-008):* Every `reason` string emitted by `bin/ensemble-peer-invoke` is asserted to be a member of the enum published in `references/peer-model-policy.md`, so the helper and the reference cannot drift apart.
 - **Verification:** `bash tests/run.sh` green with the new file counted; `bash -n tests/lint/en-review-peer-default.test.sh`.
 
@@ -428,6 +428,40 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   - *Integration:* Sourcing the helper under `set -eu` does not abort the caller on a non-zero peer exit; every emitted `reason` is a member of the U1(e) enum, asserted by cross-checking the helper's strings against the policy reference.
 - **Verification:** Behavioral tests in `tests/lint/en-review-peer-default.test.sh` drive the real helper against stub CLIs on an isolated PATH; `bash -n bin/ensemble-peer-invoke`; full suite green.
 
+### U9. `bin/ensemble-config-get` shared config reader + `setup` key merge
+
+> **Build order note.** Appended per `references/stable-ids.md` (U-IDs are never renumbered). Dependency order places U9 first, before U3 consumes it.
+
+- **Goal:** Give the precedence chain an actual implementation, and stop new keys from being invisible to existing installs.
+- **Requirements covered:** none
+- **Dependencies:** none
+- **Files:** `bin/ensemble-config-get` (new), `setup` (**sole owner** of the config-defaults block and the merge), `references/doc-lints.md` (pointer map, if applicable)
+- **Approach:** Two defects block EN11's stated four-layer precedence, both found by inspection before build. **(1) Layer 2 has no reader.** `.ensemble/config.local.yaml` is parsed only by `skills/en-sweep/scripts/triage-findings` with bespoke awk for `sweep.*` keys, so "repo config beats user config" is unimplementable as written. **(2) Existing installs never receive new keys**, because `setup` writes `~/.ensemble/config.json` only under `[ ! -f ]`, so any machine that already ran `setup` silently lacks every key added afterwards.
+
+  Fix both with one small shared reader. `bin/ensemble-config-get <key> [--default <value>] [--allowed <v1,v2,...>]` resolves, first hit wins: `<repo>/.ensemble/config.local.yaml`, then `~/.ensemble/config.json`, then `--default`, then empty. Keys are **flat**, matching all seven existing keys and the single `jq -r '.<key>'` pattern already used at `bin/ensemble-detect-host` line 106; the two new settings are therefore `review_peer_model_alias` and `review_peer_effort_override`.
+
+  **Supported YAML grammar (EN11-PR-010), stated narrowly so a hand-rolled parser is safe.** The reader recognizes exactly one shape: a **top-level, non-indented** `key: value` line whose value is a plain or quoted scalar. It strips surrounding single/double quotes, honors a `#` inside quotes as literal, and treats an unquoted ` #` as starting a comment. Anything else for the requested key, an indented occurrence, a nested-lookalike under some parent, a block/flow collection, or a duplicate key, is treated as **absent** and falls through to the next layer. Unrelated nested sections elsewhere in the file (for example en-sweep's `sweep:` block) are tolerated and ignored. This deliberately does not attempt general YAML; anything outside the grammar is unsupported rather than best-effort guessed.
+
+  **Absence and validity (EN11-PR-011).** A key whose value is JSON `null`, an empty string, or whitespace-only counts as **absent**, not as a hit, so `setup`'s defaults can ship the keys present-but-unset without shadowing the ladder. With `--allowed`, a value outside the allowed set is also treated as absent for that layer and resolution continues downward, so an invalid repo value falls through to global and an invalid global value falls through to the ladder. `/en-review` passes `--allowed low,medium,high` for the effort key, which is what stops a typo like `turbo` from ever reaching `bin/ensemble-peer-flags`.
+
+  The reader is otherwise **fail-soft by construction**: a missing file, unreadable file, malformed JSON/YAML, or missing `jq` all fall through rather than erroring, because a config problem must never take down a review. Migrating existing consumers is out of scope; note that adopting the documented-but-unimplemented `review.confidence_threshold` would first require flattening that key, since this reader is flat-only by design.
+
+  **`setup` ownership and the merge (EN11-PR-012, EN11-PR-013).** To avoid two units editing the same block, **U9 owns every `setup` change to the config file**, both the two new default keys and the merge behavior; U1 owns only the policy reference. Replace the `[ ! -f ]` skip with a merge that adds only absent keys: `jq -s '.[0] * .[1]'` with defaults first and the existing file second, so user values always win. Atomicity requires all of: `mktemp` **in the destination directory** (a cross-filesystem `mv` is not atomic), `jq` output validated as a non-empty JSON **object** before it is used, `mv` only after that validation, a `trap` removing the temp file on any exit path, and the original left **untouched** on any failure. Unknown user-added keys are preserved. When `jq` is unavailable, make no change and print a one-line notice naming the keys to add by hand.
+- **Risk:** medium
+- **Category:** feature
+- **Reversibility:** reversible
+- **Gated:** false
+- **Execution note:** test-first
+- **Patterns to follow:** `bin/ensemble-detect-host` line 106 (`jq -r '.key // default'`, the established flat-key read); `bin/ensemble-cli-smoke` (sourceable, errexit-safe, no top-level side effects)
+- **Test scenarios:**
+  - *Happy path:* With `review_peer_effort_override: high` in `~/.ensemble/config.json` and no repo file, `ensemble-config-get review_peer_effort_override` prints `high`. With the key also present in `.ensemble/config.local.yaml` as `low`, it prints `low`, proving repo beats global.
+  - *Edge case (grammar, EN11-PR-010):* Quoted and unquoted values round-trip; `"a # b"` keeps the literal `#` while `a # b` yields `a`; a value containing a colon is preserved; an **indented** occurrence of the key, a nested lookalike under a parent, a block/flow collection value, and a duplicate key are each treated as absent and fall through; an unrelated `sweep:` block elsewhere in the file is ignored without affecting the lookup.
+  - *Edge case (absence/validity, EN11-PR-011):* JSON `null`, `""`, and whitespace-only all count as absent and fall through, so a present-but-unset default never shadows a lower layer. With `--allowed low,medium,high`, a repo value of `turbo` falls through to a valid global value; an invalid global value falls through to `--default`; a valid repo value still wins.
+  - *Error / failure path:* Malformed JSON, malformed YAML, an unreadable file, and a `PATH` without `jq` each fall through to the next layer and exit 0 rather than erroring. Asserted with a stub `PATH` that omits `jq`.
+  - *Integration (setup merge, EN11-PR-012):* Given an existing config with only the original seven keys, `./setup` adds the two new keys while every original key's **value is semantically unchanged** (jq reserializes, so byte-identity is not claimed), including a user-modified `peer_timeout_seconds` that must **not** revert to the default, and an unknown user-added key that must survive. Running `./setup` twice is idempotent.
+  - *Error / failure path (merge safety, EN11-PR-012):* A malformed existing config, a non-object existing config (for example a top-level array), an injected `jq` failure, and an injected `mv` failure each leave the original file **byte-for-byte untouched**, leave no stray temp file behind, and do not abort `setup`. With `jq` absent, both the fresh-install and existing-install paths make no change and print the notice.
+- **Verification:** Behavioral tests drive the real `bin/ensemble-config-get` against fixture config files on an isolated PATH; `bash -n bin/ensemble-config-get`; `bash -n setup`; full suite green.
+
 ## Tracked debt
 
 None resolved or deferred by this plan.
@@ -452,3 +486,20 @@ Peer confirmed PR-001, PR-003's provenance issue, PR-004, and PR-005 as material
 - **EN11-PR-007 (P1) — conflict and corroboration had no defined consumption order, so the buckets did not partition.** Applied. U5 now specifies one global algorithm over a shared consumption pool: conflict stage first (consuming both members, since a contradiction must not be masked by a similarity match), corroboration on the remainder, then singles, with `finding_id` tie-breaks at every stage and an asserted partition invariant that every raw finding contributes to exactly one record.
 - **EN11-PR-008 (P2) — the `peer_decision` schema contradicted itself and its "closed" enum was never enumerated.** Applied. U1 gains section (e) publishing the schema once with `peer: on | off | degraded` (the diagram and JSON now agree) plus the complete `reason` enum covering every default-off condition, configured skip, recursion guard, fragment degradation, auth, timeout, unknown, and retry exhaustion. U3 and U6 consume it verbatim, and U6 asserts the helper's emitted strings are enum members.
 - **EN11-PR-009 (P2) — `review.peer.model_alias` had no resolution owner or call-site path.** Applied. U1(c) now routes the alias through the same owner and chain as effort, states there is deliberately no `--model` run-flag (model choice is an operator setting), and documents the alias as inert on a Codex peer by design so the key is never silently unused. U3 gained an integration scenario covering configured, default, and Codex-inherit behavior.
+
+### Post-acceptance amendment (2026-07-27) — U9 added, keys flattened
+
+Raised by the user after the cap-hit acceptance, when asking how model and effort would actually be set on a deployed install. Inspection found the stated four-layer precedence had **two layers with no implementation**:
+
+- `.ensemble/config.local.yaml` (layer 2) is read only by `skills/en-sweep/scripts/triage-findings` via bespoke awk for `sweep.*` keys, so "repo config beats user config" was unimplementable as specced.
+- `setup` writes `~/.ensemble/config.json` only under `[ ! -f ]`, so every machine that already ran `setup` would silently never receive the new keys.
+- The proposed `review.peer.*` keys were also two levels deep, while all seven real keys are flat and the only reader pattern in the repo is `jq -r '.<key>'` at `bin/ensemble-detect-host` line 106. The dotted `review.confidence_threshold` in `references/review-confidence-gating.md` is documented but read by nothing executable, so dotted notation had no working precedent to follow.
+
+Resolution, both decided with the user: add **U9** (`bin/ensemble-config-get` shared reader plus a `setup` merge-missing-keys change), and use **flat** keys `review_peer_effort_override` / `review_peer_model_alias`. U1(b) and U1(c) now delegate layering to the reader, U3 depends on U9, and U6 covers it. `peer_review_plan_hash` was recomputed because unit-immutable fields changed.
+
+**Review status of this amendment:** U9 was added after the peer loop closed and carries a single **targeted** peer pass (scoped to U9 plus the U1/U3 rewiring, not a third full iteration). It returned four findings, all applied:
+
+- **EN11-PR-010 (P1) — flat keys gave no safe YAML parsing contract.** Applied. U9 now states a narrow supported grammar (top-level non-indented `key: value` scalars, quote stripping, `#` handling) and treats anything outside it, including indented occurrences, nested lookalikes, collections, and duplicate keys, as absent rather than best-effort guessed. The claim that the reader could later adopt `review.confidence_threshold` was **wrong** and is corrected: that key would first need flattening, since this reader is flat-only by design.
+- **EN11-PR-011 (P1) — unset and invalid values could defeat precedence.** Applied. `null`, empty, and whitespace-only now count as absent, so `setup` shipping the keys present-but-unset cannot shadow the ladder. Added `--allowed` so an out-of-set value falls through per layer, which is what stops a typo like `turbo` reaching `bin/ensemble-peer-flags`.
+- **EN11-PR-012 (P1) — the setup merge underspecified preservation and atomic failure.** Applied. Now requires a same-directory `mktemp` (a cross-filesystem `mv` is not atomic), `jq` output validated as a non-empty object before use, `mv` only after validation, `trap` cleanup, and the original untouched on any failure. The peer also caught a genuine error in the test scenario: `jq` reserializes, so **byte-identical** was not something the merge could promise. Reworded to semantically-unchanged values, with byte-identity now asserted only on the failure paths where the file must not be rewritten at all.
+- **EN11-PR-013 (P2) — U9's dependency and setup ownership contradicted its build-order claim.** Applied. U9 is now the **sole owner** of every `setup` config change (defaults and merge both), U1 no longer edits `setup` at all, and U1's stale `[ ! -f ]` scenario is replaced with a naming assertion. Both units keep `Dependencies: none` and no longer contend for the same block.
