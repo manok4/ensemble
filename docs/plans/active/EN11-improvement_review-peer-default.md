@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN11
 title: Default-on cross-agent peer review in /en-review with two-source reconciliation and a risk-tiered peer model/effort policy
-status: open
+status: in_progress
 location: active
 created: 2026-07-27
 shipped:
@@ -12,7 +12,7 @@ covers_requirements: []
 requirements_pending: false
 related_design:
 peer_review_verdict: revise
-peer_review_iterations: 2
+peer_review_iterations: 3
 peer_review_last_run: 2026-07-27
 peer_review_plan_hash: 036d65286465665adfa40cf1feb46f584b93bbaa12576b84c74d1cabc7c0c915
 peer_review_cap_hit: true
@@ -80,6 +80,34 @@ peer_review_resolutions:
     status: applied
     rationale: ""
     location: U1 Approach sections (b) and config keys; U2 interface; U3 Approach
+  - finding_id: EN11-PR-010
+    iteration: 3
+    severity: P1
+    title: Flat keys do not provide a safe YAML parsing contract
+    status: applied
+    rationale: ""
+    location: U9 Approach and Error / failure path
+  - finding_id: EN11-PR-011
+    iteration: 3
+    severity: P1
+    title: Unset and semantically invalid values can defeat fail-soft precedence
+    status: applied
+    rationale: ""
+    location: U9 Approach; U1(b); U3 resolver paragraph
+  - finding_id: EN11-PR-012
+    iteration: 3
+    severity: P1
+    title: Setup merge does not fully specify preservation and atomic-failure behavior
+    status: applied
+    rationale: ""
+    location: U9 setup merge paragraph and Integration test
+  - finding_id: EN11-PR-013
+    iteration: 3
+    severity: P2
+    title: U9 dependency and setup ownership contradict its build-order claim
+    status: applied
+    rationale: ""
+    location: U1 Files and config test; U9 Dependencies and build order note; U3 Dependencies
 depth: standard
 data_scale: small
 ---
