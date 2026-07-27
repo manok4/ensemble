@@ -50,9 +50,9 @@ When in doubt, **fire** the conditional agent. Cost is low (mid-tier model, focu
 
 The exception: don't fire a conditional agent on a doc-only diff. If `git diff --name-only` shows only `docs/` paths or `*.md` files, skip all three conditional reviewers.
 
-## Parallel dispatch
+## Parallel dispatch (personas AND the peer, one batch)
 
-All persona agents fire **in parallel** — single message, multiple `Agent` tool calls. Aggregation waits for all to return.
+All persona agents fire **in parallel** — single message, multiple `Agent` tool calls — **and the cross-agent peer subprocess launches in the same batch**. Aggregation waits for all to return.
 
 In Claude Code:
 
@@ -64,9 +64,17 @@ Agent({ subagent_type: "standards-reviewer", ... })
 Agent({ subagent_type: "security-reviewer", ... })  // if matched
 // Plus learnings-research in the same parallel batch
 Agent({ subagent_type: "learnings-research", ... })
+// Plus the cross-agent peer, concurrently — NOT serialized after the roster:
+bin/ensemble-peer-invoke --peer-cmd "$PEER_CMD" ...
 ```
 
 In Codex: equivalent `spawn_agent` calls in a batch.
+
+**Why the peer belongs in this batch.** It is **blind** to the persona findings (see the Outside Voice section), so it consumes nothing the roster produces and there is no ordering dependency. Serializing it would add its full latency to every review for no benefit — `peer_timeout_seconds` defaults to 600, so a serial peer is the difference between a review bounded by the slowest persona and one bounded by persona + peer.
+
+The concurrency is therefore **licensed by the blind-peer invariant**, not by convenience. Any change that feeds persona findings to the peer must re-serialize this batch.
+
+**Peer failure inside the batch** does not discard persona results. The peer's own degradation path (one bounded retry, then persona-only fallback) is handled by `bin/ensemble-peer-invoke` and recorded in `peer_decision.reason`; already-returned persona findings are still synthesized and reported. A review whose peer failed is a review with `peer: "off"` and a recorded reason, never a failed review.
 
 ## Synthesis
 
