@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN11
 title: Default-on cross-agent peer review in /en-review with two-source reconciliation and a risk-tiered peer model/effort policy
-status: in_progress
+status: completed
 location: active
 created: 2026-07-27
-shipped:
+shipped: 2026-07-27
 deepened:
 covers_requirements: []
 requirements_pending: false
