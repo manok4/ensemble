@@ -25,22 +25,36 @@ else
   fail "post-build must invoke en-simplify"
 fi
 
-# Branch-level review is the cross-agent peer (implementer != reviewer), invoked
-# by calling /en-review in --peer-only mode (single implementation, not duplicated).
-if grep -qF -- "/en-review --peer-only" "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
-  pass "post-build review calls /en-review --peer-only (cross-agent, implementer != reviewer)"
+# Branch-level review invokes /en-review with a MANDATORY cross-agent peer plus
+# the host personas (D46, superseding the former --peer-only). The peer carries
+# implementer != reviewer; the personas are fresh-context sub-agents that add the
+# host-only standards/testing/maintainability findings --peer-only discarded.
+if grep -qF -- "/en-review --peer " "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
+  pass "post-build review calls /en-review --peer (cross-agent peer + host personas)"
 else
-  fail "post-build review must call /en-review --peer-only"
+  fail "post-build review must call /en-review --peer"
+fi
+# Guard the regression directly: the post-build step must NOT go back to peer-only.
+if grep -qF -- "/en-review --peer-only --mode headless --base" "$SKILL"; then
+  fail "post-build review reverted to --peer-only (drops host-only findings; see D46)"
+else
+  pass "post-build review does not use --peer-only"
+fi
+# The cross-agent property is still mandatory, not merely nice to have.
+if grep -qiE 'peer is \*\*mandatory\*\*|cross-agent peer is \*\*mandatory\*\*' "$SKILL"; then
+  pass "post-build review states the cross-agent peer is mandatory"
+else
+  fail "post-build review must state the cross-agent peer is mandatory"
 fi
 
-# en-review implements --peer-only: peer is the sole reviewer, host personas skipped
+# --peer-only itself must SURVIVE in en-review: /en-loop still depends on it.
 if grep -qF -- "--peer-only" "$EN_REVIEW"; then
-  pass "en-review documents --peer-only"
+  pass "en-review still documents --peer-only (used by /en-loop)"
 else
-  fail "en-review must document --peer-only"
+  fail "en-review must keep --peer-only; /en-loop depends on it"
 fi
 if grep -qiE "skip persona detection and dispatch|sole reviewer.*peer|peer.*sole reviewer" "$EN_REVIEW"; then
-  pass "en-review --peer-only skips host personas (peer is sole reviewer)"
+  pass "en-review --peer-only still skips host personas (peer is sole reviewer)"
 else
   fail "en-review --peer-only must skip host personas"
 fi
