@@ -5,15 +5,15 @@ plan_id: EN11
 title: Default-on cross-agent peer review in /en-review with two-source reconciliation and a risk-tiered peer model/effort policy
 status: completed
 location: active
-created: 2026-07-27
-shipped: 2026-07-27
+created: 2026-08-24
+shipped: 2026-08-24
 deepened:
 covers_requirements: []
 requirements_pending: false
 related_design:
 peer_review_verdict: revise
 peer_review_iterations: 3
-peer_review_last_run: 2026-07-27
+peer_review_last_run: 2026-08-24
 peer_review_plan_hash: 036d65286465665adfa40cf1feb46f584b93bbaa12576b84c74d1cabc7c0c915
 peer_review_cap_hit: true
 peer_review_resolutions:
@@ -515,7 +515,7 @@ Peer confirmed PR-001, PR-003's provenance issue, PR-004, and PR-005 as material
 - **EN11-PR-008 (P2) — the `peer_decision` schema contradicted itself and its "closed" enum was never enumerated.** Applied. U1 gains section (e) publishing the schema once with `peer: on | off | degraded` (the diagram and JSON now agree) plus the complete `reason` enum covering every default-off condition, configured skip, recursion guard, fragment degradation, auth, timeout, unknown, and retry exhaustion. U3 and U6 consume it verbatim, and U6 asserts the helper's emitted strings are enum members.
 - **EN11-PR-009 (P2) — `review.peer.model_alias` had no resolution owner or call-site path.** Applied. U1(c) now routes the alias through the same owner and chain as effort, states there is deliberately no `--model` run-flag (model choice is an operator setting), and documents the alias as inert on a Codex peer by design so the key is never silently unused. U3 gained an integration scenario covering configured, default, and Codex-inherit behavior.
 
-### Post-acceptance amendment (2026-07-27) — U9 added, keys flattened
+### Post-acceptance amendment (2026-08-24) — U9 added, keys flattened
 
 Raised by the user after the cap-hit acceptance, when asking how model and effort would actually be set on a deployed install. Inspection found the stated four-layer precedence had **two layers with no implementation**:
 
