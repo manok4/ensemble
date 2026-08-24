@@ -166,11 +166,17 @@ ensemble_peer_invoke() {
     _epi_push "$peer_model"
   fi
 
+  # Capture the retry's exit code in an `else`, exactly as attempt 1 does. A
+  # bare `$?` after a completed `if` reads the IF STATEMENT's status (always 0
+  # when no branch ran), which would make the 124 check dead code and misreport
+  # a timed-out retry as retry-exhausted.
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias"
     return 0
+  else
+    _rc=$?
   fi
-  if [ "$?" -eq 124 ]; then
+  if [ "$_rc" -eq 124 ]; then
     _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
     return 1
   fi

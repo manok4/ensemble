@@ -136,8 +136,14 @@ fi
 # Non-object roots, malformed JSON, and absent jq all fall through.
 GLOBAL_FILE="$HOME_DIR/.ensemble/config.json"
 if [ -n "$HOME_DIR" ] && [ -r "$GLOBAL_FILE" ] && command -v jq >/dev/null 2>&1; then
+  # `// empty` would discard a literal `false` as well as null, because jq's
+  # alternative operator treats both as "empty". A boolean key set to false
+  # (e.g. skip_peer_on_lightweight) must resolve to "false", not fall through
+  # to the next layer. Test membership explicitly and drop only null.
   val=$(jq -r --arg k "$KEY" '
-          if type == "object" then (.[$k] // empty) else empty end
+          if type == "object" and has($k)
+          then (.[$k] | if . == null then empty else . end)
+          else empty end
         ' "$GLOBAL_FILE" 2>/dev/null) || val=""
   if is_valid "$val"; then printf '%s\n' "$val"; exit 0; fi
 fi

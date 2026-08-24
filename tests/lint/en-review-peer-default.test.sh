@@ -166,6 +166,17 @@ assert_eq "low" "$(cg review_peer_effort_override)" "repo YAML beats global JSON
 assert_eq "med" "$(cg nullkey --default med)" "JSON null counts as absent"
 assert_eq "med" "$(cg blankkey --default med)" "whitespace-only counts as absent"
 assert_eq "medium" "$(cg nosuchkey --default medium)" "absent key falls to --default"
+# jq's `//` discards `false` as well as null, so a boolean key set to false
+# would wrongly fall through to the next layer. The reader is billed as the
+# single layering implementation for ALL consumers, and config.json already
+# carries boolean keys (skip_peer_on_lightweight).
+echo '{"boolfalse":false,"booltrue":true,"zero":0}' > "$CT/h/.ensemble/config.json"
+assert_eq "false"  "$(cg boolfalse --default DFLT)" "boolean false resolves, not treated as absent"
+assert_eq "true"   "$(cg booltrue  --default DFLT)" "boolean true resolves"
+assert_eq "0"      "$(cg zero      --default DFLT)" "numeric zero resolves"
+cat > "$CT/h/.ensemble/config.json" <<'J'
+{"review_peer_effort_override":"high","nullkey":null,"blankkey":"   "}
+J
 assert_eq "" "$(cg nosuchkey)" "absent key with no default yields empty"
 printf 'review_peer_effort_override: turbo\n' > "$CT/r/.ensemble/config.local.yaml"
 assert_eq "high" "$(cg review_peer_effort_override --allowed low,medium,high)" \
@@ -338,6 +349,29 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
   fi
 else
   pass "timeout checks skipped (no timeout/gtimeout on PATH)"
+fi
+# A retry that TIMES OUT must report peer-failed:timeout, not retry-exhausted.
+# Regression guard: reading `$?` after a completed `if` yields the if
+# statement's status (always 0), which silently made the 124 branch dead code.
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+  { echo '#!/usr/bin/env bash'
+    echo "echo call >> \"$CALLS\""
+    echo "n=\$(wc -l < \"$CALLS\")"
+    echo 'if [ "$n" -le 1 ]; then echo "error: unexpected argument '"'"'--effort'"'"' found" >&2; exit 2; fi'
+    echo 'sleep 30'; } > "$IT/drift_then_hang"
+  chmod +x "$IT/drift_then_hang"
+  : > "$CALLS"; : > "$ARGV"
+  d=$(bash --noprofile --norc -c '
+        set -eu
+        . "$1"
+        ensemble_peer_invoke --peer-cmd "$2" --peer-format "--json" \
+          --peer-model "--model sonnet" --peer-effort "--effort medium" \
+          --prompt-file "$3" --out-file /dev/null --timeout 2 || true
+      ' _ "$INVOKE" "$IT/drift_then_hang" "$IT/p" 2>/dev/null)
+  assert_contains "$d" 'peer-failed:timeout' "a retry that times out reports timeout, not retry-exhausted"
+  assert_not_contains "$d" 'retry-exhausted' "timed-out retry is not misreported as retry-exhausted"
+else
+  pass "retry-timeout check skipped (no timeout/gtimeout on PATH)"
 fi
 rm -rf "$IT"
 
