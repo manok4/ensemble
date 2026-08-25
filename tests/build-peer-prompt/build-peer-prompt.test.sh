@@ -171,7 +171,14 @@ fi
 rm -f "$TMP_PLAN"
 
 # --- Output token-count is meaningfully smaller than the old template ---
-# The slim template scaffold (excluding ARTIFACT_BODY) should be under 200 words.
+# The slim template scaffold (excluding ARTIFACT_BODY) stays well under the old
+# verbose template. Ceiling raised 200 -> 300 in D50, deliberately and once:
+# the scaffold now carries the severity definitions (the finalize-loop re-run
+# gate keys off P0/P1, so the peer cannot be left to guess the scale) and the
+# coverage field. Measured cost of the move: ~90 tokens per peer call against a
+# ~5,600-token plan artifact — under 2% — for a peer that grades to a stated
+# scale instead of an invented one. The guard stays live at the new ceiling;
+# raise it again only with the same kind of justification, never to fit a diff.
 # Empty-artifact stress test:
 out5=$(echo "" | "$BIN" \
   --artifact-type code \
@@ -180,10 +187,10 @@ out5=$(echo "" | "$BIN" \
   --artifact-stdin \
   --peer-mode cross-agent)
 words=$(echo "$out5" | wc -w | tr -d ' ')
-if [ "$words" -lt 200 ]; then
-  pass "[size] slim prompt scaffold is under 200 words ($words words)"
+if [ "$words" -lt 300 ]; then
+  pass "[size] slim prompt scaffold is under 300 words ($words words)"
 else
-  fail "[size] slim prompt scaffold too large" "$words words (target <200)"
+  fail "[size] slim prompt scaffold too large" "$words words (target <300)"
 fi
 
 # --- Regression: the doc template uses $VAR not {VAR} (P1 from Codex) ---
