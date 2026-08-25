@@ -202,10 +202,19 @@ install_into() {
 [ "$INSTALL_CLAUDE" = "true" ] && install_into "$HOME/.claude" "Claude Code"
 [ "$INSTALL_CODEX"  = "true" ] && install_into "$HOME/.codex"  "Codex"
 
-# Ensure ~/.ensemble/config.json exists with defaults
-if [ ! -f "$HOME/.ensemble/config.json" ]; then
-  mkdir -p "$HOME/.ensemble"
-  cat > "$HOME/.ensemble/config.json" <<'EOF'
+# Ensure ~/.ensemble/config.json exists AND carries the current default keys.
+# EN11: this previously ran only when the file was ABSENT, so any machine that
+# had already run setup never received keys added in later releases. It now
+# MERGES missing keys into an existing file. User values always win.
+CONFIG_DIR="$HOME/.ensemble"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+mkdir -p "$CONFIG_DIR"
+
+# `null` means "unset, ladder governs" — bin/ensemble-config-get treats null as
+# absent, so shipping the keys present-but-null keeps them discoverable in the
+# file without shadowing a lower precedence layer.
+config_defaults() {
+  cat <<'EOF'
 {
   "peer_mode_override": "auto",
   "peer_reject_behavior": "pause",
@@ -213,10 +222,49 @@ if [ ! -f "$HOME/.ensemble/config.json" ]; then
   "skip_peer_below_lines": 50,
   "skip_peer_on_lightweight": true,
   "default_branch_fallback": "main",
-  "learnings_cross_project": false
+  "learnings_cross_project": false,
+  "review_peer_model_alias": null,
+  "review_peer_effort_override": null
 }
 EOF
-  log "Created $HOME/.ensemble/config.json with defaults"
+}
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  config_defaults > "$CONFIG_FILE"
+  log "Created $CONFIG_FILE with defaults"
+elif ! command -v jq >/dev/null 2>&1; then
+  log "  ⚠ jq not found; leaving $CONFIG_FILE unchanged."
+  log "    Add these keys by hand if absent: review_peer_model_alias, review_peer_effort_override"
+else
+  # Merge defaults into the existing file: defaults first, existing second, so
+  # `.[0] * .[1]` lets every user value (and any unknown user-added key) win.
+  # Atomicity requires ALL of: a temp file in the SAME directory as the
+  # destination (a cross-filesystem mv is not atomic), jq output validated as a
+  # non-empty object BEFORE it replaces anything, mv only after that validation,
+  # and the original left untouched on every failure path.
+  cfg_tmp=""
+  # The trap is the guarantee, not the explicit rm: an interrupt or unexpected
+  # exit between mktemp and mv would otherwise strand a .config.json.* artifact
+  # despite the documented no-stray-temp contract.
+  cleanup_cfg_tmp() { [ -z "${cfg_tmp:-}" ] || rm -f "$cfg_tmp"; }
+  if cfg_tmp=$(mktemp "$CONFIG_DIR/.config.json.XXXXXX" 2>/dev/null); then
+    trap cleanup_cfg_tmp EXIT INT TERM HUP
+    if config_defaults | jq -s '.[0] * .[1]' - "$CONFIG_FILE" > "$cfg_tmp" 2>/dev/null \
+       && [ -s "$cfg_tmp" ] \
+       && jq -e 'type == "object" and (keys | length) > 0' "$cfg_tmp" >/dev/null 2>&1; then
+      if mv "$cfg_tmp" "$CONFIG_FILE" 2>/dev/null; then
+        cfg_tmp=""
+        log "  Config: $CONFIG_FILE has all current keys"
+      else
+        log "  ⚠ Could not replace $CONFIG_FILE; left unchanged."
+      fi
+    else
+      log "  ⚠ Could not merge defaults into $CONFIG_FILE (unreadable, malformed, or not a JSON object); left unchanged."
+    fi
+    cleanup_cfg_tmp
+    cfg_tmp=""
+    trap - EXIT INT TERM HUP
+  fi
 fi
 
 # Smoke-test CLI flags if CLIs are present. The probe + failure classifier live

@@ -10,6 +10,8 @@ TEST_NAME="en-build review model"
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
 EN_REVIEW="$REPO_ROOT/skills/en-review/SKILL.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
+EN_LOOP="$REPO_ROOT/skills/en-loop/SKILL.md"
+VERIFY="$REPO_ROOT/bin/ensemble-verify-peer-evidence"
 
 # --- post-build phase exists ---
 if grep -qiE "Post-build phase" "$SKILL"; then
@@ -25,22 +27,72 @@ else
   fail "post-build must invoke en-simplify"
 fi
 
-# Branch-level review is the cross-agent peer (implementer != reviewer), invoked
-# by calling /en-review in --peer-only mode (single implementation, not duplicated).
-if grep -qF -- "/en-review --peer-only" "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
-  pass "post-build review calls /en-review --peer-only (cross-agent, implementer != reviewer)"
+# Branch-level review invokes /en-review with a MANDATORY cross-agent peer plus
+# the host personas (D46, superseding the former --peer-only). The peer carries
+# implementer != reviewer; the personas are fresh-context sub-agents that add the
+# host-only standards/testing/maintainability findings --peer-only discarded.
+if grep -qF -- "/en-review --peer " "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
+  pass "post-build review calls /en-review --peer (cross-agent peer + host personas)"
 else
-  fail "post-build review must call /en-review --peer-only"
+  fail "post-build review must call /en-review --peer"
+fi
+# Guard the regression directly: the post-build step must NOT go back to peer-only.
+if grep -qF -- "/en-review --peer-only --mode headless --base" "$SKILL"; then
+  fail "post-build review reverted to --peer-only (drops host-only findings; see D46)"
+else
+  pass "post-build review does not use --peer-only"
+fi
+# The cross-agent property is still mandatory, not merely nice to have.
+if grep -qiE 'peer is \*\*mandatory\*\*|cross-agent peer is \*\*mandatory\*\*' "$SKILL"; then
+  pass "post-build review states the cross-agent peer is mandatory"
+else
+  fail "post-build review must state the cross-agent peer is mandatory"
 fi
 
-# en-review implements --peer-only: peer is the sole reviewer, host personas skipped
+# --peer-only itself must SURVIVE in en-review: /en-loop still depends on it.
 if grep -qF -- "--peer-only" "$EN_REVIEW"; then
-  pass "en-review documents --peer-only"
+  pass "en-review still documents --peer-only (used by /en-loop)"
 else
-  fail "en-review must document --peer-only"
+  fail "en-review must keep --peer-only; /en-loop depends on it"
+fi
+# ...and /en-loop must ACTUALLY still use it. Asserting only that the string
+# survives somewhere in en-review would pass even if en-loop silently flipped to
+# --peer, which is precisely the scope D46 excludes (checkpoints fire every N
+# iterations in an unattended loop, where a persona roster per checkpoint
+# multiplies cost). Assert the real invocation, not the flag's existence.
+if grep -qF -- "/en-review --peer-only --mode headless" "$EN_LOOP"; then
+  pass "/en-loop checkpoint still invokes /en-review --peer-only (D46 scope)"
+else
+  fail "/en-loop must keep --peer-only at checkpoints" "D46 scopes the --peer change to /en-build only"
+fi
+if grep -qF -- "/en-review --peer " "$EN_LOOP"; then
+  fail "/en-loop switched to --peer" "D46 deliberately excludes /en-loop; cost compounds in an unattended loop"
+else
+  pass "/en-loop has not adopted --peer"
+fi
+
+# The claim that reviewer semantics and the step 10.5 audit gate are UNCHANGED
+# needs a guard of its own, otherwise a future change could redefine them while
+# the prose assertions above still pass.
+for rv in "cross-agent" "single-agent-fallback" "en-review-host-fallback"; do
+  if grep -qF -- "$rv" "$SKILL"; then
+    pass "reviewer value still documented in en-build: $rv"
+  else
+    fail "en-build dropped a reviewer value: $rv"
+  fi
+done
+if grep -qF -- "single-agent-fallback" "$VERIFY" && grep -qF -- "cross-agent" "$VERIFY"; then
+  pass "audit gate still recognizes the cross-agent / fallback reviewer values"
+else
+  fail "audit gate no longer recognizes the documented reviewer values"
+fi
+if grep -qF -- "--require-simplify" "$SKILL" && grep -qiE "branch_review_pass.*(missing|failed)|missing.*branch_review_pass" "$SKILL"; then
+  pass "step 10.5 still fails the build on a missing/failed branch review"
+else
+  fail "step 10.5 must still fail on a missing or failed branch review under --require-simplify"
 fi
 if grep -qiE "skip persona detection and dispatch|sole reviewer.*peer|peer.*sole reviewer" "$EN_REVIEW"; then
-  pass "en-review --peer-only skips host personas (peer is sole reviewer)"
+  pass "en-review --peer-only still skips host personas (peer is sole reviewer)"
 else
   fail "en-review --peer-only must skip host personas"
 fi
@@ -91,6 +143,18 @@ if grep -qE "^- \*\*D35\." "$FOUNDATION" && grep -qiE "D29\..*SUPERSEDED|SUPERSE
   pass "foundation records D35 and marks D29 superseded"
 else
   fail "foundation must record D35 and mark D29 superseded"
+fi
+
+# --- D46 amends D35, and the skill points at the amendment ---
+if grep -qE "^- \*\*D46\." "$FOUNDATION" && grep -qiE "amends D35" "$FOUNDATION"; then
+  pass "foundation records D46 amending D35"
+else
+  fail "foundation must record D46 as amending D35"
+fi
+if grep -qF "D35, amended by D46" "$SKILL"; then
+  pass "en-build description cites the amending decision, not just D35"
+else
+  fail "en-build description must cite D46 alongside D35 (stale decision label misleads maintainers)"
 fi
 
 # --- --no-peer skips the branch-level review ---
