@@ -38,7 +38,20 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
    **Consume the design doc; don't re-interview across it.** When a `docs/designs/*.md` matches this topic with `status: open` or `accepted`, its settled decisions are **already answered** — architecture, scope boundaries, rejected alternatives, and the recommendation. Read it, carry those decisions into the plan (record the path in `related_design:`), and put **only what the doc left open** to the user in the planning questions. Re-asking a question the design doc settled is the most common way this seam wastes the user's time. The doc's `## Assumptions & unverified claims` section is the exception: those are explicitly *not* settled — verify them against the repo or carry them forward as plan-level assumptions.
 
-   **Brainstorm soft-nudge.** If no `docs/designs/*.md` matches this topic (no prior brainstorm) AND the request isn't already a bug/TD fix or a `--resume`/`--from-legacy` run, surface a one-line soft offer before proceeding: *"No design doc found for this — want to `/en-brainstorm` first to explore approaches, or proceed straight to planning? (brainstorm / proceed)."* **Soft nudge only:** proceeding is always allowed and is the default on any non-answer; this is never a hard gate (consistent with the gating-shrink philosophy — encourage, don't block).
+   **Context-sufficiency check.** Before planning, judge whether you have enough to plan *from* — not whether a design doc happens to exist. Skip this entirely for a bug/TD fix or a `--resume`/`--from-legacy` run, and skip it when a matching design doc was consumed above (that doc already did this work).
+
+   The request is **insufficient** when one or more of these is genuinely unresolved, and nothing in the foundation, research, or the request itself settles it:
+
+   - **The problem is unstated.** You know what to build but not what it's for or who for — so no unit can claim a requirement and "done" has no definition.
+   - **The approach is genuinely open.** Two or more materially different designs are viable and there is no basis in context to choose. Planning here picks an architecture by accident.
+   - **Scope has no edges.** You cannot tell what's in and what's out, so units can't be sized and the plan will either sprawl or miss half the work.
+
+   **Insufficient → offer the brainstorm, and mean it:**
+   > *"I don't have enough to plan from yet — <the specific gap, in one clause>. `/en-brainstorm` would settle that in a few questions and hand back a design doc. Brainstorm first, or plan anyway on my assumptions? (brainstorm / plan anyway)"*
+
+   Recommend `brainstorm` — but **proceeding is always allowed** and remains the default on any non-answer; this is never a hard gate (gating-shrink philosophy — encourage, don't block). If the user proceeds anyway, record each unresolved gap in the plan's `## Decisions, assumptions & risks` section as an explicit assumption, so the guess is visible rather than buried in a unit's `Approach:`.
+
+   **Sufficient but no design doc → one-line soft nudge only:** *"No design doc for this — want to `/en-brainstorm` first, or go straight to planning? (brainstorm / proceed)."* Default proceed. A well-specified request does not need to be talked out of being well-specified.
 
    **Infer `plan_type`** from the request — `feature` (net-new behavior), `improvement` (refactor / perf / DX work, including TD), or `bug` (fix). Default `feature` when unclear; confirm with the user when the request is ambiguous.
 5. **Right-size depth.**
@@ -104,13 +117,14 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 15. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `$ENSEMBLE_ROOT/references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
-    - Invoke `$PEER_CMD $PEER_FORMAT $PEER_TURNS` with the prompt.
+    - **Invoke via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `$ENSEMBLE_ROOT/references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
     - Parse JSON per `$ENSEMBLE_ROOT/references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
       - On `verdict: approve` → exit the loop. Proceed to the status-flip step.
       - On `verdict: revise` → walk findings, apply / defer / disagree per `$ENSEMBLE_ROOT/references/severity.md`. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
-        - **Iteration cap (depth-aware):** Lightweight = 1, Standard = 2, Deep = 2. `--max-iterations <N>` overrides. `--no-reloop` runs the initial pass only and never re-invokes.
+        - **Severity gate on the re-loop.** Re-invoke the peer **only if at least one finding this pass was `P0` or `P1`** (per `$ENSEMBLE_ROOT/references/severity.md`). When the pass returned **only `P2`/`P3`** findings — naming inconsistencies, style preferences, "consider X later" — apply what's cheap, record the rest in `peer_review_resolutions:`, and **exit the loop**; a second full peer pass to confirm a typo fix is not worth its latency. Record `reloop_skipped: advisory-only` alongside the resolutions so the exit is auditable.
+        - **Iteration cap: 1 at every depth** — at most **two** peer passes total (the initial pass plus one verification pass). `--max-iterations <N>` raises it when a plan genuinely warrants more; `--no-reloop` runs the initial pass only and never re-invokes.
         - **Cap-hit behavior:** Surface the latest findings; ask the user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control.
         - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
       - On `verdict: reject` → pause, surface to user, leave `status: draft`. Do not re-loop.
@@ -155,7 +169,18 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 - The plan has < 50 lines (`skip_peer_below_lines` config).
 - Depth is Lightweight AND `skip_peer_on_lightweight: true`.
 
-**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `$ENSEMBLE_ROOT/references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `$ENSEMBLE_ROOT/references/outside-voice.md`). The loop continues until `approve` or the depth-aware iteration cap is hit. Cap defaults: Lightweight = 1, Standard = 2, Deep = 2 (so total peer passes are 2 / 3 / 3 including the initial). Override with `--max-iterations <N>`; disable looping entirely with `--no-reloop`.
+**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `$ENSEMBLE_ROOT/references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `$ENSEMBLE_ROOT/references/outside-voice.md`).
+
+**Two passes, not three.** The shape is: review → apply → **one** verification pass → done.
+
+| Pass 1 returned | Peer passes |
+|---|---|
+| `approve` | 1 |
+| `revise`, all findings `P2`/`P3` | 1 — apply, record, exit (`reloop_skipped: advisory-only`) |
+| `revise`, any finding `P0`/`P1` | 2 |
+| `reject` | 1 — pause, stay `draft`, no re-loop |
+
+The iteration cap is **1 at every depth**. Raise it with `--max-iterations <N>` when a plan genuinely warrants more; disable re-looping entirely with `--no-reloop`. The rationale for capping at one: a single-shot peer re-reviewing a whole artifact mostly resamples its first pass, which is why the "do not re-flag" suppression list exists at all — repeat findings were already being observed and worked around.
 
 When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` computes `peer_review_plan_hash`, flips `status: draft → open`, and auto-commits the plan file (per the status-flip and auto-commit steps).
 
