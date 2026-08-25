@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drift guards for the en-brainstorm Product pressure test (EN05 U1).
+# Behavior guards for the en-brainstorm Product pressure test (EN05 U1, recalibrated).
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,88 +10,51 @@ TEST_NAME="en-brainstorm pressure test"
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
 SOCRATIC="$REPO_ROOT/references/socratic-questions.md"
 
-# --- pressure test step exists, before approaches ---
-pt_line=$(grep -n "Product pressure test" "$SKILL" | head -1 | cut -d: -f1)
-appr_line=$(grep -n "Propose 2.3 approaches\|Propose.*approaches" "$SKILL" | head -1 | cut -d: -f1)
-if [ -n "$pt_line" ] && [ -n "$appr_line" ] && [ "$pt_line" -lt "$appr_line" ]; then
-  pass "en-brainstorm has a Product pressure test step before approaches"
+# --- 1. self-gating: a well-framed opening pays no tax ---
+if grep -qiE "self-gating" "$SKILL" && grep -qiE "only those that actually exist" "$SKILL" && grep -qiE "earns .*zero" "$SKILL"; then
+  pass "pressure test is self-gating (well-framed opening earns zero probes)"
 else
-  fail "Product pressure test must precede the propose-approaches step (pt=$pt_line appr=$appr_line)"
+  fail "pressure test must be self-gating with an explicit zero-probe case"
 fi
 
-# --- self-gating (fires only on real gaps; zero on a well-framed opening) ---
-if grep -qiE "self-gating" "$SKILL" && grep -qiE "only those that actually exist|earns .*zero" "$SKILL"; then
-  pass "pressure test is self-gating (fires only on real gaps)"
+# --- 2. probe FORM: open-ended, never a menu; durability is Deep-only ---
+if grep -qiE "open-ended probes" "$SKILL" \
+   && grep -qiE "never a menu" "$SKILL" \
+   && grep -qiE "never a pre-flight checklist" "$SKILL" \
+   && grep -qiE "durability.*\(Deep" "$SKILL"; then
+  pass "probes are open-ended (not a menu/checklist); durability scoped to Deep"
 else
-  fail "pressure test must be self-gating"
+  fail "probe form broken: must be open-ended, not a menu/checklist, durability Deep-only"
 fi
 
-# --- internal analysis, open-ended probes, not a checklist/menu ---
-if grep -qiE "internal analysis" "$SKILL" && grep -qiE "open-ended probes" "$SKILL" && grep -qiE "never a pre-flight checklist|not a menu|never a checklist" "$SKILL"; then
-  pass "probes are internal analysis surfaced open-ended (not a menu/checklist)"
-else
-  fail "pressure test probes must be open-ended internal analysis, not a checklist"
-fi
-
-# --- durability gap is Deep-only ---
-if grep -qiE "Durability gap.*Deep|Deep / strategic scope only|Deep / strategic only" "$SKILL"; then
-  pass "durability gap is scoped to Deep/strategic"
-else
-  fail "durability gap must be Deep-only"
-fi
-
-# --- probe-surfaces-uncertainty records an explicit assumption ---
-if grep -qiE "explicit assumption" "$SKILL"; then
-  pass "uncertainty is recorded as an explicit assumption, not skipped"
-else
-  fail "a probe surfacing uncertainty must record an explicit assumption"
-fi
-
-# --- all five gap names present in BOTH SKILL.md and socratic-questions ---
-gaps_ok=1
-for g in "Evidence" "Specificity" "Counterfactual" "Attachment" "Durability"; do
-  grep -qiE "${g} gap|\*\*${g}\*\*" "$SKILL" || gaps_ok=0
-  grep -qiE "\*\*${g}\*\*|${g} gap|${g}" "$SOCRATIC" || gaps_ok=0
+# --- 3. the gap catalogue is CANONICAL in socratic-questions, and SKILL does not duplicate the probe text.
+#        (Negative control: the old contract mandated the full probes in both files.) ---
+cat_ok=1
+grep -qE "^## Product rigor gaps" "$SOCRATIC" || cat_ok=0
+grep -qiE "concrete thing someone.s already done" "$SOCRATIC" || cat_ok=0   # evidence
+grep -qiE "specific person or narrow segment" "$SOCRATIC" || cat_ok=0       # specificity
+grep -qiE "current workaround" "$SOCRATIC" || cat_ok=0                      # counterfactual
+grep -qiE "smallest version that still delivers real value" "$SOCRATIC" || cat_ok=0  # attachment
+grep -qiE "near-term shifts" "$SOCRATIC" || cat_ok=0                        # durability
+grep -qiE "one probe (per gap|satisfies one gap)" "$SOCRATIC" || cat_ok=0
+# SKILL names the gaps and points at the catalogue, but must NOT restate the probes:
+grep -qiE "concrete thing someone.s already done|specific person or narrow segment" "$SKILL" && cat_ok=0
+for g in evidence specificity counterfactual attachment durability; do
+  grep -qiE "\*\*${g}\*\*" "$SKILL" || cat_ok=0
 done
-if [ "$gaps_ok" -eq 1 ]; then
-  pass "all five rigor gaps appear in SKILL.md and socratic-questions"
+if [ "$cat_ok" -eq 1 ]; then
+  pass "gap catalogue canonical in socratic-questions; SKILL names gaps without duplicating probes"
 else
-  fail "all five rigor gaps must appear in both SKILL.md and socratic-questions"
+  fail "gap catalogue must live once in socratic-questions; SKILL names the five gaps only"
 fi
 
-# --- socratic-questions has the Product rigor gaps section ---
-if grep -qE "^## Product rigor gaps" "$SOCRATIC"; then
-  pass "socratic-questions documents the Product rigor gaps section"
+# --- 4. probes are budgeted, not additive; Lightweight capped at one ---
+if grep -qiE "count toward the depth question budget" "$SKILL" \
+   && grep -qiE "add no separate quota|don.t add a separate quota" "$SKILL" \
+   && grep -qF "**at most one**" "$SKILL" && grep -qiE "On \*\*Lightweight\*\*" "$SKILL"; then
+  pass "probes count toward the depth budget (no separate quota); Lightweight caps at one"
 else
-  fail "socratic-questions must document the Product rigor gaps section"
-fi
-
-# --- the actual probe CONTRACT is present, not just gap names (each gap ships its probe) ---
-probe_ok=1
-grep -qiE "concrete thing someone.s already done" "$SOCRATIC" || probe_ok=0   # evidence
-grep -qiE "specific person or narrow segment" "$SOCRATIC" || probe_ok=0        # specificity
-grep -qiE "current workaround" "$SOCRATIC" || probe_ok=0                       # counterfactual
-grep -qiE "smallest version that still delivers real value" "$SOCRATIC" || probe_ok=0  # attachment
-grep -qiE "near-term shifts" "$SOCRATIC" || probe_ok=0                         # durability
-if [ "$probe_ok" -eq 1 ]; then
-  pass "each rigor gap ships its actual open-ended probe (not just a name)"
-else
-  fail "socratic-questions must carry the actual probe for each gap, not just the gap name"
-fi
-
-# --- one-probe-per-gap contract stated ---
-if grep -qiE "one probe (per gap|satisfies one gap)|per gap that actually exists" "$SOCRATIC"; then
-  pass "one-probe-per-gap contract stated"
-else
-  fail "the one-probe-per-gap contract must be stated"
-fi
-
-# --- depth budget rule: rigor probes count toward the budget; Lightweight caps at one ---
-if grep -qiE "count toward the depth question budget|counts? toward the.*budget" "$SKILL" \
-   && grep -qiE "Lightweight.*at most one|at most \*\*one\*\*|Lightweight caps at one" "$SKILL"; then
-  pass "rigor probes count toward the depth budget; Lightweight capped at one"
-else
-  fail "must state rigor probes count toward the depth budget with a Lightweight cap"
+  fail "probe budget broken: must be additive-free and Lightweight-capped"
 fi
 
 report

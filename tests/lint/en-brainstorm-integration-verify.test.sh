@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drift guards for en-brainstorm integration check + verify-before-claiming (EN05 U2).
+# Behavior guards for en-brainstorm integration check + verify-before-claiming (EN05 U2, recalibrated).
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,51 +10,35 @@ TEST_NAME="en-brainstorm integration + verify"
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
 TEMPLATE="$REPO_ROOT/references/templates/design-doc-template.md"
 
-# --- integration check exists, before approaches ---
+# --- 1. ORDERING: both rigor steps run BEFORE approaches (that ordering is the whole point;
+#        it is what separates them from the after-recommendation devil's-advocate pass) ---
+pt_line=$(grep -n "Product pressure test" "$SKILL" | head -1 | cut -d: -f1)
 ic_line=$(grep -n "Integration check" "$SKILL" | head -1 | cut -d: -f1)
-appr_line=$(grep -n "Propose.*approaches" "$SKILL" | head -1 | cut -d: -f1)
-if [ -n "$ic_line" ] && [ -n "$appr_line" ] && [ "$ic_line" -lt "$appr_line" ]; then
-  pass "en-brainstorm has an integration check before approaches"
+appr_line=$(grep -n "Propose 2" "$SKILL" | head -1 | cut -d: -f1)
+da_line=$(grep -n "Devil's advocate" "$SKILL" | head -1 | cut -d: -f1)
+if [ -n "$pt_line" ] && [ -n "$ic_line" ] && [ -n "$appr_line" ] && [ -n "$da_line" ] \
+   && [ "$pt_line" -lt "$appr_line" ] && [ "$ic_line" -lt "$appr_line" ] && [ "$appr_line" -lt "$da_line" ]; then
+  pass "pressure test + integration check precede approaches; devil's advocate follows them"
 else
-  fail "integration check must precede approaches (ic=$ic_line appr=$appr_line)"
+  fail "ordering broken (pt=$pt_line ic=$ic_line approaches=$appr_line devil=$da_line)"
 fi
 
-# --- one probe per combination effect, not a blanket audit ---
-if grep -qiE "one open-ended probe per genuine combination|per genuine combination effect" "$SKILL" && grep -qiE "not a blanket audit" "$SKILL"; then
+# --- 2. integration check is targeted, not a blanket audit ---
+if grep -qiE "one open-ended probe per genuine combination" "$SKILL" && grep -qiE "not a blanket audit" "$SKILL"; then
   pass "integration check fires one probe per combination (not a blanket audit)"
 else
   fail "integration check must be one-probe-per-combination, not a blanket audit"
 fi
 
-# --- distinguished from the devil's-advocate pass (before-approaches vs after-recommendation) ---
-if grep -qiE "distinguishes it from the devil.s-advocate|before approaches.*devil|devil.s-advocate pass \(step 9" "$SKILL"; then
-  pass "integration check is distinguished from the devil's-advocate pass"
-else
-  fail "integration check must be distinguished from the devil's-advocate pass"
-fi
-
-# --- verify-before-claiming requires the FULL verify-OR-label behavior (both arms) ---
+# --- 3. verify-before-claiming: BOTH arms, and the template has somewhere to put arm 2 ---
 if grep -qiE "Verify-before-claiming" "$SKILL" \
    && grep -qiE "absent" "$SKILL" \
    && grep -qiE "verified against the repo" "$SKILL" \
-   && grep -qiE "unverified assumption" "$SKILL"; then
-  pass "verify-before-claiming: absence claim → verified against repo OR labeled unverified assumption"
+   && grep -qiE "unverified assumption" "$SKILL" \
+   && grep -qE "^## Assumptions & unverified claims" "$TEMPLATE"; then
+  pass "absence claim → verified against repo OR labeled unverified assumption (template has the section)"
 else
-  fail "verify-before-claiming must require BOTH verify-against-repo AND label-as-unverified-assumption"
-fi
-
-# --- verify-before-claiming is lightweight (NOT a verifier sub-agent) ---
-if grep -qiE "not a verifier sub-agent|lightweight rule" "$SKILL"; then
-  pass "verify-before-claiming is a lightweight rule (no sub-agent)"
-else
-  fail "verify-before-claiming must be documented as lightweight (no sub-agent)"
-fi
-
-# --- design-doc-template has an assumptions / unverified-claims section ---
-if grep -qE "^## Assumptions & unverified claims" "$TEMPLATE" && grep -qiE "unverified assumption|labeled as" "$TEMPLATE"; then
-  pass "design-doc-template has an Assumptions & unverified claims section"
-else
-  fail "design-doc-template must carry the assumptions/unverified-claims section"
+  fail "verify-before-claiming needs both arms AND the template's assumptions section"
 fi
 
 report
