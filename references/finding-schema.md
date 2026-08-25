@@ -52,7 +52,7 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 
 ## Validation rules the host applies
 
-1. JSON must parse. If not, retry once with a "respond with valid JSON only" suffix; on second failure, log and skip.
+1. **Recover, then parse, then retry — in that order.** Run the raw response through `bin/ensemble-extract-json` first: it returns the first *balanced* top-level `{...}`, so markdown fences and prose on either side are recovered locally instead of costing a round trip. It is string-aware (braces inside string literals do not move the depth counter) and validates with `jq` when available, so a balanced-but-invalid body is reported as a failure rather than passed on. Parse what it returns. Only if recovery **or** parsing fails, retry once with a "respond with valid JSON only" suffix; on second failure, log and skip. Callers that invoke a peer through `bin/ensemble-peer-invoke` get recovery applied to the out-file automatically and need do nothing; an unrecoverable response is left byte-for-byte intact so the retry is never pre-empted.
 2. `verdict` must be one of the three enum values.
 3. Every `severity` must be in `{P0, P1, P2, P3}`.
 4. `confidence` must be an integer 1–10.
