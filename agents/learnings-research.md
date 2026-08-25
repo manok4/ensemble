@@ -1,6 +1,6 @@
 ---
 name: learnings-research
-description: "Queries docs/learnings/ for entries relevant to a planning, review, or analysis task. Reads index.md first (Karpathy's pattern), then drills into the most-relevant pages. Read-only. Returns matched learnings with citations and one-line applicability summaries. Dispatched by en-plan, en-review, en-brainstorm, en-foundation."
+description: "Queries docs/learnings/ for entries relevant to a planning, review, or analysis task. Reads index.md first (Karpathy's pattern), then drills into the most-relevant pages. Read-only. Returns matched learnings with citations and one-line applicability summaries. Dispatched by en-plan, en-review, en-foundation, en-sweep."
 model: sonnet
 ---
 
@@ -77,7 +77,6 @@ The `no_match_note` is a useful signal — it tells the dispatcher to capture ag
 |---|---|
 | `en-plan` | "Anything in learnings about <area> we should follow?" |
 | `en-review` (during persona dispatch) | "Has this same finding come up before?" |
-| `en-brainstorm` | "Have we explored <topic> before?" |
 | `en-foundation` | "What decisions has this project made about <area>?" |
 | `en-sweep` (architecture drift) | "What was the original rationale for the layer rules?" |
 

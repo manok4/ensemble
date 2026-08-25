@@ -31,13 +31,15 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
 6. **Apply `--focus` flag** (if set). Append to the prompt: "Focus your review on <focus>; deprioritize other concerns."
    Valid: `security`, `performance`, `tests`, `correctness`, `maintainability`, `all` (default).
 7. **Set `ENSEMBLE_PEER_REVIEW=true`** in the subprocess env (recursion guard).
-8. **Invoke peer.**
+8. **Invoke peer via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`.**
    ```bash
-   ENSEMBLE_PEER_REVIEW=true \
-     $PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt" \
-     > /tmp/peer-response.json 2>/tmp/peer-stderr.log
+   . "$ENSEMBLE_ROOT/bin/ensemble-peer-invoke"
+   peer_decision=$(ENSEMBLE_PEER_REVIEW=true ensemble_peer_invoke \
+     --peer-cmd "$PEER_CMD" --peer-format "$PEER_FORMAT" --peer-turns "$PEER_TURNS" \
+     --prompt-file "$prompt_file" --out-file /tmp/peer-response.json \
+     --peer-mode "$PEER_MODE")
    ```
-   Honor `peer_timeout_seconds` from `~/.ensemble/config.json` (default 600).
+   **Do not hand-roll the invocation.** The helper owns the `timeout` wrapper (`peer_timeout_seconds`, default 600), failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback — executable and testable rather than prose (D41). It returns a `peer_decision` object per `$ENSEMBLE_ROOT/references/peer-model-policy.md` (e); report its `peer`/`reason` so a failed or degraded peer never reads as a clean one.
 9. **Detect D30 violations** (peer modified files). Per the protocol in `$ENSEMBLE_ROOT/references/build-handoff.md`:
    - `git stash --include-untracked` before; check `git status` after.
    - Any change → revert; log violation; do not trust this round.

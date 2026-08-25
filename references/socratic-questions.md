@@ -1,6 +1,6 @@
 # Socratic questions — `en-brainstorm` Q&A library
 
-A pool of well-formed questions for the brainstorm skill to draw from. **One question per turn; multiple-choice preferred where natural.**
+A pool of well-formed questions for the brainstorm skill to draw from. Asking cadence is owned by `skills/en-brainstorm/SKILL.md` step 5 — **frontier rounds** on Standard/Deep, one-per-turn on Lightweight and for rigor probes. This file supplies the questions, not the cadence.
 
 ## Scope and ambition
 
@@ -22,7 +22,7 @@ A pool of well-formed questions for the brainstorm skill to draw from. **One que
 
 ## Product rigor gaps
 
-Used by en-brainstorm's **Product pressure test** (step 5a), internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero. Adapted from `ce-brainstorm`'s product-pressure-test lenses.
+Used by en-brainstorm's **Product pressure test** (step 5a), internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero.
 
 | Gap | Fires when the opening… | Open-ended probe |
 |---|---|---|
@@ -67,7 +67,7 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 |---|---|
 | Should I research how others solved this? (yes/no) | Before invoking `web-research` |
 | Any specific tools or libraries to check? | When research would benefit from a starting point |
-| Is there a learning in our store relevant to this? | Always — `learnings-research` runs unconditionally for Standard/Deep |
+| Is there a learning in our store relevant to this? | Always — brainstorm reads `docs/learnings/index.md` directly in its step-4 bounded scan |
 
 ## Devil's advocate (devil's-advocate pass after recommendation)
 
@@ -89,19 +89,15 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 
 ## Question style guidelines
 
-- **One per turn.** Don't bundle.
+- **Batch by frontier, not by topic.** On Standard/Deep, ask every question whose prerequisites are settled in one numbered round, each with a recommended answer. A question that depends on another still open in the round waits for the next one. Lightweight and rigor probes stay one per turn.
 - **Default to the host's blocking question tool** — `$QUESTION_TOOL` per host-detect (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), with free-text fallback — for narrowing / single-select questions; scaffolded options without confining the answer.
 - **Open-vs-closed discipline.** Reserve open-ended questions for genuinely-narrative answers, or when you can't write 3–4 distinct, plausibly-correct options without padding ("if you'd strain to fill the slots, ask it open-ended"). Fall back to numbered chat options only when no blocking tool exists in the harness, never silently skip the question.
-- **Recommend a default.** Phrase as "Lean A or B?" with a brief why for each, not "What do you think?"
+- **Always carry a recommendation.** Every question in a round ships with your recommended answer and a one-clause why. That is what makes a 4-question round cheaper for the user than 4 separate questions, not more expensive.
 - **No "what should we do?" questions.** Decide a recommendation; ask the user to push back.
 - **Skip rituals.** No "Are you ready to begin?" or "Let me know if you have questions" filler.
 
 ## Depth scaling
 
-| Depth | Question count target |
-|---|---|
-| Lightweight | 2–4 |
-| Standard | 5–8 |
-| Deep | 9–14 |
+The question budget per depth is canonical in `skills/en-brainstorm/SKILL.md` → "Depth scaling". Don't restate the numbers here — they drifted once already.
 
-When in doubt, lean Lightweight. Brainstorm output is exploratory, not load-bearing — over-questioning is more costly than the missed nuance.
+Budget note: the Product pressure test and integration check draw from the same budget rather than adding to it, so a rigor-heavy opening spends its questions on probes instead of scope questions. That is the intended trade, not an overrun.

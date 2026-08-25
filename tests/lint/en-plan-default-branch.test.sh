@@ -9,6 +9,19 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-plan default-branch checkpoint"
 
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
+CHECKPOINT_REF="$REPO_ROOT/references/plan-default-branch-checkpoint.md"
+
+# The checkpoint contract spans the SKILL trigger table and its gated reference (D48).
+# Content assertions search both; step-ordering assertions stay on SKILL.md.
+CONTRACT="$(mktemp)"
+trap 'rm -f "$CONTRACT"' EXIT
+cat "$EN_PLAN" "$CHECKPOINT_REF" > "$CONTRACT" 2>/dev/null || cp "$EN_PLAN" "$CONTRACT"
+
+if [ -f "$CHECKPOINT_REF" ]; then
+  pass "gated checkpoint reference exists"
+else
+  fail "references/plan-default-branch-checkpoint.md must exist (checkpoint body lives there)"
+fi
 CONFIG_EXAMPLE="$REPO_ROOT/references/templates/config-local-example.yaml"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
@@ -30,7 +43,7 @@ fi
 
 # --- All four response options documented ---
 for option in "(recommended) — create the branch + commit" "no-commit              — leave the plan uncommitted" "current                — commit on" "details                — show diagnostic info"; do
-  if grep -qF "$option" "$EN_PLAN"; then
+  if grep -qF "$option" "$CONTRACT"; then
     pass "checkpoint documents response option: $(echo "$option" | head -c 50)..."
   else
     fail "checkpoint missing response option: $(echo "$option" | head -c 50)..."
@@ -39,7 +52,7 @@ done
 
 # --- Three canonical terminal outcome values present (details is non-terminal) ---
 for outcome in "auto_branched" "no_commit_requested" "committed_to_default_branch"; do
-  if grep -qF "default_branch_checkpoint: $outcome" "$EN_PLAN"; then
+  if grep -qF "default_branch_checkpoint: $outcome" "$CONTRACT"; then
     pass "checkpoint documents terminal outcome: $outcome"
   else
     fail "checkpoint missing terminal outcome: $outcome"
@@ -48,7 +61,7 @@ done
 
 # --- Bare words MUST NOT appear as outcome values (canonical enum protection) ---
 for bare in "branched$" "kept_on_main" "skipped$"; do
-  if grep -qE "default_branch_checkpoint:[[:space:]]+$bare" "$EN_PLAN"; then
+  if grep -qE "default_branch_checkpoint:[[:space:]]+$bare" "$CONTRACT"; then
     fail "checkpoint uses non-canonical outcome value: $bare"
   else
     pass "checkpoint doesn't use non-canonical outcome: $bare"
@@ -57,7 +70,7 @@ done
 
 # --- Three-source detection documented ---
 for source in "gh repo view --json defaultBranchRef" "git symbolic-ref refs/remotes/origin/HEAD" '`main`, `master`, `develop`, `trunk`'; do
-  if grep -qF "$source" "$EN_PLAN"; then
+  if grep -qF "$source" "$CONTRACT"; then
     pass "detection source documented: $(echo "$source" | head -c 50)..."
   else
     fail "detection source missing: $(echo "$source" | head -c 50)..."
@@ -65,45 +78,45 @@ for source in "gh repo view --json defaultBranchRef" "git symbolic-ref refs/remo
 done
 
 # --- Hardcoded fallback list is exactly main|master|develop|trunk ---
-if grep -qE "main.*master.*develop.*trunk" "$EN_PLAN"; then
+if grep -qE "main.*master.*develop.*trunk" "$CONTRACT"; then
   pass "hardcoded fallback list matches spec (main, master, develop, trunk)"
 else
   fail "hardcoded fallback list should be exactly: main, master, develop, trunk"
 fi
 
 # --- Branch name convention is <plan_id>-<slug> ---
-if grep -qF "<plan_id>-<slug>" "$EN_PLAN"; then
+if grep -qF "<plan_id>-<slug>" "$CONTRACT"; then
   pass "branch name convention is <plan_id>-<slug> (matches /en-build)"
 else
   fail "branch name should be <plan_id>-<slug> to match /en-build convention"
 fi
 
 # --- --branch-on-default flag documented ---
-if grep -qF -- "--branch-on-default" "$EN_PLAN"; then
+if grep -qF -- "--branch-on-default" "$CONTRACT"; then
   pass "--branch-on-default flag documented"
 else
   fail "--branch-on-default flag missing"
 fi
-if grep -qE -- "--branch-on-default <y\|current\|no-commit>" "$EN_PLAN"; then
+if grep -qE -- "--branch-on-default <y\|current\|no-commit>" "$CONTRACT"; then
   pass "--branch-on-default values documented (y|current|no-commit)"
 else
   fail "--branch-on-default should accept y|current|no-commit"
 fi
 
 # --- Existing-branch handler documented (resume path) ---
-if grep -qF "Existing branch" "$EN_PLAN" && grep -qF "resuming" "$EN_PLAN"; then
+if grep -qF "Existing branch" "$CONTRACT" && grep -qF "resuming" "$CONTRACT"; then
   pass "existing-branch resume handler documented"
 else
   fail "existing-branch handler (resume on plan-only commits) should be documented"
 fi
-if grep -qiE "build commits|non-plan commits|refuse the auto-resume" "$EN_PLAN"; then
+if grep -qiE "build commits|non-plan commits|refuse the auto-resume" "$CONTRACT"; then
   pass "existing-branch refuse-and-ask handler documented"
 else
   fail "existing-branch refuse-and-ask path (branch has build commits) should be documented"
 fi
 
 # --- "current" opt-out is framed as explicit opt-in to commit on default branch, not hidden ---
-if grep -qE "opt-out|opt out" "$EN_PLAN"; then
+if grep -qE "opt-out|opt out" "$CONTRACT"; then
   pass "current opt-out is documented as discoverable in the prompt"
 else
   fail "current option should be framed as explicit opt-out"

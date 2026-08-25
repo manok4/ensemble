@@ -22,7 +22,11 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
       "u_id": "<U<N> if related to a plan unit, else null>",
       "covers_requirement": "<R<N> if related, else null>"
     }
-  ]
+  ],
+  "coverage": {
+    "reviewed": "<what the reviewer actually examined>",
+    "not_reviewed": "<anything skipped, truncated, or run short on; empty string if none>"
+  }
 }
 ```
 
@@ -43,15 +47,17 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 | `findings[].autofix_class` | optional | When the reviewer is confident in the routing; otherwise host classifies. See `references/severity.md`. |
 | `findings[].u_id` | optional | Plan unit ID this finding relates to (e.g., `U3`). Used by `en-build` per-unit dispatch. |
 | `findings[].covers_requirement` | optional | Foundation requirement ID this finding relates to (e.g., `R7`). Used by traceability lints. |
-| `findings[].finding_id` | recommended | Stable id used by `/en-plan`'s resolution log (`peer_review_resolutions:`). Peer can supply one; if absent, the host mints `<iteration>-<index>` (e.g. `1-3` = third finding from iteration 1). Required for re-review iterations to track applied/deferred/disagreed status across passes. |
+| `coverage` | recommended | What the reviewer actually examined, and what it did not. A large artifact can exhaust a single-shot peer's attention silently; without this the host cannot tell a thorough `approve` from an exhausted one. Absent → the host treats coverage as unknown, never as complete. |
+| `findings[].finding_id` | required | `<pass>-<index>` (e.g. `1-3` = third finding of pass 1). Used by `/en-plan`'s resolution log (`peer_review_resolutions:`). **The peer must reuse the original id when re-raising a finding from `## Previous review context`** — a re-minted id breaks same-finding suppression, which is the mechanism that stops a capped loop from re-litigating settled points. The host still mints one if absent, but cannot recover the linkage. |
 
 ## Validation rules the host applies
 
-1. JSON must parse. If not, retry once with a "respond with valid JSON only" suffix; on second failure, log and skip.
+1. **Recover, then parse, then retry — in that order.** Run the raw response through `bin/ensemble-extract-json` first: it returns the first *balanced* top-level `{...}`, so markdown fences and prose on either side are recovered locally instead of costing a round trip. It is string-aware (braces inside string literals do not move the depth counter) and validates with `jq` when available, so a balanced-but-invalid body is reported as a failure rather than passed on. Parse what it returns. Only if recovery **or** parsing fails, retry once with a "respond with valid JSON only" suffix; on second failure, log and skip. Callers that invoke a peer through `bin/ensemble-peer-invoke` get recovery applied to the out-file automatically and need do nothing; an unrecoverable response is left byte-for-byte intact so the retry is never pre-empted.
 2. `verdict` must be one of the three enum values.
 3. Every `severity` must be in `{P0, P1, P2, P3}`.
 4. `confidence` must be an integer 1–10.
-5. Findings with `confidence < 5` and `severity != P0` are suppressed silently (per the §6.4 invariant: "Confidence ≥ 7 surfaces in main report; 5–6 surfaces with caveat; <5 suppressed unless severity would be P0").
+5. `coverage.not_reviewed` non-empty → surface it in the run report. Never silently present a partial review as a complete one.
+6. Findings with `confidence < 5` and `severity != P0` are suppressed silently (per the §6.4 invariant: "Confidence ≥ 7 surfaces in main report; 5–6 surfaces with caveat; <5 suppressed unless severity would be P0").
 
 ## Multi-persona synthesis
 

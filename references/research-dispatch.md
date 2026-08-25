@@ -7,20 +7,22 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | Agent | Purpose | Latency | When to dispatch |
 |---|---|---|---|
 | `repo-research` | Scan the codebase for patterns, conventions, file paths, existing implementations | Medium (file reads + grep) | Always for Standard/Deep `en-plan`; always for State-2 `en-foundation` retrofits |
-| `learnings-research` | Query `docs/learnings/` for relevant past bugs/patterns/decisions via `index.md` | Fast | Always for Standard/Deep |
+| `learnings-research` | Query `docs/learnings/` for relevant past bugs/patterns/decisions via `index.md` | Fast | Always for Standard/Deep `en-plan` and `en-foundation` |
 | `web-research` | External docs (Context7) and best-practice search (WebSearch); URL fetch for ingest | High (network) | Only when local context is thin and external prior art would change the recommendation |
 
 ## Dispatch matrix
 
 | Skill | Depth | repo-research | learnings-research | web-research |
 |---|---|---|---|---|
-| `en-brainstorm` | Lightweight | optional | optional | optional |
-| `en-brainstorm` | Standard | optional | **always** | on-request |
-| `en-brainstorm` | Deep | optional | **always** | on-request |
+| `en-brainstorm` | Lightweight | never | never | optional |
+| `en-brainstorm` | Standard | never | never | on-request |
+| `en-brainstorm` | Deep | never | never | on-request |
 | `en-plan` | Lightweight | optional | **always** | optional |
 | `en-plan` | Standard | **always** | **always** | conditional |
 | `en-plan` | Deep | **always** | **always** | conditional |
 | `en-foundation` | (any) | **always** for retrofits, optional for greenfield | **always** | optional |
+
+**`en-brainstorm` dispatches no scouts.** It reads `docs/learnings/index.md` and the foundation section-index inline (its step-4 bounded scan) rather than spawning `repo-research` or `learnings-research`. A scout would return a gist for less context, but it costs a dispatch round-trip in a skill whose entire cost profile is round-trips. Only `web-research` is ever dispatched here, and only on request.
 
 ## Parallelism
 

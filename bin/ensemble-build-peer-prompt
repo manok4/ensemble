@@ -142,7 +142,17 @@ fi
 # Conditional: plan-specific review dimensions
 if [ "$ARTIFACT_TYPE" = "plan" ]; then
   PLAN_REVIEW_DIMENSIONS="
-Plan review dimensions: (1) Cross-check risk: against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high). Misclassified destructive units are P0/P1. (2) Flag dependency-vs-phase violations (low-risk depending on higher-risk). (3) Challenge gated:true choices — gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag any gated:true unit whose approach is just an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state (e.g. an admin endpoint flag flip with gated:false)."
+Plan review dimensions: does the plan build the right thing, and is it safe to run?
+
+A. Does it achieve the goal? Read GOAL, then the units. Flag work the goal needs that no unit covers, and units that serve no stated goal.
+B. Unit decomposition. Flag units too large to review or commit atomically, units that should have been split (auth/payments/migrations always stand alone), and independent concerns fused into one unit.
+C. Test scenarios. Every feature-bearing unit needs real scenarios with concrete inputs and expected outcomes across happy path, edge cases and error paths — not \"tests pass\". A feature unit with none, or with vague ones, is P1.
+D. risk: correctness. Cross-check against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high). Misclassified destructive units are P0/P1.
+E. Dependency-vs-phase violations (a low-risk unit depending on a higher-risk one).
+F. gated: correctness. gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag gated:true on an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state.
+G. Stated assumptions. Flag anything the plan bets on without saying so, especially claims that something does not already exist.
+
+Do NOT flag: prose style, heading format, markdown formatting, unit ID numbering, or wording preferences. This is a plan, not a document review."
 else
   PLAN_REVIEW_DIMENSIONS=""
 fi
@@ -154,6 +164,18 @@ if [ -n "$ITERATION_CONTEXT_FILE" ]; then
     echo "iteration context file not found: $ITERATION_CONTEXT_FILE" >&2; exit 2
   fi
   ITERATION_CONTEXT=$(cat "$ITERATION_CONTEXT_FILE")
+fi
+
+# Location hint and u_id field are artifact-type aware: a plan's findings anchor
+# to units (en-build dispatches per-unit off u_id), code anchors to file:line.
+if [ "$ARTIFACT_TYPE" = "plan" ]; then
+  LOCATION_HINT='Use the unit id (e.g. "U3") when the finding is about a unit, the section name for plan-level issues, or "global".'
+  U_ID_FIELD='  u_id            "U<N>" when the finding is about a specific unit, else null.
+                  The host dispatches per-unit off this field, so set it
+                  whenever the finding belongs to a unit.'
+else
+  LOCATION_HINT='Use "<file>:<line>" for code, the section name for docs, or "global".'
+  U_ID_FIELD=""
 fi
 
 # Emit the prompt
@@ -170,18 +192,36 @@ ARTIFACT:
 ---
 $ARTIFACT_BODY
 ---
-$( [ -n "$ITERATION_CONTEXT" ] && printf '\n%s\n' "$ITERATION_CONTEXT" )
-Return JSON conforming to references/finding-schema.md. Required keys:
+$( [ -n "$ITERATION_CONTEXT" ] && printf '\n## Previous review context\n\nFindings you raised on an earlier pass, and what the host did with each:\n\n%s\n' "$ITERATION_CONTEXT" )
+
+SEVERITY — use these, do not invent your own:
+  P0 blocking: data loss, security hole, broken core flow, unmigrated API break
+  P1 must change before work proceeds: logic bug, missing required test, uncovered requirement
+  P2 fix soon: missing edge-case test, naming inconsistency, minor gap
+  P3 advisory: preference, cosmetic, "consider X later"
+P0/P1 trigger another review round. Grading a preference P1 wastes one.
+
+Return a single JSON object. Required keys:
 verdict ("approve"|"revise"|"reject"), peer_mode (echo "$PEER_MODE"),
-summary (2-3 sentences), findings[]. Each finding: severity (P0-P3),
-confidence (1-10), title, location, why_it_matters, suggested_fix
-(describe the change, don't apply it); finding_id optional.
+summary (2-3 sentences), findings[].
+
+Each finding requires:
+  finding_id      "<pass>-<index>", e.g. "1-3". Re-raising something from
+                  "## Previous review context"? reuse ITS id.
+  severity        P0|P1|P2|P3 (above)   confidence  1-10   title  short
+  location        $LOCATION_HINT
+  why_it_matters  1-2 sentences
+  suggested_fix   what the host should change — describe, never apply
+$( [ -n "$U_ID_FIELD" ] && printf '%s\n' "$U_ID_FIELD" )Also return coverage: {"reviewed": "...", "not_reviewed": "..."} — say plainly
+if you did not get through it all. A partial review reported as complete is
+worse than a short one.
 
 Rules:
 - Critique only; suppress confidence<5 unless severity P0.
-- Output JSON only — no prose outside the JSON object.
-- For iteration > 1, honor "## Previous review context" — don't re-flag
-  applied/deferred/disagreed findings unless you have new evidence.
-- "verdict: approve" with empty findings[] is correct when the artifact
-  is solid.
+- Output JSON only — no prose, no markdown fences, outside the JSON object.
+- Never re-flag anything "## Previous review context" marks applied, deferred
+  or disagreed, without new evidence; to dispute a resolution, say so once
+  and reuse its finding_id.
+- "verdict: approve" with empty findings[] is right when the artifact is
+  solid. Do not manufacture findings to look thorough.
 PROMPT_EOF

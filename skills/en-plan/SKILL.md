@@ -19,12 +19,12 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
-   - **`--resume <plan-path>`** (explicit) — load the named plan; preserve its `plan_id`, `plan_type`, `created`, `generator` (if present); apply the rest of the planning flow (research, questions, U-IDs, peer review) to flesh it out. Used to promote auto-generated draft plans (from `/en-sweep`'s continuous monitoring) into full peer-reviewed plans. Status remains `draft` until step 11; only the user can flip to `open`.
+   - **`--resume <plan-path>`** (explicit) — load the named plan; preserve its `plan_id`, `plan_type`, `created`, `generator` (if present); apply the rest of the planning flow (research, questions, U-IDs, peer review) to flesh it out. Used to promote auto-generated draft plans (from `/en-sweep`'s continuous monitoring) into full peer-reviewed plans. Status remains `draft` until the status-flip step; only the user can flip to `open`.
    - **`--from-legacy <path>`** (explicit) — read content from a legacy plan (typically `docs/plans/legacy/<file>.md` archived during `/en-setup` retrofit). The legacy file is **not modified** and **not moved**; this flag uses it as input to mint a *new* Ensemble plan. Steps:
      - Read the legacy file's full content (no frontmatter assumed; treat all of it as narrative).
      - Pass it to the user as initial context; ask: *"Migrate this legacy plan into Ensemble. I'll run the normal plan flow (research → questions → U-IDs → peer review). The legacy file stays in `docs/plans/legacy/` untouched. Confirm? (y/n)"*.
-     - On `y`, treat the legacy content as the **rough description** input (per step 4) and proceed normally — agent runs research, asks planning questions, breaks into U-IDs, mints a fresh `<PREFIX><NN>` ID, writes a new plan in `docs/plans/active/`.
-     - The new plan's frontmatter carries `migrated_from: docs/plans/legacy/<file>.md` for traceability. The legacy README's "list of archived files" gets a back-reference: *"Migrated to <new plan path> on <date>."* (handled in step 12).
+     - On `y`, treat the legacy content as the **rough description** input (per the source-the-request step) and proceed normally — agent runs research, asks planning questions, breaks into U-IDs, mints a fresh `<PREFIX><NN>` ID, writes a new plan in `docs/plans/active/`.
+     - The new plan's frontmatter carries `migrated_from: docs/plans/legacy/<file>.md` for traceability. The legacy README's "list of archived files" gets a back-reference: *"Migrated to <new plan path> on <date>."* — written alongside the plan file so the auto-commit picks it up.
      - Use this to bring meaningful legacy plans into the active flow with proper R-ID/U-ID assignment and peer review — never an in-place auto-conversion.
    - **Auto-resume** (heuristic) — if a plan in `docs/plans/active/` already matches the user's request by title or `related_design`, offer to resume rather than create a new one.
    - **Create** — no match; mint a new plan.
@@ -34,7 +34,24 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Direct rough description from the user.
    - Bug report or tracked debt item (`Resolves: TD<N>`).
 
-   **Brainstorm soft-nudge.** If no `docs/designs/*.md` matches this topic (no prior brainstorm) AND the request isn't already a bug/TD fix or a `--resume`/`--from-legacy` run, surface a one-line soft offer before proceeding: *"No design doc found for this — want to `/en-brainstorm` first to explore approaches, or proceed straight to planning? (brainstorm / proceed)."* **Soft nudge only:** proceeding is always allowed and is the default on any non-answer; this is never a hard gate (consistent with the gating-shrink philosophy — encourage, don't block).
+   **Bounded foundation read.** Never read `docs/foundation.md` whole — it routinely runs past 2,000 lines. Read the **frontmatter** (for `plan_id_prefix`), then `grep -n '^#' docs/foundation.md` for the section index, then `sed -n '<start>,<end>p'` on the sections you actually need: **Functional Requirements** for R-IDs and acceptance examples, **Technical Direction** when the plan makes stack or dependency choices. Nothing else.
+
+   **Consume the design doc; don't re-interview across it.** When a `docs/designs/*.md` matches this topic with `status: open` or `accepted`, its settled decisions are **already answered** — architecture, scope boundaries, rejected alternatives, and the recommendation. Read it, carry those decisions into the plan (record the path in `related_design:`), and put **only what the doc left open** to the user in the planning questions. Re-asking a question the design doc settled is the most common way this seam wastes the user's time. The doc's `## Assumptions & unverified claims` section is the exception: those are explicitly *not* settled — verify them against the repo or carry them forward as plan-level assumptions.
+
+   **Context-sufficiency check.** Before planning, judge whether you have enough to plan *from* — not whether a design doc happens to exist. Skip this entirely for a bug/TD fix or a `--resume`/`--from-legacy` run, and skip it when a matching design doc was consumed above (that doc already did this work).
+
+   The request is **insufficient** when one or more of these is genuinely unresolved, and nothing in the foundation, research, or the request itself settles it:
+
+   - **The problem is unstated.** You know what to build but not what it's for or who for — so no unit can claim a requirement and "done" has no definition.
+   - **The approach is genuinely open.** Two or more materially different designs are viable and there is no basis in context to choose. Planning here picks an architecture by accident.
+   - **Scope has no edges.** You cannot tell what's in and what's out, so units can't be sized and the plan will either sprawl or miss half the work.
+
+   **Insufficient → offer the brainstorm, and mean it:**
+   > *"I don't have enough to plan from yet — <the specific gap, in one clause>. `/en-brainstorm` would settle that in a few questions and hand back a design doc. Brainstorm first, or plan anyway on my assumptions? (brainstorm / plan anyway)"*
+
+   Recommend `brainstorm` — but **proceeding is always allowed** and remains the default on any non-answer; this is never a hard gate (gating-shrink philosophy — encourage, don't block). If the user proceeds anyway, record each unresolved gap in the plan's `## Decisions, assumptions & risks` section as an explicit assumption, so the guess is visible rather than buried in a unit's `Approach:`.
+
+   **Sufficient but no design doc → one-line soft nudge only:** *"No design doc for this — want to `/en-brainstorm` first, or go straight to planning? (brainstorm / proceed)."* Default proceed. A well-specified request does not need to be talked out of being well-specified.
 
    **Infer `plan_type`** from the request — `feature` (net-new behavior), `improvement` (refactor / perf / DX work, including TD), or `bug` (fix). Default `feature` when unclear; confirm with the user when the request is ambiguous.
 5. **Right-size depth.**
@@ -46,12 +63,14 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - `repo-research` — patterns, conventions, file paths, prior art (Standard/Deep always).
    - `learnings-research` — relevant entries from `docs/learnings/` via `index.md` (Lightweight optional, Standard/Deep always).
    - `web-research` — only if a 3rd-party library not used elsewhere AND the library has known footguns AND the user hasn't said "skip web research".
-7. **Resolve planning questions.** One per turn:
-   - Which architecture do we land on (if multiple were on the table)?
-   - File boundaries — new files vs extending existing?
-   - Test strategy — unit, integration, end-to-end? Test-first / characterization-first / pragmatic?
-   - Dependencies — any new packages? (Bias toward boring tech — see foundation §17.4.)
-   - Migrations — schema, data, config?
+7. **Resolve planning questions — frontier rounds.** Ask every question whose prerequisites are settled in **one numbered round**, each carrying your **recommended answer**, so a round is "confirm these, correct what I got wrong" rather than "answer these". A question that depends on another still open **in this round** waits for the next round — that dependency rule is what keeps batching from producing diluted answers. Skip outright anything the design doc already settled (the source-the-request step) or that research already answered; facts in the repo are looked up, never asked.
+
+   The natural shape here is two rounds, because file boundaries and test strategy both partly depend on the architecture answer:
+
+   - **Round 1:** which architecture do we land on (if multiple were on the table)?
+   - **Round 2:** file boundaries — new files vs extending existing? · test strategy — unit / integration / end-to-end, and test-first / characterization-first / pragmatic? · dependencies — any new packages? (**bias toward boring tech**: prefer the dependency the project already has, or none, over a new one that is marginally nicer) · migrations — schema, data, config?
+
+   On **Lightweight**, ask one question per turn instead; a 1–3 unit plan does not need a tree. Stop when the frontier is empty or the questions are answered by the design doc and research.
 8. **Break into units (U-IDs).**
    - Each unit: one logical change, peer-reviewable, atomically committable.
    - Tightly-coupled changes batch into one unit; independent concerns become separate units.
@@ -77,86 +96,40 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 10. **Resolve `plan_id_prefix`.** Read `plan_id_prefix:` from `docs/foundation.md` frontmatter. If absent (older project, retrofit, or `/en-foundation` not yet run), default to `FR`. Plans inherit the prefix in force at the time they are minted; the prefix is part of the plan's stable ID and never rewritten.
 11. **Auto-increment plan number.** Scan `docs/plans/active/` and `docs/plans/completed/` for the highest existing plan number under the *current* `plan_id_prefix`. Legacy `FR` plans count toward `FR`'s numbering only; a new `EN` project starts at `EN01` even if `FR99` already exists. Zero-pad to 2 digits (3 once `99` is reached).
 
-11a. **Pre-write plan-quality review** (before writing the plan file). A lightweight self-check that catches the two most common quality gaps before peer review sees them:
+12. **Pre-write plan-quality review** (before writing the plan file). A lightweight self-check that catches the two most common quality gaps before peer review sees them:
 
     - **Test-scenario completeness.** For every **feature-bearing** unit, confirm the `Test scenarios:` enumerate real scenarios across the applicable categories (happy path / edge cases / error-failure paths / integration) with concrete inputs/actions/outcomes. A feature unit with blank or fewer-than-two scenarios is **incomplete** — strengthen it before finalizing (or, if genuinely non-feature, switch it to `**Test expectation:** none — <reason>`). This mirrors the `unit.test-scenarios` lint (P2 advisory) so plans arrive at peer review already clean.
     - **Decisions / assumptions / risks capture.** If research (repo/learnings/web) or the planning discussion surfaced a **non-obvious decision, a rejected alternative, an inferred assumption the plan bets on, or a genuine risk**, capture it in the optional `## Decisions, assumptions & risks` section (per `$ENSEMBLE_ROOT/references/templates/plan-template.md`) rather than burying it in unit `Approach:` fields. **Omit the section entirely** when nothing substantive surfaced — do not add it as empty boilerplate on trivial plans.
     - **Technical-design load-bearing audit (self-gating).** Count the **architecture-complexity triggers** the plan fires: **≥3 new/changed components**, a **≥3-step protocol/handshake**, a **state machine**, **≥3 data-flow stages**, or **DSL / public-API design**. If **any** trigger fires (typically Deep / high-risk plans), the plan MUST carry a plan-level `## Technical design` section — a **directional** high-level sketch of the cross-cutting architecture (component boundaries, data flow, key interfaces), not a spec. Verify the section is present when a trigger fired; a missing section with a fired trigger is **incomplete** — add it before finalizing. **Self-gating:** if no trigger fires (simple plans), the section is not required and must not be added as boilerplate.
 
-12. **Default-branch checkpoint** (resolve target branch BEFORE writing the plan file). Per the spec at `docs/en-plan-default-branch-spec.md`. The plan file is about to be written at step 13; the checkpoint resolves what branch it should be written on so the resume case never hits "untracked working tree file would be overwritten" on a subsequent en-plan run.
+13. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`).
 
-    1. **Resolve target branch.**
-       - If `--commit-branch <name>` was passed → check out `<name>` (create if needed); skip the rest of step 12; proceed to step 13.
-       - If `--no-commit` was passed → stay on the current branch; proceed to step 13. (Commit gets skipped at step 16.)
-       - Otherwise: continue to default-branch detection.
+    | Condition | Action |
+    |---|---|
+    | `--commit-branch <name>` passed | Check out `<name>` (create if needed); skip the checkpoint. |
+    | `--no-commit` passed | Stay on the current branch; skip the checkpoint. The auto-commit step is skipped later. |
+    | Current branch **is** the detected default branch | **Checkpoint fires.** Read `$ENSEMBLE_ROOT/references/plan-default-branch-checkpoint.md` and follow it — it owns default-branch detection, the prompt, the four response handlers, and the non-interactive `--branch-on-default` flag. |
+    | Anything else (already on a feature branch, detection failed, detached HEAD) | Stay on the current branch; skip the checkpoint. |
 
-    2. **Detect default branch** (three-source resolution, first hit wins):
-       - `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null`
-       - `git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||'`
-       - Hardcoded fallback: check current branch against `main`, `master`, `develop`, `trunk`. If on one of these AND no remote origin → assume it's the default.
+    Record the outcome as `default_branch_checkpoint: <auto_branched | no_commit_requested | committed_to_default_branch>` in the `/en-plan` report.
 
-       If detection fails entirely (fresh repo with no commits, detached HEAD): skip the checkpoint; stay on the current branch; proceed to step 13.
-
-    3. **Checkpoint decision.**
-       - Current branch != detected default branch → skip the checkpoint; stay on the current branch; proceed to step 13.
-       - Current branch == detected default branch → continue to the prompt.
-
-    4. **Surface the structured prompt:**
-       ```
-       Default-branch checkpoint
-       ─────────────────────────
-       You're on `<default-branch>`. Auto-committing plans to the
-       default branch bypasses PR review and mixes design-stage
-       commits with main-line history.
-
-       Recommended: create feature branch `<plan_id>-<slug>` and commit
-       the plan there. /en-build will reuse the same branch.
-
-       y           (recommended) — create the branch + commit
-       no-commit              — leave the plan uncommitted; commit manually
-       current                — commit on `<default-branch>` anyway (opt-out)
-       details                — show diagnostic info
-       ```
-
-    5. **Handle response.** All branch operations happen BEFORE step 13's plan-file write; working tree is clean (no untracked plan files yet) and `git checkout` can switch freely.
-       - `y` (default — auto-branch):
-         - If branch `<plan_id>-<slug>` doesn't exist → `git checkout -b <plan_id>-<slug>` from the current commit. Working tree stays clean. Proceed to step 13 on the new branch.
-         - If branch already exists → inspect via `git log <default-branch>..<branch>`:
-           - Only plan-related commits (paths under `docs/plans/`): `git checkout <branch>` (working tree reflects prior plan commit). Surface notice: *"Existing branch `<branch>` has prior plan commits; resuming."*. Proceed to step 13.
-           - Build commits OR commits outside `docs/plans/`: refuse the auto-resume; prompt for alternate name (`<plan_id>-<slug>-2` / custom / abort).
-         - Record `default_branch_checkpoint: auto_branched` in the /en-plan report.
-       - `no-commit`:
-         - Stay on the current branch. No branch switch. Proceed to step 13.
-         - At step 16, skip the commit step entirely; surface manual instructions.
-         - Record `default_branch_checkpoint: no_commit_requested`.
-       - `current`:
-         - Stay on the current branch (default branch). No branch switch. Proceed to step 13.
-         - At step 16, commit normally on the default branch.
-         - Record `default_branch_checkpoint: committed_to_default_branch` with an audit note.
-       - `details`:
-         - Print diagnostic info (detected default branch + source, target branch name `<plan_id>-<slug>`, whether the branch exists, future-extension note about `protected_branches:` config).
-         - Re-display the four-option prompt; loop until terminal response.
-
-    **`--branch-on-default <y|current|no-commit>` flag** pre-answers the prompt for non-interactive runs (CI, automation). Bypasses the prompt entirely; goes straight to the corresponding action. If the user is NOT on the default branch, this flag has no effect.
-
-    **Future extension** (not implemented in v1): `protected_branches: [...]` in `.ensemble/config.local.yaml` will extend the SAME prompt to additional long-lived branches (e.g. `develop`, release branches). Listed here so the extension point is discoverable.
-
-13. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `$ENSEMBLE_ROOT/references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in step 14 may flip to `open` automatically.
-14. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
+14. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `$ENSEMBLE_ROOT/references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
+15. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `$ENSEMBLE_ROOT/references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
-    - Invoke `$PEER_CMD $PEER_FORMAT $PEER_TURNS` with the prompt.
+    - **Invoke via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `$ENSEMBLE_ROOT/references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
     - Parse JSON per `$ENSEMBLE_ROOT/references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
-      - On `verdict: approve` → exit the loop. Proceed to step 15 (status flip).
+      - On `verdict: approve` → exit the loop. Proceed to the status-flip step.
       - On `verdict: revise` → walk findings, apply / defer / disagree per `$ENSEMBLE_ROOT/references/severity.md`. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
-        - **Iteration cap (depth-aware):** Lightweight = 1, Standard = 2, Deep = 2. `--max-iterations <N>` overrides. `--no-reloop` runs the initial pass only and never re-invokes.
+        - **Severity gate on the re-loop.** Re-invoke the peer **only if at least one finding this pass was `P0` or `P1`** (per `$ENSEMBLE_ROOT/references/severity.md`). When the pass returned **only `P2`/`P3`** findings — naming inconsistencies, style preferences, "consider X later" — apply what's cheap, record the rest in `peer_review_resolutions:`, and **exit the loop**; a second full peer pass to confirm a typo fix is not worth its latency. Record `reloop_skipped: advisory-only` alongside the resolutions so the exit is auditable.
+        - **Iteration cap: 1 at every depth** — at most **two** peer passes total (the initial pass plus one verification pass). `--max-iterations <N>` raises it when a plan genuinely warrants more; `--no-reloop` runs the initial pass only and never re-invokes.
         - **Cap-hit behavior:** Surface the latest findings; ask the user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control.
         - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
       - On `verdict: reject` → pause, surface to user, leave `status: draft`. Do not re-loop.
       - **Failure handling:** Peer timeout → surface, leave `status: draft`, no re-loop. Malformed JSON after one retry → same behavior.
-15. **Promote to `open` (status flip).** The plan moves from `status: draft` to `status: open` in **every** path that produces a buildable plan, not just peer-approve. Specifically, flip to `open` when any of these is true:
+16. **Promote to `open` (status flip).** The plan moves from `status: draft` to `status: open` in **every** path that produces a buildable plan, not just peer-approve. Specifically, flip to `open` when any of these is true:
     - Peer ran and the loop exited with `verdict: approve`.
     - `--no-peer` was passed (peer was deliberately skipped).
     - `PEER_AVAILABLE=false` from host detection (peer unavailable; no flag needed).
@@ -170,8 +143,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - Peer returned `verdict: reject` AND the user did NOT override.
     - Peer subprocess timed out or returned malformed JSON (after one retry) AND the user has not yet decided.
 
-    In those `draft`-stuck cases, do not advance to step 16 (commit) or step 19 (hand-off to `/en-build`); surface state and stop. `/en-build`'s pre-flight will offer the recovery path on the next attempt if findings get resolved later.
-16. **Auto-commit the plan file.**
+    In those `draft`-stuck cases, do not advance to the auto-commit step or the hand-off to `/en-build`; surface state and stop. `/en-build`'s pre-flight will offer the recovery path on the next attempt if findings get resolved later.
+17. **Auto-commit the plan file.**
     - Branch policy: commit on the current branch (default `main` / `master` / `develop`, or whatever feature branch the user is on). Skip auto-commit on detached HEAD or unusual states; surface and ask.
     - Working-tree safety: refuse auto-commit if `git diff --cached` has unrelated staged changes; surface and ask the user to commit the plan manually. Untracked or unstaged changes to *other* files are fine — `git add` is invoked with the plan file path only, never `git add -A`.
     - Commit message (HEREDOC):
@@ -183,9 +156,9 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
     - Flags: `--no-commit` (skip), `--commit-branch <name>` (create/switch to `<name>` first).
-17. **Confidence check.** Identify low-confidence sections (typically integrations or unfamiliar libraries); offer to deepen with a research dispatch or to leave as-is and resolve during build.
-18. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
-19. **Hand off to `/en-build`.** Suggest the build command:
+18. **Confidence check.** Identify low-confidence sections (typically integrations or unfamiliar libraries); offer to deepen with a research dispatch or to leave as-is and resolve during build.
+19. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
+20. **Hand off to `/en-build`.** Suggest the build command:
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build docs/plans/active/EN07-feature_auth-rotation.md`?"
 
 ## Cross-review and finalize loop
@@ -196,9 +169,20 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 - The plan has < 50 lines (`skip_peer_below_lines` config).
 - Depth is Lightweight AND `skip_peer_on_lightweight: true`.
 
-**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `$ENSEMBLE_ROOT/references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `$ENSEMBLE_ROOT/references/outside-voice.md`). The loop continues until `approve` or the depth-aware iteration cap is hit. Cap defaults: Lightweight = 1, Standard = 2, Deep = 2 (so total peer passes are 2 / 3 / 3 including the initial). Override with `--max-iterations <N>`; disable looping entirely with `--no-reloop`.
+**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `$ENSEMBLE_ROOT/references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `$ENSEMBLE_ROOT/references/outside-voice.md`).
 
-When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` computes `peer_review_plan_hash`, flips `status: draft → open`, and auto-commits the plan file (per step 15).
+**Two passes, not three.** The shape is: review → apply → **one** verification pass → done.
+
+| Pass 1 returned | Peer passes |
+|---|---|
+| `approve` | 1 |
+| `revise`, all findings `P2`/`P3` | 1 — apply, record, exit (`reloop_skipped: advisory-only`) |
+| `revise`, any finding `P0`/`P1` | 2 |
+| `reject` | 1 — pause, stay `draft`, no re-loop |
+
+The iteration cap is **1 at every depth**. Raise it with `--max-iterations <N>` when a plan genuinely warrants more; disable re-looping entirely with `--no-reloop`. The rationale for capping at one: a single-shot peer re-reviewing a whole artifact mostly resamples its first pass, which is why the "do not re-flag" suppression list exists at all — repeat findings were already being observed and worked around.
+
+When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` computes `peer_review_plan_hash`, flips `status: draft → open`, and auto-commits the plan file (per the status-flip and auto-commit steps).
 
 ## Flags
 
@@ -209,9 +193,9 @@ When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` compute
 | `--max-iterations <N>` | Override the depth-aware iteration cap. |
 | `--no-commit` | Finalize (`status: open`) but do not auto-commit the plan file. |
 | `--commit-branch <name>` | Create/switch to `<name>` before committing the plan file. |
-| `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint (step 12) for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
-| `--resume <plan-path>` | See process step 3. |
-| `--from-legacy <path>` | See process step 3. |
+| `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
+| `--resume <plan-path>` | See the resume-or-create step. |
+| `--from-legacy <path>` | See the resume-or-create step. |
 
 When peer is available:
 
@@ -269,14 +253,20 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 - `$ENSEMBLE_ROOT/references/research-dispatch.md` — when to dispatch which research agent
 - `$ENSEMBLE_ROOT/references/stable-ids.md` — U-ID stability rules
 
+Gated — read only when its step's gate fires, never up front:
+
+- `$ENSEMBLE_ROOT/references/plan-default-branch-checkpoint.md` — the default-branch checkpoint (skipped whenever the run is already on a feature branch)
+
 ## Failure protocol
 
 | Failure | Behavior |
 |---|---|
 | Plan touches > 30 files | Surface size warning; offer to split into multiple FRs |
+| `docs/foundation.md` too large to scan cheaply | Section-index read only (source-the-request step); never fall back to reading it whole. |
+| Design doc matching the topic is `superseded` | Do not carry its decisions; treat the request as unexplored and apply the brainstorm soft-nudge. |
 | Two units claim the same file with conflicting changes | Flag as a planning bug; don't write the plan |
 | User accepts plan but peer review hasn't returned yet | Wait for peer (with timeout); if peer times out, plan is written without peer verdict; surface "peer review timed out" in the report |
-| Peer rejects the plan (verdict: reject) | Pause and surface the reject reason; leave `status: draft`. If the user explicitly overrides the rejection ("proceed anyway"), treat as approved: run step 14 (compute hash, flip `status: draft → open`, write `peer_review_verdict: reject` + a `peer_review_overridden: true` marker for audit) and continue to step 15 (auto-commit). The valid post-flip status is **`open`** — `active/` is the directory the file lives in, not a status value. |
+| Peer rejects the plan (verdict: reject) | Pause and surface the reject reason; leave `status: draft`. If the user explicitly overrides the rejection ("proceed anyway"), treat as approved: run the **status-flip step** (compute hash, flip `status: draft → open`, write `peer_review_verdict: reject` + a `peer_review_overridden: true` marker for audit) and continue to the **auto-commit step**. The valid post-flip status is **`open`** — `active/` is the directory the file lives in, not a status value. |
 | Finalize loop hits iteration cap with `verdict: revise` | Surface latest findings; ask user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control. |
 | Re-review surfaces a finding the user previously disagreed with | Append finding to "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early. |
 | Auto-commit refused due to unrelated staged changes | Surface and skip the commit step; user finalizes manually. Plan still flips to `open`; just isn't tracked yet. `/en-build` pre-flight will offer auto-commit on next attempt. |

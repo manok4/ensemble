@@ -23,6 +23,8 @@
 _epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/ensemble-cli-smoke
 . "$_epi_dir/ensemble-cli-smoke"
+# shellcheck source=bin/ensemble-extract-json
+. "$_epi_dir/ensemble-extract-json"
 
 # Split a flag fragment into argv under a CONTROLLED IFS with globbing off.
 # Relying on the caller's ambient IFS is not safe: a shell with a non-default
@@ -67,6 +69,18 @@ _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias
   printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s}\n' \
     "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
     "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias"
+}
+
+# Recover the JSON envelope from a response wrapped in fences or prose. Applied
+# to every successful peer call so all four peer-invoking skills get it without
+# each re-implementing it. On failure the file is left byte-for-byte untouched:
+# the caller's existing "retry once with valid JSON only" is still the fallback
+# for genuinely broken responses, and must not be pre-empted by a partial write.
+_epi_normalize_out() {
+  local _f="${1:-}" _clean
+  [ -n "$_f" ] && [ "$_f" != "/dev/null" ] && [ -s "$_f" ] || return 0
+  _clean=$(ensemble_extract_json "$_f") || return 0
+  printf '%s' "$_clean" > "$_f"
 }
 
 # Resolve a timeout wrapper once. Same convention as references/outside-voice.md.
@@ -117,6 +131,7 @@ ensemble_peer_invoke() {
   # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
   # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
+    _epi_normalize_out "$out_file"
     _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias"
     return 0
   else
@@ -171,6 +186,7 @@ ensemble_peer_invoke() {
   # when no branch ran), which would make the 124 check dead code and misreport
   # a timed-out retry as retry-exhausted.
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
+    _epi_normalize_out "$out_file"
     _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias"
     return 0
   else
