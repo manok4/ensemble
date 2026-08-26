@@ -15,7 +15,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-26
-peer_review_plan_hash: a92ce784d2f6b7962c04373a624661a279e5ea6c0cb4dce937659a634e8fcf65
+peer_review_plan_hash: e915c5feccd2801672387e048b60b55748e22379ec76a7889844f8d4db32277e
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -444,7 +444,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** the anchor conversion in U6 is where Compound Engineering logged three separate path bugs. **Mitigation:** its own unit, a smoke test run from an unrelated working directory, and a pattern assertion on the load-bearing trailing semicolon.
 - **Risk:** a red intermediate commit while 17 skills migrate across five units. **Mitigation:** the anchor guard stays warn-only until U8 and flips only after every skill has moved.
 - **Risk:** this plan touches well over 30 files, which normally triggers a split. **Mitigation:** the file count is concentrated in mechanical path rewrites across `tests/` and `skills/`, and the sequencing above is what makes it safe. Split by unit at review time, not by plan.
-- **Risk:** `peer_review_plan_hash` has no shared implementation. The contract is prose in `docs/scope-aware-slicing-spec.md` (per-unit goal, files, approach, risk, category, gated, dependencies, plus plan-level depth and data_scale), but nothing in `bin/` computes it, so the producer and the consumer can canonicalize differently and `/en-build` would refuse the plan at a phase boundary over a formatting difference. This plan's hash was computed as sha256 over `<uid>|goal|files|approach|risk|category|gated|dependencies` per unit in U-ID order, whitespace-collapsed, newline-joined, with `depth|data_scale` as a final line. **Mitigation:** recorded here so the value is reproducible, and the missing shared implementation is filed separately; a hash contract that exists only as prose is the same class of problem D41 addresses.
+- **Decision:** `peer_review_plan_hash` is computed by `bin/ensemble-plan-hash`, not by each caller. The contract was previously prose only (`docs/scope-aware-slicing-spec.md:374`), which cannot work: no model computes sha256, so `/en-plan` and `/en-build` would each shell out with their own canonicalization and disagree. A hash whose producer and consumer disagree detects no tampering, it just refuses a legitimate build at the first phase boundary and blames the user for an edit they did not make. Writing this plan proved the point, since the hand-computed value and the helper's value differed.
 - **Risk:** merge conflicts against in-flight skill work, since the plan touches all 17 skills. **Mitigation:** `docs/plans/active/` is otherwise empty after EN01 and EN03 were closed, so schedule U3 to U8 when no large skill rewrite is open.
 
 ## Tracked debt

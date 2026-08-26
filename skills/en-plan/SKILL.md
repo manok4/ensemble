@@ -137,7 +137,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - Loop hit the iteration cap with `verdict: revise` AND the user chose "accept as-is" at the cap-hit prompt (per failure protocol).
     - Peer returned `verdict: reject` AND the user explicitly overrode the rejection (per failure protocol).
 
-    On promotion: compute `peer_review_plan_hash` (sha256 over canonicalized immutable plan-input fields — see `$ENSEMBLE_ROOT/references/templates/plan-template.md` lifecycle and the scope-aware-slicing spec for the exact field list), write it to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
+    On promotion: compute `peer_review_plan_hash` by running `$ENSEMBLE_ROOT/bin/ensemble-plan-hash <plan-path>`, write its output to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. **Do not canonicalize the fields yourself.** The helper owns the covered-field list and the canonicalization, so producer and consumer cannot drift; deriving the hash from prose is not merely slower, it is unimplementable, since no model computes sha256 and each ad-hoc shell attempt canonicalizes differently. `/en-build` re-computes with the same helper at every phase boundary, so a mismatch means a real edit rather than a formatting difference (D41). The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
 
     The plan stays in `status: draft` ONLY when:
     - Peer returned `verdict: reject` AND the user did NOT override.
