@@ -6,7 +6,7 @@ title: Skill-suite optimization and supercharge
 status: completed
 location: active
 created: 2026-06-28
-shipped: 2026-08-25
+shipped: 2026-08-26
 deepened:
 covers_requirements: []
 requirements_pending: false

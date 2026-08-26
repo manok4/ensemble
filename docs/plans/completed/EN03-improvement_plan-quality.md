@@ -6,7 +6,7 @@ title: Plan-quality upgrades to en-plan
 status: completed
 location: active
 created: 2026-07-03
-shipped: 2026-08-25
+shipped: 2026-08-26
 deepened:
 covers_requirements: []
 requirements_pending: false

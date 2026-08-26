@@ -1,6 +1,6 @@
 # Making Ensemble skills self-contained
 
-Review date: 2026-08-25
+Review date: 2026-08-26
 Reference implementation studied: `compound-engineering-plugin` v3.23.3 (`/Users/mano.kulasingam/CodeRepo/agent-skills/compound-engineering-plugin`)
 Ensemble revision: branch `skill-review-d47-d51` @ `7040819`
 
