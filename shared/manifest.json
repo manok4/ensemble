@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "comment": "Which skill receives which shared file. dest is relative to the skill directory. closure:true follows a script's sourcing chain and carries the siblings too. See shared/README.md.",
+  "entries": []
+}
