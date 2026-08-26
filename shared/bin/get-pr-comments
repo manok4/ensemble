@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# get-pr-comments — fetch all unresolved review threads, top-level PR
+# conversation comments, review-submission bodies, and PR-author replies for
+# a single PR. Output is one JSON object on stdout, partitioned for the
+# /en-resolve-pr triage step.
+#
+# Output shape:
+#   {
+#     "review_threads":     [ <unresolved inline review threads, includes isOutdated> ],
+#     "pr_comments":        [ <top-level PR comments, excluding author + CI bots> ],
+#     "review_bodies":      [ <review-submission bodies, excluding author + CI bots> ],
+#     "pr_author_replies":  [ <PR-author conversation comments — used by triage to detect "already replied"> ],
+#     "cross_invocation": {
+#       "signal":            <true when both unresolved and resolved threads exist>,
+#       "resolved_threads":  [ <last 10 resolved threads by recency, for cross-round awareness> ]
+#     }
+#   }
+#
+# Usage:
+#   get-pr-comments PR_NUMBER [OWNER/REPO]
+#
+# Notes:
+#   - Only structurally-non-actionable bots (codecov) are filtered at the source.
+#   - AI review bots (CodeRabbit, Codex, Gemini, Copilot) are NOT filtered here;
+#     content-aware actionability check happens at the SKILL level so bot format
+#     changes can't silently hide real findings.
+#   - PR-author replies are exposed in pr_author_replies (separate field) so
+#     triage can detect "already responded" without losing the comment.
+#   - PAGINATION: all three top-level connections (reviewThreads, comments,
+#     reviews) are fully cursor-paginated via `gh api graphql --paginate`, so
+#     PRs with more than one page of feedback are NOT silently truncated
+#     (issue #798). Nested per-thread comments are fetched at first:100.
+
+set -e
+
+if [ $# -lt 1 ]; then
+    cat <<USAGE >&2
+Usage: get-pr-comments PR_NUMBER [OWNER/REPO]
+  PR_NUMBER       The pull request number
+  OWNER/REPO      Optional; defaults to the gh-detected repo
+
+Example:
+  get-pr-comments 42
+  get-pr-comments 42 my-org/my-repo
+USAGE
+    exit 1
+fi
+
+PR_NUMBER="$1"
+REPO_ARG="${2:-}"
+
+if [ -n "$REPO_ARG" ]; then
+    OWNER="${REPO_ARG%/*}"
+    REPO="${REPO_ARG#*/}"
+else
+    OWNER=$(gh repo view --json owner --jq .owner.login 2>/dev/null || true)
+    REPO=$(gh repo view --json name --jq .name 2>/dev/null || true)
+fi
+
+if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
+    echo "Error: could not detect owner/repo. Pass OWNER/REPO as the second argument." >&2
+    exit 1
+fi
+
+# Pagination (issue #798 / compound-engineering parity): fixed `first: N` page
+# sizes with no cursor loop silently drop everything past page 1 on PRs with
+# many review threads / comments / reviews. Each top-level connection is fetched
+# with `gh api graphql --paginate`, which drives a single `$endCursor` variable
+# and concatenates page responses; `jq -s` then merges all pages. The three
+# connections are independent, so they are paginated as separate queries (one
+# --paginate cursor can only drive one connection) and reassembled below.
+
+# Author login — single fetch, no connection to paginate.
+AUTHOR_LOGIN=$(gh api graphql \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \
+    -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){author{login}}}}' \
+    --jq '.data.repository.pullRequest.author.login' 2>/dev/null || true)
+
+# reviewThreads — paginated; nested comments raised to first:100.
+read -r -d '' Q_THREADS <<'GRAPHQL' || true
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviewThreads(first:100, after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        edges{ node{
+          id isResolved isOutdated path line originalLine startLine originalStartLine
+          comments(first:100){ nodes{ id author{login} body createdAt url } }
+        } }
+      }
+    }
+  }
+}
+GRAPHQL
+THREAD_EDGES=$(gh api graphql --paginate \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" -f query="$Q_THREADS" \
+    | jq -s 'map(.data.repository.pullRequest.reviewThreads.edges) | add // []')
+
+# comments — paginated.
+read -r -d '' Q_COMMENTS <<'GRAPHQL' || true
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      comments(first:100, after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ id author{login} body createdAt }
+      }
+    }
+  }
+}
+GRAPHQL
+COMMENT_NODES=$(gh api graphql --paginate \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" -f query="$Q_COMMENTS" \
+    | jq -s 'map(.data.repository.pullRequest.comments.nodes) | add // []')
+
+# reviews — paginated.
+read -r -d '' Q_REVIEWS <<'GRAPHQL' || true
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviews(first:100, after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ id author{login} body state }
+      }
+    }
+  }
+}
+GRAPHQL
+REVIEW_NODES=$(gh api graphql --paginate \
+    -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" -f query="$Q_REVIEWS" \
+    | jq -s 'map(.data.repository.pullRequest.reviews.nodes) | add // []')
+
+# Reassemble into the same shape the single-query version produced, so the
+# partition jq below is unchanged.
+RAW=$(jq -n \
+    --arg author "$AUTHOR_LOGIN" \
+    --argjson threads "$THREAD_EDGES" \
+    --argjson comments "$COMMENT_NODES" \
+    --argjson reviews "$REVIEW_NODES" \
+    '{data:{repository:{pullRequest:{
+        author:{login:$author},
+        reviewThreads:{edges:$threads},
+        comments:{nodes:$comments},
+        reviews:{nodes:$reviews}
+    }}}}')
+
+# Partition the response into the buckets /en-resolve-pr's SKILL.md consumes.
+# CI/status bots whose output is structurally never actionable (coverage
+# numbers, deploy status) are filtered at the source. Everything else is
+# left to the SKILL's content-aware actionability rule in step 5.
+echo "$RAW" | jq '
+  .data.repository.pullRequest as $pr
+  | ["codecov"] as $ci_bots
+  | ($pr.author.login) as $author_login
+  | ([$pr.reviewThreads.edges[] | select(.node.isResolved == false)]) as $unresolved
+  | (
+      [$pr.reviewThreads.edges[]
+        | select(.node.isResolved == true)
+        | {
+            thread_id: .node.id,
+            path: .node.path,
+            line: .node.line,
+            first_comment_body: .node.comments.nodes[0].body,
+            last_comment_at: ([.node.comments.nodes[].createdAt] | sort | last)
+          }]
+      | sort_by(.last_comment_at)
+      | (.[-10:] // [])
+      | reverse
+    ) as $resolved
+  | {
+      review_threads: $unresolved,
+      pr_comments: [$pr.comments.nodes[]
+        | select(.author.login != $author_login)
+        | select(.author.login as $l | $ci_bots | index($l) | not)
+        | select((.body // "") | test("^\\s*$") | not)],
+      review_bodies: [$pr.reviews.nodes[]
+        | select((.body // "") != "")
+        | select(.author.login != $author_login)
+        | select(.author.login as $l | $ci_bots | index($l) | not)],
+      pr_author_replies: [$pr.comments.nodes[]
+        | select(.author.login == $author_login)
+        | select((.body // "") | test("^\\s*$") | not)],
+      cross_invocation: {
+        signal: (($resolved | length) > 0 and ($unresolved | length) > 0),
+        resolved_threads: $resolved
+      }
+    }
+'

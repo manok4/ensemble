@@ -3,8 +3,6 @@ name: en-debug
 description: "Reproduce a bug from telemetry. Reads structured logs from the configured source, correlates by trace_id / request_id / event field, surfaces a hypothesis with file:line and confidence 1-10. Read-only. Pairs with /en-resolve-pr (when reviewer comments reference a runtime error) and /en-build (when a test or QA run fails with a real-world trace). Trigger phrases: 'debug this trace', 'reproduce this error', 'walk this log', 'why did this fail in prod'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-debug`
 

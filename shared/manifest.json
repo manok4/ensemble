@@ -292,6 +292,14 @@
       ]
     },
     {
+      "source": "bin/get-pr-comments",
+      "dest": "scripts/",
+      "skills": [
+        "en-resolve-pr",
+        "en-ship"
+      ]
+    },
+    {
       "source": "references/agent-dispatch.md",
       "dest": "references/",
       "skills": [

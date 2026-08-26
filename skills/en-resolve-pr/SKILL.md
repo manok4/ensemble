@@ -3,8 +3,6 @@ name: en-resolve-pr
 description: "Address review comments on the current PR. Fetches inline review threads + top-level PR comments + review-submission bodies; triages new vs already-handled, silent-drops bot wrappers; per comment applies a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes, replies, resolves threads (except needs-human). Up to 2 cycles. --enable-auto-merge flag. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-resolve-pr`
 
