@@ -730,6 +730,16 @@ extract_units() {
       risk=""; cat=""; gated=""; deps=""
       next
     }
+    # A level-2 heading ends the units section. Without this the last unit stays
+    # open to end-of-file and absorbs later bullets — notably the
+    # "- **Risk:** … — **Mitigation:** …" lines the plan template prescribes
+    # under "## Decisions, assumptions & risks", which then read as an invalid
+    # risk enum on the final unit.
+    /^## / {
+      emit_current()
+      uid=""; risk=""; cat=""; gated=""; deps=""
+      next
+    }
     /^- \*\*Risk:\*\*/   { sub(/^- \*\*Risk:\*\*[[:space:]]*/, ""); risk=$0; next }
     /^- \*\*Category:\*\*/ { sub(/^- \*\*Category:\*\*[[:space:]]*/, ""); cat=$0; next }
     /^- \*\*Gated:\*\*/  { sub(/^- \*\*Gated:\*\*[[:space:]]*/, ""); gated=$0; next }

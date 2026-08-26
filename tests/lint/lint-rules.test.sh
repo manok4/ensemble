@@ -1015,4 +1015,52 @@ data_scale: enormous
 EOF
 assert_rule_fires "frontmatter.invalid-enum" "invalid data_scale"
 
+# --- unit.risk-class: a "## " heading closes the units section ---
+# Regression: extract_units only reset at the next `### U<N>`, so the final unit
+# stayed open to end-of-file and absorbed the "- **Risk:** … — **Mitigation:** …"
+# bullets the plan template prescribes under "## Decisions, assumptions & risks".
+# A well-formed plan then reported its last unit's risk as an invalid enum.
+setup_minimum
+cat > "$TMP/docs/plans/active/FR70-risk-section.md" <<EOF
+---
+type: plan
+plan_type: improvement
+plan_id: FR70
+title: Risk section after final unit
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR70 — Risk section after final unit
+
+## Implementation units
+
+### U1. Only unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Category:** feature
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+- **Test expectation:** none — fixture
+- **Verification:** lint clean
+
+## Decisions, assumptions & risks
+
+- **Risk:** the copies drift out of sync — **Mitigation:** a byte-parity test in CI
+- **Assumption:** hosts resolve relative reads against the skill directory
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "unit.risk-class"; then
+  fail "a '## ' heading closes the units section" "$(echo "$output" | grep -F 'unit.risk-class' | head -2)"
+else
+  pass "a '## ' heading closes the units section"
+fi
+
 report
