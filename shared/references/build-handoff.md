@@ -28,7 +28,7 @@ The default `en-build` flavor when **HOST = Codex**. Codex implements natively; 
 │                                                  the full ERROR:   │
 │                                                  message + brew    │
 │                                                  install coreutils │
-│         $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt ... | \      │
+│         $SKILL_DIR/scripts/ensemble-build-peer-prompt ... | \      │
 │           "$ENSEMBLE_TIMEOUT_BIN" "${peer_timeout_seconds:-600}" \ │
 │             claude -p --output-format json $PEER_TURNS \        │
 │               --strict-mcp-config \                                │
@@ -97,7 +97,7 @@ ENSEMBLE_TIMEOUT_BIN=$(command -v timeout || command -v gtimeout) || {
 #    timeout enforces peer_timeout_seconds (default 600) so a hang fails fast
 #    instead of stalling the build forever.
 #    stderr is captured for diagnostic visibility on failure.
-ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
+ENSEMBLE_PEER_REVIEW=true $SKILL_DIR/scripts/ensemble-build-peer-prompt \
   --artifact-type code \
   --project-context "$ONE_LINE_PROJECT_CONTEXT" \
   --goal "Review unit $U_ID: $UNIT_GOAL" \

@@ -23,7 +23,7 @@ else
 fi
 
 # --- 2. the design doc is linted before handoff, and brainstorm dispatches no scouts ---
-if grep -qF '$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/designs' "$SKILL" \
+if grep -qF 'scripts/ensemble-lint --scope docs/designs' "$SKILL" \
    && grep -qiE "dispatches no scouts" "$DISPATCH"; then
   pass "design doc is lint-validated before handoff; no-scout contract is documented"
 else

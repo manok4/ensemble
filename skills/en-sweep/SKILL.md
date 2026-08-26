@@ -8,12 +8,15 @@ description: "Scheduled doc-drift cleanup (default weekly; configurable via swee
 
 # `/en-sweep`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
 Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
 
-> **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check`.
+> **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$SKILL_DIR/scripts/ensemble-doc-only-check`.
 
 ## When invoked
 
@@ -23,16 +26,16 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 | `workflow_dispatch` | Manual fire from the Actions UI; bypasses the activity gate. |
 | Manual (`/en-sweep`) | User runs the slash command locally for ad-hoc cleanup. |
 
-**Activity gate.** Before the sweep job runs, `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the patterns `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`, `chore(docs):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently — no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
+**Activity gate.** Before the sweep job runs, `$SKILL_DIR/scripts/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the patterns `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`, `chore(docs):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently — no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
 
-The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
+The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
 
 ## Process
 
 1. **Detect host.** Source `references/host-detect.md`. CI runner determines which CLI is available.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The CI workflow enforces Guards 1, 2, 3, 5 before the skill runs; Guard 4 (no-material-diff) fires inside the skill at step 9.
-4. **Run file-shape lint.** `$ENSEMBLE_ROOT/bin/ensemble-lint --json --scope docs/`. Capture violations.
+4. **Run file-shape lint.** `$SKILL_DIR/scripts/ensemble-lint --json --scope docs/`. Capture violations.
 5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
 6. **Architecture drift check.** Dispatch `repo-research` to compare `docs/architecture.md` against the codebase:
    - Documented components still present?
@@ -52,7 +55,7 @@ The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves
 10. **Guard 4 — no-material-diff termination.** If no batches were produced, exit silently (no PR, no comment).
 11. **Stage + verify each batch.**
     - Apply the fixes for the batch (Edit / Write tools).
-    - Run `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
+    - Run `$SKILL_DIR/scripts/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
     - Cap the number of PRs per run at `max_prs_per_run` (default 6).
 12. **Open PR per batch.**
     - Branch: `en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-update`).
@@ -92,7 +95,7 @@ The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves
 The doc-only contract is enforced at three points:
 
 1. **Categorization (step 9).** Code-level findings never become PRs; they file as TD entries.
-2. **Runtime enforcement (step 11).** `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` verifies every staged path is in the allowlist (`docs/`, `AGENTS.md`, `CLAUDE.md`, `.github/workflows/en-sweep.yml`, `.ensemble/sweep-summary.md`). Any path outside → abort the batch.
+2. **Runtime enforcement (step 11).** `$SKILL_DIR/scripts/ensemble-doc-only-check` verifies every staged path is in the allowlist (`docs/`, `AGENTS.md`, `CLAUDE.md`, `.github/workflows/en-sweep.yml`, `.ensemble/sweep-summary.md`). Any path outside → abort the batch.
 3. **Default-safe security** (per `references/sweep-security-model.md`). `GITHUB_TOKEN` least-privilege; no `actions: write`; no fork triggers; branch protection respected; fail-closed on any guard error.
 
 ## Loop guards
@@ -114,7 +117,7 @@ Both patterns are still recognized by the activity gate so they're effectively i
 
 A sweep PR auto-merges when **all** hold:
 
-- PR is doc-only (verified by `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check`).
+- PR is doc-only (verified by `$SKILL_DIR/scripts/ensemble-doc-only-check`).
 - `/en-review` in `mode:report-only` returns no P0/P1 findings.
 - CI checks pass (project tests, lint).
 - Branch protection's review requirement is met.
@@ -138,16 +141,16 @@ Otherwise: PR stays open for human resolution.
 - `references/doc-lints.md` — file-shape lint catalog
 - `references/learn-lint.md` — wiki-graph lint catalog
 - `references/templates/github-workflow-en-sweep.yml` — installed workflow
-- `$ENSEMBLE_ROOT/bin/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
-- `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` — runtime allowlist enforcement
-- `$ENSEMBLE_ROOT/bin/ensemble-lint` — file-shape lint runner
-- `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
+- `$SKILL_DIR/scripts/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
+- `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
+- `$SKILL_DIR/scripts/ensemble-lint` — file-shape lint runner
+- `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
 
 ## Failure protocol
 
 | Failure | Behavior |
 |---|---|
-| `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` rejects a batch | Abort that batch; log loudly with offending paths; post to source PR comment |
+| `$SKILL_DIR/scripts/ensemble-doc-only-check` rejects a batch | Abort that batch; log loudly with offending paths; post to source PR comment |
 | `repo-research` returns malformed output | Skip that check; surface in summary; continue with other checks |
 | `/en-review` returns malformed JSON | Treat as inconclusive; leave PR open; do not auto-merge |
 | Branch-protection check fails (rate-limit, auth) | Fail-closed: leave all PRs open; do not auto-merge |

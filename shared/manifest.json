@@ -608,6 +608,21 @@
       ]
     },
     {
+      "source": "references/script-invocation.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    },
+    {
       "source": "references/secret-patterns.md",
       "dest": "references/",
       "skills": [

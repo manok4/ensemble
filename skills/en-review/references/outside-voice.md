@@ -121,7 +121,7 @@ ENSEMBLE_TIMEOUT_BIN=$(command -v timeout || command -v gtimeout) || {
 # require API-key auth (i.e. doesn't use --bare).
 # - timeout enforces peer_timeout_seconds (default 600) so a hang fails fast.
 # - stderr is captured for diagnostic visibility on failure.
-ENSEMBLE_PEER_REVIEW=true $ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt \
+ENSEMBLE_PEER_REVIEW=true $SKILL_DIR/scripts/ensemble-build-peer-prompt \
   --artifact-type plan \
   --project-context "$ONE_LINE_PROJECT_CONTEXT" \
   --goal "$ONE_LINE_GOAL" \

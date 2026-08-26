@@ -8,6 +8,9 @@ description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, 
 
 # `/en-cross-review`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -23,7 +26,7 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
    - **`<git-ref>`** (e.g., `main..HEAD`, `HEAD~1`) → diff between refs.
    - **`<branch-name>`** → diff between branch and the default branch.
 4. **Verify availability.** If `PEER_AVAILABLE=false`, exit with the reason (peer_mode_override=off; cross-agent-only without other CLI installed; etc.).
-5. **Compose review prompt.** Shell out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — do not assemble the prompt by reasoning. Required args:
+5. **Compose review prompt.** Shell out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — do not assemble the prompt by reasoning. Required args:
    - `--artifact-type <code|plan|markdown artifact|mixed>` — `code` for diffs/files of source, `markdown artifact` for `docs/`, `plan` only when reviewing a `docs/plans/active/*.md` (rare for ad-hoc cross-review), else `mixed`.
    - `--project-context "<one-line>"` — first paragraph of `AGENTS.md` or foundation §1.
    - `--goal "<one-line>"` — for diffs: the most-recent commit subject; for files: the user's stated reason for the cross-review.
@@ -34,9 +37,9 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
 6. **Apply `--focus` flag** (if set). Append to the prompt: "Focus your review on <focus>; deprioritize other concerns."
    Valid: `security`, `performance`, `tests`, `correctness`, `maintainability`, `all` (default).
 7. **Set `ENSEMBLE_PEER_REVIEW=true`** in the subprocess env (recursion guard).
-8. **Invoke peer via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`.**
+8. **Invoke peer via `$SKILL_DIR/scripts/ensemble-peer-invoke`.**
    ```bash
-   . "$ENSEMBLE_ROOT/bin/ensemble-peer-invoke"
+   . "$SKILL_DIR/scripts/ensemble-peer-invoke"
    peer_decision=$(ENSEMBLE_PEER_REVIEW=true ensemble_peer_invoke \
      --peer-cmd "$PEER_CMD" --peer-format "$PEER_FORMAT" --peer-turns "$PEER_TURNS" \
      --prompt-file "$prompt_file" --out-file /tmp/peer-response.json \

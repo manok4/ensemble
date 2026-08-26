@@ -8,6 +8,9 @@ description: "Multi-persona code review of the current branch, with the cross-ag
 
 # `/en-review`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -35,10 +38,10 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 2b. **Read the effort/alias config overrides** (the two high-precedence layers only). This skill is the **SOLE resolver** (`peer-model-policy.md` (b)), but resolution is deliberately **split across two points** because the ladder's inputs do not exist yet at step 2:
 
-   - **Overrides, read here:** the `--effort <low|medium|high>` flag, then `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_effort_override --allowed low,medium,high`. If either yields a tier, that tier is final and step 7b skips the ladder.
-   - **Model alias, read here:** `$ENSEMBLE_ROOT/bin/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design, and the alias does not depend on diff signals.
+   - **Overrides, read here:** the `--effort <low|medium|high>` flag, then `$SKILL_DIR/scripts/ensemble-config-get review_peer_effort_override --allowed low,medium,high`. If either yields a tier, that tier is final and step 7b skips the ladder.
+   - **Model alias, read here:** `$SKILL_DIR/scripts/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design, and the alias does not depend on diff signals.
 
-   The repo-then-global cascade inside each lookup belongs to `$ENSEMBLE_ROOT/bin/ensemble-config-get`, and translating the resolved tier into CLI syntax belongs to `$ENSEMBLE_ROOT/bin/ensemble-peer-flags`. Neither re-derives policy, so precedence exists in exactly one place.
+   The repo-then-global cascade inside each lookup belongs to `$SKILL_DIR/scripts/ensemble-config-get`, and translating the resolved tier into CLI syntax belongs to `$SKILL_DIR/scripts/ensemble-peer-flags`. Neither re-derives policy, so precedence exists in exactly one place.
 3. **Determine mode** (per `references/persona-dispatch.md` and the §5.2.5 contract):
    - **`interactive`** — direct user invocation. Auto-applies `safe_auto` fixes; surfaces `gated_auto` / `manual` to user. May write to working tree.
    - **`headless`** — invoked by another skill (`en-build` per-unit, `en-cross-review`). Auto-applies `safe_auto` silently; returns structured JSON. May write to working tree.
@@ -57,7 +60,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
-6. **Pre-flight lint.** Run `$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/` and `$ENSEMBLE_ROOT/bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
+6. **Pre-flight lint.** Run `$SKILL_DIR/scripts/ensemble-lint --scope docs/` and `$SKILL_DIR/scripts/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
 7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
 
    **Peer-only short-circuit (`--peer-only`).** If `--peer-only` is set, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** — the sole reviewer is the cross-agent Outside Voice peer (step 9). This is the mode `/en-build`'s post-build phase uses: the host implemented the code, so review must come from the *other* agent, with no host-side personas. `--peer-only` and `--lite` are mutually exclusive (lite is a host-persona roster; peer-only has no host personas) — if both are passed, `--peer-only` wins. Proceed directly to step 9.
@@ -84,9 +87,9 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 8. **Parallel dispatch — personas AND the peer in ONE batch.** Single message, multiple `Agent` tool calls, **plus the peer subprocess from step 9 launched in the same batch**. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the persona roster, so serializing it would add its latency to every review for no benefit (`peer_timeout_seconds` defaults to 600). Wait for all to return.
 9. **Outside Voice peer (on by default per step 2a; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
    - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid. Any change that feeds persona findings to the peer must also re-serialize step 8 and invalidate the corroboration weighting in step 10.
-   - Build the prompt: `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`.
-   - Translate the tier resolved in step 2b: `eval "$($ENSEMBLE_ROOT/bin/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
-   - **Invoke via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. **Do not restate the retry algorithm here** — the helper owns invocation, classification, the single bounded retry that drops only the rejected fragment, and the fallback, so the behavior is executable and testable rather than prose (EN11-PR-006). It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
+   - Build the prompt: `$SKILL_DIR/scripts/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`.
+   - Translate the tier resolved in step 2b: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
+   - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. **Do not restate the retry algorithm here** — the helper owns invocation, classification, the single bounded retry that drops only the rejected fragment, and the fallback, so the behavior is executable and testable rather than prose (EN11-PR-006). It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
    - **Default (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10.
    - **`--peer-only`** (sole reviewer): the peer's findings ARE the envelope; no reconciliation is needed. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
@@ -228,7 +231,7 @@ review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto
 - `references/severity.md` — autofix routing
 - `references/severity-and-routing.md` — alias
 - `references/outside-voice.md` — peer-review prompt (when `--peer` / `--peer-only`)
-- `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` / `--peer-only`
+- `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` / `--peer-only`
 - `references/single-agent-fallback.md` — fallback when only one CLI is installed
 - `references/recursion-guard.md`
 

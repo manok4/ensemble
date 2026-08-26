@@ -8,6 +8,9 @@ description: "Execute an implementation plan unit-by-unit on a feature branch. P
 
 # `/en-build`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -29,8 +32,8 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
    - `references/outside-voice.md`
    - `references/severity.md`
    - `references/finding-schema.md`
-   - `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt`
-   - `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence`
+   - `$SKILL_DIR/scripts/ensemble-build-peer-prompt`
+   - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence`
 
    If any are missing, **fail at start with a clear error** — do not proceed with a degraded build. Surface the exact paths missing and tell the user to re-run `/en-setup` or sync the plugin.
 
@@ -74,7 +77,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
     `--no-finalize` disables the recovery offer; `--finalize-only` runs finalize and stops without building.
 
-   **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$ENSEMBLE_ROOT/bin/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.
+   **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.
 
    **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 5. **Set up branch.**
@@ -213,9 +216,9 @@ If the agent has a real concern that's outside the seven cases AND not caught by
        - For all other (ordinary) units: skip straight to 9f. No per-unit peer, no per-unit simplifier — they're covered by the post-build branch-level review.
      - **9f. Commit.** Conventional subject + U-ID + `phase: P<N>` trailer (always).
        - **Ordinary unit:** commit with the `phase: P<N>` trailer only. Per-unit peer evidence is NOT required — the post-build branch-level review (step 10) produces the `review-verdict:` covering this unit. (If `--no-peer-per-unit` semantics or a recursion guard apply, a `peer-skipped:` trailer is also acceptable.)
-       - **Destructive / gated unit:** also write the `peer-verdict:` trailer (one; required keys `verdict`/`peer_mode`/`iteration`/`findings_count`) and one `peer-resolution:` trailer per finding, then run `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence HEAD --require-peer-resolution`. If it returns anything but `ok`, the commit is invalid — `git reset --soft HEAD^`, fix the trailers (or re-run the peer), and re-commit; or halt and surface. **No flag lets a destructive/gated unit commit without an actual peer pass.**
+       - **Destructive / gated unit:** also write the `peer-verdict:` trailer (one; required keys `verdict`/`peer_mode`/`iteration`/`findings_count`) and one `peer-resolution:` trailer per finding, then run `$SKILL_DIR/scripts/ensemble-verify-peer-evidence HEAD --require-peer-resolution`. If it returns anything but `ok`, the commit is invalid — `git reset --soft HEAD^`, fix the trailers (or re-run the peer), and re-commit; or halt and surface. **No flag lets a destructive/gated unit commit without an actual peer pass.**
    - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
-   - **Plan-hash check.** Re-compute via `$ENSEMBLE_ROOT/bin/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
+   - **Plan-hash check.** Re-compute via `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
    - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
    - Surface phase summary (units, commits, any destructive/gated per-unit peer findings).
    - If `--pause` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
@@ -234,7 +237,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
     4. **Commit the simplify + review changes** (if any) with **both** a `review-verdict:` trailer AND a `simplify-verdict:` trailer (EN07 - the simplify pass is now auditable evidence, not prose). If steps 2–3 produced no working-tree changes, create an empty commit (`--allow-empty`) carrying **both** trailers so the branch records both passes. Format per `references/build-orchestration.md`.
        - **`review-verdict:`** carries `{verdict, reviewer, mode, units_covered, findings_count}`. **`reviewer` records who reviewed:** `cross-agent` (peer ran — the normal case), `single-agent-fallback`, or `en-review-host-fallback` (peer unavailable). The `reviewer` value IS the recorded reason a fallback was used - the single-agent peer path is ONLY a fallback for `/en-review` when the cross-agent peer is unavailable, and it must record which fallback it was. `mode` is the peer mode / review mode. `units_covered` lists **every ordinary U-ID built this run** (destructive/gated units already carry their own per-unit evidence and don't need branch-level coverage).
        - **`simplify-verdict:`** carries `{outcome, reason, findings_count, units_covered}`. `outcome` is `completed` (the `/en-simplify` pass ran), `not_applicable` (legitimately skipped - `reason` REQUIRED: `docs-only`, `trivial:<10-lines`, `--no-simplify`, or `all-destructive-gated`), or `failed` (`reason` REQUIRED - e.g. a gate-2 regression reverted it). **`--no-simplify` records `{"outcome":"not_applicable","reason":"--no-simplify",...}` explicitly - a visible, recorded opt-out, never silence.** A **missing** `simplify-verdict:` trailer is NOT a legitimate skip; the audit treats it as `missing` and fails. **`--no-peer`** likewise records the branch review as a loud, recorded skip (the audit reports `branch_review_pass: missing` and, under `--require-simplify`, fails) - never a silent pass.
-    5. **End-of-build evidence audit (mandatory, mechanical).** Compute branch-level coverage once, **with the simplify+review gate**: `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify --json` → `covered_units`, plus the two derived outcome fields **`simplify_pass`** (`completed | not_applicable | failed | missing`) and **`branch_review_pass`** (`completed | fallback_completed | failed | missing`). The `--require-simplify` flag makes the command **exit non-zero** when `simplify_pass` is `missing`/`failed` or `branch_review_pass` is `missing`/`failed` - so a skipped `/en-simplify` (with no recorded `not_applicable`) or an unrun/unrecorded branch review fails the audit here, not silently. Then for each plan U-ID, confirm it is **either** covered by `covered_units` (ordinary units) **or** has a per-unit commit passing `ensemble-verify-peer-evidence <sha>` (destructive/gated units, verified with `--require-peer-resolution`). **Surface a per-unit table plus the two gate lines in the summary**:
+    5. **End-of-build evidence audit (mandatory, mechanical).** Compute branch-level coverage once, **with the simplify+review gate**: `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify --json` → `covered_units`, plus the two derived outcome fields **`simplify_pass`** (`completed | not_applicable | failed | missing`) and **`branch_review_pass`** (`completed | fallback_completed | failed | missing`). The `--require-simplify` flag makes the command **exit non-zero** when `simplify_pass` is `missing`/`failed` or `branch_review_pass` is `missing`/`failed` - so a skipped `/en-simplify` (with no recorded `not_applicable`) or an unrun/unrecorded branch review fails the audit here, not silently. Then for each plan U-ID, confirm it is **either** covered by `covered_units` (ordinary units) **or** has a per-unit commit passing `ensemble-verify-peer-evidence <sha>` (destructive/gated units, verified with `--require-peer-resolution`). **Surface a per-unit table plus the two gate lines in the summary**:
 
       ```
       Evidence audit — FR07-auth-rotation (5 units)
@@ -397,8 +400,8 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - `references/severity.md` — apply / defer / disagree routing
 - `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
 - `references/stable-ids.md` — U-ID stability rules
-- `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch (used by step 9g)
-- `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence` — mechanical gate at step 9k and step 10. Inspects git trailers; rejects commits without valid peer evidence. Run with `--require-peer-resolution` for destructive / `gated: true` units (peer-skipped is not sufficient).
+- `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch (used by step 9g)
+- `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 9k and step 10. Inspects git trailers; rejects commits without valid peer evidence. Run with `--require-peer-resolution` for destructive / `gated: true` units (peer-skipped is not sufficient).
 
 ## Failure protocol
 
@@ -431,5 +434,5 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - **Never silently buries low-risk units in higher-risk phases.** Phase-invariant violations reject the plan structurally.
 - **Never auto-commits or auto-stashes on Ctrl-C / abort / signal.** No signal-time git operations. WIP commits are user-initiated only via `--commit-wip`.
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
-- **Never commits a unit without peer evidence.** Step 9k runs `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence` after each commit. A unit commit without `peer-resolution:` or `peer-skipped:` trailers is rejected — the agent must either re-run peer review or record a documented skip reason. Destructive and gated units cannot use `peer-skipped:` at all; they require an actual peer pass.
+- **Never commits a unit without peer evidence.** Step 9k runs `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` after each commit. A unit commit without `peer-resolution:` or `peer-skipped:` trailers is rejected — the agent must either re-run peer review or record a documented skip reason. Destructive and gated units cannot use `peer-skipped:` at all; they require an actual peer pass.
 - **Never declares a build "complete" with missing peer evidence.** The end-of-build audit (step 10) runs the same verification across every unit commit on the branch and refuses the success path (`/en-review` → `/en-qa` → `/en-ship`) if any unit fails. Suggests `/en-cross-review` on the failing commits instead.

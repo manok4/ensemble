@@ -13,7 +13,7 @@ TEST_NAME="shared peer invocation"
 missing=""
 for skill in en-plan en-foundation en-cross-review en-review; do
   f="$REPO_ROOT/skills/$skill/SKILL.md"
-  grep -qF "bin/ensemble-peer-invoke" "$f" || missing="$missing $skill"
+  grep -qF "ensemble-peer-invoke" "$f" || missing="$missing $skill"
 done
 if [ -z "$missing" ]; then
   pass "en-plan, en-foundation, en-cross-review and en-review all route through ensemble-peer-invoke"

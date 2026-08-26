@@ -527,7 +527,7 @@ else
 fi
 
 # 18. Reference list mentions the verify helper.
-if grep -qF "bin/ensemble-verify-peer-evidence" "$SKILL"; then
+if grep -qF "ensemble-verify-peer-evidence" "$SKILL"; then
   pass "en-build SKILL.md reference list mentions verify-peer-evidence helper"
 else
   fail "en-build SKILL.md reference list should mention bin/ensemble-verify-peer-evidence"

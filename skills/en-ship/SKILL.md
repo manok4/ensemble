@@ -8,6 +8,9 @@ description: "Push clean changes to the remote with a meaningful commit and PR. 
 
 # `/en-ship`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -59,8 +62,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
       - `abandoned` → record `plan_completion_checkpoint: not_applicable`; terminal state; skip to step 9.
 
    4. **Build completeness check** (accepts per-unit OR branch-level evidence). A unit's build is complete when **either**:
-      - **(per-unit, legacy)** its U-ID has ≥1 unit commit carrying a peer-evidence trailer (`peer-verdict:`, `peer-resolution:`, or `peer-skipped:`), verified via `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence <sha>`; **or**
-      - **(branch-level, lfg model)** its U-ID appears in the `covered_units` from `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --json` — i.e. the post-build branch-level review (`review-verdict:` trailer) covered it.
+      - **(per-unit, legacy)** its U-ID has ≥1 unit commit carrying a peer-evidence trailer (`peer-verdict:`, `peer-resolution:`, or `peer-skipped:`), verified via `$SKILL_DIR/scripts/ensemble-verify-peer-evidence <sha>`; **or**
+      - **(branch-level, lfg model)** its U-ID appears in the `covered_units` from `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --json` — i.e. the post-build branch-level review (`review-verdict:` trailer) covered it.
 
       Compute `covered_units` once, then for each plan U-ID check per-unit evidence first, then branch-level coverage. If every U-ID is covered by one path or the other → build complete; continue to step 5. If any U-ID has neither per-unit evidence nor branch-level coverage → outcome `incomplete_build`; list the uncovered U-IDs; surface a one-line notice; skip to step 9 (PR still opens — informational, not blocking).
 

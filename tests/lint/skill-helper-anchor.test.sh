@@ -122,6 +122,8 @@ for required_path in \
   # anchor. Accept whichever form is right for the current state, and require
   # that the named path actually resolves — which is what the preflight is for.
   bare="${required_path#\$ENSEMBLE_ROOT/}"
+  # U5 moved bundled scripts from bin/ to the skill's own scripts/.
+  bare="${bare/#bin\//scripts/}"
   if [ -e "$REPO_ROOT/skills/en-build/$bare" ]; then
     if grep -qF "$bare" "$EN_BUILD"; then
       pass "[en-build] preflight lists locally-owned helper: $bare"

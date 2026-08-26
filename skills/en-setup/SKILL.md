@@ -8,6 +8,9 @@ description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfie
 
 # `/en-setup`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -17,7 +20,7 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md` (in plugin) or run `$ENSEMBLE_ROOT/bin/ensemble-detect-host`. Set `HOST`, `PEER_AVAILABLE`, etc.
+1. **Detect host.** Source `references/host-detect.md` (in plugin) or run `$SKILL_DIR/scripts/ensemble-detect-host`. Set `HOST`, `PEER_AVAILABLE`, etc.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note (this skill should never be peer-invoked).
 3. **Detect state** per `references/setup-state-detection.md`:
    - State 1 — Greenfield (empty repo or initial-commit, no `docs/foundation.md`).
@@ -48,7 +51,7 @@ Exit.
 Run all of these in order. Each step is idempotent — running `/en-setup` twice produces the same end state.
 
 1. **Confirm sub-variant.** Probe for `AGENTS.md` / `CLAUDE.md` existence; classify as 2a/2b/2c/2d.
-2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, run `$ENSEMBLE_ROOT/bin/ensemble-classify-plans docs/plans` to inspect it. Output partitions plans into:
+2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, run `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` to inspect it. Output partitions plans into:
    - `conforming` — already pass Ensemble plan validation; leave in place.
    - `non_conforming` — `.md` files in `docs/plans/` that aren't Ensemble plans (legacy / hand-rolled / from another tool).
    - `subdirs` — unrecognized subdirectories.
@@ -92,10 +95,10 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    This step is verified again in the final-verification phase (step 17). Both checks must pass.
 9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these four scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
-   - `$ENSEMBLE_ROOT/bin/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
-   - `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
-   - `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
-   - `$ENSEMBLE_ROOT/bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
+   - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
+   - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
+   - `$SKILL_DIR/scripts/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
+   - `$SKILL_DIR/scripts/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
 
    **Resolving the plugin source path.** The plugin's `bin/` lives wherever the host CLI loads plugins from. Resolve via (in order):
      - `${ENSEMBLE_PLUGIN_DIR:-}` env var if set.
@@ -120,7 +123,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
     4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 17.
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
-    6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check`."
+    6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
 
 11. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
 12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
@@ -354,4 +357,4 @@ Next step:
 - `references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook
-- `$ENSEMBLE_ROOT/bin/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
+- `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
