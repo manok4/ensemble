@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN12
 title: Self-contained skill directories with a synced shared tree
-status: open
+status: in_progress
 location: active
 created: 2026-08-26
 shipped:
