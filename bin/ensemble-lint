@@ -436,10 +436,20 @@ check_cross_links() {
     fi
   done <<< "$fr_ids"
 
-  # TD-IDs: must resolve to an entry in tech-debt-tracker.md
+  # TD-IDs: must resolve to an entry in tech-debt-tracker.md.
+  #
+  # Only a `Resolves:` metadata field is a citation, per this rule's own
+  # definition in references/tech-debt-tracker-format.md:147 and the plan
+  # template's `- **Resolves:** TD7, TD12`. Scanning every TD-ID in the file
+  # flagged prose that merely names the syntax ("cites them as `Resolves: TD7`
+  # in unit metadata", docs/foundation.md) and sample output inside spec
+  # documents ("1 deferred to TD8"), neither of which cites anything. The
+  # anchor requires Resolves: to open the line, optionally as a list bullet
+  # and/or bolded, so a mid-sentence mention in backticks is not a citation.
   if [ -f docs/plans/tech-debt-tracker.md ]; then
     local td_ids
-    td_ids=$(grep -oE '\bTD[0-9]+\b' "$file" | sort -u || true)
+    td_ids=$(grep -E '^[[:space:]]*([-*][[:space:]]+)?(\*\*)?Resolves:(\*\*)?' "$file" 2>/dev/null \
+               | grep -oE '\bTD[0-9]+\b' | sort -u || true)
     while IFS= read -r tdid; do
       [ -z "$tdid" ] && continue
       [ "$file" = "docs/plans/tech-debt-tracker.md" ] && continue
