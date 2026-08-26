@@ -109,6 +109,25 @@ else
   log ""
 fi
 
+# Shared-tree parity. Each skill directory carries its own copy of every
+# reference, script and agent it reads, generated from shared/ by
+# scripts/sync-shared. If someone edited shared/ without re-running the sync,
+# the copies are stale — and installing them would hand every host a mixture of
+# old and new, silently. Refuse instead: the fix is one command, and a wrong
+# install is far more expensive to notice than a failed one.
+if [ -x "$SOURCE_DIR/scripts/sync-shared" ]; then
+  if ! "$SOURCE_DIR/scripts/sync-shared" --root "$SOURCE_DIR" --check --quiet >/dev/null 2>&1; then
+    log ""
+    log "✗ The skill copies are out of sync with shared/."
+    "$SOURCE_DIR/scripts/sync-shared" --root "$SOURCE_DIR" --check 2>&1 | sed 's/^/    /' | head -12
+    log ""
+    log "  Run:  scripts/sync-shared"
+    log "  Then re-run ./setup. Nothing has been installed."
+    exit 1
+  fi
+  log "Shared-tree parity: clean"
+fi
+
 if [ "$VERIFY_ONLY" = "true" ]; then
   log "--verify-only: stopping after checks. No files written."
   exit 0
