@@ -8,6 +8,9 @@ description: "Reproduce a bug from telemetry. Reads structured logs from the con
 
 # `/en-debug`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Telemetry-driven debugging. Takes an error message, trace ID, or log excerpt; reads logs from the project's configured source; correlates entries; surfaces a hypothesis pointing at specific source code.
 
 > **Read-only by default.** The skill defaults to diagnosis. It writes code only on the **code-mode fix path**, and only after the user explicitly chooses "Fix it now" — never silently.

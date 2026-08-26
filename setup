@@ -172,16 +172,29 @@ install_into() {
   done
   log "  Installed $skill_count skill(s) into $target_root/skills/ ($COPY_MODE)"
 
-  # Agents: one symlink (or copy) per .md file, placed directly under
-  # ~/.<host>/agents/<agent>.md. Same rationale as skills.
+  # Agents: published from the SKILLS that carry them, not from a central
+  # directory. Hosts resolve subagent_type from a flat registry, so a skill
+  # directory installed on its own would otherwise dispatch an agent that is
+  # installed nowhere — the bundled copies would be present and never read.
+  # Publishing from skills/*/agents/ makes installing one skill publish exactly
+  # that skill's agents. The union is collision-free because every copy is
+  # byte-identical to its source and scripts/sync-shared --check enforces it,
+  # so two skills publishing repo-research.md write the same bytes and the
+  # result does not depend on install order.
   local agent_count=0
-  for agent_file in "$SOURCE_DIR/shared/agents"/*.md; do
+  for agent_file in "$SOURCE_DIR"/skills/*/agents/*.md; do
     [ -f "$agent_file" ] || continue
     local agent_name
     agent_name="$(basename "$agent_file")"
     local dst="$target_root/agents/$agent_name"
 
     if [ -e "$dst" ] || [ -L "$dst" ]; then
+      # Already published by an earlier skill this run: identical bytes, so this
+      # is the expected union case, not a conflict. Anything else is a foreign
+      # file and is left alone.
+      if grep -qxF "$dst" "$manifest_file" 2>/dev/null; then
+        continue
+      fi
       log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."
       continue
     fi

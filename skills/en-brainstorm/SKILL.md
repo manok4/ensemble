@@ -9,6 +9,9 @@ argument-hint: "[idea or question to explore]"
 
 # `/en-brainstorm`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Lightweight idea-exploration skill. **No code written; no implementation; no peer review.** The point is to leave with clarity, not artifacts.
 
 > **Priority principle (D39): performance > speed ≥ cost.** Optimize first for the quality of the brainstorm→plan outcome, then for speed, then for token/tool cost. The rigor steps below are self-gating, so simple work stays fast.

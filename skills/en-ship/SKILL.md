@@ -8,6 +8,9 @@ description: "Push clean changes to the remote with a meaningful commit and PR. 
 
 # `/en-ship`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/en-qa` have already passed.
 
 ## Process

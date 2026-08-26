@@ -8,6 +8,9 @@ description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs
 
 # `/en-plan`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Concrete implementation plan with stable U-IDs and Outside Voice peer review. Hands off to `/en-build`.
 
 > **Priority principle (D39): performance > speed ≥ cost.** Optimize first for plan quality (does the plan lead to the right thing, built well), then for speed, then for token/tool cost. Research depth, peer-review iterations, and plan-content rigor are worth their cost when they lift build quality; keep them self-gating so lightweight work stays fast.

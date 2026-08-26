@@ -53,6 +53,16 @@ updated: 2026-08-26
 - **Not caused by EN12, and not fixed by it.** EN12 makes skills self-contained; it does not shorten them. Recorded here so the gap is tracked rather than absorbed into a migration unit, where it would weaken the atomic review of the riskiest change in that plan.
 - **Logged:** 2026-08-26
 
+### TD3. `doc-lints.md` pointed at a CI template this repo never shipped
+
+- **Source:** EN12 U7, surfaced by the single-skill-install dangling check
+- **Severity:** P3
+- **Confidence:** 9/10
+- **Location:** `shared/references/doc-lints.md:9`
+- **Why it matters:** The file recommended running the doc lints in CI "via `references/ci-templates/lint.yml`", and no such file exists anywhere in the repo or its history. Harmless while nothing resolved relative paths; once every skill carries its own copies, a link to a file that cannot exist is a dangling reference in 7 skills at once. The pointer is now replaced with a note, so the recommendation survives without promising an artifact.
+- **Suggested fix:** Either ship the template (a small workflow running `shared/bin/ensemble-lint --scope docs/`, which `.github/workflows/ensemble-tests.yml` already does for this repo and which a consuming project would want too), or drop the CI recommendation. Shipping it is the better answer, since `references/templates/` already carries `github-workflow-en-sweep.yml` and `github-workflow-claude-review.yml` for exactly this purpose.
+- **Logged:** 2026-08-26
+
 ## Resolved
 
 <!-- none yet -->

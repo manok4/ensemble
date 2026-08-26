@@ -8,6 +8,9 @@ description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, 
 
 # `/en-cross-review`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host parses findings JSON and surfaces them; the host applies the user-selected ones.
 
 ## Process

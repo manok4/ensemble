@@ -8,6 +8,9 @@ description: "Produce or retrofit the foundational artifact set: docs/foundation
 
 # `/en-foundation`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Combined PRD + technical direction + initial architecture seed for a project. Run **once** at project start (or `--retrofit` for an existing project); thereafter `/en-learn` keeps `docs/architecture.md` and the pointer maps current.
 
 > **Hard gate.** This skill writes documents only — `docs/foundation.md`, `docs/architecture.md`, `AGENTS.md`, `CLAUDE.md`, and (for new projects) the bootstrap plan `docs/plans/active/<PREFIX>01-feature_project-setup.md` where `<PREFIX>` is the resolved `plan_id_prefix` (default `FR`). **No implementation, no PR, no source-code edits.**

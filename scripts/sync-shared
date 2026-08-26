@@ -93,11 +93,22 @@ place() {
     mkdir -p "$(dirname "$dst")"
     cp -p "$src" "$dst" || viol "could not write ${dst#$ROOT/}"
   fi
-  GRANTED="$GRANTED
+  [ -z "$skill" ] || GRANTED="$GRANTED
 $skill|$(basename "$src")"
 }
 
 GRANTED=""
+
+# Publish entries: a generated copy OUTSIDE skills/, for consumers that read at
+# install time rather than at runtime. The plugin manifests need a directory
+# that exists in an installed plugin, and pointing them at shared/ would make
+# the build input part of the shipped artifact. A published directory is a build
+# OUTPUT: generated from shared/, committed, and safe for a manifest to name.
+while IFS='|' read -r source dest; do
+  [ -n "${source:-}" ] || continue
+  place "$ROOT/shared/$source" "$ROOT/${dest}$(basename "$source")" ""
+done < <(jq -r '.publish[]? | "\(.source)|\(.dest)"' "$MANIFEST")
+
 while IFS='|' read -r source dest closure skill; do
   [ -n "${source:-}" ] || continue
   skill_dir="$ROOT/skills/$skill"
@@ -145,8 +156,14 @@ if [ "$MODE" = "check" ]; then
       [ -n "$line" ] || continue
       case "$line" in "$skill|"*) ;; *) continue ;; esac
       name="${line#*|}"
-      grep -rqF "$name" "$skill_dir" 2>/dev/null \
-        || viol "manifest grants '$name' to $skill, but $skill never names it"
+      # Match the filename OR the stem: a skill names an agent as
+      # `repo-research`, not `repo-research.md`, so filename-only matching
+      # would report every agent grant as unused.
+      stem="${name%.*}"
+      if ! grep -rqF "$name" "$skill_dir" 2>/dev/null \
+         && ! grep -rqF "$stem" "$skill_dir" 2>/dev/null; then
+        viol "manifest grants '$name' to $skill, but $skill never names it"
+      fi
     done < <(printf '%s\n' "$GRANTED" | sort -u)
   done
 fi

@@ -6,7 +6,7 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 
 - **`en-review`** — pre-flight check on the diff. Lint failures surface as P1 findings.
 - **`en-sweep`** — full repo scan on every PR-merge run; opens fix-up PRs.
-- **CI** — recommended via `references/ci-templates/lint.yml`.
+- **CI** - recommended, but this repo ships no lint CI template; see TD3.
 - **Manually** — `bin/ensemble-lint [--scope docs/]`.
 
 ## Rule catalog

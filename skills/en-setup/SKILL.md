@@ -8,6 +8,9 @@ description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfie
 
 # `/en-setup`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./setup` script (machine-level install).
 
 > **Hard rule:** This skill is mechanical setup work. **No code review, no peer cross-review, no implementation.** Off-loads anything ambiguous to `/en-brainstorm`, `/en-foundation`, or `/en-plan`.

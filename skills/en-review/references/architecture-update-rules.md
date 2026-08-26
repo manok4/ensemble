@@ -41,7 +41,7 @@ If in doubt: ask "would a new engineer joining the project benefit from seeing t
 
 ## What `docs/architecture.md` contains
 
-Per `references/architecture-template.md`:
+Per `references/templates/architecture-template.md`:
 
 | Section | Maintained by | Contents |
 |---|---|---|

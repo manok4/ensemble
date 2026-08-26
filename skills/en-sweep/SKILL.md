@@ -8,6 +8,9 @@ description: "Scheduled doc-drift cleanup (default weekly; configurable via swee
 
 # `/en-sweep`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
 
 > **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check`.

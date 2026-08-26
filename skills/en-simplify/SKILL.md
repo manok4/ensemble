@@ -8,6 +8,9 @@ description: "Simplify recently changed code for clarity, reuse, quality, and ef
 
 # `/en-simplify`
 
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Behavior-preserving simplification of recently changed code. Reviews the change across three dimensions in parallel — **reuse**, **quality**, **efficiency** — applies the safe findings, and verifies behavior held. Prioritizes readable, explicit code over compactness; **fewer lines is not the goal, faster comprehension is.**
 
 > **Behavior-preserving by contract.** Every applied fix must produce the same output for every input, the same error behavior, and the same side effects and ordering. A fix that can't clear that test is skipped. Never simplifies away a safety check.

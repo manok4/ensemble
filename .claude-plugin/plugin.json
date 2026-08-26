@@ -18,6 +18,6 @@
     "ensemble"
   ],
   "skills": "./skills",
-  "agents": "./shared/agents",
+  "agents": "./agents",
   "hooks": "./hooks/hooks.json"
 }
