@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN12
 title: Self-contained skill directories with a synced shared tree
-status: draft
+status: open
 location: active
 created: 2026-08-26
 shipped:
@@ -12,9 +12,10 @@ covers_requirements: [G9, G10, G13]
 requirements_pending: false
 related_design: docs/reviews/self-contained-skills-refactor.md
 peer_review_verdict: revise
+peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-26
-peer_review_plan_hash:
+peer_review_plan_hash: a92ce784d2f6b7962c04373a624661a279e5ea6c0cb4dce937659a634e8fcf65
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -443,6 +444,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** the anchor conversion in U6 is where Compound Engineering logged three separate path bugs. **Mitigation:** its own unit, a smoke test run from an unrelated working directory, and a pattern assertion on the load-bearing trailing semicolon.
 - **Risk:** a red intermediate commit while 17 skills migrate across five units. **Mitigation:** the anchor guard stays warn-only until U8 and flips only after every skill has moved.
 - **Risk:** this plan touches well over 30 files, which normally triggers a split. **Mitigation:** the file count is concentrated in mechanical path rewrites across `tests/` and `skills/`, and the sequencing above is what makes it safe. Split by unit at review time, not by plan.
+- **Risk:** `peer_review_plan_hash` has no shared implementation. The contract is prose in `docs/scope-aware-slicing-spec.md` (per-unit goal, files, approach, risk, category, gated, dependencies, plus plan-level depth and data_scale), but nothing in `bin/` computes it, so the producer and the consumer can canonicalize differently and `/en-build` would refuse the plan at a phase boundary over a formatting difference. This plan's hash was computed as sha256 over `<uid>|goal|files|approach|risk|category|gated|dependencies` per unit in U-ID order, whitespace-collapsed, newline-joined, with `depth|data_scale` as a final line. **Mitigation:** recorded here so the value is reproducible, and the missing shared implementation is filed separately; a hash contract that exists only as prose is the same class of problem D41 addresses.
 - **Risk:** merge conflicts against in-flight skill work, since the plan touches all 17 skills. **Mitigation:** `docs/plans/active/` is otherwise empty after EN01 and EN03 were closed, so schedule U3 to U8 when no large skill rewrite is open.
 
 ## Tracked debt
