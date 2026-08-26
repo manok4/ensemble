@@ -63,6 +63,16 @@ updated: 2026-08-26
 - **Suggested fix:** Either ship the template (a small workflow running `shared/bin/ensemble-lint --scope docs/`, which `.github/workflows/ensemble-tests.yml` already does for this repo and which a consuming project would want too), or drop the CI recommendation. Shipping it is the better answer, since `references/templates/` already carries `github-workflow-en-sweep.yml` and `github-workflow-claude-review.yml` for exactly this purpose.
 - **Logged:** 2026-08-26
 
+### TD4. `core-beliefs-starter.md` ships as a template no skill ever uses
+
+- **Source:** EN12 U11, full-tree consumer search
+- **Severity:** P3
+- **Confidence:** 8/10
+- **Location:** `shared/references/core-beliefs-starter.md`
+- **Why it matters:** `docs/foundation.md:1119` lists `docs/core-beliefs.md` as an optional artifact for Standard and Deep projects, and the CHANGELOG ships `core-beliefs-starter` as a cross-cutting reference. But no skill reads the starter and no skill creates the artifact, so the capability is documented, shipped and unreachable. U11 kept the file rather than deleting it: deleting would have quietly removed a documented capability, and the measured fact is that it is unwired, not that it is unwanted.
+- **Suggested fix:** Decide the question the file cannot answer on its own. Either wire it up — `/en-foundation` offers `docs/core-beliefs.md` from this starter at Standard/Deep depth, the way it already seeds other optional artifacts — or drop both the starter and the foundation line, so the docs stop promising something nothing delivers. `scripts/sync-shared --check` now lists ungranted shared files as a note, so this stays visible until it is settled.
+- **Logged:** 2026-08-26
+
 ## Resolved
 
 <!-- none yet -->

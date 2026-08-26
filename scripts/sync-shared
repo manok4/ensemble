@@ -168,6 +168,17 @@ if [ "$MODE" = "check" ]; then
   done
 fi
 
+# Advisory: shared files no manifest entry grants to anyone.
+if [ "$MODE" = "check" ]; then
+  granted_sources="$(jq -r '(.entries[]?.source), (.publish[]?.source)' "$MANIFEST" | sort -u)"
+  orphans=""
+  while IFS= read -r f; do
+    rel="${f#$ROOT/shared/}"
+    printf '%s\n' "$granted_sources" | grep -qxF "$rel" || orphans="$orphans $rel"
+  done < <(find "$ROOT/shared" -type f ! -name 'manifest.json' ! -name 'README.md')
+  [ -z "$orphans" ] || say "sync-shared: note — granted to nobody:$orphans"
+fi
+
 if [ "$VIOLATIONS" -gt 0 ]; then
   echo "sync-shared: $VIOLATIONS problem(s)" >&2
   exit 1
