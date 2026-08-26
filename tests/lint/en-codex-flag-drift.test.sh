@@ -13,14 +13,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-codex flag drift"
 
-DETECT="$REPO_ROOT/bin/ensemble-detect-host"
-HOSTDOC="$REPO_ROOT/references/host-detect.md"
-OUTVOICE="$REPO_ROOT/references/outside-voice.md"
-HANDOFF="$REPO_ROOT/references/build-handoff.md"
-ORCH="$REPO_ROOT/references/build-orchestration.md"
+DETECT="$REPO_ROOT/shared/bin/ensemble-detect-host"
+HOSTDOC="$REPO_ROOT/shared/references/host-detect.md"
+OUTVOICE="$REPO_ROOT/shared/references/outside-voice.md"
+HANDOFF="$REPO_ROOT/shared/references/build-handoff.md"
+ORCH="$REPO_ROOT/shared/references/build-orchestration.md"
 SETUP="$REPO_ROOT/setup"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
-SMOKE="$REPO_ROOT/bin/ensemble-cli-smoke"
+SMOKE="$REPO_ROOT/shared/bin/ensemble-cli-smoke"
 
 # ============================================================
 # U1: detect-host emits PEER_TURNS, resolved per peer agent (hermetic)

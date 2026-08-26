@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-setup retrofit install list"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
-WORKFLOW_TPL="$REPO_ROOT/references/templates/github-workflow-en-sweep.yml"
+WORKFLOW_TPL="$REPO_ROOT/shared/references/templates/github-workflow-en-sweep.yml"
 
 # --- Sanity: skill file present ---
 if [ -f "$SKILL" ]; then
@@ -31,7 +31,7 @@ fi
 #     has something to copy from). The bug was that en-setup didn't copy them;
 #     this also catches the case where someone deletes them from the plugin. ---
 for script in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check ensemble-lint; do
-  if [ -f "$REPO_ROOT/bin/$script" ]; then
+  if [ -f "$REPO_ROOT/shared/bin/$script" ]; then
     pass "plugin source has bin/$script"
   else
     fail "plugin source missing bin/$script — en-setup has nothing to copy"

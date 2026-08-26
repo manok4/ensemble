@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-brainstorm cost contract"
 
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
-DISPATCH="$REPO_ROOT/references/research-dispatch.md"
+DISPATCH="$REPO_ROOT/shared/references/research-dispatch.md"
 
 # --- 1. the context scan is bounded: section-index first, never the whole file ---
 if grep -qiE "Existing-context scan \(bounded\)" "$SKILL" \

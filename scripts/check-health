@@ -87,14 +87,14 @@ if [ -x skills/en-guardrail/bin/install-guardrail ]; then
 fi
 
 # Lint
-if [ -x bin/ensemble-lint ] || [ -f bin/ensemble-lint ]; then
-  if (cd "$repo_root" && bin/ensemble-lint --quiet --scope docs/ 2>/dev/null); then
-    check "bin/ensemble-lint --scope docs/ runs clean" green
+if [ -x shared/bin/ensemble-lint ] || [ -f shared/bin/ensemble-lint ]; then
+  if (cd "$repo_root" && shared/bin/ensemble-lint --quiet --scope docs/ 2>/dev/null); then
+    check "shared/bin/ensemble-lint --scope docs/ runs clean" green
   else
-    check "bin/ensemble-lint --scope docs/ runs clean" yellow "Run bin/ensemble-lint --scope docs/ for details"
+    check "shared/bin/ensemble-lint --scope docs/ runs clean" yellow "Run shared/bin/ensemble-lint --scope docs/ for details"
   fi
 else
-  check "bin/ensemble-lint available" red "Reinstall the plugin"
+  check "shared/bin/ensemble-lint available" red "Reinstall the plugin"
 fi
 
 echo ""

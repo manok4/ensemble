@@ -31,7 +31,7 @@ jobs:
           done
 
       - name: Run lint on docs/
-        run: bin/ensemble-lint --scope docs/
+        run: shared/bin/ensemble-lint --scope docs/
 
       - name: Run test suite
         run: ./tests/run.sh

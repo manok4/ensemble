@@ -175,7 +175,7 @@ install_into() {
   # Agents: one symlink (or copy) per .md file, placed directly under
   # ~/.<host>/agents/<agent>.md. Same rationale as skills.
   local agent_count=0
-  for agent_file in "$SOURCE_DIR/agents"/*.md; do
+  for agent_file in "$SOURCE_DIR/shared/agents"/*.md; do
     [ -f "$agent_file" ] || continue
     local agent_name
     agent_name="$(basename "$agent_file")"
@@ -206,7 +206,7 @@ install_into() {
   # modes identical and covers a host that re-copies a symlinked skill dir.
   local shared_count=0
   for shared_name in references bin; do
-    local shared_src="$SOURCE_DIR/$shared_name"
+    local shared_src="$SOURCE_DIR/shared/$shared_name"
     [ -d "$shared_src" ] || continue
     local dst="$target_root/$shared_name"
 
@@ -315,8 +315,8 @@ fi
 # in a shared, sourceable helper (EN10) so the drift test exercises the REAL
 # classifier. On failure it distinguishes flag drift from an un-authenticated
 # CLI (a fresh machine is not a flag mismatch).
-# shellcheck source=bin/ensemble-cli-smoke
-. "$SOURCE_DIR/bin/ensemble-cli-smoke"
+# shellcheck source=shared/bin/ensemble-cli-smoke
+. "$SOURCE_DIR/shared/bin/ensemble-cli-smoke"
 if [ "$QUIET" != "true" ]; then
   log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
   # claude -p supports --max-turns; codex exec does not (single-shot) — EN10.

@@ -9,8 +9,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-brainstorm adopted mechanisms"
 
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
-BLIND="$REPO_ROOT/references/brainstorm-blindspot.md"
-APPR="$REPO_ROOT/references/brainstorm-approaches.md"
+BLIND="$REPO_ROOT/shared/references/brainstorm-blindspot.md"
+APPR="$REPO_ROOT/shared/references/brainstorm-approaches.md"
 
 # --- 1. RESUME: confirmed, never silent; updates in place rather than duplicating ---
 if grep -qiE "Resume or start fresh" "$SKILL" \

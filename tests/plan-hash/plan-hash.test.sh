@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="plan hash"
 
-HASH="$REPO_ROOT/bin/ensemble-plan-hash"
+HASH="$REPO_ROOT/shared/bin/ensemble-plan-hash"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 

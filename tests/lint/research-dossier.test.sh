@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="research evidence dossier"
 
-DISPATCH="$REPO_ROOT/references/research-dispatch.md"
+DISPATCH="$REPO_ROOT/shared/references/research-dispatch.md"
 
 # --- central protocol documented ---
 if grep -qiE "Evidence dossier" "$DISPATCH"; then

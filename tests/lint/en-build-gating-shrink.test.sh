@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build gating shrink"
 
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
-TEMPLATE="$REPO_ROOT/references/templates/plan-template.md"
+TEMPLATE="$REPO_ROOT/shared/references/templates/plan-template.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- preflight gate summary ---

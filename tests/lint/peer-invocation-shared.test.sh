@@ -36,13 +36,13 @@ else
 fi
 
 # --- 3. the helper still owns what the skills stopped restating ---
-INVOKE="$REPO_ROOT/bin/ensemble-peer-invoke"
+INVOKE="$REPO_ROOT/shared/bin/ensemble-peer-invoke"
 if grep -qF "peer-failed:timeout" "$INVOKE" \
    && grep -qF "peer-failed:auth" "$INVOKE" \
    && grep -qF "_epi_timeout_bin" "$INVOKE"; then
   pass "helper owns timeout, auth and unknown classification"
 else
-  fail "bin/ensemble-peer-invoke must own the timeout wrapper and failure classification"
+  fail "shared/bin/ensemble-peer-invoke must own the timeout wrapper and failure classification"
 fi
 
 report
