@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Filter grep -rn output: drop hits inside generated copies.
+#
+# EN12. Every skill carries byte-identical copies of the shared files it reads,
+# and scripts/sync-shared --check proves they match their source. A content scan
+# that also walks the copies reports one defect once per consumer, so the noise
+# grows with the number of skills instead of with the number of problems. The
+# canonical file under shared/ is still scanned, so nothing stops being checked.
+#
+# A path is a generated copy when the manifest says that skill receives that
+# file. Skill-OWNED files under the same directories are kept.
+set -u
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
+MANIFEST="$ROOT/shared/manifest.json"
+if [ ! -f "$MANIFEST" ] || ! command -v jq >/dev/null 2>&1; then cat; exit 0; fi
+GEN="$(jq -r '.entries[] | .dest as $d | .source as $s | .skills[] as $k
+              | "skills/\($k)/\($d)\($s | split("/") | last)"' "$MANIFEST" | sort -u)"
+while IFS= read -r line; do
+  path="${line%%:*}"; rel="${path#$ROOT/}"
+  printf '%s\n' "$GEN" | grep -qxF "$rel" || printf '%s\n' "$line"
+done

@@ -82,8 +82,15 @@ if printf 'codex exec --json --max-turns 1\n' | grep -qE "$DRIFT_PAT_B" \
 else
   fail "self-test: drift pattern mis-classifies the regression or prose"
 fi
+# EN12: scan the CANONICAL tree plus skill-owned files, never the generated
+# copies under skills/*/scripts/ and skills/*/references/. Those are
+# byte-identical to their source by construction and scripts/sync-shared
+# --check enforces it, so including them turns one real finding into N
+# identical ones and makes the report scale with the number of consumers
+# rather than with the number of defects.
 hardcoded=$(grep -rnE "$DRIFT_PAT_A|$DRIFT_PAT_B" \
-  "$REPO_ROOT/references" "$REPO_ROOT/skills" "$SETUP" 2>/dev/null || true)
+  "$REPO_ROOT/shared/references" "$REPO_ROOT/skills" "$SETUP" 2>/dev/null \
+  | "$REPO_ROOT/tests/lib/drop-generated" || true)
 if [ -z "$hardcoded" ]; then
   pass "no hardcoded \$PEER_CMD/codex-exec --max-turns remains in the peer contract"
 else

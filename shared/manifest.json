@@ -379,6 +379,168 @@
         "en-plan",
         "en-review"
       ]
+    },
+    {
+      "source": "bin/en-sweep-ci",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-build-peer-prompt",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-classify-plans",
+      "dest": "scripts/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "bin/ensemble-cli-smoke",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-config-get",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-detect-host",
+      "dest": "scripts/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-doc-only-check",
+      "dest": "scripts/",
+      "skills": [
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-extract-json",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-lint",
+      "dest": "scripts/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-peer-flags",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-peer-invoke",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ],
+      "closure": true
+    },
+    {
+      "source": "bin/ensemble-plan-hash",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-plan"
+      ]
+    },
+    {
+      "source": "bin/ensemble-sweep-activity-check",
+      "dest": "scripts/",
+      "skills": [
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-verify-peer-evidence",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
     }
   ]
 }
