@@ -196,8 +196,52 @@ install_into() {
   done
   log "  Installed $agent_count agent(s) into $target_root/agents/ ($COPY_MODE)"
 
+  # Shared helpers. Every skill's preamble resolves `references/X` and `bin/Y`
+  # against $ENSEMBLE_ROOT, which it computes as realpath(<skill dir>/../..).
+  # In copy mode that lands on $target_root, so these two directories must be
+  # installed alongside skills/ or all 17 skills fail their own fail-loudly
+  # check at step 1 (the default on MinGW/MSYS/Cygwin, see COPY_MODE above).
+  # In symlink mode the skill dir realpaths back to the source checkout and the
+  # repo's own copies are what resolve; installing here regardless keeps the two
+  # modes identical and covers a host that re-copies a symlinked skill dir.
+  local shared_count=0
+  for shared_name in references bin; do
+    local shared_src="$SOURCE_DIR/$shared_name"
+    [ -d "$shared_src" ] || continue
+    local dst="$target_root/$shared_name"
+
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+      log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."
+      log "    Skills cannot resolve \$ENSEMBLE_ROOT/$shared_name until you remove or rename it."
+      continue
+    fi
+
+    if [ "$COPY_MODE" = "copy" ]; then
+      cp -R "$shared_src" "$dst"
+    else
+      ln -s "$shared_src" "$dst"
+    fi
+    echo "$dst" >> "$manifest_file"
+    shared_count=$((shared_count + 1))
+  done
+  log "  Installed $shared_count shared helper dir(s) into $target_root/ ($COPY_MODE)"
+
+  # Assert the resolution the skills actually depend on, rather than trusting
+  # that the copy above succeeded. host-detect.md is the file every skill's
+  # preamble names as its partial-install probe, so probe the same one.
+  local probe="$target_root/references/host-detect.md"
+  if [ -e "$probe" ]; then
+    log "  Verified \$ENSEMBLE_ROOT resolution: $probe"
+  else
+    log "  ✗ $probe does not resolve. Skills would fail at step 1; install is incomplete."
+    INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
+  fi
+
   log ""
 }
+
+# Counts install_into failures that must not be reported as success.
+INSTALL_ERRORS=0
 
 [ "$INSTALL_CLAUDE" = "true" ] && install_into "$HOME/.claude" "Claude Code"
 [ "$INSTALL_CODEX"  = "true" ] && install_into "$HOME/.codex"  "Codex"
@@ -279,6 +323,13 @@ if [ "$QUIET" != "true" ]; then
   $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "ping"
   $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "ping"
   log ""
+fi
+
+if [ "$INSTALL_ERRORS" -gt 0 ]; then
+  log ""
+  log "✗ Install incomplete ($INSTALL_ERRORS target(s) missing shared helpers)."
+  log "  Remove any conflicting references/ or bin/ noted above and re-run ./setup."
+  exit 1
 fi
 
 log "Done. Next steps:"
