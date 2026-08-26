@@ -3,7 +3,7 @@ name: en-resolve-pr
 description: "Address review comments on the current PR. Fetches inline review threads + top-level PR comments + review-submission bodies; triages new vs already-handled, silent-drops bot wrappers; per comment applies a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes, replies, resolves threads (except needs-human). Up to 2 cycles. --enable-auto-merge flag. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-resolve-pr`
@@ -31,7 +31,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit — peer subprocesses don't run this skill.
 3. **Resolve PR number.** No arg → `gh pr view --json number -q .number`. URL → parse owner/repo/PR + comment ID; use `scripts/get-thread-for-comment` to map to a thread.
 4. **Fetch comments.** Run `scripts/get-pr-comments <PR>`. Returns three buckets plus a `cross_invocation` envelope:
@@ -158,7 +158,7 @@ This skill does **not** at v1:
 - `references/resolve-pr-triage.md` — new vs already-handled vs silent-drop rules
 - `references/resolve-pr-rubric.md` — 4-question rubric driving the 6 verdicts
 - `references/resolve-pr-reply-format.md` — reply templates and quoting rules
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
+- `references/host-detect.md` — host detection
 
 ## Failure protocol
 

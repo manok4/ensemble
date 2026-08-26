@@ -3,7 +3,7 @@ name: en-qa
 description: "Test the work like a real user. Phase 1: lint + typecheck + test suite. Phase 2: Playwright browser end-to-end (golden path + edge cases — empty/error states, slow network, double-click, navigate-mid-action, keyboard, mobile). Per bug: reproduce → root cause → fix → regression test → atomic commit → re-verify. Outputs a QA report with screenshots. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-qa`
@@ -12,7 +12,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
 ## Process
 
-1. **Detect host (light).** Source `$ENSEMBLE_ROOT/references/host-detect.md` only for path conventions; no peer-review setup needed (cross-review is off for QA).
+1. **Detect host (light).** Source `references/host-detect.md` only for path conventions; no peer-review setup needed (cross-review is off for QA).
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocess shouldn't QA in CI).
 3. **Phase 1 — system checks.** Run in this order; stop on first failure:
    - Project lint (from `AGENTS.md` `{{LINT_CMD}}`).
@@ -26,7 +26,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - User asks if none found.
 5. **Verify Playwright MCP.** Per `references/playwright-helpers.md`. If unavailable → run Phase 1 only and surface the gap.
 6. **Bootstrap test framework if absent.** If the project has no test suite at all, surface and offer to install Playwright (or the project's preferred framework). Bootstrap is its own commit.
-6a. **Browser-phase detector.** Before running Phase 2, classify the change via `$ENSEMBLE_ROOT/references/diff-signal-detection.md`. Run Phase 2 only when `needs_browser` is `true` (the diff touches frontend/UI files) **OR** the user passed `--browser`. When `needs_browser` is `false` AND `--browser` was not passed: skip Phase 2 with the one-line note *"Browser QA auto-skipped — no frontend files changed; pass --browser to force."* and proceed to the report. **Fail closed:** if the diff can't be classified (no base ref, detached HEAD), treat as `needs_browser: true` and run Phase 2. `--browser` always forces Phase 2; `--system-only` always skips it (and wins over `--browser`).
+6a. **Browser-phase detector.** Before running Phase 2, classify the change via `references/diff-signal-detection.md`. Run Phase 2 only when `needs_browser` is `true` (the diff touches frontend/UI files) **OR** the user passed `--browser`. When `needs_browser` is `false` AND `--browser` was not passed: skip Phase 2 with the one-line note *"Browser QA auto-skipped — no frontend files changed; pass --browser to force."* and proceed to the report. **Fail closed:** if the diff can't be classified (no base ref, detached HEAD), treat as `needs_browser: true` and run Phase 2. `--browser` always forces Phase 2; `--system-only` always skips it (and wins over `--browser`).
 7. **Phase 2 — browser QA.** Per `references/qa-flows.md`:
    - Walk each top-level user flow (from foundation §6 F-IDs).
    - For each, exercise the golden path + the edge cases (empty state, error state, slow network, double-click, navigate-mid-action, keyboard-only, mobile viewport).
@@ -58,7 +58,7 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 - No URL provided and none detected.
 - Playwright MCP unavailable.
 - Branch is doc-only (`git diff --name-only` shows only `docs/`).
-- **No frontend files changed** (detector `needs_browser: false`, no `--browser`) — per `$ENSEMBLE_ROOT/references/diff-signal-detection.md`.
+- **No frontend files changed** (detector `needs_browser: false`, no `--browser`) — per `references/diff-signal-detection.md`.
 - `--system-only` flag.
 - `peer_mode_override: off` and the user disabled all browser ops.
 
@@ -147,7 +147,7 @@ URL: https://preview-fr07.vercel.app
 
 - `references/qa-flows.md` — flow catalog and bug protocol
 - `references/playwright-helpers.md` — MCP usage patterns
-- `$ENSEMBLE_ROOT/references/host-detect.md` — light usage
+- `references/host-detect.md` — light usage
 
 ## Failure protocol
 

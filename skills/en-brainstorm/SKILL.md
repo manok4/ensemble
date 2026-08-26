@@ -4,7 +4,7 @@ description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-awa
 argument-hint: "[idea or question to explore]"
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-brainstorm`
@@ -17,7 +17,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Brainstorm needs exactly two things from it: `$QUESTION_TOOL` (the Q&A step) and path conventions. No peer resolution — cross-review is off here.
+1. **Detect host.** Source `references/host-detect.md`. Brainstorm needs exactly two things from it: `$QUESTION_TOOL` (the Q&A step) and path conventions. No peer resolution — cross-review is off here.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note.
 3. **Resume or start fresh.** Glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
@@ -48,7 +48,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 8. **Product pressure test** (self-gating). Before generating approaches, pressure-test whether the idea is real and well-framed. This is **internal analysis**: scan the opening and the dialogue so far for the rigor gaps catalogued in `references/socratic-questions.md` → "Product rigor gaps", and raise **only those that actually exist**, as **open-ended probes** folded into the conversation — never a menu, never a pre-flight checklist. A well-framed opening earns **zero** probes; one probe satisfies one gap. The gaps: **evidence**, **specificity**, **counterfactual**, **attachment**, and **durability** (Deep / strategic scope only). If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than skipping it.
 9. **Integration check.** Still before approaches: **combine** what the user has said with your own defaults and surface any non-obvious downstream consequence the one-question-at-a-time dialogue hasn't probed (*"if mute lives on the rule AND we don't warn on delete, then rule-delete silently loses pause state"*). Fire **one open-ended probe per genuine combination effect**, not a blanket audit.
 10. **Probe budget.** The pressure test, the integration check, and any blindspot walk-through **count toward the depth question budget** — they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe (the single highest-signal gap) and skip the rest; a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
-11. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `$ENSEMBLE_ROOT/references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
+11. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
 12. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
     - **Divergent generation gate.** On **Deep**, or on **Standard with 3+ genuinely live directions**, generate the approaches through parallel constraint-diverged sub-agents rather than serially in this context — serial generation anchors, and B and C come back as variants of A. **Read `references/brainstorm-approaches.md` when this fires**; it owns the constraint table, the acceptance bar, and the no-sub-agent fallback.
     - Otherwise generate inline. When one approach is clearly best, skip the menu and say so.
@@ -108,9 +108,9 @@ If user picks "talk it through" → answer in chat; no file written, and the wri
 ## Reference files
 
 - `references/socratic-questions.md` — Q&A pool and the Product rigor gaps catalogue
-- `$ENSEMBLE_ROOT/references/research-dispatch.md` — when to use `web-research`
+- `references/research-dispatch.md` — when to use `web-research`
 - `references/templates/design-doc-template.md` — output template
-- `$ENSEMBLE_ROOT/references/host-detect.md` — `$QUESTION_TOOL` and path conventions
+- `references/host-detect.md` — `$QUESTION_TOOL` and path conventions
 
 Gated — read only when their step's gate fires, never up front:
 

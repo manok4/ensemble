@@ -3,7 +3,7 @@ name: en-build
 description: "Execute an implementation plan unit-by-unit on a feature branch. Picks build-by-orchestration (Claude host dispatches Codex worker) or build-handoff (Codex host with Claude peer reviewer) per host detection. Branch-level review model (D35, amended by D46): each ordinary unit is implement → tests + lint → commit; code-simplifier (/en-simplify) and cross-agent Outside Voice review (/en-review --peer: mandatory peer + host personas) run ONCE over the branch diff after all units, then the host applies findings. Destructive/gated units get a dedicated per-unit peer pass. A structured learning checkpoint fires last, after the branch-level review. Trigger phrases: 'build this plan', 'implement <plan_id>', 'start building', 'execute the plan'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-build`
@@ -16,16 +16,16 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve `HOST`, `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`.
+1. **Detect host.** Source `references/host-detect.md`. Resolve `HOST`, `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`.
 
    **Plugin-install preflight (fail-fast).** Verify the skill's referenced files are accessible — observed failure mode: a partial plugin install that has only `SKILL.md` leaves the agent without the dispatch recipe, and peer review silently degrades to "skipped without recording why." For each of these reference paths, confirm the file exists:
 
-   - `$ENSEMBLE_ROOT/references/host-detect.md`
-   - `$ENSEMBLE_ROOT/references/build-orchestration.md`
-   - `$ENSEMBLE_ROOT/references/build-handoff.md`
-   - `$ENSEMBLE_ROOT/references/outside-voice.md`
-   - `$ENSEMBLE_ROOT/references/severity.md`
-   - `$ENSEMBLE_ROOT/references/finding-schema.md`
+   - `references/host-detect.md`
+   - `references/build-orchestration.md`
+   - `references/build-handoff.md`
+   - `references/outside-voice.md`
+   - `references/severity.md`
+   - `references/finding-schema.md`
    - `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt`
    - `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence`
 
@@ -33,8 +33,8 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip all peer-review subprocess calls (host implements + reviews inline). Each unit commit will record `peer-skipped: recursion-guard-active` so the gate at step 9k passes.
 3. **Choose flavor.**
-   - HOST = Claude Code → **build-by-orchestration** (Codex as worker). See `$ENSEMBLE_ROOT/references/build-orchestration.md`.
-   - HOST = Codex → **build-handoff** (Claude as peer-reviewer). See `$ENSEMBLE_ROOT/references/build-handoff.md`.
+   - HOST = Claude Code → **build-by-orchestration** (Codex as worker). See `references/build-orchestration.md`.
+   - HOST = Codex → **build-handoff** (Claude as peer-reviewer). See `references/build-handoff.md`.
    - User can override with `--orchestrate` or `--handoff`.
    - If the dispatched agent's CLI isn't available, fall back gracefully:
      - build-by-orchestration with no Codex → degrade to native implement + peer review (build-handoff with same-agent fallback).
@@ -123,7 +123,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
     These are the primary safety boundary — and they are deliberately **two narrow categories, nothing more**:
     - **`risk: destructive`** — its own literal-string category, for irreversible data loss.
-    - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated — they're covered by the per-unit verification gate (9d) + the post-build review (step 10), not user prompts. (Plan authors and peer review enforce this bar; see `$ENSEMBLE_ROOT/references/templates/plan-template.md`.)
+    - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated — they're covered by the per-unit verification gate (9d) + the post-build review (step 10), not user prompts. (Plan authors and peer review enforce this bar; see `references/templates/plan-template.md`.)
 
     Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `--pause`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
 
@@ -204,7 +204,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
      - **9c. Implement** via the flavor's flow (worker dispatch or native).
      - **9d. Verification gate.** Run unit tests + project lint. Failures → fix before committing (don't commit a broken unit).
      - **9e. Conditional per-unit peer review (destructive / gated units ONLY).** **The branch-level review model (D35) defers code-simplifier and Outside Voice review to the post-build phase (step 10) for ordinary units.** The exception: a unit with `risk: destructive` or `gated: true` MUST get a dedicated per-unit Outside Voice peer pass here — a branch-level pass is not a sufficient substitute for high-consequence work. For those units only:
-       - Set `ENSEMBLE_PEER_REVIEW=true`; invoke the peer per the flavor (`build-orchestration.md` / `build-handoff.md`); apply findings per `$ENSEMBLE_ROOT/references/severity.md` into a `resolutions[]` list.
+       - Set `ENSEMBLE_PEER_REVIEW=true`; invoke the peer per the flavor (`build-orchestration.md` / `build-handoff.md`); apply findings per `references/severity.md` into a `resolutions[]` list.
        - **Per-unit finalize loop.** Track `re_review_count` (it **starts at 0**; the initial peer pass does NOT count). If `verdict: revise` AND ≥1 finding was applied AND `re_review_count < --max-per-unit-iterations` (default 1): re-invoke the peer with a "Previous review context" tempfile, then increment. Terminates on `approve`, cap exhaustion, all-deferred/disagreed, or `reject` (pause + surface). **Cap-hit warning:** if the cap is hit AND ≥1 finding was applied on the last re-review pass, surface a P1 warning — those applications were verified by tests+lint but NOT by another peer pass.
        - Re-verify (tests + lint) if code changed.
        - For all other (ordinary) units: skip straight to 9f. No per-unit peer, no per-unit simplifier — they're covered by the post-build branch-level review.
@@ -227,8 +227,8 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
        The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
 
-       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.5 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `$ENSEMBLE_ROOT/references/severity.md` (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. Skip entirely with `--no-peer` (records the branch as review-skipped). The peer machinery lives in en-review (one implementation), not duplicated here.
-    4. **Commit the simplify + review changes** (if any) with **both** a `review-verdict:` trailer AND a `simplify-verdict:` trailer (EN07 - the simplify pass is now auditable evidence, not prose). If steps 2–3 produced no working-tree changes, create an empty commit (`--allow-empty`) carrying **both** trailers so the branch records both passes. Format per `$ENSEMBLE_ROOT/references/build-orchestration.md`.
+       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.5 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `references/severity.md` (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. Skip entirely with `--no-peer` (records the branch as review-skipped). The peer machinery lives in en-review (one implementation), not duplicated here.
+    4. **Commit the simplify + review changes** (if any) with **both** a `review-verdict:` trailer AND a `simplify-verdict:` trailer (EN07 - the simplify pass is now auditable evidence, not prose). If steps 2–3 produced no working-tree changes, create an empty commit (`--allow-empty`) carrying **both** trailers so the branch records both passes. Format per `references/build-orchestration.md`.
        - **`review-verdict:`** carries `{verdict, reviewer, mode, units_covered, findings_count}`. **`reviewer` records who reviewed:** `cross-agent` (peer ran — the normal case), `single-agent-fallback`, or `en-review-host-fallback` (peer unavailable). The `reviewer` value IS the recorded reason a fallback was used - the single-agent peer path is ONLY a fallback for `/en-review` when the cross-agent peer is unavailable, and it must record which fallback it was. `mode` is the peer mode / review mode. `units_covered` lists **every ordinary U-ID built this run** (destructive/gated units already carry their own per-unit evidence and don't need branch-level coverage).
        - **`simplify-verdict:`** carries `{outcome, reason, findings_count, units_covered}`. `outcome` is `completed` (the `/en-simplify` pass ran), `not_applicable` (legitimately skipped - `reason` REQUIRED: `docs-only`, `trivial:<10-lines`, `--no-simplify`, or `all-destructive-gated`), or `failed` (`reason` REQUIRED - e.g. a gate-2 regression reverted it). **`--no-simplify` records `{"outcome":"not_applicable","reason":"--no-simplify",...}` explicitly - a visible, recorded opt-out, never silence.** A **missing** `simplify-verdict:` trailer is NOT a legitimate skip; the audit treats it as `missing` and fails. **`--no-peer`** likewise records the branch review as a loud, recorded skip (the audit reports `branch_review_pass: missing` and, under `--require-simplify`, fails) - never a silent pass.
     5. **End-of-build evidence audit (mandatory, mechanical).** Compute branch-level coverage once, **with the simplify+review gate**: `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify --json` → `covered_units`, plus the two derived outcome fields **`simplify_pass`** (`completed | not_applicable | failed | missing`) and **`branch_review_pass`** (`completed | fallback_completed | failed | missing`). The `--require-simplify` flag makes the command **exit non-zero** when `simplify_pass` is `missing`/`failed` or `branch_review_pass` is `missing`/`failed` - so a skipped `/en-simplify` (with no recorded `not_applicable`) or an unrun/unrecorded branch review fails the audit here, not silently. Then for each plan U-ID, confirm it is **either** covered by `covered_units` (ordinary units) **or** has a per-unit commit passing `ensemble-verify-peer-evidence <sha>` (destructive/gated units, verified with `--require-peer-resolution`). **Surface a per-unit table plus the two gate lines in the summary**:
@@ -332,7 +332,7 @@ Auto-skip and explicit-skip are operationally identical — the agent still writ
 
 When peer is available:
 - Cross-agent → peer is the *other* agent (D23).
-- Single-agent fallback → fresh subprocess of host's CLI (D31). Prompt augmented per `$ENSEMBLE_ROOT/references/single-agent-fallback.md`.
+- Single-agent fallback → fresh subprocess of host's CLI (D31). Prompt augmented per `references/single-agent-fallback.md`.
 
 ## Code simplification
 
@@ -342,7 +342,7 @@ When peer is available:
 - `--no-simplify` flag.
 - Units where the diff exceeds `simplifier.max_lines_to_run` (default 2000).
 
-Two verification gates protect against simplifier breakage. On Gate-2 failure, revert the simplifier's edits and continue with the original implementation (per `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md`).
+Two verification gates protect against simplifier breakage. On Gate-2 failure, revert the simplifier's edits and continue with the original implementation (per `references/code-simplifier-dispatch.md`).
 
 ## Per-unit progress report
 
@@ -384,16 +384,16 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
-- `$ENSEMBLE_ROOT/references/build-orchestration.md` — Claude-host flow (worker dispatch)
-- `$ENSEMBLE_ROOT/references/build-handoff.md` — Codex-host flow (peer-reviewer dispatch)
-- `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md` — when/how to run simplifier; revert protocol
-- `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt and verdict handling
-- `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — fallback when only one CLI installed
-- `$ENSEMBLE_ROOT/references/finding-schema.md` — peer JSON shape
-- `$ENSEMBLE_ROOT/references/severity.md` — apply / defer / disagree routing
-- `$ENSEMBLE_ROOT/references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
-- `$ENSEMBLE_ROOT/references/stable-ids.md` — U-ID stability rules
+- `references/host-detect.md` — host detection
+- `references/build-orchestration.md` — Claude-host flow (worker dispatch)
+- `references/build-handoff.md` — Codex-host flow (peer-reviewer dispatch)
+- `references/code-simplifier-dispatch.md` — when/how to run simplifier; revert protocol
+- `references/outside-voice.md` — peer-review prompt and verdict handling
+- `references/single-agent-fallback.md` — fallback when only one CLI installed
+- `references/finding-schema.md` — peer JSON shape
+- `references/severity.md` — apply / defer / disagree routing
+- `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
+- `references/stable-ids.md` — U-ID stability rules
 - `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch (used by step 9g)
 - `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence` — mechanical gate at step 9k and step 10. Inspects git trailers; rejects commits without valid peer evidence. Run with `--require-peer-resolution` for destructive / `gated: true` units (peer-skipped is not sufficient).
 

@@ -1,5 +1,384 @@
 {
   "version": 1,
   "comment": "Which skill receives which shared file. dest is relative to the skill directory. closure:true follows a script's sourcing chain and carries the siblings too. See shared/README.md.",
-  "entries": []
+  "entries": [
+    {
+      "source": "references/architecture-fitness.md",
+      "dest": "references/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/architecture-update-rules.md",
+      "dest": "references/",
+      "skills": [
+        "en-foundation",
+        "en-learn",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/build-handoff.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/build-orchestration.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/cli-wrappers.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/code-simplifier-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-simplify"
+      ]
+    },
+    {
+      "source": "references/diff-signal-detection.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-qa",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/doc-lints.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/finding-schema.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/host-detect.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/learn-bootstrap-patterns.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/learn-cross-ref-maintenance.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn"
+      ]
+    },
+    {
+      "source": "references/learn-index-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/learn-lint.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/learn-log-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/learning-frontmatter-schema.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn"
+      ]
+    },
+    {
+      "source": "references/observability-conventions.md",
+      "dest": "references/",
+      "skills": [
+        "en-debug",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/observability-hypothesis-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-debug"
+      ]
+    },
+    {
+      "source": "references/outside-voice.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/peer-model-policy.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/persona-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/recursion-guard.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/research-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-foundation",
+        "en-plan"
+      ]
+    },
+    {
+      "source": "references/secret-patterns.md",
+      "dest": "references/",
+      "skills": [
+        "en-debug",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/severity.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/single-agent-fallback.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "references/stable-ids.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/sweep-checks.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/sweep-loop-guards.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/sweep-security-model.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/tech-debt-tracker-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/templates/agents-md-merge-rules.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/agents-md-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/claude-md-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/config-local-example.yaml",
+      "dest": "references/templates/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/github-workflow-claude-review.yml",
+      "dest": "references/templates/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/github-workflow-en-sweep.yml",
+      "dest": "references/templates/",
+      "skills": [
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/templates/plan-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    }
+  ]
 }

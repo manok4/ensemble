@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[feature description, or --plan <path>]"
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-flow`
@@ -18,7 +18,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (pipeline never runs inside a peer subprocess).
 3. **Shipping precondition.** Run `git remote` once. **No remote** → record `local_only: true`: every stage still runs and commits locally, but the ship stage skips push / PR / watch (a missing remote is a terminal local-only state, not an error — never retry a push). A remote exists → full pipeline.
 
@@ -66,7 +66,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 ## Reference files
 
 - `references/en-flow-pipeline.md` — stage contracts and gates
-- `$ENSEMBLE_ROOT/references/host-detect.md`
+- `references/host-detect.md`
 
 ## Failure protocol
 

@@ -3,7 +3,7 @@ name: en-simplify
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Three parallel review dimensions (reuse / quality / efficiency), behavior-preserving, scoped verification. Default scope: the current branch diff vs base. Usable ad-hoc and called by /en-build's post-build phase. Use /en-debug for bugs, not this. Trigger phrases: 'simplify', 'tidy this up', 'refactor pass', 'clean up the diff', 'simplify before PR'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-simplify`
@@ -14,7 +14,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 ## Process
 
-1. **Detect host (light).** Source `$ENSEMBLE_ROOT/references/host-detect.md` for path conventions and subagent-dispatch primitives.
+1. **Detect host (light).** Source `references/host-detect.md` for path conventions and subagent-dispatch primitives.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't run simplification passes).
 3. **Resolve scope** (first match wins):
    1. **User-named scope** (a file, directory, "the function I just wrote", "this morning's changes") — authoritative; do not widen it.
@@ -50,9 +50,9 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md` — dispatch + revert protocol
+- `references/code-simplifier-dispatch.md` — dispatch + revert protocol
 - `$ENSEMBLE_ROOT/agents/code-simplifier.md` — the reviewer agent
-- `$ENSEMBLE_ROOT/references/host-detect.md`
+- `references/host-detect.md`
 
 ## Failure protocol
 

@@ -116,10 +116,22 @@ for required_path in \
   '$ENSEMBLE_ROOT/references/finding-schema.md' \
   '$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt' \
   '$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence'; do
-  if grep -qF "$required_path" "$EN_BUILD"; then
+  # EN12: the preflight must still name every required helper, but the correct
+  # FORM changes as the skill migrates. A reference en-build now owns is named
+  # bare-relative; anything still resolved through the install root keeps the
+  # anchor. Accept whichever form is right for the current state, and require
+  # that the named path actually resolves — which is what the preflight is for.
+  bare="${required_path#\$ENSEMBLE_ROOT/}"
+  if [ -e "$REPO_ROOT/skills/en-build/$bare" ]; then
+    if grep -qF "$bare" "$EN_BUILD"; then
+      pass "[en-build] preflight lists locally-owned helper: $bare"
+    else
+      fail "[en-build] preflight no longer names its local helper: $bare"
+    fi
+  elif grep -qF "$required_path" "$EN_BUILD"; then
     pass "[en-build] preflight lists anchored path: $required_path"
   else
-    fail "[en-build] preflight missing anchored path: $required_path"
+    fail "[en-build] preflight missing helper: $required_path"
   fi
 done
 

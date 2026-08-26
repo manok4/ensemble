@@ -3,7 +3,7 @@ name: en-guardrail
 description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writing MCP tools inspect each command/statement for destructive patterns (recursive rm, non-recursive deleters, DROP TABLE, TRUNCATE, DELETE/UPDATE-without-WHERE, SQL-from-file, ORM resets, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and force a permission prompt. In-tree build artifacts and localhost+test/dev databases pass without prompting. Human-only bypass via exporting ENSEMBLE_GUARDRAIL_BYPASS=on before launch (the old inline ENSEMBLE_GUARDRAIL=off prefix no longer works). Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
+> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
 
 
 # `/en-guardrail`
@@ -14,7 +14,7 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 
 ## Process (when invoked manually)
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host.** Source `references/host-detect.md`.
 2. **Status check.** Verify the hook is registered in `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh`). If missing, surface the install snippet (see "Installation" below) and stop.
 3. **Show protected patterns** — render the table from "What's protected" below.
 4. **Show recent fires** if `~/.ensemble/analytics/guardrail.jsonl` exists — last 10 lines, summarized as `pattern × count × repo`.
@@ -120,7 +120,7 @@ The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffec
 ## Reference files
 
 - `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` — the hook script (canonical source).
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection.
+- `references/host-detect.md` — host detection.
 - Upstream: `gstack/careful` — the original this is vendored from. To pull updates, diff against the upstream and selectively re-apply.
 
 ## Failure protocol
