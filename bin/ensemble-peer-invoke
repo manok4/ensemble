@@ -20,7 +20,16 @@
 # stdout. The peer's own stdout goes to --out-file.
 
 # Locate and load the shared classifier (reused from EN10, never duplicated).
-_epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#
+# BASH_SOURCE is bash-only. Consumers `source` this file (it exports a function,
+# so they must), and on macOS the sourcing shell is often zsh -- which leaves
+# BASH_SOURCE unset and, under `set -u`, aborted the sibling loads while
+# ensemble_peer_invoke still returned a well-formed
+# {"peer":"off","reason":"peer-failed:retry-exhausted"}. A broken helper was
+# therefore indistinguishable from a real peer failure, silently disabling peer
+# review. zsh sets $0 to the sourced file, bash does not, so the fallback covers
+# sourced and executed under both shells.
+_epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=bin/ensemble-cli-smoke
 . "$_epi_dir/ensemble-cli-smoke"
 # shellcheck source=bin/ensemble-extract-json

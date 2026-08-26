@@ -65,7 +65,17 @@ ensemble_extract_json() {
   printf '%s' "$_out"
 }
 
-# Direct execution: behave as a filter.
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+# Direct execution: behave as a filter. Sourcing must not run it.
+#
+# The bash test (BASH_SOURCE[0] == $0) cannot be reused under zsh, where $0 is
+# the sourced file in BOTH cases and the naive fallback would run the filter on
+# every source. zsh instead appends ":file" to ZSH_EVAL_CONTEXT when sourcing,
+# so each shell is asked the question it can actually answer.
+if [ -n "${ZSH_EVAL_CONTEXT:-}" ]; then
+  case "$ZSH_EVAL_CONTEXT" in
+    *:file*) : ;;
+    *) ensemble_extract_json "$@" ;;
+  esac
+elif [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
   ensemble_extract_json "$@"
 fi
