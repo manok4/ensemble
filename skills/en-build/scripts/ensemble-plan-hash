@@ -56,44 +56,56 @@ fi
 # semantic edit; anything beyond that is a real change and must move the hash.
 _canon() {
   awk '
-    function flush(   i) {
+    # A field value is its label line PLUS every continuation line up to the
+    # next field, unit, or section. Capturing only the label line let a
+    # multi-paragraph Approach be rewritten without moving the hash, which is
+    # exactly the tampering this value exists to detect.
+    #
+    # Fields are emitted length-prefixed rather than pipe-joined. Concatenating
+    # with a bare delimiter lets pipe characters move across a field boundary
+    # and produce identical canonical bytes for two different plans.
+    function put(k, v) {
+      gsub(/[[:space:]]+/, " ", v); gsub(/^ | $/, "", v)
+      printf "%s:%d:%s\n", k, length(v), v
+    }
+    function close_field() {
+      if (cur != "") { if (!(cur in f)) f[cur] = buf; cur = ""; buf = "" }
+    }
+    function flush(   i, order, n) {
+      close_field()
       if (uid == "") return
-      printf "%s|%s|%s|%s|%s|%s|%s|%s\n", uid, f["Goal"], f["Files"], f["Approach"], \
-             f["Risk"], f["Category"], f["Gated"], f["Dependencies"]
+      printf "U:%s\n", uid
+      n = split("Goal,Files,Approach,Risk,Category,Gated,Dependencies", order, ",")
+      for (i = 1; i <= n; i++) put(order[i], (order[i] in f) ? f[order[i]] : "")
       uid = ""
       for (i in f) delete f[i]
     }
-    function val(line,   v) {
-      sub(/^- \*\*[A-Za-z ]+:\*\*[[:space:]]*/, "", line)
-      gsub(/[[:space:]]+/, " ", line)
-      gsub(/^ | $/, "", line)
-      return line
-    }
-    # Frontmatter: first two --- delimited lines.
     /^---[[:space:]]*$/ { dashes++; next }
-    dashes == 1 && /^depth:/      { depth = val_fm($0, "depth"); next }
-    dashes == 1 && /^data_scale:/ { scale = val_fm($0, "data_scale"); next }
-    function val_fm(line, key,   v) {
-      sub("^" key ":[[:space:]]*", "", line)
-      gsub(/[[:space:]]+/, " ", line); gsub(/^ | $/, "", line)
-      return line
-    }
+    dashes == 1 && /^depth:/      { depth = $2; next }
+    dashes == 1 && /^data_scale:/ { scale = $2; next }
     /^### U[0-9]+\./ {
       flush()
       match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH)
       next
     }
-    # A level-2 heading ends the units section, so trailing prose that happens to
-    # use the same bullet labels (the plan template prescribes "- **Risk:** ... "
-    # under "## Decisions, assumptions & risks") cannot bleed into the last unit.
+    # A level-2 heading ends the units section, so trailing prose using the same
+    # bullet labels (the template prescribes "- **Risk:**" under "## Decisions,
+    # assumptions & risks") cannot bleed into the last unit.
     /^## / { flush(); next }
     uid != "" && /^- \*\*(Goal|Files|Approach|Risk|Category|Gated|Dependencies):\*\*/ {
+      close_field()
       match($0, /\*\*[A-Za-z]+:/)
-      key = substr($0, RSTART + 2, RLENGTH - 3)
-      if (!(key in f)) f[key] = val($0)   # first occurrence wins
+      cur = substr($0, RSTART + 2, RLENGTH - 3)
+      line = $0
+      sub(/^- \*\*[A-Za-z ]+:\*\*[[:space:]]*/, "", line)
+      buf = line
       next
     }
-    END { flush(); printf "%s|%s\n", depth, scale }
+    # Any other "- **Label:**" bullet closes the current field without starting
+    # a new one, so an unhashed field cannot be absorbed as continuation.
+    uid != "" && /^- \*\*[A-Za-z ]+:\*\*/ { close_field(); next }
+    uid != "" && cur != "" { buf = buf " " $0; next }
+    END { flush(); put("depth", depth); put("data_scale", scale) }
   ' "$PLAN"
 }
 

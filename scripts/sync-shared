@@ -65,15 +65,33 @@ _siblings() {
 }
 
 # A script plus everything it sources, transitively. Prints basenames.
+#
+# Callers use this in a command substitution, so anything it raises with viol()
+# would increment VIOLATIONS in a SUBSHELL and be discarded — the parent would
+# print the error and still exit 0. Missing siblings are therefore recorded to a
+# file the parent reads afterwards, via _closure_faults.
 _closure() {
   local dir="$1" name="$2" seen="$3"
   case " $seen " in *" $name "*) return 0 ;; esac
   echo "$name"; seen="$seen $name"
   local sib
   for sib in $(_siblings "$dir/$name"); do
-    [ -f "$dir/$sib" ] || { viol "closure: $name sources '$sib', absent from $(basename "$dir")/"; continue; }
+    if [ ! -f "$dir/$sib" ]; then
+      echo "closure: $name sources '$sib', absent from $(basename "$dir")/" >> "$CLOSURE_FAULTS"
+      continue
+    fi
     _closure "$dir" "$sib" "$seen"
   done
+}
+
+CLOSURE_FAULTS="$(mktemp)"
+trap 'rm -f "$CLOSURE_FAULTS"' EXIT INT TERM HUP
+
+# Raise anything _closure recorded, in the PARENT shell where it counts.
+_drain_closure_faults() {
+  [ -s "$CLOSURE_FAULTS" ] || return 0
+  while IFS= read -r f; do viol "$f"; done < <(sort -u "$CLOSURE_FAULTS")
+  : > "$CLOSURE_FAULTS"
 }
 
 # One source→destination copy. Compares in check mode, writes otherwise.
@@ -86,8 +104,13 @@ place() {
     elif ! cmp -s "$src" "$dst"; then
       viol "drift: ${dst#$ROOT/} differs from ${src#$ROOT/}"
       viol "       do not edit the generated copy — change ${src#$ROOT/}, then run scripts/sync-shared"
-    elif [ -x "$src" ] && [ ! -x "$dst" ]; then
-      viol "mode drift: ${dst#$ROOT/} lost the executable bit (run scripts/sync-shared)"
+    else
+      # Symmetric: an ADDED executable bit is drift too. The documented promise
+      # is that a copy matches its source, not merely that it is runnable.
+      src_x=no; dst_x=no
+      [ -x "$src" ] && src_x=yes
+      [ -x "$dst" ] && dst_x=yes
+      [ "$src_x" = "$dst_x" ] || viol "mode drift: ${dst#$ROOT/} executable=$dst_x, source is $src_x (run scripts/sync-shared)"
     fi
   else
     mkdir -p "$(dirname "$dst")"
@@ -133,23 +156,25 @@ if [ "$MODE" = "check" ]; then
     [ -d "$skill_dir" ] || continue
     skill="$(basename "$skill_dir")"
 
-    # Every bare-relative asset path a MIGRATED skill names must resolve inside
-    # that skill. A skill still carrying $ENSEMBLE_ROOT has not migrated, and its
-    # preamble contains the literal placeholders `references/X` and `bin/Y`, so
-    # the check would fire on documentation rather than on a real path. It
-    # therefore goes live per skill, exactly when that skill migrates (U8).
-    if ! grep -rqF 'ENSEMBLE_ROOT' "$skill_dir" 2>/dev/null; then
-      # references/templates/agents only. `scripts/` is deliberately excluded:
-      # skills legitimately name repo-level scripts (en-setup points at
-      # `scripts/check-health` in the user's project), and a bundled script
-      # resolving correctly is proven by executing it in U6's smoke test, which
-      # is a stronger check than asserting the file exists.
-      while IFS= read -r ref; do
-        [ -n "$ref" ] || continue
-        [ -e "$skill_dir$ref" ] || viol "$skill names \`$ref\` but no such file in skills/$skill/"
-      done < <(grep -rhoE '`(references|templates|agents)/[A-Za-z0-9._/-]+`' "$skill_dir" 2>/dev/null \
-                 | tr -d '`' | sort -u)
-    fi
+    # Every bare-relative asset path a skill names must resolve inside it.
+    #
+    # This was gated on the skill not mentioning ENSEMBLE_ROOT, so the check
+    # went live per skill as it migrated. The gate searched the WHOLE skill
+    # directory including generated copies, so one copied file mentioning the
+    # variable would have silently disabled the check for that skill. The
+  # migration finished in U8 — no skill mentions it any more — so the gate is
+  # gone rather than narrowed: a conditional nobody needs is a trap waiting
+  # for the condition to come back.
+    # references/templates/agents only. `scripts/` is deliberately excluded:
+    # skills legitimately name repo-level scripts (en-setup points at
+    # `scripts/check-health` in the user's project), and a bundled script
+    # resolving correctly is proven by executing it in U6's smoke test, which
+    # is a stronger check than asserting the file exists.
+    while IFS= read -r ref; do
+      [ -n "$ref" ] || continue
+      [ -e "$skill_dir$ref" ] || viol "$skill names \`$ref\` but no such file in skills/$skill/"
+    done < <(grep -rhoE '`(references|templates|agents)/[A-Za-z0-9._/-]+`' "$skill_dir" 2>/dev/null \
+               | tr -d '`' | sort -u)
 
     # A grant nobody reads is dead weight; fail so the manifest cannot rot.
     while IFS= read -r line; do
@@ -167,6 +192,8 @@ if [ "$MODE" = "check" ]; then
     done < <(printf '%s\n' "$GRANTED" | sort -u)
   done
 fi
+
+_drain_closure_faults
 
 # Advisory: shared files no manifest entry grants to anyone.
 if [ "$MODE" = "check" ]; then
