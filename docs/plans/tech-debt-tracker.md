@@ -24,6 +24,35 @@ updated: 2026-08-26
 - **Sequencing:** deliberately deferred until EN12 ships. Building this first means building it against the current root layout and migrating it afterwards; building it second lands it directly in the target shape as one more `shared/manifest.json` entry. Decided with the user on 2026-08-26.
 - **Logged:** 2026-08-26
 
+### TD2. Most SKILL.md bodies exceed the Codex 8000-byte injection limit
+
+- **Source:** EN12 U12, measured during the build
+- **Severity:** P1
+- **Confidence:** 8/10
+- **Location:** `skills/*/SKILL.md` — 15 of 17 skills
+- **Why it matters:** Codex injects only the first 8000 bytes of a SKILL.md. Everything past that is invisible to that host, so a rule placed deep in a long body silently does not apply there — the skill appears to load and then behaves differently on Codex than on Claude Code, with no error. This is a cross-host correctness gap (G9), not a tidiness concern. EN12's plan named three skills from an earlier spot-check; the measured picture is worse:
+
+  | `en-build` | 49,768 | 6.2x |
+  | `en-plan` | 32,805 | 4.1x |
+  | `en-setup` | 27,656 | 3.5x |
+  | `en-review` | 25,527 | 3.2x |
+  | `en-ship` | 21,185 | 2.6x |
+  | `en-learn` | 16,213 | 2.0x |
+  | `en-loop` | 15,650 | 2.0x |
+  | `en-brainstorm` | 15,601 | 2.0x |
+  | `en-resolve-pr` | 15,169 | 1.9x |
+  | `en-debug` | 14,001 | 1.8x |
+  | `en-sweep` | 13,569 | 1.7x |
+  | `en-foundation` | 11,618 | 1.5x |
+  | `en-guardrail` | 11,012 | 1.4x |
+  | `en-qa` | 10,089 | 1.3x |
+  | `en-cross-review` | 8,188 | 1.0x |
+
+  `en-cross-review` at 8,188 bytes is only just over, so it loses a few lines; `en-build` loses roughly five sixths of its body, including the whole post-build phase, the evidence audit and the learning checkpoint.
+- **Suggested fix:** Move load-bearing rules out of long bodies and into references the skill reads at a named early step, so what must be honored arrives through a read the agent performs rather than through an injection that may be truncated. The Compound Engineering plugin routes `lfg` to `references/plan-brief.md` for exactly this reason, and its parity test records the constraint explicitly. Audit per skill in body order: anything past roughly 8,000 bytes that changes behavior (a gate, an enum, a refusal condition, a safety rule) moves; narrative and examples can stay. Verify by loading each skill on Codex and checking that a rule from the tail is actually honored — byte count alone does not prove the rule survived.
+- **Not caused by EN12, and not fixed by it.** EN12 makes skills self-contained; it does not shorten them. Recorded here so the gap is tracked rather than absorbed into a migration unit, where it would weaken the atomic review of the riskiest change in that plan.
+- **Logged:** 2026-08-26
+
 ## Resolved
 
 <!-- none yet -->
