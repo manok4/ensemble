@@ -25,7 +25,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    - For State-2 retrofits: existing source code via `repo-research` agent (top-level structure, package.json/Cargo.toml/etc., conventions).
    - `docs/learnings/index.md` if present.
 5. **Right-size depth.** Lightweight / Standard / Deep — picks based on project complexity. Default Standard.
-6. **Discovery loop.** Walk the topic groups in `$ENSEMBLE_ROOT/references/foundation-questions.md`:
+6. **Discovery loop.** Walk the topic groups in `references/foundation-questions.md`:
    - §1 Executive identity & problem
    - §2 Goals & non-goals (G-IDs)
    - §3 Users & roles (A-IDs)
@@ -39,7 +39,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    - §13 Security & privacy (Deep)
    - §14 Risks & open questions
    
-   **One question per turn**, multiple-choice when natural. Skip groups not relevant to the depth tier. Honor the question-count band per `$ENSEMBLE_ROOT/references/foundation-questions.md`.
+   **One question per turn**, multiple-choice when natural. Skip groups not relevant to the depth tier. Honor the question-count band per `references/foundation-questions.md`.
 7. **Synthesize.** Present a structured summary for approval before writing:
    ```
    Here's what I have:
@@ -55,7 +55,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 8. **Resolve `plan_id_prefix`.** Derive a 2–3 uppercase-letter suggestion from `{{PROJECT_NAME}}` (e.g. `Ensemble` → `EN`; `Ella Website` → `EW`; `User Dashboard Service` → `UDS`). Ask the user to accept or override:
    > "Plan-ID prefix for this project? Suggested: `EN` (used like `EN03`). Press enter to accept, or type a 2–3 uppercase-letter alternative."
    Validate: 2–3 chars, `[A-Z]+`, not in the reserved set `{R, U, AE, TD}`. On retrofit (foundation already exists with a `plan_id_prefix:`), keep the existing value — never silently change it after plans have been minted. If the user declines to set one, use `FR` as the fallback.
-9. **Draft `docs/foundation.md`** using `$ENSEMBLE_ROOT/references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
+9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
 10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
     - Build the Outside Voice prompt by shelling out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt --artifact-type "markdown artifact" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
@@ -64,7 +64,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
     - Parse the JSON response (per `$ENSEMBLE_ROOT/references/finding-schema.md`).
     - Apply, defer, or disagree per `$ENSEMBLE_ROOT/references/severity.md`.
     - Surface the verdict + applied changes to the user.
-12. **Seed `docs/architecture.md`** using `$ENSEMBLE_ROOT/references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
+12. **Seed `docs/architecture.md`** using `references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
 13. **Write `AGENTS.md`** using `$ENSEMBLE_ROOT/references/templates/agents-md-template.md`. Substitute `{{BUILD_CMD}}`, `{{TEST_CMD}}`, etc. detected from the project (or `<unset>` if not detectable).
 14. **Write `CLAUDE.md`** using `$ENSEMBLE_ROOT/references/templates/claude-md-template.md`. Strict structure: first non-frontmatter line is the AGENTS.md cross-reference; body Claude-Code-specific only.
 15. **Detect new vs existing project (per A1 / D24).**
@@ -125,9 +125,9 @@ Next: Run /en-build docs/plans/active/EN01-feature_project-setup.md to bootstrap
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/templates/foundation-template.md` — body template + depth-scaled trim
-- `$ENSEMBLE_ROOT/references/foundation-questions.md` — Q&A library + count bands
-- `$ENSEMBLE_ROOT/references/templates/architecture-template.md` — initial architecture seed
+- `references/templates/foundation-template.md` — body template + depth-scaled trim
+- `references/foundation-questions.md` — Q&A library + count bands
+- `references/templates/architecture-template.md` — initial architecture seed
 - `$ENSEMBLE_ROOT/references/templates/agents-md-template.md` — AGENTS.md template
 - `$ENSEMBLE_ROOT/references/templates/claude-md-template.md` — CLAUDE.md template
 - `$ENSEMBLE_ROOT/references/templates/plan-template.md` — for the bootstrap `<PREFIX>01-feature_project-setup` plan

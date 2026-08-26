@@ -108,7 +108,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     |---|---|
     | `--commit-branch <name>` passed | Check out `<name>` (create if needed); skip the checkpoint. |
     | `--no-commit` passed | Stay on the current branch; skip the checkpoint. The auto-commit step is skipped later. |
-    | Current branch **is** the detected default branch | **Checkpoint fires.** Read `$ENSEMBLE_ROOT/references/plan-default-branch-checkpoint.md` and follow it — it owns default-branch detection, the prompt, the four response handlers, and the non-interactive `--branch-on-default` flag. |
+    | Current branch **is** the detected default branch | **Checkpoint fires.** Read `references/plan-default-branch-checkpoint.md` and follow it — it owns default-branch detection, the prompt, the four response handlers, and the non-interactive `--branch-on-default` flag. |
     | Anything else (already on a feature branch, detection failed, detached HEAD) | Stay on the current branch; skip the checkpoint. |
 
     Record the outcome as `default_branch_checkpoint: <auto_branched | no_commit_requested | committed_to_default_branch>` in the `/en-plan` report.
@@ -255,7 +255,7 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 
 Gated — read only when its step's gate fires, never up front:
 
-- `$ENSEMBLE_ROOT/references/plan-default-branch-checkpoint.md` — the default-branch checkpoint (skipped whenever the run is already on a feature branch)
+- `references/plan-default-branch-checkpoint.md` — the default-branch checkpoint (skipped whenever the run is already on a feature branch)
 
 ## Failure protocol
 

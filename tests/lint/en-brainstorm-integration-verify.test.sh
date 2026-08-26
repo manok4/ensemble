@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-brainstorm integration + verify"
 
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
-TEMPLATE="$REPO_ROOT/shared/references/templates/design-doc-template.md"
+TEMPLATE="$REPO_ROOT/skills/en-brainstorm/references/templates/design-doc-template.md"
 
 # --- 1. ORDERING: both rigor steps run BEFORE approaches (that ordering is the whole point;
 #        it is what separates them from the after-recommendation devil's-advocate pass) ---

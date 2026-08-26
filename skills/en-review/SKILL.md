@@ -98,7 +98,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
     - Cross-source corroboration boosts confidence **+2** (capped at 10) versus **+1** for same-source, because independent architectures agreeing is stronger evidence than two same-stack personas agreeing. `fast-pass` findings remain barred from corroboration promotion.
     - Rank `corroborated` first, then surface `peer-only` prominently. `conflicting` records surface both sides and are **never auto-applied** (they are excluded from the frozen authorized set in step 12).
     - Severity reorder: P0 → P3, then confidence, then persona priority.
-11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `$ENSEMBLE_ROOT/references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
+11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. This keeps a paper trail without cluttering review noise. Per `references/review-confidence-gating.md`. Skipped in `report-only` mode (no mutations allowed; sub-threshold findings are returned in the JSON envelope under `sub_threshold_findings: []` instead).
 12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
 
     **Phase 1 — authorize, then baseline + freeze (before ANY edit).** Authorization comes FIRST, so the frozen set never changes after mutation begins:
@@ -223,7 +223,7 @@ review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto
 - `$ENSEMBLE_ROOT/references/persona-dispatch.md` — which personas fire and how
 - `$ENSEMBLE_ROOT/references/finding-schema.md` — JSON shape
 - `$ENSEMBLE_ROOT/references/severity.md` — autofix routing
-- `$ENSEMBLE_ROOT/references/severity-and-routing.md` — alias
+- `references/severity-and-routing.md` — alias
 - `$ENSEMBLE_ROOT/references/outside-voice.md` — peer-review prompt (when `--peer` / `--peer-only`)
 - `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` / `--peer-only`
 - `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — fallback when only one CLI is installed

@@ -65,7 +65,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/en-flow-pipeline.md` — stage contracts and gates
+- `references/en-flow-pipeline.md` — stage contracts and gates
 - `$ENSEMBLE_ROOT/references/host-detect.md`
 
 ## Failure protocol

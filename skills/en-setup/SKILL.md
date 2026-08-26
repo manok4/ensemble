@@ -16,7 +16,7 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
 
 1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md` (in plugin) or run `$ENSEMBLE_ROOT/bin/ensemble-detect-host`. Set `HOST`, `PEER_AVAILABLE`, etc.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note (this skill should never be peer-invoked).
-3. **Detect state** per `$ENSEMBLE_ROOT/references/setup-state-detection.md`:
+3. **Detect state** per `references/setup-state-detection.md`:
    - State 1 — Greenfield (empty repo or initial-commit, no `docs/foundation.md`).
    - State 2 — Existing project, no Ensemble (source code present, foundation or learnings missing). Identify sub-variant 2a/2b/2c/2d by which of `AGENTS.md`/`CLAUDE.md` exist.
    - State 3 — Existing project with Ensemble (`docs/foundation.md` and `docs/learnings/` both present).
@@ -157,7 +157,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 15. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
     > "`REVIEW.md` is a project-root file that tunes how PR review behaves on this repo — severity calibration, nit caps, skip rules, repo-specific checks, convergence behavior on multi-round reviews. Read automatically by Anthropic's managed Code Review service (Team/Enterprise plans); for the self-hosted action, the workflow's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action'). Seed `REVIEW.md` from the Ensemble-flavored default template? (`y` / `n`)"
 
-    On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `$ENSEMBLE_ROOT/references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
+    On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
@@ -337,7 +337,7 @@ Next step:
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/setup-state-detection.md` — full state detection algorithm + sub-variants
+- `references/setup-state-detection.md` — full state detection algorithm + sub-variants
 - `$ENSEMBLE_ROOT/references/templates/agents-md-template.md` — AGENTS.md template + substitutions
 - `$ENSEMBLE_ROOT/references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
 - `$ENSEMBLE_ROOT/references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
@@ -347,7 +347,7 @@ Next step:
 - `$ENSEMBLE_ROOT/references/learn-log-format.md` — `learnings/log.md` empty-state seed
 - `$ENSEMBLE_ROOT/references/host-detect.md` — host detection (used briefly at start)
 - `$ENSEMBLE_ROOT/references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
-- `$ENSEMBLE_ROOT/references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
+- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
 - `$ENSEMBLE_ROOT/references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook

@@ -47,7 +47,7 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
    - **Error mode** — full-text search `msg`/`error.message`; cluster matches by `trace_id` if present.
    - **Location mode** — match `event` field against the file path heuristically (e.g., `event: auth.token_rotated` ↔ `src/auth/refresh.ts`); fall back to span-name matching.
 8. **Identify the failing span.** First entry with `level: error` or `level: fatal` in the correlated set is the source. Walk parent spans to find the entry point.
-9. **Map span → source.** Per `$ENSEMBLE_ROOT/references/observability-debug-mapping.md`. Heuristic:
+9. **Map span → source.** Per `references/observability-debug-mapping.md`. Heuristic:
    - `event` field often matches a function name (`auth.token_rotated` → `tokenRotated()` in `src/auth/`).
    - `error.stack` (if present) gives the exact location.
    - Fallback: dispatch `repo-research` agent with the event name + error message; agent searches the codebase.
@@ -113,13 +113,13 @@ If the configured logs don't match `$ENSEMBLE_ROOT/references/observability-conv
 
 ## Code mode (no telemetry — investigate & optionally fix)
 
-When there's no usable telemetry, run a systematic diagnosis loop adapted from compound-engineering's `ce-debug`. Read `$ENSEMBLE_ROOT/references/debug-investigation.md` for the anti-pattern guardrails and intermittent-bug techniques before forming hypotheses.
+When there's no usable telemetry, run a systematic diagnosis loop adapted from compound-engineering's `ce-debug`. Read `references/debug-investigation.md` for the anti-pattern guardrails and intermittent-bug techniques before forming hypotheses.
 
 **Core principles:** investigate before fixing (no fix until the full causal chain from trigger to symptom has no gaps); one change at a time (no shotgun debugging); when stuck, diagnose *why* rather than trying harder.
 
 1. **Triage.** Reach a clear problem statement. If the input references an issue tracker (`#123`, Linear/Jira URL), fetch it (`gh issue view <n> --json title,body,comments,labels` for GitHub) and read the full comment thread, not just the opening post. **Trivial-bug fast-path:** if the cause is immediately readable (typo, missing import, obvious null deref) present the cause + one-line fix and go straight to the fix-choice gate in step 3.
 2. **Investigate.**
-   - **Reproduce** — run the test / trigger the error / follow the repro steps. If it doesn't reproduce after 2–3 tries, read `$ENSEMBLE_ROOT/references/debug-investigation.md` for intermittent-bug techniques.
+   - **Reproduce** — run the test / trigger the error / follow the repro steps. If it doesn't reproduce after 2–3 tries, read `references/debug-investigation.md` for intermittent-bug techniques.
    - **Verify environment sanity** — right branch, deps installed, expected runtime, env vars present, no stale build artifacts.
    - **Trace the code path** — read the stack bottom-to-top; find the first frame where input is already invalid; instrument boundaries with *observed* values (not assumed); walk until valid input becomes invalid output. Check `git log --oneline -10 -- <file>` for recent changes; `git bisect` for regressions.
 3. **Root cause.** Run an **assumption audit** (list "this must be true" beliefs; mark verified vs assumed — assumptions are the top source of stuck debugging). Form hypotheses ranked by likelihood, each with: what's wrong + where (`file:line`), **at least one concrete grounding observation** (a runtime value, a log line, a behavior delta — not "X seems off"), the causal chain, and **for uncertain links, a prediction** (something in another path that must also be true). **Causal-chain gate:** do not proceed to a fix until the full chain has no gaps. If a prediction was wrong but a fix "works," you found a symptom, not the cause. **Smart escalation:** after 2–3 exhausted hypotheses, diagnose *why* (hypotheses span subsystems → design problem, suggest `/en-brainstorm`; evidence contradicts → wrong mental model; works-locally-fails-in-CI → environment).
@@ -142,10 +142,10 @@ When there's no usable telemetry, run a systematic diagnosis loop adapted from c
 ## Reference files
 
 - `$ENSEMBLE_ROOT/references/observability-conventions.md` — log/trace shape contract
-- `$ENSEMBLE_ROOT/references/observability-debug-mapping.md` — span-name → source-code heuristics
+- `references/observability-debug-mapping.md` — span-name → source-code heuristics
 - `$ENSEMBLE_ROOT/references/observability-hypothesis-format.md` — output template
 - `$ENSEMBLE_ROOT/references/secret-patterns.md` — redaction patterns for logged secrets
-- `$ENSEMBLE_ROOT/references/debug-investigation.md` — code-mode anti-patterns + investigation techniques
+- `references/debug-investigation.md` — code-mode anti-patterns + investigation techniques
 - `$ENSEMBLE_ROOT/references/host-detect.md`
 
 ## Failure protocol

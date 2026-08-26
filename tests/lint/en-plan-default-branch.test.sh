@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-plan default-branch checkpoint"
 
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
-CHECKPOINT_REF="$REPO_ROOT/shared/references/plan-default-branch-checkpoint.md"
+CHECKPOINT_REF="$REPO_ROOT/skills/en-plan/references/plan-default-branch-checkpoint.md"
 
 # The checkpoint contract spans the SKILL trigger table and its gated reference (D48).
 # Content assertions search both; step-ordering assertions stay on SKILL.md.
@@ -20,7 +20,7 @@ cat "$EN_PLAN" "$CHECKPOINT_REF" > "$CONTRACT" 2>/dev/null || cp "$EN_PLAN" "$CO
 if [ -f "$CHECKPOINT_REF" ]; then
   pass "gated checkpoint reference exists"
 else
-  fail "shared/references/plan-default-branch-checkpoint.md must exist (checkpoint body lives there)"
+  fail "skills/en-plan/references/plan-default-branch-checkpoint.md must exist (checkpoint body lives there)"
 fi
 CONFIG_EXAMPLE="$REPO_ROOT/shared/references/templates/config-local-example.yaml"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"

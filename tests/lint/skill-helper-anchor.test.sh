@@ -71,14 +71,22 @@ done
 for skill in $TARGET_SKILLS; do
   f="$REPO_ROOT/skills/$skill/SKILL.md"
   # Strip the preamble line and check the rest.
-  bare=$(grep -nE '`references/[a-zA-Z0-9_./-]+\.(md|yml|yaml)`' "$f" \
-       | grep -v 'Helper resolution' \
-       | grep -v '`references/X`' \
-       || true)
+  # EN12 U3 onward: a bare `references/X` is CORRECT once the skill owns that
+  # file locally — that is the target state, reached one reference at a time.
+  # It stays a violation while the file is not there, which catches both a
+  # forgotten anchor and a path pointing at nothing. The guard therefore keeps
+  # working through the migration instead of being switched off for it; U8
+  # inverts it to forbid $ENSEMBLE_ROOT outright.
+  bare=$(grep -oE '`references/[a-zA-Z0-9_./-]+\.(md|yml|yaml)`' "$f" \
+       | tr -d '`' | sort -u \
+       | while IFS= read -r r; do
+           [ "$r" = "references/X" ] && continue
+           [ -e "$REPO_ROOT/skills/$skill/$r" ] || echo "$r"
+         done)
   if [ -n "$bare" ]; then
-    fail "[$skill] has unanchored \`references/...\` references" "$(echo "$bare" | head -3)"
+    fail "[$skill] unanchored \`references/...\` with no local file" "$(echo "$bare" | head -3)"
   else
-    pass "[$skill] no unanchored backtick-wrapped references/ paths"
+    pass "[$skill] every bare references/ path resolves locally"
   fi
 done
 

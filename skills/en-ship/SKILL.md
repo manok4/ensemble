@@ -100,7 +100,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
    8. **Flag override.** `--no-plan-completion-checkpoint` skips the whole step; record `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)`.
 
-9. **Generate conventional-commit message.** Per `$ENSEMBLE_ROOT/references/conventional-commits.md`:
+9. **Generate conventional-commit message.** Per `references/conventional-commits.md`:
    - Inspect the diff to determine `<type>` (`feat` / `fix` / `docs` / `refactor` / etc.).
    - Pick `<scope>` from existing scopes in recent git log + the file paths touched.
    - Compose `<subject>` ≤ 50 chars, imperative mood, no trailing period.
@@ -198,7 +198,7 @@ Next: PR is green and clean - ready for your review/merge.
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/conventional-commits.md` — message format
+- `references/conventional-commits.md` — message format
 - `$ENSEMBLE_ROOT/references/secret-patterns.md` — secret-scan regex catalog
 - `$ENSEMBLE_ROOT/references/host-detect.md`
 
