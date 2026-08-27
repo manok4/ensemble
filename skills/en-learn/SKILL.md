@@ -3,10 +3,11 @@ name: en-learn
 description: "Compounding wiki maintainer for docs/learnings/. Six modes: capture (default; file a learning post-build/qa, sync architecture/foundation/plan, move plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-learn`
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
 
 Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat folder. Adopts Karpathy's LLM Wiki pattern: agent-maintained, with `index.md` + `log.md` for navigation and `--lint` for graph health.
 
@@ -25,13 +26,13 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 
 After every write:
 
-1. **Active cross-reference maintenance** — walk new entry's `related: []`; add reciprocal back-refs to each cited page. Per `$ENSEMBLE_ROOT/references/learn-cross-ref-maintenance.md`.
-2. **Index update** — append a one-line entry to `docs/learnings/index.md` under the appropriate category. Per `$ENSEMBLE_ROOT/references/learn-index-format.md`.
-3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>` for most ops; **`capture` mode appends `| <head-sha>` from `git rev-parse --short HEAD`** as the baseline marker for `/en-ship`'s learning checkpoint. Per `$ENSEMBLE_ROOT/references/learn-log-format.md`. Other ops (`refresh`, `ingest-url`, `lint-fix`, `pack`, `capture-from-conversation`) don't write SHA — only `capture` resets the baseline.
+1. **Active cross-reference maintenance** — walk new entry's `related: []`; add reciprocal back-refs to each cited page. Per `references/learn-cross-ref-maintenance.md`.
+2. **Index update** — append a one-line entry to `docs/learnings/index.md` under the appropriate category. Per `references/learn-index-format.md`.
+3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>` for most ops; **`capture` mode appends `| <head-sha>` from `git rev-parse --short HEAD`** as the baseline marker for `/en-ship`'s learning checkpoint. Per `references/learn-log-format.md`. Other ops (`refresh`, `ingest-url`, `lint-fix`, `pack`, `capture-from-conversation`) don't write SHA — only `capture` resets the baseline.
 
 ## Process — Mode A: `capture` (default)
 
-1. **Detect host (light).** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host (light).** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip (no peer review on capture).
 3. **Detect input source.**
    - **Default** (post-build / post-qa) — read recent commits + branch summary.
@@ -42,10 +43,10 @@ After every write:
    - **Context Analyzer** — extract problem, symptoms, root cause from conversation + commits.
    - **Solution Extractor** — capture the fix, why it works, prevention strategy.
    - **Related Docs Finder** — search `docs/learnings/` for overlap; flag near-duplicates; identify pages that should back-link.
-6. **Compose entry.** Body shape from `$ENSEMBLE_ROOT/references/templates/learning-template.md` (TL;DR / Context / What didn't work / Root cause / Fix / Why it works / Prevention / Related / Citations).
+6. **Compose entry.** Body shape from `references/templates/learning-template.md` (TL;DR / Context / What didn't work / Root cause / Fix / Why it works / Prevention / Related / Citations).
 7. **Slug + path.** Generate `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`). Write to `docs/learnings/<category>/<slug>-<date>.md`.
 8. **Apply always-on behaviors** (cross-refs, index update, log append).
-9. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `$ENSEMBLE_ROOT/references/architecture-update-rules.md`.
+9. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
 10. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
 11. **Plan-lifecycle handling.** Step 11 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per `docs/en-ship-plan-completion-checkpoint-spec.md`) is the backstop for cases where `/en-learn` isn't invoked at all.
 
@@ -72,7 +73,7 @@ After every write:
 
 ## Process — Mode B: `ingest <path-or-url>`
 
-Per `$ENSEMBLE_ROOT/references/learn-ingest.md`:
+Per `references/learn-ingest.md`:
 
 1. **Read source.** File: `Read`. URL: `WebFetch` with Wayback fallback (per A13).
 2. **Off-topic check.** LLM-judged relevance against `foundation.md`. Threshold 0.3 / 1.0 (per A18). Below → silently skip with note ("This source appears off-topic for an engineering wiki — skipped. Re-run with `--force` to ingest anyway."). `--force` overrides.
@@ -100,7 +101,7 @@ Useful periodically (~monthly) or after a big architectural shift.
 
 ## Process — Mode D: `--pack <library>`
 
-Per `$ENSEMBLE_ROOT/references/pack-reference-template.md`:
+Per `references/pack-reference-template.md`:
 
 1. Resolve library identifier via Context7 (`mcp__context7__resolve-library-id`).
 2. Pull docs (`mcp__context7__get-library-docs` or `query-docs`).
@@ -114,7 +115,7 @@ Always re-fetches and re-flattens (per A12 — explicit invocation, fresh by def
 
 ## Process — Mode E: `--lint` / `--lint --fix`
 
-Per `$ENSEMBLE_ROOT/references/learn-lint.md`. Audits the wiki *graph*:
+Per `references/learn-lint.md`. Audits the wiki *graph*:
 
 - Orphans, missing back-refs, broken links, contradictions, missing pages, stale references, index drift, log drift, data gaps.
 - `--fix` auto-applies mechanical fixes (back-refs, broken-link repair, index regen, log append).
@@ -124,15 +125,15 @@ Output: JSON-lines + markdown summary.
 
 ## Process — Mode F: `--bootstrap-patterns`
 
-Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `$ENSEMBLE_ROOT/references/learn-bootstrap-patterns.md`.
+Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Refuse if already bootstrapped.** Scan `docs/learnings/patterns/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
 4. **Confirm with user.** Surface: *"Will dispatch `repo-research` to identify 5–10 strong conventions in this codebase and file them as `patterns/` entries flagged `requires_validation: true`. These are reconstructions, not captures from real moments — lower confidence by design. Continue? (y/n)"*
-5. **Dispatch `repo-research`.** Prompt structured per `$ENSEMBLE_ROOT/references/learn-bootstrap-patterns.md` § "Research prompt." Asks the agent to identify durable conventions in: file layout, naming, dependency direction, error-handling shape, test placement, common abstractions, framework idioms. Returns 5–10 candidates as JSON.
+5. **Dispatch `repo-research`.** Prompt structured per `references/learn-bootstrap-patterns.md` § "Research prompt." Asks the agent to identify durable conventions in: file layout, naming, dependency direction, error-handling shape, test placement, common abstractions, framework idioms. Returns 5–10 candidates as JSON.
 6. **Cap at 10.** If the research agent returns more than 10, take the top 10 by `confidence` field. Fewer than 5 → surface a warning; the codebase may not have strong conventions yet (typical for very young or scattered repos).
-7. **Compose entries.** For each candidate, write `docs/learnings/patterns/<slug>-<date>.md` using `$ENSEMBLE_ROOT/references/templates/learning-template.md` with:
+7. **Compose entries.** For each candidate, write `docs/learnings/patterns/<slug>-<date>.md` using `references/templates/learning-template.md` with:
    - Frontmatter: `source: bootstrap`, `confidence: 6`, `requires_validation: true`, `bootstrap_run: <YYYY-MM-DD>`.
    - Body: TL;DR, **Where this applies** (file paths/globs), **Pattern** (the convention), **Why** (rationale inferred from codebase signals), **How to follow it** (concrete rules), **Citations** (specific file:line examples that exhibit the pattern).
    - **Skip** the "What didn't work" / "Root cause" / "Fix" sections — those don't apply to forward-looking conventions.
@@ -165,17 +166,17 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/learn-bootstrap-patterns.md` — Mode F prompt + entry shape
-- `$ENSEMBLE_ROOT/references/templates/learning-template.md` — body structure for capture/ingest writes
-- `$ENSEMBLE_ROOT/references/learning-frontmatter-schema.md` — frontmatter rules + examples
-- `$ENSEMBLE_ROOT/references/learn-cross-ref-maintenance.md` — always-on back-ref behavior
-- `$ENSEMBLE_ROOT/references/learn-index-format.md` — `index.md` structure
-- `$ENSEMBLE_ROOT/references/learn-log-format.md` — `log.md` structure
-- `$ENSEMBLE_ROOT/references/learn-ingest.md` — file + URL ingest flow with Wayback fallback
-- `$ENSEMBLE_ROOT/references/learn-lint.md` — check catalog and auto-fix rules
-- `$ENSEMBLE_ROOT/references/architecture-update-rules.md` — when to touch `docs/architecture.md`
-- `$ENSEMBLE_ROOT/references/pack-reference-template.md` — `*-llms.txt` structure
-- `$ENSEMBLE_ROOT/references/host-detect.md`
+- `references/learn-bootstrap-patterns.md` — Mode F prompt + entry shape
+- `references/templates/learning-template.md` — body structure for capture/ingest writes
+- `references/learning-frontmatter-schema.md` — frontmatter rules + examples
+- `references/learn-cross-ref-maintenance.md` — always-on back-ref behavior
+- `references/learn-index-format.md` — `index.md` structure
+- `references/learn-log-format.md` — `log.md` structure
+- `references/learn-ingest.md` — file + URL ingest flow with Wayback fallback
+- `references/learn-lint.md` — check catalog and auto-fix rules
+- `references/architecture-update-rules.md` — when to touch `docs/architecture.md`
+- `references/pack-reference-template.md` — `*-llms.txt` structure
+- `references/host-detect.md`
 
 ## Failure protocol
 

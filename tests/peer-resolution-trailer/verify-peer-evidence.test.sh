@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="ensemble-verify-peer-evidence"
 
-VERIFY="$REPO_ROOT/bin/ensemble-verify-peer-evidence"
+VERIFY="$REPO_ROOT/shared/bin/ensemble-verify-peer-evidence"
 
 # Setup: a temp git repo with crafted commits we can inspect.
 TMP=$(mktemp -d)

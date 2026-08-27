@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="host-detect"
 
-DETECT="$REPO_ROOT/bin/ensemble-detect-host"
+DETECT="$REPO_ROOT/shared/bin/ensemble-detect-host"
 
 # Helper: set up a mocked environment and run detect.
 # $1 = scenario label (for failure diagnostics)

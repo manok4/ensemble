@@ -13,8 +13,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
-DIFFSIG="$REPO_ROOT/references/diff-signal-detection.md"
-DISPATCH="$REPO_ROOT/references/persona-dispatch.md"
+DIFFSIG="$REPO_ROOT/shared/references/diff-signal-detection.md"
+DISPATCH="$REPO_ROOT/shared/references/persona-dispatch.md"
 
 # === U1: lite-gate transparency ===
 

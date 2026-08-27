@@ -1,0 +1,1074 @@
+#!/usr/bin/env bash
+# ensemble-lint — file-shape doc lints (frontmatter, IDs, cross-links, status, freshness, paths).
+#
+# Usage:
+#   ensemble-lint [--scope <path>] [--fix] [--json] [--quiet]
+#
+# Distinct from `learn --lint` which audits wiki-graph health (orphans, missing back-refs, etc).
+# See references/doc-lints.md for the full rule catalog.
+
+set -u
+
+SCOPE="${ENSEMBLE_LINT_SCOPE:-docs/}"
+FIX="false"
+JSON="false"
+QUIET="false"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --scope) SCOPE="$2"; shift 2 ;;
+    --fix) FIX="true"; shift ;;
+    --json) JSON="true"; shift ;;
+    --quiet) QUIET="true"; shift ;;
+    -h|--help)
+      cat <<EOF
+Usage: ensemble-lint [--scope <path>] [--fix] [--json] [--quiet]
+
+  --scope <path>  Limit to files under <path> (default: docs/)
+  --fix           Apply mechanical fixes
+  --json          Emit JSON-lines output (one violation per line)
+  --quiet         Suppress non-error output
+
+Exit codes:
+  0  No violations
+  1  Violations found
+  2  Lint runner error
+EOF
+      exit 0
+      ;;
+    *) echo "Unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Sanity: must run from a repo root (parent of docs/) or pass --scope to a valid path
+if [ ! -e "$SCOPE" ] && [ "$SCOPE" != "docs/" ]; then
+  echo "ensemble-lint: scope '$SCOPE' does not exist" >&2
+  exit 2
+fi
+
+VIOLATIONS=0
+P1=0
+P2=0
+P3=0
+TMP_FINDINGS=$(mktemp)
+trap 'rm -f "$TMP_FINDINGS"' EXIT
+
+emit() {
+  local rule="$1" file="$2" line="$3" sev="$4" msg="$5" remediation="$6"
+  case "$sev" in
+    P1) P1=$((P1+1));;
+    P2) P2=$((P2+1));;
+    P3) P3=$((P3+1));;
+  esac
+  VIOLATIONS=$((VIOLATIONS+1))
+  if [ "$JSON" = "true" ]; then
+    printf '{"rule":"%s","file":"%s","line":%s,"severity":"%s","message":"%s","remediation":"%s"}\n' \
+      "$rule" "$file" "${line:-null}" "$sev" "$(printf '%s' "$msg" | sed 's/"/\\"/g')" "$(printf '%s' "$remediation" | sed 's/"/\\"/g')" \
+      >> "$TMP_FINDINGS"
+  else
+    printf '[%s] %s %s — %s\n' "$sev" "$rule" "$file" "$msg" >> "$TMP_FINDINGS"
+    printf '       remediation: %s\n' "$remediation" >> "$TMP_FINDINGS"
+  fi
+}
+
+# --- Helper: extract YAML frontmatter from a markdown file ---
+extract_frontmatter() {
+  local file="$1"
+  awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print} n==2{exit}' "$file"
+}
+
+# --- Helper: get a frontmatter field value (very small YAML reader) ---
+get_field() {
+  local file="$1" field="$2"
+  extract_frontmatter "$file" | awk -v f="$field" '
+    $0 ~ "^"f":" {
+      sub("^"f":[ \t]*", "")
+      gsub(/^["'\''`]|["'\''`]$/, "")
+      print
+      exit
+    }
+  '
+}
+
+# --- Helper: read a plan's stable ID, accepting `plan_id:` (current) or `fr_id:` (legacy alias) ---
+get_plan_id() {
+  local file="$1"
+  local pid
+  pid=$(get_field "$file" plan_id)
+  if [ -z "$pid" ]; then
+    pid=$(get_field "$file" fr_id)
+  fi
+  printf '%s' "$pid"
+}
+
+# --- Helper: derive the set of plan-ID prefixes in use ---
+# Sources: foundation.md `plan_id_prefix:` + every prefix observed in plans/{active,completed}/ filenames + legacy `FR`.
+# Output: a `|`-separated alternation suitable for use inside an extended-regex bracket group.
+get_plan_prefixes() {
+  local prefixes="FR"
+  if [ -f docs/foundation.md ]; then
+    local p; p=$(get_field docs/foundation.md plan_id_prefix)
+    if [ -n "$p" ]; then
+      prefixes="${prefixes}|${p}"
+    fi
+  fi
+  for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
+    [ -f "$plan" ] || continue
+    local base; base=$(basename "$plan")
+    local pfx; pfx=$(printf '%s' "$base" | grep -oE '^[A-Z]{2,3}' | head -1)
+    [ -z "$pfx" ] && continue
+    case "|$prefixes|" in *"|$pfx|"*) ;; *) prefixes="${prefixes}|${pfx}" ;; esac
+  done
+  printf '%s' "$prefixes"
+}
+
+# --- Helper: list relevant files under SCOPE ---
+collect_files() {
+  if [ -d "$SCOPE" ]; then
+    find "$SCOPE" -type f -name '*.md' 2>/dev/null
+  elif [ -f "$SCOPE" ]; then
+    echo "$SCOPE"
+  fi
+  # Always include AGENTS.md and CLAUDE.md at repo root if scope is docs/
+  if [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ]; then
+    [ -f "AGENTS.md" ] && echo "AGENTS.md"
+    [ -f "CLAUDE.md" ] && echo "CLAUDE.md"
+  fi
+}
+
+# --- Rule: frontmatter.parse-error / frontmatter.missing ---
+check_frontmatter_present() {
+  local file="$1"
+  local first_two
+  first_two=$(head -2 "$file" 2>/dev/null)
+  if ! printf '%s' "$first_two" | grep -q '^---'; then
+    case "$file" in
+      docs/foundation.md|docs/architecture.md|AGENTS.md|CLAUDE.md|docs/learnings/*/*.md|docs/plans/active/*.md|docs/plans/completed/*.md|docs/designs/*.md|docs/generated/*.md)
+        emit "frontmatter.missing" "$file" "" "P1" "File requires YAML frontmatter" "Add a frontmatter block at the top of the file"
+        ;;
+    esac
+  fi
+}
+
+# --- Rule: path.absolute ---
+# Flags absolute paths that are NOT inside backtick code spans (which are doc examples / lint rule text).
+check_no_absolute_paths() {
+  local file="$1"
+  local lineno=0
+  while IFS= read -r line; do
+    lineno=$((lineno+1))
+    # Strip everything inside backticks (single or triple) for the check
+    local stripped
+    stripped=$(printf '%s' "$line" | sed -e 's/`[^`]*`//g' -e 's/```[^`]*```//g')
+    if printf '%s' "$stripped" | grep -qE '(/Users/[A-Za-z]|^/home/[A-Za-z]|[A-Z]:\\)'; then
+      emit "path.absolute" "$file" "$lineno" "P1" "Absolute path detected outside code span" "Convert to a repo-relative path or wrap in backticks if it's a documentation example"
+    fi
+  done < "$file"
+}
+
+# --- Rule: status.location-mismatch (plans only) ---
+check_plan_status_location() {
+  local file="$1"
+  case "$file" in
+    docs/plans/active/*.md)
+      local status
+      status=$(get_field "$file" "status")
+      local location
+      location=$(get_field "$file" "location")
+      case "$status" in
+        ""|draft|open|in_progress|abandoned) ;;
+        completed)
+          emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has status: completed" "Move file to docs/plans/completed/ or revert status"
+          ;;
+        *)
+          emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has status: $status" "Use one of: draft, open, in_progress, abandoned (or move to completed/ when done)"
+          ;;
+      esac
+      if [ -n "$location" ] && [ "$location" != "active" ]; then
+        emit "status.location-mismatch" "$file" "" "P1" "Plan in active/ has location: $location" "Set location: active to match directory"
+      fi
+      ;;
+    docs/plans/completed/*.md)
+      local status
+      status=$(get_field "$file" "status")
+      if [ -n "$status" ] && [ "$status" != "completed" ]; then
+        emit "status.location-mismatch" "$file" "" "P1" "Plan in completed/ has status: $status" "Set status: completed or move file back to docs/plans/active/"
+      fi
+      ;;
+  esac
+}
+
+# --- Rule: claude-md.no-cross-ref-line ---
+check_claude_md_cross_ref() {
+  [ "$1" = "CLAUDE.md" ] || return 0
+  local first_body_line
+  first_body_line=$(awk 'BEGIN{n=0} /^---$/{n++; next} n>=2 && NF{print; exit}' "$1")
+  if ! printf '%s' "$first_body_line" | grep -qF "[AGENTS.md](./AGENTS.md)"; then
+    emit "claude-md.no-cross-ref-line" "$1" "" "P1" \
+      "First non-frontmatter line of CLAUDE.md must cross-reference AGENTS.md" \
+      "Prepend: > See [AGENTS.md](./AGENTS.md) for the project map and shared agent guidance."
+  fi
+}
+
+# --- Rule: length.* ---
+check_length_budget() {
+  local file="$1"
+  local body_lines
+  body_lines=$(awk 'BEGIN{n=0} /^---$/{n++; next} n>=2{count++} END{print count+0}' "$file")
+  case "$file" in
+    AGENTS.md)
+      if [ "$body_lines" -gt 150 ]; then
+        emit "length.agents-md-over-150" "$file" "" "P2" \
+          "AGENTS.md body is $body_lines lines (target 100, ceiling 150)" \
+          "Move detail into docs/foundation.md or docs/learnings/"
+      fi
+      ;;
+    CLAUDE.md)
+      if [ "$body_lines" -gt 80 ]; then
+        emit "length.claude-md-over-80" "$file" "" "P2" \
+          "CLAUDE.md body is $body_lines lines (target 60, ceiling 80)" \
+          "Move detail into AGENTS.md or remove duplication"
+      fi
+      ;;
+  esac
+}
+
+# --- Rule: frontmatter.required-field-missing for plans ---
+check_plan_required_fields() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  for f in type plan_type title status location created covers_requirements requirements_pending; do
+    local val
+    val=$(get_field "$file" "$f")
+    if [ -z "$val" ] && ! grep -q "^$f:" <(extract_frontmatter "$file"); then
+      emit "frontmatter.required-field-missing" "$file" "" "P1" \
+        "Plan missing required frontmatter field: $f" \
+        "Add '$f: <value>' per references/templates/plan-template.md"
+    fi
+  done
+  # plan_id (or legacy fr_id alias) — at least one must be present.
+  local pid; pid=$(get_plan_id "$file")
+  if [ -z "$pid" ] && ! grep -qE "^(plan_id|fr_id):" <(extract_frontmatter "$file"); then
+    emit "frontmatter.required-field-missing" "$file" "" "P1" \
+      "Plan missing required frontmatter field: plan_id" \
+      "Add 'plan_id: <PREFIX><NN>' per references/templates/plan-template.md (legacy 'fr_id:' is also accepted)"
+  fi
+}
+
+# --- Rule: frontmatter.required-field-missing for learnings ---
+check_learning_required_fields() {
+  case "$1" in docs/learnings/bugs/*.md|docs/learnings/patterns/*.md|docs/learnings/decisions/*.md|docs/learnings/sources/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  for f in title date category problem_type component applies_when tags related confidence status; do
+    if ! grep -q "^$f:" <(extract_frontmatter "$file"); then
+      emit "frontmatter.required-field-missing" "$file" "" "P1" \
+        "Learning missing required frontmatter field: $f" \
+        "Add '$f: <value>' per references/learning-frontmatter-schema.md"
+    fi
+  done
+}
+
+# --- Rule: frontmatter.invalid-enum + frontmatter.date-format ---
+# Per references/doc-lints.md. Validates that enum-typed fields hold known values
+# and that date fields follow YYYY-MM-DD.
+check_frontmatter_enums_and_dates() {
+  local file="$1"
+  local fm
+  fm=$(extract_frontmatter "$file")
+  [ -z "$fm" ] && return 0
+
+  # Date fields — strict YYYY-MM-DD where present.
+  for date_field in created updated date fetched shipped deepened last_drift_check; do
+    local val
+    val=$(printf '%s\n' "$fm" | awk -v f="$date_field" '$0 ~ "^"f":" { sub("^"f":[ \t]*", ""); gsub(/^["'\''`]|["'\''`]$/, ""); print; exit }')
+    if [ -n "$val" ] && [ "$val" != "null" ] && [ "$val" != "<unset>" ]; then
+      if ! printf '%s' "$val" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+        emit "frontmatter.date-format" "$file" "" "P1" \
+          "Field '$date_field' is '$val'; expected YYYY-MM-DD" \
+          "Set '$date_field' to a date in YYYY-MM-DD format"
+      fi
+    fi
+  done
+
+  # Enum fields — by file type.
+  case "$file" in
+    docs/foundation.md)
+      local s; s=$(get_field "$file" status)
+      if [ -n "$s" ] && [ "$s" != "draft" ] && [ "$s" != "active" ] && [ "$s" != "archived" ]; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "foundation.md status: $s" "Use one of: draft, active, archived"
+      fi
+      local d; d=$(get_field "$file" depth)
+      if [ -n "$d" ] && [ "$d" != "lightweight" ] && [ "$d" != "standard" ] && [ "$d" != "deep" ]; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "foundation.md depth: $d" "Use one of: lightweight, standard, deep"
+      fi
+      ;;
+    docs/architecture.md)
+      local s; s=$(get_field "$file" status)
+      if [ -n "$s" ] && [ "$s" != "seed" ] && [ "$s" != "active" ]; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "architecture.md status: $s" "Use one of: seed, active"
+      fi
+      ;;
+    docs/plans/active/*.md|docs/plans/completed/*.md)
+      local s; s=$(get_field "$file" status)
+      case "$s" in ""|draft|open|in_progress|completed|abandoned) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "plan status: $s" "Use one of: draft, open, in_progress, completed, abandoned" ;;
+      esac
+      local pt; pt=$(get_field "$file" plan_type)
+      case "$pt" in ""|feature|improvement|bug) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "plan_type: $pt" "Use one of: feature, improvement, bug" ;;
+      esac
+      local rp; rp=$(get_field "$file" requirements_pending)
+      case "$rp" in ""|true|false) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "requirements_pending: $rp" "Use boolean true or false" ;;
+      esac
+      local pv; pv=$(get_field "$file" peer_review_verdict)
+      case "$pv" in ""|approve|revise|reject|null) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "peer_review_verdict: $pv" "Use one of: approve, revise, reject, null (or leave empty)" ;;
+      esac
+      local ds; ds=$(get_field "$file" data_scale)
+      case "$ds" in ""|small|medium|large) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "data_scale: $ds" "Use one of: small, medium, large" ;;
+      esac
+      ;;
+    docs/learnings/*/*.md)
+      local cat; cat=$(get_field "$file" category)
+      case "$cat" in ""|bugs|patterns|decisions|sources) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "learning category: $cat" "Use one of: bugs, patterns, decisions, sources" ;;
+      esac
+      local s; s=$(get_field "$file" status)
+      case "$s" in ""|active|deprecated|superseded) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "learning status: $s" "Use one of: active, deprecated, superseded" ;;
+      esac
+      local conf; conf=$(get_field "$file" confidence)
+      if [ -n "$conf" ] && ! printf '%s' "$conf" | grep -qE '^([1-9]|10)$'; then
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "confidence: $conf" "Use an integer 1-10"
+      fi
+      ;;
+    docs/designs/*.md)
+      local s; s=$(get_field "$file" status)
+      case "$s" in ""|open|accepted|superseded) ;; *)
+        emit "frontmatter.invalid-enum" "$file" "" "P1" "design status: $s" "Use one of: open, accepted, superseded" ;;
+      esac
+      ;;
+  esac
+}
+
+# --- Rule: id-stability.fr-collision + fr-format ---
+# Single pass over all plan files; detects duplicate plan IDs across active/ + completed/
+# and validates the format <PREFIX><NN> where <PREFIX> is 2–3 uppercase letters.
+# Rule names retain the `fr-` prefix for back-compat with downstream consumers.
+check_fr_id_collisions() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  local seen_fr_file=$(mktemp)
+  trap "rm -f $seen_fr_file" RETURN
+  for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
+    [ -f "$plan" ] || continue
+    local fr
+    fr=$(get_plan_id "$plan")
+    [ -z "$fr" ] && continue
+    if ! printf '%s' "$fr" | grep -qE '^[A-Z]{2,3}[0-9]{2,3}$'; then
+      emit "id-stability.fr-format" "$plan" "" "P2" "plan_id '$fr' is not <PREFIX><NN> with a 2–3 uppercase prefix and 2–3 digit zero-padded number" "Use e.g. FR01, EN03, ABC12 (prefix from foundation.md plan_id_prefix; numbers zero-padded)"
+    fi
+    if grep -qxF "$fr" "$seen_fr_file" 2>/dev/null; then
+      emit "id-stability.fr-collision" "$plan" "" "P1" "plan_id '$fr' is duplicated across plans" "Renumber the newer plan to the next free <PREFIX><NN>"
+    else
+      echo "$fr" >> "$seen_fr_file"
+    fi
+  done
+  rm -f "$seen_fr_file"
+}
+
+# --- Rule: cross-link.broken-r / broken-u / broken-fr / broken-td ---
+# Walks markdown bodies for citations like "(see R3)", "(see U5)", "FR07", "TD11"
+# and verifies they resolve. R-IDs resolve to lines/sections in foundation.md;
+# U-IDs resolve within the cited plan; FR-IDs resolve to a plan filename;
+# TD-IDs resolve to docs/plans/tech-debt-tracker.md.
+check_cross_links() {
+  local file="$1"
+
+  # R-IDs: foundation must have a line declaring the R-ID (e.g., "**R3.**" or "## R3")
+  if [ -f docs/foundation.md ]; then
+    local r_ids
+    r_ids=$(grep -oE '\bR[0-9]+\b' "$file" | sort -u || true)
+    while IFS= read -r rid; do
+      [ -z "$rid" ] && continue
+      # Skip self-references inside foundation.md
+      [ "$file" = "docs/foundation.md" ] && continue
+      if ! grep -qE "(\*\*${rid}\.|## ${rid}\b|^- \*\*${rid}\.|^${rid}\.)" docs/foundation.md; then
+        emit "cross-link.broken-r" "$file" "" "P1" "Citation of $rid not found in docs/foundation.md" "Either add $rid to foundation.md §5 or remove the citation"
+      fi
+    done <<< "$r_ids"
+  fi
+
+  # U-IDs: only meaningful within a plan; skip if file isn't a plan.
+  case "$file" in docs/plans/active/*.md|docs/plans/completed/*.md)
+    local u_ids
+    u_ids=$(grep -oE '\bU[0-9]+\b' "$file" | sort -u || true)
+    while IFS= read -r uid; do
+      [ -z "$uid" ] && continue
+      # U-ID must have a declaring line in the same plan ("### U3." pattern)
+      if ! grep -qE "^#{2,4} ${uid}\." "$file"; then
+        emit "cross-link.broken-u" "$file" "" "P1" "$uid cited but no '### $uid.' declaration in same plan" "Add a unit heading or remove the citation"
+      fi
+    done <<< "$u_ids"
+    ;;
+  esac
+
+  # Plan-IDs: must resolve to an existing plan filename. Prefix set comes from
+  # foundation.md `plan_id_prefix:` plus any prefix already in use under plans/
+  # (and legacy `FR`). Rule code retains the `broken-fr` name for back-compat.
+  local plan_prefixes; plan_prefixes=$(get_plan_prefixes)
+  local plan_id_pattern="\\b(${plan_prefixes})[0-9]{2,3}\\b"
+  local fr_ids
+  fr_ids=$(grep -oE "$plan_id_pattern" "$file" | sort -u || true)
+  while IFS= read -r frid; do
+    [ -z "$frid" ] && continue
+    if ! ls docs/plans/active/${frid}-*.md 2>/dev/null 1>&2 \
+       && ! ls docs/plans/completed/${frid}-*.md 2>/dev/null 1>&2; then
+      # Skip if this is a system-describing reference doc — those reference plan-IDs in narrative,
+      # not as citations to real plans in this repo.
+      case "$file" in
+        docs/foundation.md|docs/workflow-and-catalog.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md|docs/*-spec.md) ;;
+        *)
+          emit "cross-link.broken-fr" "$file" "" "P1" "$frid cited but no plan file matches docs/plans/{active,completed}/$frid-*.md" "Create the plan or remove the citation"
+          ;;
+      esac
+    fi
+  done <<< "$fr_ids"
+
+  # TD-IDs: must resolve to an entry in tech-debt-tracker.md.
+  #
+  # Only a `Resolves:` metadata field is a citation, per this rule's own
+  # definition in references/tech-debt-tracker-format.md:147 and the plan
+  # template's `- **Resolves:** TD7, TD12`. Scanning every TD-ID in the file
+  # flagged prose that merely names the syntax ("cites them as `Resolves: TD7`
+  # in unit metadata", docs/foundation.md) and sample output inside spec
+  # documents ("1 deferred to TD8"), neither of which cites anything. The
+  # anchor requires Resolves: to open the line, optionally as a list bullet
+  # and/or bolded, so a mid-sentence mention in backticks is not a citation.
+  if [ -f docs/plans/tech-debt-tracker.md ]; then
+    local td_ids
+    td_ids=$(grep -E '^[[:space:]]*([-*][[:space:]]+)?(\*\*)?Resolves:(\*\*)?' "$file" 2>/dev/null \
+               | grep -oE '\bTD[0-9]+\b' | sort -u || true)
+    while IFS= read -r tdid; do
+      [ -z "$tdid" ] && continue
+      [ "$file" = "docs/plans/tech-debt-tracker.md" ] && continue
+      if ! grep -qE "^### ${tdid}\." docs/plans/tech-debt-tracker.md; then
+        emit "cross-link.broken-td" "$file" "" "P1" "$tdid cited but no '### $tdid.' entry in tech-debt-tracker.md" "Add the TD entry or remove the citation"
+      fi
+    done <<< "$td_ids"
+  fi
+}
+
+# --- Rule: index-coverage.* ---
+# Plans must appear in docs/generated/plan-index.md; learnings in docs/generated/learning-index.md.
+# Stub indexes (zero entries) are OK for empty projects.
+check_index_coverage() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+
+  # Plans
+  if [ -f docs/generated/plan-index.md ]; then
+    for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
+      [ -f "$plan" ] || continue
+      [ "$(basename "$plan")" = "tech-debt-tracker.md" ] && continue
+      local plan_basename
+      plan_basename=$(basename "$plan")
+      if ! grep -qF "$plan_basename" docs/generated/plan-index.md; then
+        emit "index-coverage.plan-missing" "docs/generated/plan-index.md" "" "P1" \
+          "$plan exists but is not listed in plan-index.md" \
+          "Run /en-learn to regenerate the index"
+      fi
+    done
+  fi
+
+  # Learnings
+  if [ -f docs/generated/learning-index.md ]; then
+    for learning in docs/learnings/bugs/*.md docs/learnings/patterns/*.md docs/learnings/decisions/*.md docs/learnings/sources/*.md; do
+      [ -f "$learning" ] || continue
+      local learning_basename
+      learning_basename=$(basename "$learning")
+      if ! grep -qF "$learning_basename" docs/generated/learning-index.md; then
+        emit "index-coverage.learning-missing" "docs/generated/learning-index.md" "" "P1" \
+          "$learning exists but is not listed in learning-index.md" \
+          "Run /en-learn --lint --fix to regenerate the index"
+      fi
+    done
+  fi
+}
+
+# --- Rule: freshness.architecture-* ---
+# docs/architecture.md updated: field within configurable freshness window.
+# 0-30 days: green; 31-90 days: P2 advisory; 91+ days: P1.
+check_architecture_freshness() {
+  [ "$1" = "docs/architecture.md" ] || return 0
+  local updated
+  updated=$(get_field "$1" updated)
+  [ -z "$updated" ] && return 0
+  printf '%s' "$updated" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || return 0
+
+  # Compute days since updated using the system `date` (cross-platform fallback).
+  local now_epoch updated_epoch days
+  now_epoch=$(date +%s)
+  if updated_epoch=$(date -j -f "%Y-%m-%d" "$updated" +%s 2>/dev/null); then :
+  elif updated_epoch=$(date -d "$updated" +%s 2>/dev/null); then :
+  else return 0; fi
+  days=$(( (now_epoch - updated_epoch) / 86400 ))
+
+  if [ "$days" -gt 90 ]; then
+    emit "freshness.architecture-90" "$1" "" "P1" \
+      "architecture.md updated $days days ago (>90 days)" \
+      "Run /en-learn or /en-sweep to refresh against current code"
+  elif [ "$days" -gt 30 ]; then
+    emit "freshness.architecture-30" "$1" "" "P2" \
+      "architecture.md updated $days days ago (>30 days)" \
+      "Verify it still reflects current code; refresh if not"
+  fi
+}
+
+# --- Rule: generated.missing-marker ---
+# Files in docs/generated/ must carry `generated: true` frontmatter.
+check_generated_marker() {
+  case "$1" in docs/generated/*.md) ;; *) return 0 ;; esac
+  local g
+  g=$(get_field "$1" generated)
+  if [ "$g" != "true" ]; then
+    emit "generated.missing-marker" "$1" "" "P1" \
+      "File in docs/generated/ lacks 'generated: true' frontmatter" \
+      "Add 'generated: true' and a 'generator: <skill>' field; do not hand-edit generated files"
+  fi
+}
+
+# --- Rule: architecture.fitness-violation (project-wide; opt-in) ---
+# When .ensemble/config.local.yaml has fitness.enabled: true AND the project
+# provides a bin/check-fitness executable, ensemble-lint runs it and surfaces
+# its findings. Contract: see references/architecture-fitness.md.
+#
+# bin/check-fitness contract:
+#   stdin:  newline-separated list of changed file paths (from git diff --name-only)
+#   stdout: JSON-lines, one per finding:
+#           {"rule": "<dotted.id>", "file": "<path>", "line": <int|null>,
+#            "severity": "P0|P1|P2|P3", "message": "<msg>", "remediation": "<msg>"}
+#   exit:   0 if no violations; 1 if violations; 2 if error
+check_architecture_fitness() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  [ -f .ensemble/config.local.yaml ] || return 0
+  grep -qE '^[[:space:]]*fitness:[[:space:]]*$' .ensemble/config.local.yaml 2>/dev/null || return 0
+  grep -qE '^[[:space:]]*enabled:[[:space:]]*true' .ensemble/config.local.yaml 2>/dev/null || return 0
+
+  # Resolve check command (default bin/check-fitness; configurable).
+  local cmd="bin/check-fitness"
+  local configured
+  configured=$(awk '/^[[:space:]]*fitness:[[:space:]]*$/{flag=1; next}
+                    /^[[:space:]]*[a-z_]+:[[:space:]]*$/{flag=0}
+                    flag && /^[[:space:]]*check_command:[[:space:]]*/{sub(/^[[:space:]]*check_command:[[:space:]]*/, ""); gsub(/["'\''[:space:]]/, ""); print; exit}' .ensemble/config.local.yaml 2>/dev/null)
+  [ -n "$configured" ] && cmd="$configured"
+
+  if [ ! -x "$cmd" ]; then
+    emit "architecture.fitness-checker-missing" "" "" "P3" \
+      "fitness.enabled is true but $cmd is missing or not executable" \
+      "Either provide $cmd per references/architecture-fitness.md, or set fitness.enabled: false"
+    return 0
+  fi
+
+  # Feed the checker the changed files (or all tracked source files if no git diff base).
+  local changed
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    changed=$(git diff --name-only HEAD 2>/dev/null)
+    [ -z "$changed" ] && changed=$(git ls-files 2>/dev/null)
+  else
+    return 0
+  fi
+  [ -z "$changed" ] && return 0
+
+  # Run the checker; parse JSON-lines output.
+  local output
+  output=$(printf '%s\n' "$changed" | "$cmd" 2>&1 || true)
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    # Only attempt to parse lines that look like JSON.
+    case "$line" in
+      \{*\}) ;;
+      *) continue ;;
+    esac
+    local rule file lineno severity message remediation
+    rule=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("rule", "architecture.fitness-violation"))
+except: pass' 2>/dev/null)
+    file=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("file", ""))
+except: pass' 2>/dev/null)
+    lineno=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: v=json.loads(sys.stdin.read()).get("line"); print(v if v is not None else "")
+except: pass' 2>/dev/null)
+    severity=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("severity", "P2"))
+except: pass' 2>/dev/null)
+    message=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("message", ""))
+except: pass' 2>/dev/null)
+    remediation=$(printf '%s' "$line" | python3 -c 'import sys,json
+try: print(json.loads(sys.stdin.read()).get("remediation", ""))
+except: pass' 2>/dev/null)
+    [ -z "$rule" ] && rule="architecture.fitness-violation"
+    emit "$rule" "$file" "$lineno" "$severity" "$message" "$remediation"
+  done <<< "$output"
+}
+
+# --- Rule: logging.unstructured (project-wide; opt-in) ---
+# Flags console.log / print / fmt.Println / println! outside dev paths
+# when observability.structured_logging_required is true in .ensemble/config.local.yaml.
+# Per references/observability-conventions.md.
+check_logging_unstructured() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  [ -f .ensemble/config.local.yaml ] || return 0
+  grep -q '^[[:space:]]*structured_logging_required:[[:space:]]*true' .ensemble/config.local.yaml 2>/dev/null || return 0
+
+  # Collect dev-path globs (files under these paths are exempt).
+  local dev_globs=""
+  if grep -q '^[[:space:]]*logging_dev_paths:' .ensemble/config.local.yaml; then
+    dev_globs=$(awk '/^[[:space:]]*logging_dev_paths:/{flag=1; next}
+                     /^[[:space:]]*[a-z_]+:/{flag=0}
+                     flag && /^[[:space:]]*-[[:space:]]*/{sub(/^[[:space:]]*-[[:space:]]*/, ""); gsub(/["'\'']/, ""); print}' .ensemble/config.local.yaml)
+  fi
+
+  # Determine source files via git ls-files (avoids node_modules/vendor noise).
+  command -v git >/dev/null 2>&1 || return 0
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local matched_count=0
+  while IFS= read -r src; do
+    [ -z "$src" ] && continue
+    # Skip dev paths (simple suffix-glob comparison).
+    local skip="false"
+    if [ -n "$dev_globs" ]; then
+      while IFS= read -r glob; do
+        [ -z "$glob" ] && continue
+        case "$src" in
+          $glob) skip="true"; break ;;
+        esac
+      done <<< "$dev_globs"
+    fi
+    [ "$skip" = "true" ] && continue
+
+    # Per-extension pattern.
+    local pattern=""
+    case "$src" in
+      *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs) pattern='\bconsole\.(log|error|warn|info|debug)[[:space:]]*\(' ;;
+      *.py)                                pattern='^[[:space:]]*print[[:space:]]*\(' ;;
+      *.go)                                pattern='\bfmt\.(Print|Println|Printf)[[:space:]]*\(' ;;
+      *.rs)                                pattern='\b(println|eprintln|print|eprint)![[:space:]]*\(' ;;
+      *)                                    continue ;;
+    esac
+
+    local hits
+    hits=$(grep -nE "$pattern" "$src" 2>/dev/null || true)
+    if [ -n "$hits" ]; then
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        local lineno
+        lineno=$(printf '%s' "$line" | cut -d: -f1)
+        emit "logging.unstructured" "$src" "$lineno" "P2" \
+          "Unstructured log call — use the project's structured logger" \
+          "Replace with logger.<level>(...) per references/observability-conventions.md, or add this path to observability.logging_dev_paths if it's a dev/test path"
+        matched_count=$((matched_count + 1))
+      done <<< "$hits"
+    fi
+  done < <(git ls-files 2>/dev/null | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs)$' 2>/dev/null)
+}
+
+# --- Rule: learnings.bootstrap-unvalidated (project-wide; advisory) ---
+# Counts bootstrapped patterns (source: bootstrap, requires_validation: true)
+# more than 30 days old. P3 — informational reminder, not a blocker.
+check_bootstrap_unvalidated() {
+  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
+  [ -d docs/learnings/patterns ] || return 0
+  local count=0
+  local oldest=""
+  for entry in docs/learnings/patterns/*.md; do
+    [ -f "$entry" ] || continue
+    local source rv date
+    source=$(get_field "$entry" source)
+    rv=$(get_field "$entry" requires_validation)
+    [ "$source" = "bootstrap" ] && [ "$rv" = "true" ] || continue
+    date=$(get_field "$entry" bootstrap_run)
+    [ -z "$date" ] && date=$(get_field "$entry" date)
+    count=$((count + 1))
+    if [ -z "$oldest" ] || [ "$date" \< "$oldest" ]; then
+      oldest="$date"
+    fi
+  done
+  [ "$count" -eq 0 ] && return 0
+  # Only emit if oldest bootstrap is >30 days ago.
+  if [ -n "$oldest" ]; then
+    local now days_ago
+    now=$(date -u +%Y-%m-%d)
+    days_ago=$(python3 -c "
+from datetime import date
+o = date.fromisoformat('$oldest')
+n = date.fromisoformat('$now')
+print((n - o).days)
+" 2>/dev/null || echo 0)
+    if [ "$days_ago" -gt 30 ]; then
+      emit "learnings.bootstrap-unvalidated" "" "" "P3" \
+        "$count bootstrapped pattern(s) still flagged requires_validation: true (oldest: $oldest, $days_ago days)" \
+        "Run /en-learn --refresh to validate, or edit each entry to set requires_validation: false and bump confidence to 8 once verified"
+    fi
+  fi
+}
+
+# --- Helper: is this a new-style plan? (presence of peer_review_resolutions field) ---
+# New-style plans (post-resilience-spec) MUST carry per-unit risk/gated.
+# Legacy plans get a P3 advisory until they're refreshed via /en-plan --resume.
+is_new_style_plan() {
+  local file="$1"
+  grep -q "^peer_review_resolutions:" <(extract_frontmatter "$file")
+}
+
+# --- Helper: extract per-unit metadata from a plan ---
+# Emits one line per unit: "U_ID|RISK|CATEGORY|GATED|DEPENDENCIES"
+# Empty fields stay empty between pipes.
+extract_units() {
+  local file="$1"
+  awk '
+    function emit_current() {
+      if (uid) printf "%s|%s|%s|%s|%s\n", uid, risk, cat, gated, deps
+    }
+    BEGIN { uid=""; risk=""; cat=""; gated=""; deps="" }
+    /^### U[0-9]+/ {
+      emit_current()
+      match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH)
+      risk=""; cat=""; gated=""; deps=""
+      next
+    }
+    # A level-2 heading ends the units section. Without this the last unit stays
+    # open to end-of-file and absorbs later bullets — notably the
+    # "- **Risk:** … — **Mitigation:** …" lines the plan template prescribes
+    # under "## Decisions, assumptions & risks", which then read as an invalid
+    # risk enum on the final unit.
+    /^## / {
+      emit_current()
+      uid=""; risk=""; cat=""; gated=""; deps=""
+      next
+    }
+    /^- \*\*Risk:\*\*/   { sub(/^- \*\*Risk:\*\*[[:space:]]*/, ""); risk=$0; next }
+    /^- \*\*Category:\*\*/ { sub(/^- \*\*Category:\*\*[[:space:]]*/, ""); cat=$0; next }
+    /^- \*\*Gated:\*\*/  { sub(/^- \*\*Gated:\*\*[[:space:]]*/, ""); gated=$0; next }
+    /^- \*\*Dependencies:\*\*/ { sub(/^- \*\*Dependencies:\*\*[[:space:]]*/, ""); deps=$0; next }
+    END { emit_current() }
+  ' "$file"
+}
+
+# --- Helper: numeric risk priority for invariant comparisons ---
+risk_priority() {
+  case "$1" in
+    low) echo 1 ;;
+    medium) echo 2 ;;
+    high) echo 3 ;;
+    destructive) echo 4 ;;
+    *) echo 0 ;;
+  esac
+}
+
+# --- Rule: unit.risk-class ---
+# Every unit MUST declare Risk: with a valid enum value.
+# Severity depends on whether the plan is new-style (post-spec) or legacy:
+#   - New-style: missing/invalid risk = P1
+#   - Legacy:    missing risk = P3 advisory (en-build's ordered classifier infers); invalid value = P2
+check_plan_unit_risk_class() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  local new_style="false"
+  is_new_style_plan "$file" && new_style="true"
+
+  while IFS='|' read -r uid risk _ _ _; do
+    [ -z "$uid" ] && continue
+    if [ -z "$risk" ]; then
+      if [ "$new_style" = "true" ]; then
+        emit "unit.risk-class" "$file" "" "P1" \
+          "Unit $uid missing Risk:" \
+          "Add '- **Risk:** low | medium | high | destructive' per references/templates/plan-template.md"
+      else
+        emit "unit.risk-class" "$file" "" "P3" \
+          "Unit $uid (legacy plan) missing Risk: — /en-build will infer at run-time" \
+          "Optional but recommended: refresh via '/en-plan --resume <plan-path>' to add Risk per unit"
+      fi
+    else
+      case "$risk" in
+        low|medium|high|destructive) ;;
+        *)
+          local sev="P1"; [ "$new_style" = "true" ] || sev="P2"
+          emit "unit.risk-class" "$file" "" "$sev" \
+            "Unit $uid Risk: '$risk' is not a valid enum value" \
+            "Use one of: low, medium, high, destructive" ;;
+      esac
+    fi
+  done < <(extract_units "$file")
+}
+
+# --- Rule: unit.gated-flag ---
+# Every unit SHOULD declare Gated: true|false. Default false; advisory if absent.
+check_plan_unit_gated_flag() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  local new_style="false"
+  is_new_style_plan "$file" && new_style="true"
+
+  while IFS='|' read -r uid _ _ gated _; do
+    [ -z "$uid" ] && continue
+    if [ -z "$gated" ]; then
+      if [ "$new_style" = "true" ]; then
+        emit "unit.gated-flag" "$file" "" "P3" \
+          "Unit $uid missing Gated: (defaults to false)" \
+          "Add '- **Gated:** false'. Set true ONLY when the unit changes production user state or external system state at build time (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). See references/templates/plan-template.md gated criteria for the full bar; over-gating erodes the signal value of gates that matter."
+      fi
+      # Legacy plans without gated: stay silent — defaults to false at runtime.
+    else
+      case "$gated" in
+        true|false) ;;
+        *)
+          emit "unit.gated-flag" "$file" "" "P2" \
+            "Unit $uid Gated: '$gated' is not boolean" \
+            "Use 'true' or 'false'" ;;
+      esac
+    fi
+  done < <(extract_units "$file")
+}
+
+# --- Rule: unit.category-enum ---
+# Category: when present must match the documented enum. Optional; missing is fine.
+check_plan_unit_category_enum() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+
+  while IFS='|' read -r uid _ cat _ _; do
+    [ -z "$uid" ] && continue
+    [ -z "$cat" ] && continue
+    case "$cat" in
+      feature|observability|diagnostics|api-additive|migration-additive|migration|backfill|schema-evolution|deletion|drop|removal|other) ;;
+      *)
+        emit "unit.category-enum" "$file" "" "P2" \
+          "Unit $uid Category: '$cat' is not a valid enum value" \
+          "Use one of: feature, observability, diagnostics, api-additive, migration-additive, migration, backfill, schema-evolution, deletion, drop, removal, other" ;;
+    esac
+  done < <(extract_units "$file")
+}
+
+# --- Rule: unit.test-scenarios ---
+# Feature-bearing units SHOULD enumerate real test scenarios (happy / edge /
+# error / integration). A `category: feature` unit with fewer than two scenario
+# lines is flagged P2 advisory (a nudge, never a P1 blocker). The
+# `Test expectation: none — <reason>` escape is for NON-feature units (which are
+# already skipped by the category filter) — a feature unit cannot use it to
+# bypass; if a unit genuinely has no testable behavior, recategorize it.
+check_plan_unit_test_scenarios() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+
+  while IFS='|' read -r uid cat scen_lines _has_expect; do
+    [ -z "$uid" ] && continue
+    # Only nudge explicit feature units; leave other categories alone. A feature
+    # unit needs real scenarios regardless of any Test expectation line (that
+    # escape is for non-feature units, which never reach this check).
+    [ "$cat" = "feature" ] || continue
+    if [ "${scen_lines:-0}" -lt 2 ]; then
+      emit "unit.test-scenarios" "$file" "" "P2" \
+        "Unit $uid (feature) has fewer than two test scenarios ($scen_lines)" \
+        "Enumerate real scenarios across the applicable categories (happy path, edge cases, error/failure paths, integration) with concrete inputs/actions/outcomes. If the unit genuinely has no testable behavior, recategorize it (non-feature) and use '- **Test expectation:** none — <reason>'. See references/templates/plan-template.md."
+    fi
+  done < <(
+    awk '
+      function emit_current() {
+        if (uid) printf "%s|%s|%s|%s\n", uid, cat, scen, hasexp
+      }
+      BEGIN { uid=""; cat=""; scen=0; hasexp=0; in_scen=0 }
+      /^### U[0-9]+/ {
+        emit_current()
+        match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH)
+        cat=""; scen=0; hasexp=0; in_scen=0
+        next
+      }
+      /^- \*\*Category:\*\*/ { sub(/^- \*\*Category:\*\*[[:space:]]*/, ""); cat=$0; in_scen=0; next }
+      /^- \*\*Test expectation:\*\*/ { hasexp=1; in_scen=0; next }
+      /^- \*\*Test scenarios:\*\*/ { in_scen=1; next }
+      /^- \*\*[A-Za-z]/ { in_scen=0; next }   # any other top-level unit field ends the block
+      { if (in_scen && $0 ~ /^[[:space:]]+-[[:space:]]/) scen++ }
+      END { emit_current() }
+    ' "$file"
+  )
+}
+
+# --- Rule: phase-invariant.dependency-vs-risk ---
+# A low-risk unit must never depend (transitively) on a higher-risk unit.
+# This would force /en-build to either reject the plan or violate phase purity.
+# Direct-dependency check is sufficient because transitivity is implied —
+# if U depends on V depends on W, and U is lower risk than W, the U->V edge
+# already fires when V's risk is computed against U.
+check_plan_phase_invariant() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+
+  # Build U-ID -> risk map first.
+  local map_file
+  map_file=$(mktemp)
+  while IFS='|' read -r uid risk _ _ _; do
+    [ -z "$uid" ] && continue
+    [ -z "$risk" ] && continue
+    printf '%s %s\n' "$uid" "$risk" >> "$map_file"
+  done < <(extract_units "$file")
+
+  # Walk dependency edges.
+  while IFS='|' read -r uid _ _ _ deps; do
+    [ -z "$uid" ] && continue
+    [ -z "$deps" ] && continue
+    case "$deps" in *none*|*None*|*NONE*) continue ;; esac
+
+    local u_risk; u_risk=$(awk -v u="$uid" '$1==u{print $2; exit}' "$map_file")
+    [ -z "$u_risk" ] && continue
+    local u_pri; u_pri=$(risk_priority "$u_risk")
+
+    # Extract referenced U-IDs from the deps string.
+    local dep_id
+    for dep_id in $(printf '%s' "$deps" | grep -oE 'U[0-9]+' || true); do
+      local v_risk; v_risk=$(awk -v u="$dep_id" '$1==u{print $2; exit}' "$map_file")
+      [ -z "$v_risk" ] && continue
+      local v_pri; v_pri=$(risk_priority "$v_risk")
+      if [ "$v_pri" -gt "$u_pri" ]; then
+        emit "phase-invariant.dependency-vs-risk" "$file" "" "P1" \
+          "Unit $uid (risk: $u_risk) depends on $dep_id (risk: $v_risk) — lower-risk unit depending on higher-risk unit violates phase purity" \
+          "Remove the dependency, promote $uid's risk to at least $v_risk, or split $uid into a part that doesn't depend on $dep_id"
+      fi
+    done
+  done < <(extract_units "$file")
+
+  rm -f "$map_file"
+}
+
+# --- Rule: peer-review-resolutions.schema ---
+# Each entry under peer_review_resolutions: must carry finding_id, iteration,
+# severity, title, status. rationale required when status is deferred/disagreed/superseded.
+check_plan_resolutions_schema() {
+  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+
+  # Extract entries; awk emits one line per entry with all key fields pipe-delimited.
+  local entries
+  entries=$(extract_frontmatter "$file" | awk '
+    function emit_current() {
+      if (in_entry) printf "%s|%s|%s|%s|%s|%s\n", fid, it, sev, title, status, rat
+    }
+    BEGIN { in_res=0; in_entry=0; fid=""; it=""; sev=""; title=""; status=""; rat="" }
+    /^peer_review_resolutions:[[:space:]]*\[\][[:space:]]*$/ { in_res=0; next }
+    /^peer_review_resolutions:/ { in_res=1; next }
+    in_res && /^[A-Za-z_][A-Za-z0-9_]*:/ {
+      emit_current()
+      in_res=0; in_entry=0
+    }
+    !in_res { next }
+    /^[[:space:]]*-[[:space:]]+finding_id:/ {
+      emit_current()
+      in_entry=1
+      sub(/.*finding_id:[[:space:]]*/, ""); fid=$0
+      it=""; sev=""; title=""; status=""; rat=""
+      next
+    }
+    in_entry && /^[[:space:]]+iteration:/ { sub(/.*iteration:[[:space:]]*/, ""); it=$0; next }
+    in_entry && /^[[:space:]]+severity:/  { sub(/.*severity:[[:space:]]*/, "");  sev=$0; next }
+    in_entry && /^[[:space:]]+title:/     { sub(/.*title:[[:space:]]*/, "");     title=$0; next }
+    in_entry && /^[[:space:]]+status:/    { sub(/.*status:[[:space:]]*/, "");    status=$0; next }
+    in_entry && /^[[:space:]]+rationale:/ { sub(/.*rationale:[[:space:]]*/, ""); rat=$0; next }
+    END { emit_current() }
+  ')
+
+  [ -z "$entries" ] && return 0
+
+  while IFS='|' read -r fid it sev title status rat; do
+    [ -z "$fid" ] && continue
+    local missing=""
+    [ -z "$it" ]     && missing="${missing}iteration "
+    [ -z "$sev" ]    && missing="${missing}severity "
+    [ -z "$title" ]  && missing="${missing}title "
+    [ -z "$status" ] && missing="${missing}status "
+    if [ -n "$missing" ]; then
+      emit "peer-review-resolutions.schema" "$file" "" "P1" \
+        "Resolution entry $fid missing required field(s): ${missing% }" \
+        "Each entry needs finding_id, iteration, severity, title, status (per references/templates/plan-template.md)"
+    fi
+    case "$status" in
+      applied) ;;
+      deferred|disagreed|superseded)
+        if [ -z "$rat" ]; then
+          emit "peer-review-resolutions.schema" "$file" "" "P1" \
+            "Resolution entry $fid has status '$status' but no rationale" \
+            "Add 'rationale: <one-line reason>' — required for non-applied statuses"
+        fi
+        ;;
+      "") ;;  # already flagged as missing above
+      *)
+        emit "peer-review-resolutions.schema" "$file" "" "P1" \
+          "Resolution entry $fid has invalid status: '$status'" \
+          "Use one of: applied, deferred, disagreed, superseded" ;;
+    esac
+    case "$sev" in
+      ""|P0|P1|P2|P3) ;;
+      *)
+        emit "peer-review-resolutions.schema" "$file" "" "P1" \
+          "Resolution entry $fid has invalid severity: '$sev'" \
+          "Use one of: P0, P1, P2, P3" ;;
+    esac
+  done <<< "$entries"
+}
+
+# --- Run lints ---
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  check_frontmatter_present "$file"
+  check_no_absolute_paths "$file"
+  check_plan_status_location "$file"
+  check_claude_md_cross_ref "$file"
+  check_length_budget "$file"
+  check_plan_required_fields "$file"
+  check_learning_required_fields "$file"
+  check_frontmatter_enums_and_dates "$file"
+  check_plan_unit_risk_class "$file"
+  check_plan_unit_gated_flag "$file"
+  check_plan_unit_category_enum "$file"
+  check_plan_unit_test_scenarios "$file"
+  check_plan_phase_invariant "$file"
+  check_plan_resolutions_schema "$file"
+  check_cross_links "$file"
+  check_architecture_freshness "$file"
+  check_generated_marker "$file"
+done < <(collect_files)
+
+# Project-wide checks (run once; not per-file)
+check_fr_id_collisions
+check_index_coverage
+check_logging_unstructured
+check_architecture_fitness
+check_bootstrap_unvalidated
+
+# --- Report ---
+if [ "$VIOLATIONS" -gt 0 ]; then
+  if [ "$JSON" = "true" ]; then
+    cat "$TMP_FINDINGS"
+  else
+    cat "$TMP_FINDINGS"
+    if [ "$QUIET" != "true" ]; then
+      echo ""
+      echo "## Lint summary"
+      echo ""
+      echo "- **High (P1):** $P1"
+      echo "- **Medium (P2):** $P2"
+      echo "- **Advisory (P3):** $P3"
+      echo "- **Total:** $VIOLATIONS"
+      echo ""
+      if [ "$P1" -gt 0 ]; then
+        echo "Run \`bin/ensemble-lint --fix\` to auto-apply mechanical fixes (not yet implemented for all rules)."
+      fi
+    fi
+  fi
+  exit 1
+fi
+
+[ "$QUIET" != "true" ] && echo "ensemble-lint: clean (scope: $SCOPE)"
+exit 0

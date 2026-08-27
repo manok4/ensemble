@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN12
 title: Self-contained skill directories with a synced shared tree
-status: open
+status: in_progress
 location: active
 created: 2026-08-26
 shipped:
@@ -15,7 +15,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-26
-peer_review_plan_hash: e915c5feccd2801672387e048b60b55748e22379ec76a7889844f8d4db32277e
+peer_review_plan_hash: 7993cd48748366bcf73e2f512a71a811614bd85dbc34e1ff067504c04db73ccd
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1

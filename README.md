@@ -22,7 +22,7 @@ Ensemble fixes each by design:
 ## Five design pillars
 
 1. **Document-as-source-of-truth.** Foundation, architecture, plans, learnings — all live in `docs/`. Anything not in the repo is illegible to the agent.
-2. **Map, not encyclopedia.** `AGENTS.md` and `CLAUDE.md` are pointer indexes (~100 lines each); SKILL.md files run 150–400 lines with templates externalized to `references/`.
+2. **Map, not encyclopedia.** `AGENTS.md` and `CLAUDE.md` are pointer indexes (~100 lines each); SKILL.md files run 150–400 lines with templates externalized to each skill's own `references/`.
 3. **Cross-agent peer review.** `claude -p ↔ codex exec`. Outside Voice catches blind spots a single agent misses.
 4. **Compounding knowledge.** Every solved problem and decision gets captured. Future runs query the wiki automatically.
 5. **Lean by design.** Skills are small. Agents are short specialist prompts. The scaffolding earns its keep.
@@ -347,50 +347,75 @@ For full process detail, mode flags, and reference files per skill, see [`docs/w
 |---|---|
 | `code-simplifier` | Per-unit cleanup pass during `/en-build`. Runs between gate 1 (tests pass) and gate 2 (re-verify after simplifier). On gate 2 failure, simplifier edits revert automatically. |
 
-For agent invariants, dispatch matrix, and per-agent prompts, see [`docs/workflow-and-catalog.md`](./docs/workflow-and-catalog.md) and [`agents/`](./agents).
+For agent invariants, dispatch matrix, and per-agent prompts, see [`docs/workflow-and-catalog.md`](./docs/workflow-and-catalog.md) and [`shared/agents/`](./shared/agents).
 
 ---
 
 ## Repository layout
 
+Every skill directory is **self-contained**: it carries its own copy of every
+reference, template, script and agent it reads, so the folder works wherever it
+lands. Nothing inside a skill resolves a path above itself.
+
 ```
 ensemble/
 ├── .claude-plugin/                # Claude Code plugin manifest
 ├── .codex-plugin/                 # Codex plugin manifest
-├── skills/                        # 14 skills (en-*)
-│   ├── en-brainstorm/
-│   ├── en-foundation/
-│   ├── en-plan/
-│   ├── en-build/
-│   ├── en-review/
-│   ├── en-qa/
-│   ├── en-learn/
-│   ├── en-ship/
-│   ├── en-resolve-pr/             # + scripts/ (GraphQL helpers)
-│   ├── en-debug/
-│   ├── en-cross-review/
-│   ├── en-guardrail/              # + bin/ (hook + installer)
-│   ├── en-sweep/                  # + scripts/ (continuous-monitor + triage)
-│   └── en-setup/
-├── agents/                        # 11 agent definitions
-├── references/                    # Cross-skill references and templates
-│   ├── templates/                 # plan, foundation, AGENTS.md, etc.
-│   ├── observability-*.md         # log shape, debug mapping, hypothesis format
-│   ├── architecture-fitness.md    # contract for project-provided fitness checker
-│   └── …
-├── bin/                           # ensemble-lint, ensemble-detect-host,
-│                                  # ensemble-classify-plans, ensemble-doc-only-check,
-│                                  # en-sweep-ci
-├── scripts/                       # check-health, sync-to-codex
+├── skills/                        # 17 skills (en-*)
+│   └── en-plan/                   # every skill has the same shape:
+│       ├── SKILL.md
+│       ├── CONTRACT.md            #   what other skills may rely on (callable skills only)
+│       ├── references/            #   its own copies — generated + skill-owned
+│       ├── agents/                #   its own copies of the agents it dispatches
+│       └── scripts/               #   its own copies of the scripts it runs
+├── shared/                        # BUILD INPUT — never installed, never read at runtime
+│   ├── references/                #   42 files: canonical text with 2+ consumers
+│   ├── bin/                       #   15 scripts: ensemble-lint, ensemble-plan-hash, …
+│   ├── agents/                    #   11 agent definitions
+│   ├── manifest.json              #   which skill receives which file
+│   └── README.md                  #   how to work in here — read this before editing
+├── scripts/
+│   ├── sync-shared                # propagates shared/ into the skills that read it
+│   ├── check-health
+│   └── sync-to-codex
 ├── hooks/                         # Optional SessionStart hook
 ├── docs/
 │   ├── foundation.md              # Full design (PRD + TDD + architecture intent)
 │   ├── workflow-and-catalog.md    # Scannable skill + agent reference
+│   ├── plans/                     # active/, completed/, tech-debt-tracker.md
 │   └── integrations/              # Anthropic + Codex code-review action setup
-├── tests/                         # 13 test files, 268 assertions
+├── tests/                         # 70 test files
 ├── setup                          # Bash install script
 └── package.json
 ```
+
+## Editing shared material
+
+Anything two or more skills read lives once in `shared/` and is copied into each
+consumer. There are 399 such copies. **Never edit a copy under `skills/`.** Edit
+the file in `shared/`, then propagate:
+
+```bash
+scripts/sync-shared
+```
+
+One edit to `shared/references/host-detect.md` updates all 17 copies.
+
+`scripts/sync-shared --check` verifies without writing. It fails when a
+generated copy has drifted, when a skill names a relative path with no file
+behind it, and when the manifest grants a file to a skill that never reads it.
+That check runs in CI and in `./setup`, which refuses to install a tree whose
+copies are stale rather than shipping a mixture of old and new.
+
+If you edit a copy by mistake, the check tells you where to go instead:
+
+```
+✗ drift: skills/en-plan/references/severity.md differs from shared/references/severity.md
+✗        do not edit the generated copy — change shared/references/severity.md, then run scripts/sync-shared
+```
+
+Adding a consumer is one line in `shared/manifest.json` plus a sync. Full
+details in [`shared/README.md`](./shared/README.md).
 
 ---
 
@@ -427,7 +452,7 @@ sweep:
   max_drafts_per_run: 3
 ```
 
-Full schema in [`references/templates/config-local-example.yaml`](./references/templates/config-local-example.yaml).
+Full schema in [`shared/references/templates/config-local-example.yaml`](./shared/references/templates/config-local-example.yaml).
 
 ---
 

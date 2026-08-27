@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# ensemble-peer-invoke — peer invocation with classified, bounded fail-soft (EN11).
+#
+# Sourced by /en-review (step 9) AND by tests/lint/en-review-peer-default.test.sh,
+# so the test drives the REAL state machine. The retry contract lives here as
+# EXECUTABLE code rather than skill prose, because a prose invariant cannot be
+# behaviorally tested (D41): assertions on text can prove the words "retry once"
+# appear, never that exactly one retry happened.
+#
+# Pure functions, no top-level side effects, safe to source under `set -eu`.
+#
+# Usage (all flags optional unless noted):
+#   ensemble_peer_invoke --peer-cmd <cmd> --peer-format <fmt> [--peer-turns <t>]
+#                        [--peer-model <frag>] [--peer-effort <frag>]
+#                        --prompt-file <path> [--out-file <path>]
+#                        [--peer-mode <mode>] [--effort <tier>]
+#                        [--model-alias <alias>] [--reason-on <reason>]
+#
+# Prints ONE peer_decision JSON object (references/peer-model-policy.md (e)) on
+# stdout. The peer's own stdout goes to --out-file.
+
+# Locate and load the shared classifier (reused from EN10, never duplicated).
+#
+# BASH_SOURCE is bash-only. Consumers `source` this file (it exports a function,
+# so they must), and on macOS the sourcing shell is often zsh -- which leaves
+# BASH_SOURCE unset and, under `set -u`, aborted the sibling loads while
+# ensemble_peer_invoke still returned a well-formed
+# {"peer":"off","reason":"peer-failed:retry-exhausted"}. A broken helper was
+# therefore indistinguishable from a real peer failure, silently disabling peer
+# review. zsh sets $0 to the sourced file, bash does not, so the fallback covers
+# sourced and executed under both shells.
+_epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=bin/ensemble-cli-smoke
+. "$_epi_dir/ensemble-cli-smoke"
+# shellcheck source=bin/ensemble-extract-json
+. "$_epi_dir/ensemble-extract-json"
+
+# Split a flag fragment into argv under a CONTROLLED IFS with globbing off.
+# Relying on the caller's ambient IFS is not safe: a shell with a non-default
+# IFS would pass a whole fragment as one argument and the CLI would reject it.
+_epi_push() {
+  local _frag="$1" _w
+  [ -n "$_frag" ] || return 0
+  local IFS=' '
+  set -f
+  for _w in $_frag; do _epi_argv+=("$_w"); done
+  set +f
+}
+
+# Decide which fragment a flag rejection is about.
+#   $1 = stderr text
+# prints: effort | model | "" (ambiguous)
+_epi_attribute() {
+  if printf '%s' "${1:-}" | grep -qiE 'model_reasoning_effort|--effort'; then
+    echo effort; return 0
+  fi
+  if printf '%s' "${1:-}" | grep -qiE '\-\-model|(^|[[:space:]])-m([[:space:]]|$)'; then
+    echo model; return 0
+  fi
+  echo ""
+}
+
+# Escape a value for embedding in a JSON string. Without this a configured
+# alias containing a quote, backslash, or control character would emit invalid
+# JSON and silently defeat the structured contract (EN11-CR-003).
+_epi_json_escape() {
+  printf '%s' "${1:-}" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' \
+    | tr -d '\000-\010\013\014\016-\037' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
+# Emit the peer_decision object. Values come from the caller's resolved state,
+# so this helper never re-derives policy.
+_epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias
+  local _alias
+  if [ -n "${5:-}" ]; then _alias="\"$(_epi_json_escape "$5")\""; else _alias="null"; fi
+  printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s}\n' \
+    "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
+    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias"
+}
+
+# Recover the JSON envelope from a response wrapped in fences or prose. Applied
+# to every successful peer call so all four peer-invoking skills get it without
+# each re-implementing it. On failure the file is left byte-for-byte untouched:
+# the caller's existing "retry once with valid JSON only" is still the fallback
+# for genuinely broken responses, and must not be pre-empted by a partial write.
+_epi_normalize_out() {
+  local _f="${1:-}" _clean
+  [ -n "$_f" ] && [ "$_f" != "/dev/null" ] && [ -s "$_f" ] || return 0
+  _clean=$(ensemble_extract_json "$_f") || return 0
+  printf '%s' "$_clean" > "$_f"
+}
+
+# Resolve a timeout wrapper once. Same convention as references/outside-voice.md.
+_epi_timeout_bin() {
+  command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true
+}
+
+ensemble_peer_invoke() {
+  local peer_cmd="" peer_format="" peer_turns="" peer_model="" peer_effort=""
+  local prompt_file="" out_file="/dev/null" peer_mode="cross-agent"
+  local effort="medium" model_alias="" reason_on="default-on"
+  local timeout_secs="${peer_timeout_seconds:-600}"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --peer-cmd)     peer_cmd="$2";     shift 2 ;;
+      --peer-format)  peer_format="$2";  shift 2 ;;
+      --peer-turns)   peer_turns="$2";   shift 2 ;;
+      --peer-model)   peer_model="$2";   shift 2 ;;
+      --peer-effort)  peer_effort="$2";  shift 2 ;;
+      --prompt-file)  prompt_file="$2";  shift 2 ;;
+      --out-file)     out_file="$2";     shift 2 ;;
+      --peer-mode)    peer_mode="$2";    shift 2 ;;
+      --effort)       effort="$2";       shift 2 ;;
+      --model-alias)  model_alias="$2";  shift 2 ;;
+      --reason-on)    reason_on="$2";    shift 2 ;;
+      --timeout)      timeout_secs="$2"; shift 2 ;;
+      *) echo "ensemble_peer_invoke: unknown flag $1" >&2; return 2 ;;
+    esac
+  done
+
+  if [ -z "$peer_cmd" ] || [ -z "$prompt_file" ]; then
+    echo "ensemble_peer_invoke: --peer-cmd and --prompt-file are required" >&2
+    return 2
+  fi
+
+  # A stuck peer must not block a default-on review forever (EN11-CR-002).
+  # `timeout` exits 124 when it fires, which maps to the published
+  # peer-failed:timeout reason.
+  local _tb; _tb=$(_epi_timeout_bin)
+
+  # --- attempt 1 ---------------------------------------------------------
+  local _epi_argv=() _err _rc _class
+  [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
+  _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
+  _epi_push "$peer_model"; _epi_push "$peer_effort"
+
+  # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
+  # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
+  if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
+    _epi_normalize_out "$out_file"
+    _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias"
+    return 0
+  else
+    _rc=$?
+  fi
+
+  if [ "$_rc" -eq 124 ]; then
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+    return 1
+  fi
+
+  _class=$(ensemble_smoke_classify "$_err" "$_rc")
+
+  case "$_class" in
+    auth)    _epi_decision "off" "peer-failed:auth"    "$peer_mode" "$effort" "$model_alias"; return 1 ;;
+    unknown) _epi_decision "off" "peer-failed:unknown" "$peer_mode" "$effort" "$model_alias"; return 1 ;;
+  esac
+
+  # --- flagdrift: ONE bounded retry, dropping ONLY the rejected fragment ---
+  local _target _dropped
+  _target=$(_epi_attribute "$_err")
+
+  # An attributed-but-empty fragment cannot be the cause; prefer a fragment
+  # that is actually present. Ambiguous attribution drops the model fragment
+  # first (Codex never sets it, so it is the likelier culprit on Claude).
+  if [ "$_target" = "effort" ] && [ -z "$peer_effort" ]; then _target=""; fi
+  if [ "$_target" = "model" ]  && [ -z "$peer_model"  ]; then _target=""; fi
+  if [ -z "$_target" ]; then
+    if   [ -n "$peer_model" ];  then _target="model"
+    elif [ -n "$peer_effort" ]; then _target="effort"
+    else
+      # Neither fragment is set, so no retry could change the outcome.
+      _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias"
+      return 1
+    fi
+  fi
+
+  _epi_argv=()
+  [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
+  _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
+  # Drop ONLY the rejected fragment; the other one is retained deliberately.
+  if [ "$_target" = "model" ]; then
+    _dropped="dropped-model-fragment"
+    _epi_push "$peer_effort"
+  else
+    _dropped="dropped-effort-fragment"
+    _epi_push "$peer_model"
+  fi
+
+  # Capture the retry's exit code in an `else`, exactly as attempt 1 does. A
+  # bare `$?` after a completed `if` reads the IF STATEMENT's status (always 0
+  # when no branch ran), which would make the 124 check dead code and misreport
+  # a timed-out retry as retry-exhausted.
+  if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
+    _epi_normalize_out "$out_file"
+    _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias"
+    return 0
+  else
+    _rc=$?
+  fi
+  if [ "$_rc" -eq 124 ]; then
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+    return 1
+  fi
+
+  _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias"
+  return 1
+}

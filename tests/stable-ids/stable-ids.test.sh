@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="stable IDs"
 
-LINT="$REPO_ROOT/bin/ensemble-lint"
+LINT="$REPO_ROOT/shared/bin/ensemble-lint"
 
 setup_repo() {
   local tmp="$1"

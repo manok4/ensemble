@@ -33,11 +33,15 @@ else
   fail "en-loop must be manual-invoke only (launches an unattended process)"
 fi
 
-# --- helper-resolution preamble present (required by skill-helper-anchor guard) ---
-if grep -qF '**Helper resolution.**' "$SKILL"; then
-  pass "has the Helper-resolution preamble"
+# --- self-contained: nothing climbs out of the skill directory (EN12 U8) ---
+# This assertion is inverted. It used to REQUIRE the $ENSEMBLE_ROOT
+# helper-resolution preamble; that convention is what made a skill folder
+# unusable on its own, and it is now forbidden. tests/lint/skill-helper-anchor
+# enforces the same rule across every skill.
+if grep -qF 'ENSEMBLE_ROOT' "$SKILL"; then
+  fail "en-loop must not resolve helpers through \$ENSEMBLE_ROOT"
 else
-  fail "must carry the Helper-resolution preamble (\$ENSEMBLE_ROOT anchoring)"
+  pass "en-loop resolves everything inside its own directory"
 fi
 
 # --- Happy path: both modes + Morning Review documented ---
@@ -128,11 +132,15 @@ else
   fail "must document positioning vs en-flow, /loop, and en-build"
 fi
 
-# --- The skill-helper-anchor drift guard now covers en-loop ---
-if grep -qE 'TARGET_SKILLS=.*en-loop' "$ANCHOR"; then
-  pass "skill-helper-anchor guard includes en-loop in TARGET_SKILLS"
+# --- the self-containment guard covers en-loop (EN12 U8) ---
+# It used to be asserted by name, against a hardcoded TARGET_SKILLS list in
+# skill-helper-anchor.test.sh. That guard now derives its skill list from the
+# filesystem, so every skill is covered automatically and a new one cannot be
+# forgotten. Assert the derivation instead of the membership.
+if grep -qF 'ls -1d skills/*/' "$REPO_ROOT/tests/lint/skill-helper-anchor.test.sh"; then
+  pass "the self-containment guard derives its skill list, so en-loop is covered"
 else
-  fail "skill-helper-anchor.test.sh must add en-loop to TARGET_SKILLS"
+  fail "skill-helper-anchor.test.sh must cover every skill (derive the list, or add en-loop)"
 fi
 
 # --- Checkpoint cadence is en-loop's own bounded-chunk mechanic (gnhf has no ---

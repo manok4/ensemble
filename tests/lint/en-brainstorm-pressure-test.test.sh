@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-brainstorm pressure test"
 
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
-SOCRATIC="$REPO_ROOT/references/socratic-questions.md"
+SOCRATIC="$REPO_ROOT/skills/en-brainstorm/references/socratic-questions.md"
 
 # --- 1. self-gating: a well-framed opening pays no tax ---
 if grep -qiE "self-gating" "$SKILL" && grep -qiE "only those that actually exist" "$SKILL" && grep -qiE "earns .*zero" "$SKILL"; then

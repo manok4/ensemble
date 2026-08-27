@@ -109,6 +109,25 @@ else
   log ""
 fi
 
+# Shared-tree parity. Each skill directory carries its own copy of every
+# reference, script and agent it reads, generated from shared/ by
+# scripts/sync-shared. If someone edited shared/ without re-running the sync,
+# the copies are stale — and installing them would hand every host a mixture of
+# old and new, silently. Refuse instead: the fix is one command, and a wrong
+# install is far more expensive to notice than a failed one.
+if [ -x "$SOURCE_DIR/scripts/sync-shared" ]; then
+  if ! "$SOURCE_DIR/scripts/sync-shared" --root "$SOURCE_DIR" --check --quiet >/dev/null 2>&1; then
+    log ""
+    log "✗ The skill copies are out of sync with shared/."
+    "$SOURCE_DIR/scripts/sync-shared" --root "$SOURCE_DIR" --check 2>&1 | sed 's/^/    /' | head -12
+    log ""
+    log "  Run:  scripts/sync-shared"
+    log "  Then re-run ./setup. Nothing has been installed."
+    exit 1
+  fi
+  log "Shared-tree parity: clean"
+fi
+
 if [ "$VERIFY_ONLY" = "true" ]; then
   log "--verify-only: stopping after checks. No files written."
   exit 0
@@ -122,8 +141,7 @@ install_into() {
   mkdir -p "$target_root/skills" "$target_root/agents"
 
   # Per-target manifest tracks what this install owns (one path per line).
-  # Truncated at start of each run so it always reflects the current install.
-  # Lets us cleanly remove Ensemble's prior links on re-run without touching
+  # Lets us cleanly remove Ensemble's prior install on re-run without touching
   # any unrelated user-installed skills or agents.
   local manifest_dir="$HOME/.ensemble"
   mkdir -p "$manifest_dir"
@@ -132,20 +150,40 @@ install_into() {
   target_slug="${target_slug#.}"
   local manifest_file="$manifest_dir/install-manifest-$target_slug.txt"
 
-  # Sweep prior install (per the previous manifest), then start fresh.
+  # Sweep the prior install. Every path the manifest names was written by an
+  # earlier Ensemble run, so mode is irrelevant to whether we may remove it.
+  #
+  # This used to require the CURRENT run to be in copy mode before deleting a
+  # real directory, which asks the wrong question: what matters is what was
+  # installed, not what is being installed now. Re-running with --symlink after
+  # a --copy install therefore left every copied directory in place, the
+  # "already exists, not ours" guard skipped them, and the user got a silent
+  # no-op that looked like a successful reinstall.
   if [ -f "$manifest_file" ]; then
     while IFS= read -r prior_path; do
       [ -n "$prior_path" ] || continue
-      # Only remove symlinks (if symlink mode) or paths the manifest claims;
-      # never recurse into directories that aren't ours.
+      # Refuse to walk outside the directories this installer owns, so a
+      # corrupted or hand-edited manifest cannot turn into an arbitrary rm -rf.
+      case "$prior_path" in
+        "$target_root"/skills/*|"$target_root"/agents/*) ;;
+        *) log "  ⚠ manifest lists a path outside $target_root/{skills,agents}; ignoring: $prior_path"
+           continue ;;
+      esac
       if [ -L "$prior_path" ]; then
         rm -f "$prior_path"
-      elif [ -e "$prior_path" ] && [ "$COPY_MODE" = "copy" ]; then
+      elif [ -e "$prior_path" ]; then
         rm -rf "$prior_path"
       fi
     done < "$manifest_file"
   fi
-  : > "$manifest_file"
+
+  # Record the new install to a temp file and move it into place at the end.
+  # Truncating up front meant a run that swept and then skipped everything left
+  # an EMPTY manifest, orphaning paths no later run would ever clean up. Keeping
+  # the old manifest until the new one is complete means a failed run still
+  # leaves something that can sweep.
+  local manifest_tmp
+  manifest_tmp="$(mktemp "$manifest_dir/.install-manifest-$target_slug.XXXXXX")"
 
   # Skills: one symlink (or copy) per skill folder, placed directly under
   # ~/.<host>/skills/<skill-name>/. Hosts discover skills as <skills-root>/<skill>/SKILL.md;
@@ -167,21 +205,34 @@ install_into() {
     else
       ln -s "${skill_path%/}" "$dst"
     fi
-    echo "$dst" >> "$manifest_file"
+    echo "$dst" >> "$manifest_tmp"
     skill_count=$((skill_count + 1))
   done
   log "  Installed $skill_count skill(s) into $target_root/skills/ ($COPY_MODE)"
 
-  # Agents: one symlink (or copy) per .md file, placed directly under
-  # ~/.<host>/agents/<agent>.md. Same rationale as skills.
+  # Agents: published from the SKILLS that carry them, not from a central
+  # directory. Hosts resolve subagent_type from a flat registry, so a skill
+  # directory installed on its own would otherwise dispatch an agent that is
+  # installed nowhere — the bundled copies would be present and never read.
+  # Publishing from skills/*/agents/ makes installing one skill publish exactly
+  # that skill's agents. The union is collision-free because every copy is
+  # byte-identical to its source and scripts/sync-shared --check enforces it,
+  # so two skills publishing repo-research.md write the same bytes and the
+  # result does not depend on install order.
   local agent_count=0
-  for agent_file in "$SOURCE_DIR/agents"/*.md; do
+  for agent_file in "$SOURCE_DIR"/skills/*/agents/*.md; do
     [ -f "$agent_file" ] || continue
     local agent_name
     agent_name="$(basename "$agent_file")"
     local dst="$target_root/agents/$agent_name"
 
     if [ -e "$dst" ] || [ -L "$dst" ]; then
+      # Already published by an earlier skill this run: identical bytes, so this
+      # is the expected union case, not a conflict. Anything else is a foreign
+      # file and is left alone.
+      if grep -qxF "$dst" "$manifest_tmp" 2>/dev/null; then
+        continue
+      fi
       log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."
       continue
     fi
@@ -191,57 +242,17 @@ install_into() {
     else
       ln -s "$agent_file" "$dst"
     fi
-    echo "$dst" >> "$manifest_file"
+    echo "$dst" >> "$manifest_tmp"
     agent_count=$((agent_count + 1))
   done
   log "  Installed $agent_count agent(s) into $target_root/agents/ ($COPY_MODE)"
 
-  # Shared helpers. Every skill's preamble resolves `references/X` and `bin/Y`
-  # against $ENSEMBLE_ROOT, which it computes as realpath(<skill dir>/../..).
-  # In copy mode that lands on $target_root, so these two directories must be
-  # installed alongside skills/ or all 17 skills fail their own fail-loudly
-  # check at step 1 (the default on MinGW/MSYS/Cygwin, see COPY_MODE above).
-  # In symlink mode the skill dir realpaths back to the source checkout and the
-  # repo's own copies are what resolve; installing here regardless keeps the two
-  # modes identical and covers a host that re-copies a symlinked skill dir.
-  local shared_count=0
-  for shared_name in references bin; do
-    local shared_src="$SOURCE_DIR/$shared_name"
-    [ -d "$shared_src" ] || continue
-    local dst="$target_root/$shared_name"
-
-    if [ -e "$dst" ] || [ -L "$dst" ]; then
-      log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."
-      log "    Skills cannot resolve \$ENSEMBLE_ROOT/$shared_name until you remove or rename it."
-      continue
-    fi
-
-    if [ "$COPY_MODE" = "copy" ]; then
-      cp -R "$shared_src" "$dst"
-    else
-      ln -s "$shared_src" "$dst"
-    fi
-    echo "$dst" >> "$manifest_file"
-    shared_count=$((shared_count + 1))
-  done
-  log "  Installed $shared_count shared helper dir(s) into $target_root/ ($COPY_MODE)"
-
-  # Assert the resolution the skills actually depend on, rather than trusting
-  # that the copy above succeeded. host-detect.md is the file every skill's
-  # preamble names as its partial-install probe, so probe the same one.
-  local probe="$target_root/references/host-detect.md"
-  if [ -e "$probe" ]; then
-    log "  Verified \$ENSEMBLE_ROOT resolution: $probe"
-  else
-    log "  ✗ $probe does not resolve. Skills would fail at step 1; install is incomplete."
-    INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
-  fi
+  # Publish the manifest only now that the install is complete.
+  mv "$manifest_tmp" "$manifest_file"
 
   log ""
 }
 
-# Counts install_into failures that must not be reported as success.
-INSTALL_ERRORS=0
 
 [ "$INSTALL_CLAUDE" = "true" ] && install_into "$HOME/.claude" "Claude Code"
 [ "$INSTALL_CODEX"  = "true" ] && install_into "$HOME/.codex"  "Codex"
@@ -315,21 +326,14 @@ fi
 # in a shared, sourceable helper (EN10) so the drift test exercises the REAL
 # classifier. On failure it distinguishes flag drift from an un-authenticated
 # CLI (a fresh machine is not a flag mismatch).
-# shellcheck source=bin/ensemble-cli-smoke
-. "$SOURCE_DIR/bin/ensemble-cli-smoke"
+# shellcheck source=shared/bin/ensemble-cli-smoke
+. "$SOURCE_DIR/shared/bin/ensemble-cli-smoke"
 if [ "$QUIET" != "true" ]; then
   log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
   # claude -p supports --max-turns; codex exec does not (single-shot) — EN10.
   $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "ping"
   $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "ping"
   log ""
-fi
-
-if [ "$INSTALL_ERRORS" -gt 0 ]; then
-  log ""
-  log "✗ Install incomplete ($INSTALL_ERRORS target(s) missing shared helpers)."
-  log "  Remove any conflicting references/ or bin/ noted above and re-run ./setup."
-  exit 1
 fi
 
 log "Done. Next steps:"

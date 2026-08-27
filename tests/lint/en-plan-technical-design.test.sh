@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-plan technical-design audit"
 
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
-TEMPLATE="$REPO_ROOT/references/templates/plan-template.md"
+TEMPLATE="$REPO_ROOT/shared/references/templates/plan-template.md"
 
 # --- audit documented in en-plan ---
 if grep -qiE "Technical-design load-bearing audit" "$EN_PLAN"; then

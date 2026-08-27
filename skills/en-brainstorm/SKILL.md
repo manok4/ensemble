@@ -4,10 +4,14 @@ description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-awa
 argument-hint: "[idea or question to explore]"
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-brainstorm`
+
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
 
 Lightweight idea-exploration skill. **No code written; no implementation; no peer review.** The point is to leave with clarity, not artifacts.
 
@@ -17,7 +21,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Brainstorm needs exactly two things from it: `$QUESTION_TOOL` (the Q&A step) and path conventions. No peer resolution — cross-review is off here.
+1. **Detect host.** Source `references/host-detect.md`. Brainstorm needs exactly two things from it: `$QUESTION_TOOL` (the Q&A step) and path conventions. No peer resolution — cross-review is off here.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note.
 3. **Resume or start fresh.** Glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
@@ -29,7 +33,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
    - `docs/plans/active/` and `docs/plans/completed/` — filenames only, unless one matches the topic.
    - Recent commits — `git log --oneline -30`.
    - Any code paths the user named.
-6. **Q&A — frontier rounds.** Pull questions from `$ENSEMBLE_ROOT/references/socratic-questions.md`. Model the open decisions as a **design tree**: every decision branches into the decisions that hang off it. The **frontier** is every decision whose prerequisites are already settled — the questions you can ask *now* without guessing at answers you haven't heard yet.
+6. **Q&A — frontier rounds.** Pull questions from `references/socratic-questions.md`. Model the open decisions as a **design tree**: every decision branches into the decisions that hang off it. The **frontier** is every decision whose prerequisites are already settled — the questions you can ask *now* without guessing at answers you haven't heard yet.
    - **Standard / Deep — ask the whole frontier in one round.** Number each question and give your **recommended answer** for each, so a round is "confirm these, correct the ones I got wrong" rather than "answer these". Then wait. The user's answers reshape the tree: settled decisions push the frontier outward and unblock what depended on them. Recompute the frontier and ask the next round.
      - **The dependency rule is what makes batching safe:** a question whose answer depends on another question still open **in this round** belongs to a *later* round, never this one. Stacking dependent questions is what produces diluted answers; an independent frontier does not.
      - Round format:
@@ -44,20 +48,20 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
    - **Open-vs-closed discipline:** use an **open-ended** question only when the answer is inherently narrative, OR when you genuinely cannot write 3–4 distinct, plausibly-correct options without padding. The test: *if you'd be straining to fill the option slots, the question is open — ask it open-ended.*
    - **Harness fallback:** when no blocking question tool exists in the harness, fall back to numbered options in chat; never silently skip the question.
    - **Stop when the frontier is empty** — every branch visited, nothing left silently assumed — or when the depth budget is spent, whichever comes first. If the budget runs out with a live frontier, record the unasked decisions as **explicit assumptions** in the design doc rather than dropping them.
-7. **Blindspot gate** (fires rarely; territory-scoped). If the user signals they **cannot evaluate** part of the territory — either flagged up front ("I know nothing about X") or shown by two consecutive can't-evaluate answers ("I don't know", "you decide") on questions needing domain judgment — the Q&A is extracting guesses, not requirements. Before the first substantive question *into that territory*, offer to map its decision surface first. **Read `$ENSEMBLE_ROOT/references/brainstorm-blindspot.md` when this fires**; it owns the trigger test, the offer, the map, and re-entry. Guard against over-firing: a user who understands the options but hasn't picked one is *undecided*, not blindsided — keep interviewing. Never fire in a non-interactive run.
-8. **Product pressure test** (self-gating). Before generating approaches, pressure-test whether the idea is real and well-framed. This is **internal analysis**: scan the opening and the dialogue so far for the rigor gaps catalogued in `$ENSEMBLE_ROOT/references/socratic-questions.md` → "Product rigor gaps", and raise **only those that actually exist**, as **open-ended probes** folded into the conversation — never a menu, never a pre-flight checklist. A well-framed opening earns **zero** probes; one probe satisfies one gap. The gaps: **evidence**, **specificity**, **counterfactual**, **attachment**, and **durability** (Deep / strategic scope only). If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than skipping it.
+7. **Blindspot gate** (fires rarely; territory-scoped). If the user signals they **cannot evaluate** part of the territory — either flagged up front ("I know nothing about X") or shown by two consecutive can't-evaluate answers ("I don't know", "you decide") on questions needing domain judgment — the Q&A is extracting guesses, not requirements. Before the first substantive question *into that territory*, offer to map its decision surface first. **Read `references/brainstorm-blindspot.md` when this fires**; it owns the trigger test, the offer, the map, and re-entry. Guard against over-firing: a user who understands the options but hasn't picked one is *undecided*, not blindsided — keep interviewing. Never fire in a non-interactive run.
+8. **Product pressure test** (self-gating). Before generating approaches, pressure-test whether the idea is real and well-framed. This is **internal analysis**: scan the opening and the dialogue so far for the rigor gaps catalogued in `references/socratic-questions.md` → "Product rigor gaps", and raise **only those that actually exist**, as **open-ended probes** folded into the conversation — never a menu, never a pre-flight checklist. A well-framed opening earns **zero** probes; one probe satisfies one gap. The gaps: **evidence**, **specificity**, **counterfactual**, **attachment**, and **durability** (Deep / strategic scope only). If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than skipping it.
 9. **Integration check.** Still before approaches: **combine** what the user has said with your own defaults and surface any non-obvious downstream consequence the one-question-at-a-time dialogue hasn't probed (*"if mute lives on the rule AND we don't warn on delete, then rule-delete silently loses pause state"*). Fire **one open-ended probe per genuine combination effect**, not a blanket audit.
 10. **Probe budget.** The pressure test, the integration check, and any blindspot walk-through **count toward the depth question budget** — they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe (the single highest-signal gap) and skip the rest; a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
-11. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `$ENSEMBLE_ROOT/references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
+11. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
 12. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
-    - **Divergent generation gate.** On **Deep**, or on **Standard with 3+ genuinely live directions**, generate the approaches through parallel constraint-diverged sub-agents rather than serially in this context — serial generation anchors, and B and C come back as variants of A. **Read `$ENSEMBLE_ROOT/references/brainstorm-approaches.md` when this fires**; it owns the constraint table, the acceptance bar, and the no-sub-agent fallback.
+    - **Divergent generation gate.** On **Deep**, or on **Standard with 3+ genuinely live directions**, generate the approaches through parallel constraint-diverged sub-agents rather than serially in this context — serial generation anchors, and B and C come back as variants of A. **Read `references/brainstorm-approaches.md` when this fires**; it owns the constraint table, the acceptance bar, and the no-sub-agent fallback.
     - Otherwise generate inline. When one approach is clearly best, skip the menu and say so.
 13. **Recommendation.** Pick one. State the rationale in one paragraph.
 14. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
 15. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
 16. **Verify-before-claiming.** Before writing the doc, any claim that something is **absent** in the codebase — a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support — must be **verified against the repo** first (read the relevant source), or **explicitly labeled an unverified assumption** in the doc. Applies to any checkable infrastructure claim; it is not a full research pass — just don't assert absence you haven't checked.
-17. **Write the design doc** to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `$ENSEMBLE_ROOT/references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
-18. **Validate before handing off.** Run `$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
+17. **Write the design doc** to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
+18. **Validate before handing off.** Run `$SKILL_DIR/scripts/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
 19. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
     > "This conversation produced [X]. Capture as a learning?"
     User accepts → invoke `/en-learn capture --from-conversation` with the design doc as input.
@@ -107,15 +111,15 @@ If user picks "talk it through" → answer in chat; no file written, and the wri
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/socratic-questions.md` — Q&A pool and the Product rigor gaps catalogue
-- `$ENSEMBLE_ROOT/references/research-dispatch.md` — when to use `web-research`
-- `$ENSEMBLE_ROOT/references/templates/design-doc-template.md` — output template
-- `$ENSEMBLE_ROOT/references/host-detect.md` — `$QUESTION_TOOL` and path conventions
+- `references/socratic-questions.md` — Q&A pool and the Product rigor gaps catalogue
+- `references/research-dispatch.md` — when to use `web-research`
+- `references/templates/design-doc-template.md` — output template
+- `references/host-detect.md` — `$QUESTION_TOOL` and path conventions
 
 Gated — read only when their step's gate fires, never up front:
 
-- `$ENSEMBLE_ROOT/references/brainstorm-blindspot.md` — the blindspot pass (most runs never load it)
-- `$ENSEMBLE_ROOT/references/brainstorm-approaches.md` — divergent approach generation (Deep, or Standard with 3+ live directions)
+- `references/brainstorm-blindspot.md` — the blindspot pass (most runs never load it)
+- `references/brainstorm-approaches.md` — divergent approach generation (Deep, or Standard with 3+ live directions)
 
 ## Failure protocol
 
@@ -128,5 +132,5 @@ Gated — read only when their step's gate fires, never up front:
 | Blindspot gate fires in a non-interactive run | Never offer; treat the territory as a declined offer (recommended defaults recorded as explicit assumptions). |
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
 | `docs/foundation.md` too large to scan cheaply | Section-index read only (step 4); never fall back to reading it whole. |
-| `$ENSEMBLE_ROOT/bin/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
+| `$SKILL_DIR/scripts/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |

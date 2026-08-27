@@ -3,16 +3,20 @@ name: en-cross-review
 description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, branch, uncommitted work). Ships the target to the peer agent (Codex if host is Claude; Claude if Codex; same-CLI fresh subprocess as single-agent fallback) and returns findings grouped by severity. Optional --focus (security | performance | tests | all). Trigger phrases: 'cross-review', 'second opinion', 'peer review this', 'outside voice on'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-cross-review`
+
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
 
 Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host parses findings JSON and surfaces them; the host applies the user-selected ones.
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. Resolve `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`, `PEER_AVAILABLE`.
+1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`, `PEER_AVAILABLE`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note: "Already inside a peer subprocess — skipping cross-review to avoid recursion."
 3. **Resolve target.**
    - **No arg** → current uncommitted diff (`git diff` + `git diff --cached`).
@@ -20,7 +24,7 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
    - **`<git-ref>`** (e.g., `main..HEAD`, `HEAD~1`) → diff between refs.
    - **`<branch-name>`** → diff between branch and the default branch.
 4. **Verify availability.** If `PEER_AVAILABLE=false`, exit with the reason (peer_mode_override=off; cross-agent-only without other CLI installed; etc.).
-5. **Compose review prompt.** Shell out to `$ENSEMBLE_ROOT/bin/ensemble-build-peer-prompt` — do not assemble the prompt by reasoning. Required args:
+5. **Compose review prompt.** Shell out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — do not assemble the prompt by reasoning. Required args:
    - `--artifact-type <code|plan|markdown artifact|mixed>` — `code` for diffs/files of source, `markdown artifact` for `docs/`, `plan` only when reviewing a `docs/plans/active/*.md` (rare for ad-hoc cross-review), else `mixed`.
    - `--project-context "<one-line>"` — first paragraph of `AGENTS.md` or foundation §1.
    - `--goal "<one-line>"` — for diffs: the most-recent commit subject; for files: the user's stated reason for the cross-review.
@@ -31,19 +35,19 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
 6. **Apply `--focus` flag** (if set). Append to the prompt: "Focus your review on <focus>; deprioritize other concerns."
    Valid: `security`, `performance`, `tests`, `correctness`, `maintainability`, `all` (default).
 7. **Set `ENSEMBLE_PEER_REVIEW=true`** in the subprocess env (recursion guard).
-8. **Invoke peer via `$ENSEMBLE_ROOT/bin/ensemble-peer-invoke`.**
+8. **Invoke peer via `$SKILL_DIR/scripts/ensemble-peer-invoke`.**
    ```bash
-   . "$ENSEMBLE_ROOT/bin/ensemble-peer-invoke"
+   . "$SKILL_DIR/scripts/ensemble-peer-invoke"
    peer_decision=$(ENSEMBLE_PEER_REVIEW=true ensemble_peer_invoke \
      --peer-cmd "$PEER_CMD" --peer-format "$PEER_FORMAT" --peer-turns "$PEER_TURNS" \
      --prompt-file "$prompt_file" --out-file /tmp/peer-response.json \
      --peer-mode "$PEER_MODE")
    ```
-   **Do not hand-roll the invocation.** The helper owns the `timeout` wrapper (`peer_timeout_seconds`, default 600), failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback — executable and testable rather than prose (D41). It returns a `peer_decision` object per `$ENSEMBLE_ROOT/references/peer-model-policy.md` (e); report its `peer`/`reason` so a failed or degraded peer never reads as a clean one.
-9. **Detect D30 violations** (peer modified files). Per the protocol in `$ENSEMBLE_ROOT/references/build-handoff.md`:
+   **Do not hand-roll the invocation.** The helper owns the `timeout` wrapper (`peer_timeout_seconds`, default 600), failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback — executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); report its `peer`/`reason` so a failed or degraded peer never reads as a clean one.
+9. **Detect D30 violations** (peer modified files). Per the protocol in `references/build-handoff.md`:
    - `git stash --include-untracked` before; check `git status` after.
    - Any change → revert; log violation; do not trust this round.
-10. **Parse JSON response** per `$ENSEMBLE_ROOT/references/finding-schema.md`. On malformed JSON: retry once with "respond with valid JSON only" suffix; if it fails again, surface and exit.
+10. **Parse JSON response** per `references/finding-schema.md`. On malformed JSON: retry once with "respond with valid JSON only" suffix; if it fails again, surface and exit.
 11. **Present findings** to the user grouped by severity (P0 → P3) and confidence:
     ```
     Cross-review verdict: revise (3 findings)
@@ -61,7 +65,7 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
     [...]
     ```
 12. **User picks per finding** (or `--apply-all-safe-auto` to auto-apply mechanical fixes).
-13. **Apply selections** (per `$ENSEMBLE_ROOT/references/severity.md`). Re-verify with project test/lint after edits. On regression: revert; surface.
+13. **Apply selections** (per `references/severity.md`). Re-verify with project test/lint after edits. On regression: revert; surface.
 14. **Capture-from-synthesis (D21)** — soft prompt at the end if the cross-review surfaced a non-obvious lesson worth filing.
 
 ## Flags
@@ -93,12 +97,12 @@ The peer subprocess never modifies files. Detected violations (rare) are reverte
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
-- `$ENSEMBLE_ROOT/references/outside-voice.md` — prompt template + verdict handling
-- `$ENSEMBLE_ROOT/references/single-agent-fallback.md` — same-CLI fallback contract
-- `$ENSEMBLE_ROOT/references/finding-schema.md` — JSON shape
-- `$ENSEMBLE_ROOT/references/severity.md` — apply / defer / disagree routing
-- `$ENSEMBLE_ROOT/references/recursion-guard.md` — `ENSEMBLE_PEER_REVIEW` env var
+- `references/host-detect.md` — host detection
+- `references/outside-voice.md` — prompt template + verdict handling
+- `references/single-agent-fallback.md` — same-CLI fallback contract
+- `references/finding-schema.md` — JSON shape
+- `references/severity.md` — apply / defer / disagree routing
+- `references/recursion-guard.md` — `ENSEMBLE_PEER_REVIEW` env var
 
 ## Failure protocol
 

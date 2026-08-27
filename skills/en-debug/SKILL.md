@@ -3,10 +3,11 @@ name: en-debug
 description: "Reproduce a bug from telemetry. Reads structured logs from the configured source, correlates by trace_id / request_id / event field, surfaces a hypothesis with file:line and confidence 1-10. Read-only. Pairs with /en-resolve-pr (when reviewer comments reference a runtime error) and /en-build (when a test or QA run fails with a real-world trace). Trigger phrases: 'debug this trace', 'reproduce this error', 'walk this log', 'why did this fail in prod'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-debug`
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
 
 Telemetry-driven debugging. Takes an error message, trace ID, or log excerpt; reads logs from the project's configured source; correlates entries; surfaces a hypothesis pointing at specific source code.
 
@@ -33,25 +34,25 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Read observability config** from `.ensemble/config.local.yaml` `observability:` block.
    - `log_source` — `stdout` (read from stdin), `file` (read `log_path`), or `command` (run `log_command`).
    - If unconfigured, prompt the user for log location and exit.
 4. **Validate `log_command` is allowlisted** if used. Default allowlist: `docker`, `kubectl`, `journalctl`, `gh run view`, `gh run view --log`, `datadog-cli`, `aws logs`, `gcloud logging`. Anything else requires explicit `observability.allowed_log_commands` entry.
 5. **Fetch logs.** Per the configured source. Cap fetched lines at `observability.max_log_lines` (default 5000).
-6. **Parse logs.** Per `$ENSEMBLE_ROOT/references/observability-conventions.md` — structured-JSON shape. If logs aren't structured JSON, surface a warning and fall back to plain-text correlation (less precise).
+6. **Parse logs.** Per `references/observability-conventions.md` — structured-JSON shape. If logs aren't structured JSON, surface a warning and fall back to plain-text correlation (less precise).
 7. **Correlate.** Per the argument mode:
    - **Trace mode** — filter to entries where `trace_id == arg`; sort by timestamp; build a span timeline.
    - **Request mode** — same on `request_id`.
    - **Error mode** — full-text search `msg`/`error.message`; cluster matches by `trace_id` if present.
    - **Location mode** — match `event` field against the file path heuristically (e.g., `event: auth.token_rotated` ↔ `src/auth/refresh.ts`); fall back to span-name matching.
 8. **Identify the failing span.** First entry with `level: error` or `level: fatal` in the correlated set is the source. Walk parent spans to find the entry point.
-9. **Map span → source.** Per `$ENSEMBLE_ROOT/references/observability-debug-mapping.md`. Heuristic:
+9. **Map span → source.** Per `references/observability-debug-mapping.md`. Heuristic:
    - `event` field often matches a function name (`auth.token_rotated` → `tokenRotated()` in `src/auth/`).
    - `error.stack` (if present) gives the exact location.
    - Fallback: dispatch `repo-research` agent with the event name + error message; agent searches the codebase.
-10. **Surface a hypothesis.** Format per `$ENSEMBLE_ROOT/references/observability-hypothesis-format.md`. Brief; cite the log line that anchors the conclusion.
+10. **Surface a hypothesis.** Format per `references/observability-hypothesis-format.md`. Brief; cite the log line that anchors the conclusion.
 11. **Suggest next step.** One of:
     - `/en-build` (write a fix, with the failing trace as a test fixture).
     - `/en-resolve-pr` (when the bug came from a reviewer comment).
@@ -103,23 +104,23 @@ Below 5, recommend the user re-run with a more specific argument (trace ID > err
 
 ## When the project's logs aren't structured
 
-If the configured logs don't match `$ENSEMBLE_ROOT/references/observability-conventions.md` (no JSON, no `trace_id`, no `event`), `/en-debug`:
+If the configured logs don't match `references/observability-conventions.md` (no JSON, no `trace_id`, no `event`), `/en-debug`:
 
-1. Surfaces a warning: *"Logs aren't structured per `$ENSEMBLE_ROOT/references/observability-conventions.md`. Correlation will be less precise."*
+1. Surfaces a warning: *"Logs aren't structured per `references/observability-conventions.md`. Correlation will be less precise."*
 2. Falls back to grep-style full-text search on the error message.
 3. Uses timestamp clustering (events within 500ms) instead of trace/request correlation.
 4. Caps confidence at 6/10 — without structured fields, the hypothesis is fundamentally less reliable.
-5. Suggests structured logging as a follow-up: *"Consider adopting `$ENSEMBLE_ROOT/references/observability-conventions.md` so future debug sessions can be more precise."*
+5. Suggests structured logging as a follow-up: *"Consider adopting `references/observability-conventions.md` so future debug sessions can be more precise."*
 
 ## Code mode (no telemetry — investigate & optionally fix)
 
-When there's no usable telemetry, run a systematic diagnosis loop adapted from compound-engineering's `ce-debug`. Read `$ENSEMBLE_ROOT/references/debug-investigation.md` for the anti-pattern guardrails and intermittent-bug techniques before forming hypotheses.
+When there's no usable telemetry, run a systematic diagnosis loop adapted from compound-engineering's `ce-debug`. Read `references/debug-investigation.md` for the anti-pattern guardrails and intermittent-bug techniques before forming hypotheses.
 
 **Core principles:** investigate before fixing (no fix until the full causal chain from trigger to symptom has no gaps); one change at a time (no shotgun debugging); when stuck, diagnose *why* rather than trying harder.
 
 1. **Triage.** Reach a clear problem statement. If the input references an issue tracker (`#123`, Linear/Jira URL), fetch it (`gh issue view <n> --json title,body,comments,labels` for GitHub) and read the full comment thread, not just the opening post. **Trivial-bug fast-path:** if the cause is immediately readable (typo, missing import, obvious null deref) present the cause + one-line fix and go straight to the fix-choice gate in step 3.
 2. **Investigate.**
-   - **Reproduce** — run the test / trigger the error / follow the repro steps. If it doesn't reproduce after 2–3 tries, read `$ENSEMBLE_ROOT/references/debug-investigation.md` for intermittent-bug techniques.
+   - **Reproduce** — run the test / trigger the error / follow the repro steps. If it doesn't reproduce after 2–3 tries, read `references/debug-investigation.md` for intermittent-bug techniques.
    - **Verify environment sanity** — right branch, deps installed, expected runtime, env vars present, no stale build artifacts.
    - **Trace the code path** — read the stack bottom-to-top; find the first frame where input is already invalid; instrument boundaries with *observed* values (not assumed); walk until valid input becomes invalid output. Check `git log --oneline -10 -- <file>` for recent changes; `git bisect` for regressions.
 3. **Root cause.** Run an **assumption audit** (list "this must be true" beliefs; mark verified vs assumed — assumptions are the top source of stuck debugging). Form hypotheses ranked by likelihood, each with: what's wrong + where (`file:line`), **at least one concrete grounding observation** (a runtime value, a log line, a behavior delta — not "X seems off"), the causal chain, and **for uncertain links, a prediction** (something in another path that must also be true). **Causal-chain gate:** do not proceed to a fix until the full chain has no gaps. If a prediction was wrong but a fix "works," you found a symptom, not the cause. **Smart escalation:** after 2–3 exhausted hypotheses, diagnose *why* (hypotheses span subsystems → design problem, suggest `/en-brainstorm`; evidence contradicts → wrong mental model; works-locally-fails-in-CI → environment).
@@ -136,17 +137,17 @@ When there's no usable telemetry, run a systematic diagnosis loop adapted from c
 - **Never writes code in telemetry mode.** Telemetry-mode output is a hypothesis; fixing is `/en-build`'s job. (Code mode writes a fix **only** after the user chooses "Fix it now" — never silently, never without a failing test first.)
 - **Never invokes log commands outside the allowlist.** Prompt-injection defense — a malicious log message can't trick the skill into running arbitrary shell.
 - **Never sends logs to external services.** Correlation runs locally on what the configured source returned.
-- **Never reads production secrets** if the log includes them. The hypothesis section quotes log fields verbatim *except* anything matching common secret patterns (per `$ENSEMBLE_ROOT/references/secret-patterns.md`); those are redacted to `[REDACTED]`.
+- **Never reads production secrets** if the log includes them. The hypothesis section quotes log fields verbatim *except* anything matching common secret patterns (per `references/secret-patterns.md`); those are redacted to `[REDACTED]`.
 - **Never auto-files a TD or learning** without user confirmation.
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/observability-conventions.md` — log/trace shape contract
-- `$ENSEMBLE_ROOT/references/observability-debug-mapping.md` — span-name → source-code heuristics
-- `$ENSEMBLE_ROOT/references/observability-hypothesis-format.md` — output template
-- `$ENSEMBLE_ROOT/references/secret-patterns.md` — redaction patterns for logged secrets
-- `$ENSEMBLE_ROOT/references/debug-investigation.md` — code-mode anti-patterns + investigation techniques
-- `$ENSEMBLE_ROOT/references/host-detect.md`
+- `references/observability-conventions.md` — log/trace shape contract
+- `references/observability-debug-mapping.md` — span-name → source-code heuristics
+- `references/observability-hypothesis-format.md` — output template
+- `references/secret-patterns.md` — redaction patterns for logged secrets
+- `references/debug-investigation.md` — code-mode anti-patterns + investigation techniques
+- `references/host-detect.md`
 
 ## Failure protocol
 

@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="ensemble-build-peer-prompt"
 
-BIN="$REPO_ROOT/bin/ensemble-build-peer-prompt"
+BIN="$REPO_ROOT/shared/bin/ensemble-build-peer-prompt"
 
 # --- Required-arg validation ---
 if "$BIN" 2>/dev/null; then
@@ -199,7 +199,7 @@ fi
 # the artifact. Fix: the template now uses shell-style $VAR placeholders so
 # both `bin/ensemble-build-peer-prompt` (HEREDOC) and raw envsubst work.
 # This test guards against drift back to the {VAR} form.
-TEMPLATE_DOC="$REPO_ROOT/references/outside-voice.md"
+TEMPLATE_DOC="$REPO_ROOT/shared/references/outside-voice.md"
 
 # Extract just the prompt template block (the first ```text ... ``` fence).
 template=$(awk '

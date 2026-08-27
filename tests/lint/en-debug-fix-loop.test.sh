@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-debug fix loop"
 
 EN_DEBUG="$REPO_ROOT/skills/en-debug/SKILL.md"
-REF="$REPO_ROOT/references/debug-investigation.md"
+REF="$REPO_ROOT/skills/en-debug/references/debug-investigation.md"
 
 # --- two modes documented ---
 if grep -qiE "Telemetry mode" "$EN_DEBUG" && grep -qiE "Code mode" "$EN_DEBUG"; then

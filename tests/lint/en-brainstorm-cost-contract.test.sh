@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-brainstorm cost contract"
 
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
-DISPATCH="$REPO_ROOT/references/research-dispatch.md"
+DISPATCH="$REPO_ROOT/shared/references/research-dispatch.md"
 
 # --- 1. the context scan is bounded: section-index first, never the whole file ---
 if grep -qiE "Existing-context scan \(bounded\)" "$SKILL" \
@@ -23,7 +23,7 @@ else
 fi
 
 # --- 2. the design doc is linted before handoff, and brainstorm dispatches no scouts ---
-if grep -qF '$ENSEMBLE_ROOT/bin/ensemble-lint --scope docs/designs' "$SKILL" \
+if grep -qF 'scripts/ensemble-lint --scope docs/designs' "$SKILL" \
    && grep -qiE "dispatches no scouts" "$DISPATCH"; then
   pass "design doc is lint-validated before handoff; no-scout contract is documented"
 else

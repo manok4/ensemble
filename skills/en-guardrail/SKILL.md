@@ -3,8 +3,6 @@ name: en-guardrail
 description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writing MCP tools inspect each command/statement for destructive patterns (recursive rm, non-recursive deleters, DROP TABLE, TRUNCATE, DELETE/UPDATE-without-WHERE, SQL-from-file, ORM resets, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and force a permission prompt. In-tree build artifacts and localhost+test/dev databases pass without prompting. Human-only bypass via exporting ENSEMBLE_GUARDRAIL_BYPASS=on before launch (the old inline ENSEMBLE_GUARDRAIL=off prefix no longer works). Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-guardrail`
 
@@ -14,11 +12,11 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 
 ## Process (when invoked manually)
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
-2. **Status check.** Verify the hook is registered in `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh`). If missing, surface the install snippet (see "Installation" below) and stop.
+1. **Detect host.** Source `references/host-detect.md`.
+2. **Status check.** Verify the hook is registered in `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `bin/check-guardrail.sh`). If missing, surface the install snippet (see "Installation" below) and stop.
 3. **Show protected patterns** — render the table from "What's protected" below.
 4. **Show recent fires** if `~/.ensemble/analytics/guardrail.jsonl` exists — last 10 lines, summarized as `pattern × count × repo`.
-5. **Optional dry-run.** If user passes a sample command (`/en-guardrail "rm -rf /tmp/foo"`), pipe a synthetic tool-input JSON through `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` and show the verdict (`ask` vs `allow`).
+5. **Optional dry-run.** If user passes a sample command (`/en-guardrail "rm -rf /tmp/foo"`), pipe a synthetic tool-input JSON through `bin/check-guardrail.sh` and show the verdict (`ask` vs `allow`).
 
 ## What's protected
 
@@ -113,14 +111,14 @@ The `${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}` expansion lets you move the Ense
 
 ## How it works
 
-`$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` reads the tool-input JSON on stdin, extracts `tool_input.command`, normalizes case, and matches against the destructive-pattern catalog. On match, it returns `{"permissionDecision": "ask", "message": "[guardrail] <reason>"}` — Claude pauses and prompts the user. On no match (or safe-exception hit), it returns `{}` — Claude proceeds normally.
+`bin/check-guardrail.sh` reads the tool-input JSON on stdin, extracts `tool_input.command`, normalizes case, and matches against the destructive-pattern catalog. On match, it returns `{"permissionDecision": "ask", "message": "[guardrail] <reason>"}` — Claude pauses and prompts the user. On no match (or safe-exception hit), it returns `{}` — Claude proceeds normally.
 
 The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffected.
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` — the hook script (canonical source).
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection.
+- `bin/check-guardrail.sh` — the hook script (canonical source).
+- `references/host-detect.md` — host detection.
 - Upstream: `gstack/careful` — the original this is vendored from. To pull updates, diff against the upstream and selectively re-apply.
 
 ## Failure protocol
@@ -129,6 +127,6 @@ The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffec
 |---|---|
 | `~/.claude/settings.json` lacks the `PreToolUse` registration | `/en-guardrail` surfaces the install snippet and exits non-zero — guardrail is **not** active |
 | Hook script missing or unreadable | Claude Code's hook runner skips it silently — surface a warning when `/en-guardrail` runs |
-| Pattern false positive (legitimate command flagged) | Override the prompt manually; if it recurs, tighten the regex in `$ENSEMBLE_ROOT/skills/en-guardrail/bin/check-guardrail.sh` |
+| Pattern false positive (legitimate command flagged) | Override the prompt manually; if it recurs, tighten the regex in `bin/check-guardrail.sh` |
 | Pattern false negative (destructive command not flagged) | Open a tech-debt entry; add the pattern. Do **not** widen the safe-exceptions list reactively |
 | `ENSEMBLE_GUARDRAIL_BYPASS=on` set in the launch environment | `/en-guardrail` warns that the bypass is active session-wide; suggest `unset ENSEMBLE_GUARDRAIL_BYPASS` and relaunch |
