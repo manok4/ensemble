@@ -141,8 +141,7 @@ install_into() {
   mkdir -p "$target_root/skills" "$target_root/agents"
 
   # Per-target manifest tracks what this install owns (one path per line).
-  # Truncated at start of each run so it always reflects the current install.
-  # Lets us cleanly remove Ensemble's prior links on re-run without touching
+  # Lets us cleanly remove Ensemble's prior install on re-run without touching
   # any unrelated user-installed skills or agents.
   local manifest_dir="$HOME/.ensemble"
   mkdir -p "$manifest_dir"
@@ -151,20 +150,40 @@ install_into() {
   target_slug="${target_slug#.}"
   local manifest_file="$manifest_dir/install-manifest-$target_slug.txt"
 
-  # Sweep prior install (per the previous manifest), then start fresh.
+  # Sweep the prior install. Every path the manifest names was written by an
+  # earlier Ensemble run, so mode is irrelevant to whether we may remove it.
+  #
+  # This used to require the CURRENT run to be in copy mode before deleting a
+  # real directory, which asks the wrong question: what matters is what was
+  # installed, not what is being installed now. Re-running with --symlink after
+  # a --copy install therefore left every copied directory in place, the
+  # "already exists, not ours" guard skipped them, and the user got a silent
+  # no-op that looked like a successful reinstall.
   if [ -f "$manifest_file" ]; then
     while IFS= read -r prior_path; do
       [ -n "$prior_path" ] || continue
-      # Only remove symlinks (if symlink mode) or paths the manifest claims;
-      # never recurse into directories that aren't ours.
+      # Refuse to walk outside the directories this installer owns, so a
+      # corrupted or hand-edited manifest cannot turn into an arbitrary rm -rf.
+      case "$prior_path" in
+        "$target_root"/skills/*|"$target_root"/agents/*) ;;
+        *) log "  ⚠ manifest lists a path outside $target_root/{skills,agents}; ignoring: $prior_path"
+           continue ;;
+      esac
       if [ -L "$prior_path" ]; then
         rm -f "$prior_path"
-      elif [ -e "$prior_path" ] && [ "$COPY_MODE" = "copy" ]; then
+      elif [ -e "$prior_path" ]; then
         rm -rf "$prior_path"
       fi
     done < "$manifest_file"
   fi
-  : > "$manifest_file"
+
+  # Record the new install to a temp file and move it into place at the end.
+  # Truncating up front meant a run that swept and then skipped everything left
+  # an EMPTY manifest, orphaning paths no later run would ever clean up. Keeping
+  # the old manifest until the new one is complete means a failed run still
+  # leaves something that can sweep.
+  local manifest_tmp
+  manifest_tmp="$(mktemp "$manifest_dir/.install-manifest-$target_slug.XXXXXX")"
 
   # Skills: one symlink (or copy) per skill folder, placed directly under
   # ~/.<host>/skills/<skill-name>/. Hosts discover skills as <skills-root>/<skill>/SKILL.md;
@@ -186,7 +205,7 @@ install_into() {
     else
       ln -s "${skill_path%/}" "$dst"
     fi
-    echo "$dst" >> "$manifest_file"
+    echo "$dst" >> "$manifest_tmp"
     skill_count=$((skill_count + 1))
   done
   log "  Installed $skill_count skill(s) into $target_root/skills/ ($COPY_MODE)"
@@ -211,7 +230,7 @@ install_into() {
       # Already published by an earlier skill this run: identical bytes, so this
       # is the expected union case, not a conflict. Anything else is a foreign
       # file and is left alone.
-      if grep -qxF "$dst" "$manifest_file" 2>/dev/null; then
+      if grep -qxF "$dst" "$manifest_tmp" 2>/dev/null; then
         continue
       fi
       log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."
@@ -223,10 +242,13 @@ install_into() {
     else
       ln -s "$agent_file" "$dst"
     fi
-    echo "$dst" >> "$manifest_file"
+    echo "$dst" >> "$manifest_tmp"
     agent_count=$((agent_count + 1))
   done
   log "  Installed $agent_count agent(s) into $target_root/agents/ ($COPY_MODE)"
+
+  # Publish the manifest only now that the install is complete.
+  mv "$manifest_tmp" "$manifest_file"
 
   log ""
 }
