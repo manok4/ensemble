@@ -15,9 +15,9 @@ depth: deep
 data_scale: small
 peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
-peer_review_iterations: 2
+peer_review_iterations: 3
 peer_review_last_run: 2026-08-27
-peer_review_plan_hash: 0e6ce2f77abcd18c1d1db5a39a5f9710d7433aeddc36680352c9a2cbf72c698c
+peer_review_plan_hash: 8da08527c408bce9304f9cae62a81eb372cabdf186d6c3498cfeb7a8866c2d46
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -75,6 +75,27 @@ peer_review_resolutions:
     status: applied
     rationale: U4's negative control asserted a guard that U9 introduces, and U9 depends on U4. Rewritten to use cmp, which exists at U4 time, with the enforcing assertion left in U9 where it belongs.
     location: U4, U9
+  - finding_id: "3-1"
+    iteration: 3
+    severity: P1
+    title: Asset-changing units do not consistently maintain the new requires declarations
+    status: applied
+    rationale: A real hole I had missed. U12 creates the declarations, then U4-U8 and U11 add briefs, delete agents and move the linter without saying they update them, so the declarations would go stale immediately. Resolved by stating the standing rule in U12 and, more importantly, by naming the mechanism that already enforces it - U2 flips ENFORCING to true, so from U2 onward any unit adding an undeclared file fails the suite at its own gate. The enforcement existed; nothing said so.
+    location: U4, U5, U6, U7, U8, U11, U12
+  - finding_id: "3-2"
+    iteration: 3
+    severity: P1
+    title: The baseline still asserts the discredited 193-file prune target
+    status: applied
+    rationale: Correct and embarrassing - I removed the target from U2's goal and left it in the Baseline block, the same fix-one-instance error the peer caught at iteration 2. The block now states no prune target at all and explains why: the end state is whatever the declarations imply.
+    location: Why (Baseline), U2
+  - finding_id: "3-3"
+    iteration: 3
+    severity: P2
+    title: U12 omits its dependency on the U1 test that it rewrites
+    status: applied
+    rationale: U12 repoints U1's test, so it depends on it. Declared none because U1 is already built, which makes the dependency satisfied in practice but leaves the graph lying. Now U1.
+    location: U1, U12
 ---
 
 # EN13 — Remove the shared tree; each skill owns its files outright
@@ -104,13 +125,28 @@ artifact type hits `else` and gets `PLAN_REVIEW_DIMENSIONS=""`. So `en-review`
 sends code to a peer with no review dimensions, and `en-foundation` sends a
 document with none. One consumer's version won and the rest got an empty string.
 
-**Baseline, stated once.** `skills/` holds 445 files: 17 `SKILL.md`, 6 `CONTRACT.md`, and **422 payload files** (references, scripts, agents). Skills *name* **193** of those payload files. Every count below is payload-only unless it says otherwise; the prune target is 422 → 193, leaving 216 files in `skills/` overall.
+**Inference does not work, and this is now measured rather than argued.** The
+first build attempt derived "what a skill needs" by walking textual references
+from `SKILL.md`. Five distinct false or missed edge classes surfaced, each found
+only by breaking something: full repo paths (`skills/en-sweep/scripts/X`), the
+pre-EN12 `bin/X` alias, shell sourcing closures, cross-skill paths credited to
+the wrong skill, and — the one that settles it — **script comments naming
+references**. `en-ship` reads as clean while carrying 15 files it never names,
+because a 24KB script's comments mention them. Measured excess moved 98 → 54 →
+14 as each was fixed. A number that unstable is not a basis for deleting files,
+and no regex reliably separates a dependency from a mention. **U12 replaces the
+walk with a declaration.**
+
+**Baseline, stated once.** `skills/` holds 445 files: 17 `SKILL.md`, 6 `CONTRACT.md`, and **422 payload files** (references, scripts, agents). Every count below is payload-only unless it says otherwise. **No prune target is
+stated.** The earlier 422 → 193 figure came from the walk U12 discards, and
+restating it would lend a discredited number the authority of a goal. The end
+state is whatever the 17 declarations imply, and U2 reaches it by comparison.
 
 **The grants were seeded by inference, not declaration.** EN12 populated the
 manifest with a one-time script that granted a skill anything its files
 *mentioned*. `learn-lint.md` names `ensemble-lint` in a sentence that exists to
 say it is a *different tool*; that one contrast pulled a 45KB script and 56KB of
-its references into `en-learn`. Across the suite, skills carry 422 payload files and name 193.
+its references into `en-learn`. Across the suite, skills carry 422 payload files; how many are genuinely needed is exactly the question U12 answers by declaration.
 
 **Prose restates the executables it sits beside.** `host-detect.md` carries an
 89-line inline bash snippet duplicating `ensemble-detect-host`. `outside-voice.md`
@@ -171,6 +207,11 @@ for the generic core only.
 
 ### U1. Freeze the named-set measurement as a test
 
+> **Built and committed at `6fd31f3`.** Its advisory/enforcing mechanism and its
+> four scaffold scenarios survive unchanged. U12 replaces only its *basis*:
+> computed reachability becomes carried-vs-declared. Recorded here rather than
+> rewritten, because the unit shipped and its ID is stable.
+
 - **Goal:** The named-versus-carried gap becomes a checked number rather than an analysis that rots.
 - **Dependencies:** none
 - **Files:** `tests/lint/skill-payload.test.sh`
@@ -190,10 +231,10 @@ for the generic core only.
 
 ### U2. Prune every skill to its named set
 
-- **Goal:** 422 payload files become 193; each skill holds what it names.
-- **Dependencies:** U1
+- **Goal:** Each skill holds exactly what it declares.
+- **Dependencies:** U1, U12
 - **Files:** all `skills/*/`, `shared/manifest.json`
-- **Approach:** Deletes 229 payload files across 17 skills. Marked `high`, not `destructive` — see the risk note in Decisions. Per skill, delete files not in the named set, largest excess first (en-cross-review 29, en-foundation 29, en-build 27, en-plan 26, en-review 24, en-ship 17, then the rest). Batch per skill with the suite green after each, as EN12's U3 did. `en-learn` is the traced example: 30 files to 17. The manifest shrinks to match; it is deleted in U10, not here, so this unit stays a data change.
+- **Approach:** Delete files not in the skill's `requires:` list. A comparison, not a walk — U12 removed the inference, so this unit makes no judgement about what a mention means. The absolute count is whatever the declarations imply and is deliberately not fixed here; the plan's earlier 193 figure came from the discredited method. Marked `high`, not `destructive` — see the risk note in Decisions. Per skill, largest excess first (en-cross-review 29, en-foundation 29, en-build 27, en-plan 26, en-review 24, en-ship 17, then the rest). Batch per skill with the suite green after each, as EN12's U3 did. `en-learn` is the traced example: 30 files to 17. The manifest shrinks to match; it is deleted in U10, not here, so this unit stays a data change.
 - **Risk:** high
 - **Category:** deletion
 - **Reversibility:** reversible
@@ -211,17 +252,21 @@ for the generic core only.
 
 - **Goal:** Skills that never use host detection stop sourcing it.
 - **Dependencies:** U2
-- **Files:** `skills/{en-brainstorm,en-build,en-debug,en-flow,en-guardrail,en-learn,en-loop,en-qa,en-resolve-pr,en-setup,en-ship,en-simplify,en-sweep}/SKILL.md`
-- **Approach:** Promoted to `high` with U2: this rewrites 13 skills and a missed `recursion-guard` grant breaks the guard in all of them. Delete the "Detect host" step from the 13 skills that consume none of `$HOST`/`$PEER_CMD`/`$PEER_MODE`/`$PEER_FORMAT`/`$PEER_TURNS`, and drop `host-detect.md`, `ensemble-detect-host` and `cli-wrappers.md` from them. Delete the step, not just the file: a dangling instruction is worse than an unused file. `recursion-guard.md` is genuinely used at step 2 by several of these and reaches them *through* host-detect today, so it must be granted directly before this lands or the guard breaks.
+- **Files:** `skills/{en-debug,en-flow,en-guardrail,en-learn,en-loop,en-qa,en-resolve-pr,en-ship,en-simplify,en-sweep}/SKILL.md`
+- **Approach:** **10 skills, not 13.** The plan's original figure came from grepping `$HOST`/`$PEER_CMD` only. Measured against all ten variables `host-detect.md` exports, three of the named skills are genuine consumers: `en-build` uses `HOST` to choose orchestration vs handoff at its step 3, `en-setup` uses `HOST` and `PEER_AVAILABLE`, and `en-brainstorm` uses `QUESTION_TOOL` for its blocking-question selection. Deleting from those three breaks flavor selection outright. Delete the "Detect host" step from the remaining 10, and drop `host-detect.md`, `ensemble-detect-host` and `cli-wrappers.md` from them. Delete the step, not just the file: a dangling instruction is worse than an unused file.
+
+  **The recursion-guard precondition was wrong and is dropped.** Those skills' step 2 is a self-contained `If ENSEMBLE_PEER_REVIEW=true, exit` — an env-var check that never reads `recursion-guard.md`. The file goes with the rest.
+
+  `en-brainstorm` needing 9.2KB of host-detect for one variable is the genericity problem this plan exists to fix, but narrowing it is U4's business, not this unit's.
 - **Risk:** high
 - **Category:** other
 - **Reversibility:** reversible
 - **Gated:** false
 - **Execution note:** pragmatic
 - **Test scenarios:**
-  - *Happy path:* the 4 peer skills still source host-detect and still resolve `$PEER_CMD`.
+  - *Happy path:* the 7 consumers still source host-detect: `en-plan`, `en-review`, `en-cross-review` and `en-foundation` resolve `$PEER_CMD`; `en-build` still selects its flavor from `HOST`; `en-setup` reads `PEER_AVAILABLE`; `en-brainstorm` resolves `$QUESTION_TOOL`.
   - *Error path:* a skill retaining the step but not the file fails the dangling-path check.
-  - *Edge:* every skill that referenced the recursion guard still resolves `recursion-guard.md` locally; asserted per skill, not in aggregate.
+  - *Edge:* each of the 10 still performs its recursion-guard check after losing the file, since the check is inline; asserted per skill, not in aggregate.
   - *Integration:* `en-cross-review` still completes a peer invocation end to end.
 - **Verification:** suite green; recursion guard resolvable in every skill that names it.
 
@@ -380,8 +425,44 @@ for the generic core only.
   - *Edge:* the agent roster in `README.md` and `docs/foundation.md` reflects 3 agents, not 11; a doc claiming eleven is a stale count the next reader will trust.
 - **Verification:** persona coverage unchanged; 7 files gone.
 
+### U12. Each skill declares what it needs
+
+> Numbered U12 because U-IDs are append-only; **execution order is dependency-
+> driven, not numeric**, and this unit runs before U2. The plan already relies on
+> that ordering for U11 before U10.
+
+- **Goal:** Every skill states its own dependencies, so nothing has to infer them.
+- **Dependencies:** U1
+- **Files:** all 17 `skills/*/SKILL.md`, `tests/lint/skill-payload.test.sh`
+- **Approach:** Add a `requires:` list to each skill's frontmatter — one entry per asset the skill needs, as a skill-relative path. Written by reading each skill, not generated: generating it from the walk would launder the same inference into a file that looks authoritative. Then repoint U1's committed test to compare *carried* against *declared* and delete its reachability walker entirely; the advisory/enforcing flip and the scaffold scenarios stay.
+
+  Frontmatter rather than a separate file, because it keeps the declaration beside what it describes and adds no file to a tree this plan exists to shrink. The risk is a host rejecting an unknown key, which is why that is the first test scenario rather than an assumption. If a host does reject it, the fallback is `skills/<name>/requires.txt`, one path per line — same content, no parser.
+
+  A declaration is also the artifact a human can review. The walk produced a number nobody could check; seventeen short lists can be read in a sitting.
+- **Risk:** medium
+- **Category:** other
+- **Reversibility:** trivial
+- **Gated:** false
+- **Execution note:** pragmatic
+- **Test scenarios:**
+  - *Integration (first, because it gates the design):* every skill still loads on **both** Claude Code and Codex with the new frontmatter key present. A host that rejects it sends this unit to the `requires.txt` fallback before any other work depends on the choice.
+  - *Happy path:* each of the 17 declarations names only paths that exist in that skill today. A declared path with no file is a typo, caught here rather than as a dangling reference three units later.
+  - *Happy path:* the repointed test reports the same PASS/FAIL shape as before, with `ENFORCING=false` still the default.
+  - *Error path:* a declaration omitting a genuinely-needed file makes U2 delete it; the suite catches that, which is the check U2 relies on and must be shown to work — verified by omitting one entry deliberately and confirming red.
+  - *Edge:* `en-guardrail` declares its own `bin/` scripts, which the reachability walker needed a special case for; a declaration needs none, and that carve-out is deleted.
+  - *Edge:* the test contains no path-walking code afterwards; asserted by grep, so the inference cannot creep back.
+- **Verification:** 17 declarations written by hand and reviewed; test compares against them; no walker remains.
+
+  **Standing rule for every later unit.** A unit that adds or removes a skill asset updates that skill's `requires:` **in the same commit**. This is enforced mechanically rather than by discipline: U2's final step flips `ENFORCING` to true, so from U2 onward any unit adding an undeclared file, or declaring a deleted one, fails the suite at its own verification gate. U4 through U8 and U11 all move assets and are all covered by that flip. Stated here because the enforcement is easy to rely on without noticing it exists.
+
 ## Iteration log
 
+> - 2026-08-27 (iteration 3, after a failed build): U2's method was proven wrong in
+>   execution and the plan revised - new U12 replaces inference with explicit
+>   per-skill declarations, U2 becomes a comparison, U3 corrected from 13 skills to
+>   10. Re-reviewed at the user's request past the depth cap: verdict revise, 3
+>   findings, all applied. One was a hole I had missed entirely: later units move
+>   assets and nothing said the declarations move with them.
 > - 2026-08-27 (iteration 2): verdict revise, 3 findings. Two applied (an
 >   inconsistent file-count baseline; a forward test reference from U4 to U9).
 >   One disagreed: promoting the bulk deletions to `destructive` cascades through
