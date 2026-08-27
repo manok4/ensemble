@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN13
 title: Remove the shared tree; each skill owns its files outright
-status: open
+status: in_progress
 location: active
 created: 2026-08-27
 shipped:
