@@ -1,159 +1,100 @@
 # Template — `docs/learnings/<category>/<slug>-<date>.md`
 
-Used by `/en-learn capture` (default mode) to file a learning.
+Used by `/en-learn capture` after `references/capture-gate.md` says to write.
 
-## Frontmatter
+## Length
 
-See `references/learning-frontmatter-schema.md` for the canonical schema and field rules.
+**A learning is one paragraph until it earns more.** The value is in recording
+the thing that reading cannot recover, not in filling out sections. Most entries
+that pass the gate are three to six sentences.
 
-## Body structure
+This replaced a nine-section template whose sections were mandatory. That shape
+had one argument for it — a predictable layout to grep — and it does not survive
+contact with the actual consumers, which are agents that read semantically. What
+it reliably produced was padding: a one-sentence constraint inflated into
+"Context", "What didn't work" and "Prevention" because the headings were there
+and had to be fed. Structure that demands content manufactures content.
 
-The body has a fixed shape so future runs (and `learnings-research` agent) can grep predictably.
+## Minimum entry
 
-```markdown
----
-title: <one-line title>
-date: YYYY-MM-DD
-category: bugs | patterns | decisions | sources
-problem_type: <enum>
-component: <module-or-area>
-applies_when: <one sentence describing when this applies>
-tags: [<tag>, ...]
-related: [<paths>]
-confidence: 1-10
-status: active
----
-
-# <Title verbatim>
-
-## TL;DR
-
-<One paragraph. The "if you read nothing else, read this" version.>
-
-## Context
-
-<2-3 paragraphs. What was happening when this came up. The codebase state, the user request, the constraint that mattered.>
-
-## What didn't work
-
-<For bugs: failed hypotheses. For patterns/decisions: alternatives considered.>
-
-- ...
-- ...
-
-## Root cause / why this approach
-
-<For bugs: the actual cause, not just symptoms. For patterns: why this design beat alternatives. For decisions: the rationale, including non-obvious factors.>
-
-## Fix / implementation
-
-<For bugs: the diff (or summary), with key snippets quoted. For patterns: code shape with one canonical example. For decisions: the chosen path, with files/commits cited.>
-
-## Why it works
-
-<The mechanistic explanation. What property of the system makes this the right answer.>
-
-## Prevention / when to apply
-
-- **Apply when:** <repeats `applies_when:` from frontmatter and elaborates>
-- **Don't apply when:** <opposite condition; common misuses>
-- **Watch out for:** <related pitfalls>
-
-## Related
-
-- [<title>](<path>) — <one-line connection>
-- ...
-
-## Citations
-
-- Commit: <hash> (or repo path)
-- Plan: docs/plans/<active-or-completed>/FRXX-<name>.md
-- External source: <URL or file path, if applicable>
-```
-
-## Generation notes
-
-- **Slug rules** — lowercase, alphanumeric + hyphens, ≤60 chars. Add `-YYYY-MM-DD` suffix.
-- **TL;DR** is required; future grep relies on it.
-- **What didn't work** is critical for bugs — failed hypotheses are the highest-signal content for future runs.
-- **Citations** must include at least the commit and the plan; external sources optional.
-- **Cross-refs** in `related:` must point to existing learning paths; `--lint` will flag broken ones.
-
-## Always-on behaviors after writing
-
-After the write succeeds:
-
-1. Walk `related: [...]` and add reciprocal back-references to each cited page (per `references/learn-cross-ref-maintenance.md`).
-2. Append a one-line entry to `docs/learnings/index.md` under the category.
-3. Append a single line to `docs/learnings/log.md`: `## [<date>] capture | <title>`.
-4. If material structural change → sync `docs/architecture.md` (per `references/architecture-update-rules.md`).
-5. If the originating plan exists → flip its status from `active` to `completed`, update `shipped:` field, move file from `docs/plans/active/` to `docs/plans/completed/`.
-
-## Worked example (bug)
+Frontmatter per `references/learning-frontmatter-schema.md`, a title, and the
+paragraph. That is a complete, valid learning:
 
 ```markdown
 ---
-title: "Refresh token race when two requests arrive within rotation window"
-date: 2026-04-15
-category: bugs
-problem_type: concurrency
-component: auth-middleware
-applies_when: "Multiple concurrent requests from one user during refresh-token rotation"
-tags: [auth, refresh-token, race-condition]
-related: [docs/learnings/patterns/single-flight-cache-2026-03-20.md]
+title: Partner API rejects batches above 50 items
+date: 2026-08-27
+category: decisions
+problem_type: integration_issue
+component: sync/partner-client
+applies_when: Changing batch size or adding a new bulk endpoint call
+tags: [partner-api, batching]
+related: []
 confidence: 9
 status: active
 ---
 
-# Refresh token race when two requests arrive within rotation window
+# Partner API rejects batches above 50 items
 
-## TL;DR
-
-Two near-simultaneous requests during token rotation both read the old token, both try to rotate it, the second rotation invalidates the first's new token, and the first caller gets a 401 on the response. Fix: serialize rotation per-user with a single-flight cache.
-
-## Context
-
-The auth middleware rotates the refresh token on every access. Production traffic occasionally fired two API calls within ~50ms (mobile network retries, page-prefetch). When both hit the rotation window, both tried to rotate, and the second rotation invalidated the first.
-
-## What didn't work
-
-- Adding a `refreshing: bool` flag on the user record (lost the in-flight result; second caller still raced)
-- Database-level row lock (correct but too coarse for the rest of the request handler)
-
-## Root cause
-
-`rotateRefreshToken()` was a pure function — no de-duplication. Two parallel callers both saw the same old token state.
-
-## Fix
-
-Wrapped in a `singleFlight<K, V>` helper keyed on `user_id`:
-
-```ts
-const flight = singleFlight<string, RefreshResult>();
-
-async function rotateRefreshToken(userId: string) {
-  return flight(userId, async () => actualRotate(userId));
-}
+Their docs say 100 and their sandbox accepts 100, but production returns a 413
+with an empty body above 50. Support confirmed the limit is 50 and the docs are
+wrong; they have no plan to fix them. `PARTNER_BATCH_MAX` is set to 50 for this
+reason and not as a conservative guess, so raising it will fail in production
+only, after passing every test against sandbox.
 ```
 
-Single rotation fires; concurrent callers await the same promise.
+Note what it does not contain: no description of how the batching code works, no
+narrative of the debugging session, no "Prevention" heading restating the
+paragraph. An agent reading `sync/partner-client` learns everything except the
+one fact that matters, which is the whole entry.
 
-## Why it works
+## Optional sections
 
-The single-flight cache de-duplicates concurrent calls keyed on `user_id`. Only one rotation fires per user; concurrent callers all get the same result. Cache TTL is the rotation grace window (5s default).
+Add one **only** when it carries something the paragraph cannot. A section with
+one line under it is a sign the paragraph should have absorbed it.
 
-## Prevention / when to apply
+| Section | Add it when |
+|---|---|
+| `## What we tried` | Several approaches failed and the next agent would otherwise repeat them. List them with the reason each failed, not the chronology. |
+| `## Why not <alternative>` | A reasonable reader will propose that alternative, and the rejection is non-obvious. Name it in the heading. |
+| `## Evidence` | The claim is surprising enough that a reader will doubt it. Link the issue, the support thread, the failing run. |
+| `## Scope` | The learning is narrower than its title suggests, and over-applying it would cause harm. |
 
-- **Apply when:** Operation has side effects and must run at most once per key, with concurrent callers awaiting the same result.
-- **Don't apply when:** Side effects must fire per-call (e.g., logging, audit).
-- **Watch out for:** Memory growth if the keyspace is unbounded; add a max-entries cap.
+No other headings. If content fits none of these, it belongs in the paragraph or
+does not belong.
 
-## Related
+## Writing rules
 
-- [Single-flight cache for per-user side-effecting operations](../patterns/single-flight-cache-2026-03-20.md) — the underlying pattern.
+- **Lead with the conclusion.** First sentence is the thing to remember, not the
+  setup that produced it.
+- **Name specifics.** File paths, constants, error strings, ticket numbers. "A
+  timeout" is unusable; `PARTNER_BATCH_MAX` and "413 with an empty body" are what
+  a future agent greps for.
+- **Say why, not what.** The what is in the code. The why is the entry.
+- **Write for someone about to make a change,** not someone studying the system.
+- **No hedging.** If confidence is low, that is what the `confidence` field is
+  for. "It may be that in some cases" wastes the reader's time in every case.
 
-## Citations
+## Anti-examples
 
-- Commit: a3f1b9c — `fix(auth): serialize refresh-token rotation per-user (U3)`
-- Plan: `docs/plans/completed/FR07-auth-rotation.md`
-```
+Two entries that pass a careless gate and should not exist.
+
+> ## Root cause
+> The `rotateToken` function did not await the Redis write, so the old token was
+> still valid when the response returned.
+
+The diff shows this, permanently and more precisely. Fails condition 1.
+
+> ## TL;DR
+> Concurrency bugs are hard to reproduce. Be careful when adding async code and
+> always write tests for race conditions.
+
+True and useless. No referent, no decision changes. Fails condition 2.
+
+The version of that second one worth writing names the specific trap:
+
+> Two requests rotating the same refresh token race, and the loser silently gets
+> a valid-looking token that is already revoked. The failure surfaces one request
+> later, in a different endpoint, which is why it reads as an auth bug rather
+> than a rotation bug. `singleFlight` in `auth/rotate.ts` exists for this and
+> removing it will not fail any current test.

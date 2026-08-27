@@ -89,7 +89,7 @@ caller will surface a warning.
 
 ## Entry body shape
 
-Bootstrapped patterns use a slightly different body than capture entries (no "What didn't work / Root cause / Fix" — those are bug-shaped; patterns are forward-looking):
+Bootstrapped patterns use a different body than capture entries. Capture writes one paragraph plus, rarely, an optional section; a bootstrapped convention is forward-looking and needs to say where it applies and how to follow it:
 
 ```markdown
 ---
