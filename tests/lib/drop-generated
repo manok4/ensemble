@@ -13,13 +13,12 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 MANIFEST="$ROOT/shared/manifest.json"
 if [ ! -f "$MANIFEST" ] || ! command -v jq >/dev/null 2>&1; then cat; exit 0; fi
-# Direct grants, plus PUBLISHED copies, plus the closure members sync-shared
+# Direct grants plus the closure members sync-shared
 # carries alongside a script entry. Deriving only the declared source left
 # transitively copied siblings (ensemble-cli-smoke, ensemble-extract-json) in
 # scan results, which contradicts the exclusion this filter exists to provide.
 _direct="$(jq -r '.entries[] | .dest as $d | .source as $s | .skills[] as $k
               | "skills/\($k)/\($d)\($s | split("/") | last)"' "$MANIFEST" | sort -u)"
-_published="$(jq -r '.publish[]? | "\(.dest)\(.source | split("/") | last)"' "$MANIFEST" | sort -u)"
 # Closure: for each closure entry, every basename actually present in the
 # destination directory that also exists in shared/bin is a generated member.
 _closure="$(jq -r '.entries[] | select(.closure == true) | .dest as $d | .skills[] as $k | "\($k)|\($d)"' "$MANIFEST" \
@@ -30,7 +29,7 @@ _closure="$(jq -r '.entries[] | select(.closure == true) | .dest as $d | .skills
         [ -f "$ROOT/shared/bin/$b" ] && echo "skills/$k/$d$b"
       done
     done | sort -u)"
-GEN="$(printf '%s\n%s\n%s\n' "$_direct" "$_published" "$_closure" | grep -v '^$' | sort -u)"
+GEN="$(printf '%s\n%s\n' "$_direct" "$_closure" | grep -v '^$' | sort -u)"
 while IFS= read -r line; do
   path="${line%%:*}"; rel="${path#$ROOT/}"
   printf '%s\n' "$GEN" | grep -qxF "$rel" || printf '%s\n' "$line"

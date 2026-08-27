@@ -9,7 +9,7 @@ install-time read of where the canonical definitions live, in the same sense as
 `"skills": "./skills"`, not a skill resolving a path at runtime. A generated
 flat copy at the repo root existed briefly to avoid naming this directory at
 all; it was a third identical copy of eleven files bought with nothing, so it
-is gone.
+and the publish mechanism that produced it are both gone.
 
 Every skill directory under `skills/` is self-contained: it carries its own copy
 of every reference, template, script and agent it reads, so the folder works

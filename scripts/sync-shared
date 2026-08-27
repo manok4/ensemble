@@ -122,16 +122,6 @@ $skill|$(basename "$src")"
 
 GRANTED=""
 
-# Publish entries: a generated copy OUTSIDE skills/, for consumers that read at
-# install time rather than at runtime. The plugin manifests need a directory
-# that exists in an installed plugin, and pointing them at shared/ would make
-# the build input part of the shipped artifact. A published directory is a build
-# OUTPUT: generated from shared/, committed, and safe for a manifest to name.
-while IFS='|' read -r source dest; do
-  [ -n "${source:-}" ] || continue
-  place "$ROOT/shared/$source" "$ROOT/${dest}$(basename "$source")" ""
-done < <(jq -r '.publish[]? | "\(.source)|\(.dest)"' "$MANIFEST")
-
 while IFS='|' read -r source dest closure skill; do
   [ -n "${source:-}" ] || continue
   skill_dir="$ROOT/skills/$skill"
@@ -197,7 +187,7 @@ _drain_closure_faults
 
 # Advisory: shared files no manifest entry grants to anyone.
 if [ "$MODE" = "check" ]; then
-  granted_sources="$(jq -r '(.entries[]?.source), (.publish[]?.source)' "$MANIFEST" | sort -u)"
+  granted_sources="$(jq -r '.entries[]?.source' "$MANIFEST" | sort -u)"
   orphans=""
   while IFS= read -r f; do
     rel="${f#$ROOT/shared/}"
