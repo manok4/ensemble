@@ -62,7 +62,9 @@ if [ -z "$PEER_CMD_IN" ]; then
   PEER_CMD_IN="${PEER_CMD:-}"
 fi
 if [ -z "$PEER_CMD_IN" ]; then
-  _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # ${BASH_SOURCE[0]:-$0}: BASH_SOURCE is bash-only; zsh sets $0 to the sourced
+  # file. Same portability contract as bin/ensemble-peer-invoke.
+  _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
   if [ -x "$_self_dir/ensemble-detect-host" ]; then
     PEER_CMD_IN=$("$_self_dir/ensemble-detect-host" 2>/dev/null \
                     | sed -n "s/^PEER_CMD=//p" | sed "s/^'//; s/'$//") || PEER_CMD_IN=""

@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN03
 title: Plan-quality upgrades to en-plan
-status: in_progress
+status: completed
 location: active
 created: 2026-07-03
-shipped:
+shipped: 2026-08-26
 deepened:
 covers_requirements: []
 requirements_pending: false

@@ -226,7 +226,9 @@ requirements_pending: false
 
 # FR50
 
-Cites TD42 which doesn't exist in tech-debt-tracker.
+## Tracked debt
+
+- **Resolves:** TD42
 EOF
 assert_rule_fires "cross-link.broken-td" "missing TD entry"
 
@@ -1014,5 +1016,126 @@ data_scale: enormous
 - **Approach:** ok
 EOF
 assert_rule_fires "frontmatter.invalid-enum" "invalid data_scale"
+
+# --- unit.risk-class: a "## " heading closes the units section ---
+# Regression: extract_units only reset at the next `### U<N>`, so the final unit
+# stayed open to end-of-file and absorbed the "- **Risk:** … — **Mitigation:** …"
+# bullets the plan template prescribes under "## Decisions, assumptions & risks".
+# A well-formed plan then reported its last unit's risk as an invalid enum.
+setup_minimum
+cat > "$TMP/docs/plans/active/FR70-risk-section.md" <<EOF
+---
+type: plan
+plan_type: improvement
+plan_id: FR70
+title: Risk section after final unit
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# FR70 — Risk section after final unit
+
+## Implementation units
+
+### U1. Only unit
+
+- **Goal:** stuff
+- **Risk:** medium
+- **Category:** feature
+- **Gated:** false
+- **Files:** src/foo.ts
+- **Approach:** ok
+- **Test expectation:** none — fixture
+- **Verification:** lint clean
+
+## Decisions, assumptions & risks
+
+- **Risk:** the copies drift out of sync — **Mitigation:** a byte-parity test in CI
+- **Assumption:** hosts resolve relative reads against the skill directory
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "unit.risk-class"; then
+  fail "a '## ' heading closes the units section" "$(echo "$output" | grep -F 'unit.risk-class' | head -2)"
+else
+  pass "a '## ' heading closes the units section"
+fi
+
+# --- cross-link.broken-td: only a Resolves: field is a citation ---
+# The rule matched every \bTD[0-9]+\b in every file, so creating the tracker
+# turned prose that merely names the syntax into P1 errors: foundation.md's
+# "cites them as `Resolves: TD7` in unit metadata" and a spec's sample output
+# "1 deferred to TD8". Neither cites anything. The rule's own definition
+# (references/tech-debt-tracker-format.md:147) scopes it to `Resolves: TD<n>`.
+make_tracker() {
+  cat > "$TMP/docs/plans/tech-debt-tracker.md" <<EOF
+---
+type: tech-debt-tracker
+generated: false
+created: 2026-04-29
+updated: 2026-04-29
+---
+
+# Tech debt tracker
+
+## Open
+
+### TD1. A real entry
+
+- **Severity:** P2
+- **Logged:** 2026-04-29
+
+## Resolved
+EOF
+}
+
+# Fires: a genuine citation of a TD-ID with no entry.
+setup_minimum
+make_tracker
+cat >> "$TMP/docs/foundation.md" <<EOF
+
+## Tracked debt
+
+- **Resolves:** TD99
+EOF
+assert_rule_fires "cross-link.broken-td" "a Resolves: field naming a missing TD"
+
+# Does not fire: prose naming the syntax, and sample output mentioning a TD-ID.
+setup_minimum
+make_tracker
+cat >> "$TMP/docs/foundation.md" <<EOF
+
+- **Q19.** \`en-plan\` cites them as \`Resolves: TD98\` in unit metadata.
+
+Sample run output:
+
+    Peer review: verdict revise. Applied 2 of 3 findings (1 deferred to TD97).
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "cross-link.broken-td"; then
+  fail "prose and sample output are not TD citations" "$(echo "$output" | grep -F 'broken-td' | head -2)"
+else
+  pass "prose and sample output are not TD citations"
+fi
+
+# Does not fire: a real citation that resolves.
+setup_minimum
+make_tracker
+cat >> "$TMP/docs/foundation.md" <<EOF
+
+- **Resolves:** TD1
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "cross-link.broken-td"; then
+  fail "a Resolves: field naming an existing TD is clean" "$(echo "$output" | grep -F 'broken-td' | head -2)"
+else
+  pass "a Resolves: field naming an existing TD is clean"
+fi
 
 report

@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN01
 title: Skill-suite optimization and supercharge
-status: in_progress
+status: completed
 location: active
 created: 2026-06-28
-shipped:
+shipped: 2026-08-26
 deepened:
 covers_requirements: []
 requirements_pending: false

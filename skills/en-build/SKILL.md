@@ -71,7 +71,7 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 
     `--no-finalize` disables the recovery offer; `--finalize-only` runs finalize and stops without building.
 
-   **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one from current immutable fields and record it (but skip the boundary check this run; surface a notice).
+   **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$ENSEMBLE_ROOT/bin/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.
 
    **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 5. **Set up branch.**
@@ -212,7 +212,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
        - **Ordinary unit:** commit with the `phase: P<N>` trailer only. Per-unit peer evidence is NOT required — the post-build branch-level review (step 10) produces the `review-verdict:` covering this unit. (If `--no-peer-per-unit` semantics or a recursion guard apply, a `peer-skipped:` trailer is also acceptable.)
        - **Destructive / gated unit:** also write the `peer-verdict:` trailer (one; required keys `verdict`/`peer_mode`/`iteration`/`findings_count`) and one `peer-resolution:` trailer per finding, then run `$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence HEAD --require-peer-resolution`. If it returns anything but `ok`, the commit is invalid — `git reset --soft HEAD^`, fix the trailers (or re-run the peer), and re-commit; or halt and surface. **No flag lets a destructive/gated unit commit without an actual peer pass.**
    - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
-   - **Plan-hash check.** Re-compute `peer_review_plan_hash` over current immutable plan-input fields (excluding iteration log, per-unit `status`, `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
+   - **Plan-hash check.** Re-compute via `$ENSEMBLE_ROOT/bin/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
    - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
    - Surface phase summary (units, commits, any destructive/gated per-unit peer findings).
    - If `--pause` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
