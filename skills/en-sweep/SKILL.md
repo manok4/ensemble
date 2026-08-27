@@ -3,14 +3,18 @@ name: en-sweep
 description: "Scheduled doc-drift cleanup (default weekly; configurable via sweep.schedule). Runs file-shape lint + wiki-graph health + architecture/plan-lifecycle/pointer-map drift. Activity gate skips runs when no non-sweep commits have landed since the last sweep. Opens auto-merging doc-only PRs after /en-review (mode:report-only) clears them. Code-level findings file to tech-debt-tracker.md. Optional continuous monitoring (dead-code + dep-vuln) → TD or draft plan. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-sweep`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
+
 Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
 
-> **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check`.
+> **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$SKILL_DIR/scripts/ensemble-doc-only-check`.
 
 ## When invoked
 
@@ -20,22 +24,22 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 | `workflow_dispatch` | Manual fire from the Actions UI; bypasses the activity gate. |
 | Manual (`/en-sweep`) | User runs the slash command locally for ad-hoc cleanup. |
 
-**Activity gate.** Before the sweep job runs, `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the patterns `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`, `chore(docs):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently — no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
+**Activity gate.** Before the sweep job runs, `$SKILL_DIR/scripts/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the patterns `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`, `chore(docs):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently — no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
 
-The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
+The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`. CI runner determines which CLI is available.
+1. **Detect host.** Source `references/host-detect.md`. CI runner determines which CLI is available.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
-3. **Loop guards** (per `$ENSEMBLE_ROOT/references/sweep-loop-guards.md`). The CI workflow enforces Guards 1, 2, 3, 5 before the skill runs; Guard 4 (no-material-diff) fires inside the skill at step 9.
-4. **Run file-shape lint.** `$ENSEMBLE_ROOT/bin/ensemble-lint --json --scope docs/`. Capture violations.
+3. **Loop guards** (per `references/sweep-loop-guards.md`). The CI workflow enforces Guards 1, 2, 3, 5 before the skill runs; Guard 4 (no-material-diff) fires inside the skill at step 9.
+4. **Run file-shape lint.** `$SKILL_DIR/scripts/ensemble-lint --json --scope docs/`. Capture violations.
 5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
 6. **Architecture drift check.** Dispatch `repo-research` to compare `docs/architecture.md` against the codebase:
    - Documented components still present?
    - Layer rules honored? (Code-level violations → tech-debt; doc-level → fix-up PR.)
    - Layer boundaries clean?
-   - Per `$ENSEMBLE_ROOT/references/sweep-checks.md` and `$ENSEMBLE_ROOT/references/architecture-update-rules.md`.
+   - Per `references/sweep-checks.md` and `references/architecture-update-rules.md`.
 7. **Plan-lifecycle drift.** For each plan in `docs/plans/active/`, search for U-ID commit messages on `main`. If all units shipped → file as `chore(plans): move <plan_id> to completed/` (e.g. `move EN03 to completed/`).
 8. **Pointer-map drift.** Compare `AGENTS.md` "Where things live" pointers against the actual `docs/` tree. Compare `CLAUDE.md` against `claude-md.no-shared-content` lint. File `chore(maps):` PRs for in-scope drift.
 8a. **Continuous monitoring (opt-in).** If `.ensemble/config.local.yaml` has `sweep.continuous_monitoring.dead_code: true` or `dep_audit: true`, run `skills/en-sweep/scripts/continuous-monitor` and pipe through `skills/en-sweep/scripts/triage-findings`. The triage output partitions findings into:
@@ -45,11 +49,11 @@ The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves
     Idempotent: before creating a draft, check `docs/plans/active/` for an existing plan with `generator: en-sweep` and matching `area:` — skip if present.
 
     The user reviews each draft plan, flips `status: draft → open` to accept (or moves to `archive/` to decline). To flesh out a draft into a full plan with peer review and R-ID coverage, run `/en-plan --resume docs/plans/active/<plan>.md`.
-9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `$ENSEMBLE_ROOT/references/sweep-checks.md`. Code-level findings get appended via the format in `$ENSEMBLE_ROOT/references/tech-debt-tracker-format.md`.
+9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `references/sweep-checks.md`. Code-level findings get appended via the format in `references/tech-debt-tracker-format.md`.
 10. **Guard 4 — no-material-diff termination.** If no batches were produced, exit silently (no PR, no comment).
 11. **Stage + verify each batch.**
     - Apply the fixes for the batch (Edit / Write tools).
-    - Run `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
+    - Run `$SKILL_DIR/scripts/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
     - Cap the number of PRs per run at `max_prs_per_run` (default 6).
 12. **Open PR per batch.**
     - Branch: `en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-update`).
@@ -59,7 +63,7 @@ The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves
 13. **Run `/en-review` per PR.** Mode: `report-only` (mandatory; never configurable for sweep). Returns findings JSON; does NOT mutate.
 14. **Auto-merge eligibility check.**
     - `/en-review` returns no P0/P1 → eligible.
-    - Branch protection allows (per `$ENSEMBLE_ROOT/references/sweep-security-model.md`) → enable auto-merge via `gh pr merge --auto --squash`.
+    - Branch protection allows (per `references/sweep-security-model.md`) → enable auto-merge via `gh pr merge --auto --squash`.
     - Otherwise → leave PR open for human resolution.
 15. **Summary report.** Post a comment on the source-triggering PR:
     ```markdown
@@ -89,12 +93,12 @@ The CI invocation routes through `$ENSEMBLE_ROOT/bin/en-sweep-ci` which resolves
 The doc-only contract is enforced at three points:
 
 1. **Categorization (step 9).** Code-level findings never become PRs; they file as TD entries.
-2. **Runtime enforcement (step 11).** `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` verifies every staged path is in the allowlist (`docs/`, `AGENTS.md`, `CLAUDE.md`, `.github/workflows/en-sweep.yml`, `.ensemble/sweep-summary.md`). Any path outside → abort the batch.
-3. **Default-safe security** (per `$ENSEMBLE_ROOT/references/sweep-security-model.md`). `GITHUB_TOKEN` least-privilege; no `actions: write`; no fork triggers; branch protection respected; fail-closed on any guard error.
+2. **Runtime enforcement (step 11).** `$SKILL_DIR/scripts/ensemble-doc-only-check` verifies every staged path is in the allowlist (`docs/`, `AGENTS.md`, `CLAUDE.md`, `.github/workflows/en-sweep.yml`, `.ensemble/sweep-summary.md`). Any path outside → abort the batch.
+3. **Default-safe security** (per `references/sweep-security-model.md`). `GITHUB_TOKEN` least-privilege; no `actions: write`; no fork triggers; branch protection respected; fail-closed on any guard error.
 
 ## Loop guards
 
-With the move to scheduled triggers, sweep can no longer fire on its own commits — the cron schedule is the rate-limiter. Two guards remain primary; the others are defensive only. Per `$ENSEMBLE_ROOT/references/sweep-loop-guards.md`:
+With the move to scheduled triggers, sweep can no longer fire on its own commits — the cron schedule is the rate-limiter. Two guards remain primary; the others are defensive only. Per `references/sweep-loop-guards.md`:
 
 1. **Concurrency group** (still primary) — only one sweep run per branch at a time. Prevents overlapping cron + manual runs.
 2. **No-material-diff termination** (still primary) — Guard 4 in the old numbering. Silent exit when sweep produces no batches. Inside the skill at step 9.
@@ -111,7 +115,7 @@ Both patterns are still recognized by the activity gate so they're effectively i
 
 A sweep PR auto-merges when **all** hold:
 
-- PR is doc-only (verified by `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check`).
+- PR is doc-only (verified by `$SKILL_DIR/scripts/ensemble-doc-only-check`).
 - `/en-review` in `mode:report-only` returns no P0/P1 findings.
 - CI checks pass (project tests, lint).
 - Branch protection's review requirement is met.
@@ -124,27 +128,27 @@ Otherwise: PR stays open for human resolution.
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
-- `$ENSEMBLE_ROOT/references/sweep-checks.md` — full check catalog (file-shape, wiki-graph, architecture, plan lifecycle, pointer maps, continuous monitoring)
+- `references/host-detect.md` — host detection
+- `references/sweep-checks.md` — full check catalog (file-shape, wiki-graph, architecture, plan lifecycle, pointer maps, continuous monitoring)
 - `skills/en-sweep/scripts/continuous-monitor` — dead-code + dep-audit scanner; outputs JSON-lines findings
 - `skills/en-sweep/scripts/triage-findings` — partitions findings into TD entries vs draft plans
-- `$ENSEMBLE_ROOT/references/sweep-loop-guards.md` — five-guard mechanism
-- `$ENSEMBLE_ROOT/references/sweep-security-model.md` — auto-merge safety, permissions, fork policy
-- `$ENSEMBLE_ROOT/references/tech-debt-tracker-format.md` — TD entry schema for code-level findings
-- `$ENSEMBLE_ROOT/references/architecture-update-rules.md` — what counts as material structural change
-- `$ENSEMBLE_ROOT/references/doc-lints.md` — file-shape lint catalog
-- `$ENSEMBLE_ROOT/references/learn-lint.md` — wiki-graph lint catalog
-- `$ENSEMBLE_ROOT/references/templates/github-workflow-en-sweep.yml` — installed workflow
-- `$ENSEMBLE_ROOT/bin/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
-- `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` — runtime allowlist enforcement
-- `$ENSEMBLE_ROOT/bin/ensemble-lint` — file-shape lint runner
-- `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
+- `references/sweep-loop-guards.md` — five-guard mechanism
+- `references/sweep-security-model.md` — auto-merge safety, permissions, fork policy
+- `references/tech-debt-tracker-format.md` — TD entry schema for code-level findings
+- `references/architecture-update-rules.md` — what counts as material structural change
+- `references/doc-lints.md` — file-shape lint catalog
+- `references/learn-lint.md` — wiki-graph lint catalog
+- `references/templates/github-workflow-en-sweep.yml` — installed workflow
+- `$SKILL_DIR/scripts/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
+- `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
+- `$SKILL_DIR/scripts/ensemble-lint` — file-shape lint runner
+- `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
 
 ## Failure protocol
 
 | Failure | Behavior |
 |---|---|
-| `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` rejects a batch | Abort that batch; log loudly with offending paths; post to source PR comment |
+| `$SKILL_DIR/scripts/ensemble-doc-only-check` rejects a batch | Abort that batch; log loudly with offending paths; post to source PR comment |
 | `repo-research` returns malformed output | Skip that check; surface in summary; continue with other checks |
 | `/en-review` returns malformed JSON | Treat as inconclusive; leave PR open; do not auto-merge |
 | Branch-protection check fails (rate-limit, auth) | Fail-closed: leave all PRs open; do not auto-merge |

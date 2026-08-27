@@ -89,7 +89,7 @@ else
 fi
 
 # 9. Uses ensemble-verify-peer-evidence
-if grep -qF '$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence' "$EN_SHIP"; then
+if grep -qF 'scripts/ensemble-verify-peer-evidence' "$EN_SHIP"; then
   pass "checkpoint uses ensemble-verify-peer-evidence for completeness check"
 else
   fail "checkpoint should reference \$ENSEMBLE_ROOT/bin/ensemble-verify-peer-evidence"

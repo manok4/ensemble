@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-plan decisions section"
 
-TEMPLATE="$REPO_ROOT/references/templates/plan-template.md"
+TEMPLATE="$REPO_ROOT/shared/references/templates/plan-template.md"
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
 
 # --- section exists in the template ---

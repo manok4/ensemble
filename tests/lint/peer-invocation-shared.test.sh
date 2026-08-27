@@ -13,7 +13,7 @@ TEST_NAME="shared peer invocation"
 missing=""
 for skill in en-plan en-foundation en-cross-review en-review; do
   f="$REPO_ROOT/skills/$skill/SKILL.md"
-  grep -qF "bin/ensemble-peer-invoke" "$f" || missing="$missing $skill"
+  grep -qF "ensemble-peer-invoke" "$f" || missing="$missing $skill"
 done
 if [ -z "$missing" ]; then
   pass "en-plan, en-foundation, en-cross-review and en-review all route through ensemble-peer-invoke"
@@ -36,13 +36,13 @@ else
 fi
 
 # --- 3. the helper still owns what the skills stopped restating ---
-INVOKE="$REPO_ROOT/bin/ensemble-peer-invoke"
+INVOKE="$REPO_ROOT/shared/bin/ensemble-peer-invoke"
 if grep -qF "peer-failed:timeout" "$INVOKE" \
    && grep -qF "peer-failed:auth" "$INVOKE" \
    && grep -qF "_epi_timeout_bin" "$INVOKE"; then
   pass "helper owns timeout, auth and unknown classification"
 else
-  fail "bin/ensemble-peer-invoke must own the timeout wrapper and failure classification"
+  fail "shared/bin/ensemble-peer-invoke must own the timeout wrapper and failure classification"
 fi
 
 report

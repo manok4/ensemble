@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-review --lite"
 
 EN_REVIEW="$REPO_ROOT/skills/en-review/SKILL.md"
-PERSONA="$REPO_ROOT/references/persona-dispatch.md"
+PERSONA="$REPO_ROOT/shared/references/persona-dispatch.md"
 
 # --- flag documented ---
 if grep -qF -- "--lite" "$EN_REVIEW"; then

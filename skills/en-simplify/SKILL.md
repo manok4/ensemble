@@ -3,10 +3,11 @@ name: en-simplify
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Three parallel review dimensions (reuse / quality / efficiency), behavior-preserving, scoped verification. Default scope: the current branch diff vs base. Usable ad-hoc and called by /en-build's post-build phase. Use /en-debug for bugs, not this. Trigger phrases: 'simplify', 'tidy this up', 'refactor pass', 'clean up the diff', 'simplify before PR'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-simplify`
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
 
 Behavior-preserving simplification of recently changed code. Reviews the change across three dimensions in parallel — **reuse**, **quality**, **efficiency** — applies the safe findings, and verifies behavior held. Prioritizes readable, explicit code over compactness; **fewer lines is not the goal, faster comprehension is.**
 
@@ -14,7 +15,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 ## Process
 
-1. **Detect host (light).** Source `$ENSEMBLE_ROOT/references/host-detect.md` for path conventions and subagent-dispatch primitives.
+1. **Detect host (light).** Source `references/host-detect.md` for path conventions and subagent-dispatch primitives.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't run simplification passes).
 3. **Resolve scope** (first match wins):
    1. **User-named scope** (a file, directory, "the function I just wrote", "this morning's changes") — authoritative; do not widen it.
@@ -22,7 +23,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
    3. **Outside a git repo or no diff:** the most recently modified files named by the user or edited earlier in the conversation.
 
    If none yields a non-empty scope, **ask** what to simplify (use `AskUserQuestion` in Claude Code / `request_user_input` in Codex). Never silently skip.
-4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex), each passed the full diff or resolved file set. Use the existing `$ENSEMBLE_ROOT/agents/code-simplifier.md` agent for each dimension, seeded with the dimension's checklist below. Omit any model override so the user's configured settings apply.
+4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex), each passed the full diff or resolved file set. Use the existing `agents/code-simplifier.md` agent for each dimension, seeded with the dimension's checklist below. Omit any model override so the user's configured settings apply.
 
    - **Dimension 1 — Reuse:** existing utilities/helpers that could replace new code; new functions duplicating existing functionality; inline logic that could use an existing utility; diff code reimplementing a stdlib/runtime primitive (suggest the built-in only when behavior-equivalent — never swap native UI controls, locale/`Intl` formatting, sort-stability, or serialization edge cases).
    - **Dimension 2 — Quality:** redundant/derivable state; parameter sprawl; copy-paste-with-variation; leaky abstractions; stringly-typed code where constants/enums exist; unnecessary wrapper elements (component-tree frameworks only); nested conditionals 3+ deep (flatten with guards/early returns/lookup tables); unnecessary comments (keep only non-obvious WHY); dead code / unused imports / unused exports (prefer the project's dead-code linter or `ast-grep` over text grep; account for re-exports, dynamic imports, framework exports).
@@ -50,9 +51,9 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/code-simplifier-dispatch.md` — dispatch + revert protocol
-- `$ENSEMBLE_ROOT/agents/code-simplifier.md` — the reviewer agent
-- `$ENSEMBLE_ROOT/references/host-detect.md`
+- `references/code-simplifier-dispatch.md` — dispatch + revert protocol
+- `agents/code-simplifier.md` — the reviewer agent
+- `references/host-detect.md`
 
 ## Failure protocol
 

@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-brainstorm frontier rounds"
 
 SKILL="$REPO_ROOT/skills/en-brainstorm/SKILL.md"
-SOCRATIC="$REPO_ROOT/references/socratic-questions.md"
+SOCRATIC="$REPO_ROOT/skills/en-brainstorm/references/socratic-questions.md"
 
 # --- 1. frontier batching, its safety rule, and its two carve-outs all survive together.
 #        Batching WITHOUT the dependency rule is the dangerous half — guard them as one unit. ---

@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="lint rules"
 
-LINT="$REPO_ROOT/bin/ensemble-lint"
+LINT="$REPO_ROOT/shared/bin/ensemble-lint"
 
 # Setup: tempdir mirroring repo layout
 TMP=$(mktemp -d)
@@ -503,7 +503,7 @@ export type User = { id: string };
 EOF
 cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
 cd - >/dev/null
-assert_rule_fires "architecture.layer-violation" "bin/check-fitness output surfaced as lint finding"
+assert_rule_fires "architecture.layer-violation" "shared/bin/check-fitness output surfaced as lint finding"
 
 # When fitness.enabled is true but checker is missing, surface advisory.
 setup_minimum

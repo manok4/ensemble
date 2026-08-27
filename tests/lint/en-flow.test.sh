@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-flow pipeline"
 
 FLOW="$REPO_ROOT/skills/en-flow/SKILL.md"
-REF="$REPO_ROOT/references/en-flow-pipeline.md"
+REF="$REPO_ROOT/skills/en-flow/references/en-flow-pipeline.md"
 
 # --- skill exists + helper header + recursion guard ---
 if [ -f "$FLOW" ]; then pass "en-flow SKILL.md exists"; else fail "en-flow SKILL.md missing"; fi

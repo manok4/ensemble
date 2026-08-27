@@ -1,0 +1,797 @@
+{
+  "version": 1,
+  "comment": "Which skill receives which shared file. dest is relative to the skill directory. closure:true follows a script's sourcing chain and carries the siblings too. See shared/README.md.",
+  "entries": [
+    {
+      "source": "agents/code-simplifier.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-simplify"
+      ]
+    },
+    {
+      "source": "agents/correctness-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "agents/learnings-research.md",
+      "dest": "agents/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "agents/maintainability-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "agents/migrations-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "agents/performance-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "agents/repo-research.md",
+      "dest": "agents/",
+      "skills": [
+        "en-brainstorm",
+        "en-debug",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "agents/security-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "agents/standards-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "agents/testing-reviewer.md",
+      "dest": "agents/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "agents/web-research.md",
+      "dest": "agents/",
+      "skills": [
+        "en-brainstorm",
+        "en-foundation",
+        "en-plan"
+      ]
+    },
+    {
+      "source": "bin/en-sweep-ci",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-build-peer-prompt",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-classify-plans",
+      "dest": "scripts/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "bin/ensemble-cli-smoke",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-config-get",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-detect-host",
+      "dest": "scripts/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-doc-only-check",
+      "dest": "scripts/",
+      "skills": [
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-extract-json",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-lint",
+      "dest": "scripts/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-peer-flags",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ]
+    },
+    {
+      "source": "bin/ensemble-peer-invoke",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review"
+      ],
+      "closure": true
+    },
+    {
+      "source": "bin/ensemble-plan-hash",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-plan"
+      ]
+    },
+    {
+      "source": "bin/ensemble-sweep-activity-check",
+      "dest": "scripts/",
+      "skills": [
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "bin/ensemble-verify-peer-evidence",
+      "dest": "scripts/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "bin/get-pr-comments",
+      "dest": "scripts/",
+      "skills": [
+        "en-resolve-pr",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/agent-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/architecture-fitness.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/architecture-update-rules.md",
+      "dest": "references/",
+      "skills": [
+        "en-foundation",
+        "en-learn",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/build-handoff.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/build-orchestration.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/cli-wrappers.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/code-simplifier-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-simplify"
+      ]
+    },
+    {
+      "source": "references/diff-signal-detection.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-qa",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/doc-lints.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/finding-schema.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/host-detect.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/learn-bootstrap-patterns.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/learn-cross-ref-maintenance.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn"
+      ]
+    },
+    {
+      "source": "references/learn-index-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/learn-lint.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/learn-log-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-learn",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/learning-frontmatter-schema.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/observability-conventions.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/observability-hypothesis-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-debug"
+      ]
+    },
+    {
+      "source": "references/outside-voice.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/peer-model-policy.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/persona-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/recursion-guard.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-flow",
+        "en-foundation",
+        "en-guardrail",
+        "en-learn",
+        "en-loop",
+        "en-plan",
+        "en-qa",
+        "en-resolve-pr",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-simplify",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/research-dispatch.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-debug",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/script-invocation.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/secret-patterns.md",
+      "dest": "references/",
+      "skills": [
+        "en-debug",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/severity.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/single-agent-fallback.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-ship"
+      ]
+    },
+    {
+      "source": "references/stable-ids.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/sweep-checks.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/sweep-loop-guards.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/sweep-security-model.md",
+      "dest": "references/",
+      "skills": [
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/tech-debt-tracker-format.md",
+      "dest": "references/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/templates/agents-md-merge-rules.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/agents-md-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/architecture-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-learn",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/templates/claude-md-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-foundation",
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/config-local-example.yaml",
+      "dest": "references/templates/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/github-workflow-claude-review.yml",
+      "dest": "references/templates/",
+      "skills": [
+        "en-setup"
+      ]
+    },
+    {
+      "source": "references/templates/github-workflow-en-sweep.yml",
+      "dest": "references/templates/",
+      "skills": [
+        "en-setup",
+        "en-sweep"
+      ]
+    },
+    {
+      "source": "references/templates/plan-template.md",
+      "dest": "references/templates/",
+      "skills": [
+        "en-brainstorm",
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-learn",
+        "en-plan",
+        "en-review",
+        "en-setup",
+        "en-ship",
+        "en-sweep"
+      ]
+    }
+  ]
+}

@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="plan hash"
 
-HASH="$REPO_ROOT/bin/ensemble-plan-hash"
+HASH="$REPO_ROOT/shared/bin/ensemble-plan-hash"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
@@ -140,8 +140,11 @@ out=$(bash "$HASH" 2>&1); rc=$?
 assert_ne 0 "$rc" "no argument exits non-zero"
 
 canon=$(bash "$HASH" --canon "$BASE")
-assert_contains "$canon" "U1|" "--canon shows the canonical form"
-assert_contains "$canon" "standard|small" "--canon ends with the plan-level line"
+# Length-prefixed records, not pipe-joined fields: concatenating with a bare
+# delimiter let pipe characters move across a field boundary and produce
+# identical canonical bytes for two different plans.
+assert_contains "$canon" "U:U1" "--canon shows the canonical form"
+assert_contains "$canon" "depth:8:standard" "--canon ends with the plan-level line"
 
 # The real plan must hash, and match what its frontmatter records.
 REAL="$REPO_ROOT/docs/plans/active/EN12-improvement_self-contained-skills.md"
@@ -149,5 +152,28 @@ if [ -f "$REAL" ]; then
   recorded=$(awk -F': ' '/^peer_review_plan_hash:/{print $2; exit}' "$REAL")
   assert_eq "$(h "$REAL")" "$recorded" "EN12's recorded hash matches the helper"
 fi
+
+# --- multiline field content is hashed, not just the label line ---
+V="$WORK/multiline.md"; write_plan "$V"
+perl -0pi -e 's/- \*\*Approach:\*\* straightforward/- **Approach:** straightforward\n  and a second line that carries real meaning/' "$V"
+ml="$(h "$V")"
+assert_ne "$BASELINE" "$ml" "adding a continuation line to Approach moves the hash"
+
+V2="$WORK/multiline2.md"; write_plan "$V2"
+perl -0pi -e 's/- \*\*Approach:\*\* straightforward/- **Approach:** straightforward\n  and a second line that carries REAL meaning/' "$V2"
+assert_ne "$ml" "$(h "$V2")" "editing that continuation line moves the hash again"
+
+# A continuation line under an UNHASHED field must not be absorbed.
+V="$WORK/unhashed.md"; write_plan "$V"
+perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Verification:** tests pass\n  with extra detail here/' "$V"
+assert_eq "$BASELINE" "$(h "$V")" "a continuation line under an unhashed field does not move the hash"
+
+# --- field boundaries cannot be blurred by delimiter characters ---
+V="$WORK/pipes.md"; write_plan "$V"
+perl -0pi -e 's{- \*\*Files:\*\* src/a\.ts}{- **Files:** src/a.ts|X}; s{- \*\*Approach:\*\* straightforward}{- **Approach:** Y|straightforward}' "$V"
+p1="$(h "$V")"
+V="$WORK/pipes2.md"; write_plan "$V"
+perl -0pi -e 's{- \*\*Files:\*\* src/a\.ts}{- **Files:** src/a.ts}; s{- \*\*Approach:\*\* straightforward}{- **Approach:** X|Y|straightforward}' "$V"
+assert_ne "$p1" "$(h "$V")" "moving a pipe across a field boundary changes the hash"
 
 report

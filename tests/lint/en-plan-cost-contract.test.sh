@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-plan cost contract"
 
 SKILL="$REPO_ROOT/skills/en-plan/SKILL.md"
-CHECKPOINT="$REPO_ROOT/references/plan-default-branch-checkpoint.md"
+CHECKPOINT="$REPO_ROOT/skills/en-plan/references/plan-default-branch-checkpoint.md"
 
 # --- 1. foundation.md is read by section index, never whole ---
 if grep -qiE "Bounded foundation read" "$SKILL" \

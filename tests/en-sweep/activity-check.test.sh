@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="ensemble-sweep-activity-check"
 
-CHECK="$REPO_ROOT/bin/ensemble-sweep-activity-check"
+CHECK="$REPO_ROOT/shared/bin/ensemble-sweep-activity-check"
 [ -x "$CHECK" ] || { fail "missing or not executable: $CHECK"; report; exit 1; }
 
 # Helper — set up a synthetic repo with a sequence of commits.

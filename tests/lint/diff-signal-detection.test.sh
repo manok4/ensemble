@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="diff-signal detection"
 
-REF="$REPO_ROOT/references/diff-signal-detection.md"
+REF="$REPO_ROOT/shared/references/diff-signal-detection.md"
 
 if [ -f "$REF" ]; then
   pass "diff-signal-detection.md exists"

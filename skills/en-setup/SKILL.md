@@ -3,10 +3,14 @@ name: en-setup
 description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / gnhf CLI / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-setup`
+
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
+
+> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
+
 
 Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./setup` script (machine-level install).
 
@@ -14,9 +18,9 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md` (in plugin) or run `$ENSEMBLE_ROOT/bin/ensemble-detect-host`. Set `HOST`, `PEER_AVAILABLE`, etc.
+1. **Detect host.** Source `references/host-detect.md` (in plugin) or run `$SKILL_DIR/scripts/ensemble-detect-host`. Set `HOST`, `PEER_AVAILABLE`, etc.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note (this skill should never be peer-invoked).
-3. **Detect state** per `$ENSEMBLE_ROOT/references/setup-state-detection.md`:
+3. **Detect state** per `references/setup-state-detection.md`:
    - State 1 — Greenfield (empty repo or initial-commit, no `docs/foundation.md`).
    - State 2 — Existing project, no Ensemble (source code present, foundation or learnings missing). Identify sub-variant 2a/2b/2c/2d by which of `AGENTS.md`/`CLAUDE.md` exist.
    - State 3 — Existing project with Ensemble (`docs/foundation.md` and `docs/learnings/` both present).
@@ -45,7 +49,7 @@ Exit.
 Run all of these in order. Each step is idempotent — running `/en-setup` twice produces the same end state.
 
 1. **Confirm sub-variant.** Probe for `AGENTS.md` / `CLAUDE.md` existence; classify as 2a/2b/2c/2d.
-2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, run `$ENSEMBLE_ROOT/bin/ensemble-classify-plans docs/plans` to inspect it. Output partitions plans into:
+2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, run `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` to inspect it. Output partitions plans into:
    - `conforming` — already pass Ensemble plan validation; leave in place.
    - `non_conforming` — `.md` files in `docs/plans/` that aren't Ensemble plans (legacy / hand-rolled / from another tool).
    - `subdirs` — unrecognized subdirectories.
@@ -78,9 +82,9 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    ```
    - Use the platform's file-write primitive (Write tool / `apply_patch`).
    - Don't fail if directories already exist.
-4. **Seed `docs/learnings/index.md` and `log.md`** from the empty-state templates in `$ENSEMBLE_ROOT/references/learn-index-format.md` and `$ENSEMBLE_ROOT/references/learn-log-format.md`.
+4. **Seed `docs/learnings/index.md` and `log.md`** from the empty-state templates in `references/learn-index-format.md` and `references/learn-log-format.md`.
 5. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries (these are mandatory per foundation §10.1; lint requires their existence).
-6. **Generate or merge `AGENTS.md`** per sub-variant (see `$ENSEMBLE_ROOT/references/templates/agents-md-template.md` and `$ENSEMBLE_ROOT/references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`.
+6. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`.
 7. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
 8. **Add `.gitignore` entries** if missing. **Verify each entry is actually present after the write — do not assume the write succeeded.**
    - `.ensemble/config.local.yaml` — **required.** Confirm with `grep -qF '.ensemble/config.local.yaml' .gitignore` after writing. If `.gitignore` doesn't exist, create it with this line.
@@ -89,15 +93,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    This step is verified again in the final-verification phase (step 17). Both checks must pass.
 9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these four scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
-   - `$ENSEMBLE_ROOT/bin/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
-   - `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
-   - `$ENSEMBLE_ROOT/bin/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
-   - `$ENSEMBLE_ROOT/bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
+   - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
+   - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
+   - `$SKILL_DIR/scripts/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
+   - `$SKILL_DIR/scripts/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
 
-   **Resolving the plugin source path.** The plugin's `bin/` lives wherever the host CLI loads plugins from. Resolve via (in order):
-     - `${ENSEMBLE_PLUGIN_DIR:-}` env var if set.
-     - The skill's own load path: `dirname(realpath(<this SKILL.md>))/../../bin/`.
-     - `~/.claude/plugins/<plugin-id>/bin/` for Claude Code's default layout (fallback).
+   **Resolving the script path.** This skill carries the scripts it installs in its own `scripts/` directory, so there is nothing to discover: anchor to the skill directory as `references/script-invocation.md` describes. `${ENSEMBLE_PLUGIN_DIR:-}` is still honored when set, for a caller that deliberately points at another install.
 
    For each of the four scripts: copy from `<plugin>/bin/<name>` to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
 
@@ -107,7 +108,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
    **Re-sync on update (drift caveat).** Because these are *copied* into the project, a consuming repo carries a frozen snapshot from install time — fixes to the plugin's `bin/` scripts do NOT propagate automatically. When the plugin updates a sweep script (e.g. the `en-sweep-ci` guard fix), re-run this step to re-copy (it's idempotent — it overwrites when content differs). The current workflow template mitigates this for `en-sweep-ci` specifically by preferring the freshly-cloned `$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci` at run time and only falling back to the project-local copy; `ensemble-sweep-activity-check` still runs project-local (its job doesn't clone), so re-sync it on update.
 
-10. **Install `.github/workflows/en-sweep.yml`** from `$ENSEMBLE_ROOT/references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
+10. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
     1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
     2. **Map to cron.** Named values map to:
        - `daily` → `0 9 * * *`
@@ -117,9 +118,9 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
     4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 17.
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
-    6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$ENSEMBLE_ROOT/bin/ensemble-sweep-activity-check`."
+    6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
 
-11. **Create `.ensemble/config.local.example.yaml`** (committed) from `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
+11. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
 12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`). Choose:
     >   `p` — install project-scoped now (writes to `<repo>/.claude/settings.json`).
@@ -137,7 +138,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     >   - **OAuth** (Pro/Max subscription) — free within rate limits. Requires `CLAUDE_CODE_OAUTH_TOKEN` repo secret (generate with `claude setup-token`).
     >   - **API key** — pay-per-use, no rate cap. Requires `ANTHROPIC_API_KEY` repo secret. Edit the workflow after install to switch."
 
-    On `y` → write `.github/workflows/claude-code-review.yml` from `$ENSEMBLE_ROOT/references/templates/github-workflow-claude-review.yml`. Surface a one-line follow-up: "Add `CLAUDE_CODE_OAUTH_TOKEN` to repo secrets (Settings → Secrets and variables → Actions). See `docs/integrations/anthropic-code-review-action.md` for setup."
+    On `y` → write `.github/workflows/claude-code-review.yml` from `references/templates/github-workflow-claude-review.yml`. Surface a one-line follow-up: "Add `CLAUDE_CODE_OAUTH_TOKEN` to repo secrets (Settings → Secrets and variables → Actions). See `docs/integrations/anthropic-code-review-action.md` for setup."
     On `n` → record in the report; skip.
 
     Idempotent — if the workflow already exists, note it and don't overwrite.
@@ -157,12 +158,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 15. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
     > "`REVIEW.md` is a project-root file that tunes how PR review behaves on this repo — severity calibration, nit caps, skip rules, repo-specific checks, convergence behavior on multi-round reviews. Read automatically by Anthropic's managed Code Review service (Team/Enterprise plans); for the self-hosted action, the workflow's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action'). Seed `REVIEW.md` from the Ensemble-flavored default template? (`y` / `n`)"
 
-    On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `$ENSEMBLE_ROOT/references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
+    On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
 16. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
-    > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/patterns/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `$ENSEMBLE_ROOT/references/learn-bootstrap-patterns.md`."
+    > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/patterns/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
 
     Don't auto-run it. The user decides.
 
@@ -337,18 +338,18 @@ Next step:
 
 ## Reference files
 
-- `$ENSEMBLE_ROOT/references/setup-state-detection.md` — full state detection algorithm + sub-variants
-- `$ENSEMBLE_ROOT/references/templates/agents-md-template.md` — AGENTS.md template + substitutions
-- `$ENSEMBLE_ROOT/references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
-- `$ENSEMBLE_ROOT/references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
-- `$ENSEMBLE_ROOT/references/templates/github-workflow-en-sweep.yml` — GH Action workflow
-- `$ENSEMBLE_ROOT/references/templates/config-local-example.yaml` — committed config template
-- `$ENSEMBLE_ROOT/references/learn-index-format.md` — `learnings/index.md` empty-state seed
-- `$ENSEMBLE_ROOT/references/learn-log-format.md` — `learnings/log.md` empty-state seed
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection (used briefly at start)
-- `$ENSEMBLE_ROOT/references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
-- `$ENSEMBLE_ROOT/references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
-- `$ENSEMBLE_ROOT/references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
+- `references/setup-state-detection.md` — full state detection algorithm + sub-variants
+- `references/templates/agents-md-template.md` — AGENTS.md template + substitutions
+- `references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
+- `references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
+- `references/templates/github-workflow-en-sweep.yml` — GH Action workflow
+- `references/templates/config-local-example.yaml` — committed config template
+- `references/learn-index-format.md` — `learnings/index.md` empty-state seed
+- `references/learn-log-format.md` — `learnings/log.md` empty-state seed
+- `references/host-detect.md` — host detection (used briefly at start)
+- `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
+- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
+- `references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook
-- `$ENSEMBLE_ROOT/bin/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
+- `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)

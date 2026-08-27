@@ -3,8 +3,6 @@ name: en-resolve-pr
 description: "Address review comments on the current PR. Fetches inline review threads + top-level PR comments + review-submission bodies; triages new vs already-handled, silent-drops bot wrappers; per comment applies a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes, replies, resolves threads (except needs-human). Up to 2 cycles. --enable-auto-merge flag. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
 ---
 
-> **Helper resolution.** All `references/X` and `bin/Y` paths in this skill resolve relative to `$ENSEMBLE_ROOT` — the install root (skill at `$ENSEMBLE_ROOT/skills/<name>/`, shared helpers at `$ENSEMBLE_ROOT/{references,bin}/`). Compute once at start: `$ENSEMBLE_ROOT` env var if set; otherwise `$(realpath "$(dirname <this-SKILL.md>)/../..")`. Fail loudly if `$ENSEMBLE_ROOT/references/host-detect.md` does not resolve — that indicates a partial install (run `/en-setup` to repair).
-
 
 # `/en-resolve-pr`
 
@@ -31,20 +29,20 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
 
 ## Process
 
-1. **Detect host.** Source `$ENSEMBLE_ROOT/references/host-detect.md`.
+1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit — peer subprocesses don't run this skill.
 3. **Resolve PR number.** No arg → `gh pr view --json number -q .number`. URL → parse owner/repo/PR + comment ID; use `scripts/get-thread-for-comment` to map to a thread.
 4. **Fetch comments.** Run `scripts/get-pr-comments <PR>`. Returns three buckets plus a `cross_invocation` envelope:
    - `review_threads` — unresolved inline threads (with `isOutdated` flag)
    - `pr_comments` — top-level PR conversation comments (excludes PR author + CI bots)
    - `review_bodies` — review submissions with non-empty body text
-5. **Triage: new vs already-handled vs silent-drop.** Per `$ENSEMBLE_ROOT/references/resolve-pr-triage.md`. Briefly:
+5. **Triage: new vs already-handled vs silent-drop.** Per `references/resolve-pr-triage.md`. Briefly:
    - **review_threads:** has the PR author already replied substantively (acknowledging or deferring)? → pending decision (skip). Otherwise → new.
    - **pr_comments / review_bodies:** is the body actionable (vs. wrapper text from CodeRabbit/Codex/Gemini/Copilot, or approvals like "looks great!")? Non-actionable → **silent drop** (do not narrate; do not list). Actionable AND already replied? → skip. Actionable + not replied → new.
 
    If no new items, jump to step 10.
 6. **Plan a numbered task list** of new items grouped by feedback type. Surface to user.
-7. **Per item, apply the rubric** from `$ENSEMBLE_ROOT/references/resolve-pr-rubric.md` and produce one of six verdicts:
+7. **Per item, apply the rubric** from `references/resolve-pr-rubric.md` and produce one of six verdicts:
    - `fixed` — code changed as suggested
    - `fixed-differently` — code changed using a better approach; explain why in the reply
    - `replied` — no code change; question answered or design decision explained
@@ -68,7 +66,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
     - **review_thread:** reply via `scripts/reply-to-pr-thread <thread-id>` (body on stdin); for verdicts other than `needs-human`, also `scripts/resolve-pr-thread <thread-id>`.
     - **pr_comment / review_body:** no resolve API; reply with `gh pr comment <PR> --body "..."`. Quote the original passage in the reply for continuity.
 
-    **Reply format** is verdict-specific — see `$ENSEMBLE_ROOT/references/resolve-pr-reply-format.md`. Every reply leads with `> [quoted excerpt]`.
+    **Reply format** is verdict-specific — see `references/resolve-pr-reply-format.md`. Every reply leads with `> [quoted excerpt]`.
 11. **Verify.** Re-fetch via `scripts/get-pr-comments`. Empty → done. Threads remain:
     - **Cycle 1 or 2** (this is the 2nd or 3rd run within the same `/en-resolve-pr` invocation): repeat from step 5.
     - **Cycle 3** would begin: stop. Surface remaining items to the user as a recurring pattern: *"Multiple rounds of feedback on `<area>` suggest a deeper issue. Here's what's been addressed and what keeps appearing."* Use `needs-human` escalation; leave threads open.
@@ -155,10 +153,10 @@ This skill does **not** at v1:
 - `scripts/reply-to-pr-thread` — GraphQL `addPullRequestReviewThreadReply` wrapper; body via stdin
 - `scripts/resolve-pr-thread` — GraphQL `resolveReviewThread` wrapper
 - `scripts/check-merge-status` — auto-merge + merge-readiness reporting (PR-level + repo-level)
-- `$ENSEMBLE_ROOT/references/resolve-pr-triage.md` — new vs already-handled vs silent-drop rules
-- `$ENSEMBLE_ROOT/references/resolve-pr-rubric.md` — 4-question rubric driving the 6 verdicts
-- `$ENSEMBLE_ROOT/references/resolve-pr-reply-format.md` — reply templates and quoting rules
-- `$ENSEMBLE_ROOT/references/host-detect.md` — host detection
+- `references/resolve-pr-triage.md` — new vs already-handled vs silent-drop rules
+- `references/resolve-pr-rubric.md` — 4-question rubric driving the 6 verdicts
+- `references/resolve-pr-reply-format.md` — reply templates and quoting rules
+- `references/host-detect.md` — host detection
 
 ## Failure protocol
 
