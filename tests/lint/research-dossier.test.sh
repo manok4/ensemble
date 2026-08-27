@@ -37,7 +37,7 @@ fi
 
 # --- each of the three agents references the protocol ---
 for agent in repo-research learnings-research web-research; do
-  f="$REPO_ROOT/agents/$agent.md"
+  f="$REPO_ROOT/shared/agents/$agent.md"
   if grep -qiE "Evidence dossier" "$f" && grep -qF "dossier_path" "$f"; then
     pass "$agent documents the dossier contract"
   else

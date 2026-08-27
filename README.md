@@ -374,7 +374,6 @@ ensemble/
 │   ├── agents/                    #   11 agent definitions
 │   ├── manifest.json              #   which skill receives which file
 │   └── README.md                  #   how to work in here — read this before editing
-├── agents/                        # generated flat set, published for host dispatch
 ├── scripts/
 │   ├── sync-shared                # propagates shared/ into the skills that read it
 │   ├── check-health

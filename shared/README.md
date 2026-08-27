@@ -1,7 +1,15 @@
 # `shared/` — build input, not a runtime tree
 
-Canonical text for anything two or more skills read. Nothing here is installed,
-and nothing here is read while a skill runs.
+Canonical text for anything two or more skills read. **Nothing here is read
+while a skill runs** — that is the invariant this tree exists to protect, and
+what makes each skill directory work on its own.
+
+The plugin manifests do name `shared/agents` for their `agents` key. That is an
+install-time read of where the canonical definitions live, in the same sense as
+`"skills": "./skills"`, not a skill resolving a path at runtime. A generated
+flat copy at the repo root existed briefly to avoid naming this directory at
+all; it was a third identical copy of eleven files bought with nothing, so it
+is gone.
 
 Every skill directory under `skills/` is self-contained: it carries its own copy
 of every reference, template, script and agent it reads, so the folder works

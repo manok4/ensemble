@@ -793,51 +793,5 @@
         "en-sweep"
       ]
     }
-  ],
-  "publish": [
-    {
-      "source": "agents/code-simplifier.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/correctness-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/learnings-research.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/maintainability-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/migrations-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/performance-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/repo-research.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/security-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/standards-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/testing-reviewer.md",
-      "dest": "agents/"
-    },
-    {
-      "source": "agents/web-research.md",
-      "dest": "agents/"
-    }
   ]
 }
