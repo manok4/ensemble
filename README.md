@@ -308,7 +308,7 @@ You can run both simultaneously for two AI perspectives.
 | 13 | `/en-sweep` | Event-driven doc-drift cleanup. Auto-fires on `push` to `main`. Opens auto-merging doc-only PRs. **Continuous monitoring** (opt-in): dead-code (`ts-prune` / `vulture` / Go `deadcode`) + dep-vuln (`npm audit` / `pip-audit` / `cargo audit`) with size-based triage — trivial → TD entry; pattern → draft plan. |
 | 14 | `/en-setup` | Project-level bootstrap and diagnostics. Detects state 1/2/3; for retrofits: archives non-conforming plans, creates skeleton, generates AGENTS.md/CLAUDE.md, installs en-sweep workflow + guardrail + Claude Code Review action, checks `allow_auto_merge`, surfaces bootstrap-patterns offer. |
 
-For full process detail, mode flags, and reference files per skill, see [`docs/workflow-and-catalog.md`](./docs/workflow-and-catalog.md).
+For full process detail, mode flags, and reference files per skill, see each skill's `SKILL.md` under [`skills/`](./skills/) — it is the contract the skill executes — and [§5 Skill Catalog](./docs/foundation.md#5-skill-catalog) in the foundation.
 
 ---
 
@@ -347,7 +347,7 @@ For full process detail, mode flags, and reference files per skill, see [`docs/w
 |---|---|
 | `code-simplifier` | Per-unit cleanup pass during `/en-build`. Runs between gate 1 (tests pass) and gate 2 (re-verify after simplifier). On gate 2 failure, simplifier edits revert automatically. |
 
-For agent invariants, dispatch matrix, and per-agent prompts, see [`docs/workflow-and-catalog.md`](./docs/workflow-and-catalog.md) and [`skills/*/agents/`](./skills).
+For agent invariants and per-agent prompts, see [§6 Agent Catalog](./docs/foundation.md#6-agent-catalog) and the `agents/` directory inside each skill.
 
 ---
 
@@ -458,7 +458,6 @@ Full schema in [`skills/en-setup/references/templates/config-local-example.yaml`
 ## Documentation
 
 - **[Foundation](./docs/foundation.md)** — full design (PRD + TDD + architecture intent). Decisions, rationale, open questions.
-- **[Workflow + Catalog](./docs/workflow-and-catalog.md)** — scannable reference for every skill and agent.
 - **[Anthropic Code Review setup](./docs/integrations/anthropic-code-review-action.md)** — install Claude on your PRs.
 - **[Codex Code Review setup](./docs/integrations/codex-code-review-action.md)** — install Codex on your PRs (managed or self-hosted).
 - **[CHANGELOG](./CHANGELOG.md)** — what landed in each release.

@@ -187,3 +187,33 @@ from risk *and* category — and compare phases rather than risks. Rename to
 `phase-invariant.dependency-vs-phase`, since risk is no longer what it compares.
 Needs a negative control: a plan whose units are all `medium`, one of them
 `category: migration` with a non-migration dependent, must go red.
+
+### TD9. Five skills dispatch seven reviewer agents the repo no longer defines
+
+EN13 U11 deleted seven reviewer agent definitions (correctness, testing,
+maintainability, standards, security, performance, migrations), absorbing their
+scopes into the per-skill peer briefs. Its commit message says "en-review still
+names every persona" — which was the intent: the personas survive as **review
+dimensions** in the briefs, not as spawnable agents.
+
+But `references/persona-dispatch.md`, carried by **five** skills — `en-review`,
+`en-cross-review`, `en-build`, `en-plan`, `en-foundation` — still instructs:
+
+```
+Agent({ subagent_type: "correctness-reviewer", ... })
+```
+
+Those subagent types are not defined anywhere in the repo. The dispatch resolves
+today only because the operator's install predates EN12 and still carries the old
+agent files; a fresh install from `main` would fail every one of them.
+
+**Observed 2026-08-28** while reconciling `docs/foundation.md`'s agent catalog
+against the filesystem: the catalog listed 11 agents, the repo defines 4, and the
+seven-row gap turned out to be live dispatch rather than stale documentation.
+
+**Fix direction:** decide what the personas are now. If they are review dimensions
+the host applies inline, `persona-dispatch.md` should stop naming `subagent_type`
+and describe the dimensions instead. If they are still meant to be spawned, the
+definitions have to come back. Either way the five carriers move together, and a
+test should assert that every `subagent_type` a skill names resolves to an agent
+the repo defines — the gap existed for a full release because nothing checked.
