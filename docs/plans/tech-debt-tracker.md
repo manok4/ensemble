@@ -104,3 +104,67 @@ run rather than after.
 
 Deliberately excluded from the 2026-08-28 frontmatter reduction, which cut
 `problem_type`, `component`, and `confidence` and left `category` untouched.
+
+### TD6. `ensemble-extract-json` silently discards codex findings and returns the first event line
+
+`ensemble-extract-json` recovers "the first balanced JSON object" from a peer
+response — correct for a prose answer with an embedded envelope, wrong for a
+JSONL event stream. `codex exec --json` emits one JSON object per line:
+
+```
+{"type":"thread.started","thread_id":"..."}      <- first balanced object
+{"type":"item.completed","item":{"type":"agent_message","text":"{...findings...}"}}
+{"type":"turn.completed",...}
+```
+
+The extractor returns line 1. Its `jq -e .` guard cannot catch this, because
+`thread.started` **is** valid JSON — the guard checks that the output parses, not
+that it is the right object.
+
+`ensemble-peer-invoke`'s `_epi_normalize_out` then **overwrites the output file**
+with that line, so the findings are destroyed rather than merely mis-read. The
+comment there promises "on failure the file is left byte-for-byte untouched",
+which holds only when extraction *fails*; here it succeeds on the wrong object.
+
+`host-detect.md` resolves `PEER_FORMAT=--json` for a codex peer, so this is the
+sanctioned path for all four peer-invoking skills, not a corner case.
+
+**Observed 2026-08-28** while peer-reviewing EN14. The caller sees a well-formed
+JSON object with no `verdict` and no `findings` — indistinguishable from a peer
+that returned nothing, which is the same failure shape as the zsh `BASH_SOURCE`
+bug: a broken helper returning a plausible answer instead of an error.
+
+Likely a codex output-format change; earlier runs (EN13, 3 iterations, 11
+findings) parsed fine, so this probably regressed under us rather than never
+having worked.
+
+**Fix direction:** select the object by event type — the `agent_message` item's
+`text` — rather than by position, and make the guard assert the *shape* it needs
+(a `verdict` key) rather than mere parseability. A guard that only checks
+well-formedness cannot distinguish the right object from the wrong one.
+
+### TD7. No behavioural coverage for units whose logic is a model judgment
+
+Ensemble's tests are shell scripts that grep specifications. That works for
+structure (a file exists, two copies are byte-identical, a required field is
+enforced) and is worthless for behaviour: `en-learn`'s artifact router and its
+glossary writer are prose instructions executed by a model, and no shell
+assertion can show that a given candidate produces the right artifact type or
+that an amendment preserves unrelated glossary entries.
+
+Raised twice by the peer during EN14 review (findings 2-3 and 2-5), correctly
+both times. EN14 responds by **stating the limit** rather than claiming coverage
+it does not have — its router and glossary units assert specification presence
+and self-consistency, and say so.
+
+The gap is real: a broken writer, a duplicate insertion, or a destructive rewrite
+would satisfy every assertion those units make.
+
+**Fix direction:** an eval suite that feeds fixture candidates through the skill
+and asserts the emitted artifact type and path. `claude plugin eval` exists for
+exactly this and would not require inventing a harness. EN14 leaves the fixture
+corpus in place (`tests/fixtures/routing/`, and the worked examples in
+`artifact-types.md`), so the inputs an eval suite needs are already written.
+
+Until this lands, treat "the tests pass" on any model-behaviour unit as evidence
+about the specification only.
