@@ -14,6 +14,7 @@ requires:
   - references/glossary-rules.md
   - references/grounding-validation.md
   - scripts/ensemble-validate-claims
+  - references/layout-migration.md
   - references/learn-bootstrap-patterns.md
   - references/learn-cross-ref-maintenance.md
   - references/learn-index-format.md
@@ -66,6 +67,8 @@ After every write:
 ## Process — Mode A: `capture` (default)
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip (no peer review on capture).
+2a. **Legacy-layout check.** If `docs/learnings/bugs/`, `patterns/`, or `decisions/` exists, this repo predates the artifact-type layout. Surface it and offer the migration — **read `references/layout-migration.md` and follow it**. Until it runs, entries under those directories are invisible to the new paths without being deleted, which is the failure mode that loses a knowledge base quietly. Do not capture into a half-migrated store.
+
 3. **Detect input source.**
    - **Default** (post-build / post-qa) — read recent commits + branch summary.
    - **`--from-conversation`** — take user-confirmed synthesis as input (fired by D21 capture-from-synthesis).
