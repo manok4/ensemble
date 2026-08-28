@@ -76,3 +76,31 @@ updated: 2026-08-26
 ## Resolved
 
 <!-- none yet -->
+
+### TD6. `ensemble-extract-json` returned a transport frame instead of the reviewer payload
+
+**Resolved 2026-08-28**, recorded because the failure shape is worth keeping.
+
+`ensemble-extract-json` recovers "the first balanced JSON object" — correct for a
+prose answer with an embedded envelope, wrong for a JSONL event stream.
+`codex exec --json` emits one object per line and the first is
+`{"type":"thread.started",...}`, so that is what came back.
+
+The `jq -e .` guard could not catch it. The guard asks whether the recovered text
+*parses*, and a transport frame parses perfectly. `ensemble-peer-invoke`'s
+`_epi_normalize_out` then overwrote the response file with it, so findings were
+destroyed rather than merely mis-read. `host-detect.md` resolves
+`PEER_FORMAT=--json` for a codex peer, so this was the sanctioned path for all
+five carriers.
+
+Observed while peer-reviewing EN14: the extractor reported an empty verdict, and
+reading the raw stream showed six findings sitting in an `agent_message` item.
+Earlier runs parsed fine, so this regressed under a codex output-format change
+rather than never having worked.
+
+**Fix:** unwrap the stream to the last `agent_message` text before scanning, and
+reject an object whose top-level `type` is a known codex event. The second half
+is the durable part — a guard that only checks well-formedness cannot tell the
+right object from the wrong one, which is why a valid-JSON frame survived a
+validity check. Six cases in `tests/extract-json/extract-json.test.sh`, each
+verified to fail against the pre-fix extractor.

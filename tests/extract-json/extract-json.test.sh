@@ -83,4 +83,61 @@ else
 fi
 rm -f "$FAKE" "$OUT" "$PF"
 
+# --- TD6: codex JSONL event streams -----------------------------------------
+# The bug this section exists for: `codex exec --json` emits one JSON object per
+# line, and the FIRST is a transport frame. First-balanced-object returned that
+# frame, and the jq parseability guard passed it, because a frame is valid JSON.
+# ensemble-peer-invoke then overwrote the response file with it, destroying the
+# findings. Observed 2026-08-28 against a real review.
+
+STREAM='{"type":"thread.started","thread_id":"abc-123"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"verdict\":\"revise\",\"findings\":[{\"severity\":\"P1\"}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":10}}'
+
+got=$(printf '%s' "$STREAM" | ensemble_extract_json 2>/dev/null)
+case "$got" in
+  *'"verdict":"revise"'*) pass "codex JSONL stream yields the agent payload" ;;
+  *) fail "codex JSONL stream yields the agent payload" "got [$got]" ;;
+esac
+
+case "$got" in
+  *thread.started*|*turn.completed*) fail "the transport frame is not returned" "got [$got]" ;;
+  *) pass "the transport frame is not returned" ;;
+esac
+
+# A frame on its own must FAIL, not be handed back as a successful recovery.
+# This is the assertion that distinguishes "parses" from "is the right object".
+if printf '%s' '{"type":"thread.started","thread_id":"abc"}' | ensemble_extract_json >/dev/null 2>&1; then
+  fail "a bare transport frame is rejected" "returned success"
+else
+  pass "a bare transport frame is rejected"
+fi
+
+# Multiple agent messages: the LAST is the final answer.
+MULTI='{"type":"item.completed","item":{"type":"agent_message","text":"{\"verdict\":\"approve\"}"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"{\"verdict\":\"reject\"}"}}'
+got=$(printf '%s' "$MULTI" | ensemble_extract_json 2>/dev/null)
+case "$got" in
+  *reject*) pass "the last agent message wins" ;;
+  *) fail "the last agent message wins" "got [$got]" ;;
+esac
+
+# A stream carrying an error item but no agent message has no payload to give.
+ERRONLY='{"type":"thread.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"boom"}}'
+if printf '%s' "$ERRONLY" | ensemble_extract_json >/dev/null 2>&1; then
+  fail "a stream with no agent message fails" "returned success"
+else
+  pass "a stream with no agent message fails"
+fi
+
+# The payload may itself be fenced — unwrap the stream, THEN strip the fence.
+FENCED='{"type":"item.completed","item":{"type":"agent_message","text":"```json\n{\"verdict\":\"approve\"}\n```"}}'
+got=$(printf '%s' "$FENCED" | ensemble_extract_json 2>/dev/null)
+case "$got" in
+  '{"verdict":"approve"}') pass "a fenced payload inside a stream is unwrapped twice" ;;
+  *) fail "a fenced payload inside a stream is unwrapped twice" "got [$got]" ;;
+esac
+
 report

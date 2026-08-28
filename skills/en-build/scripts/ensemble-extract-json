@@ -10,6 +10,15 @@
 # outside it. Fences need no special handling: ```json carries no brace, so the
 # scan skips it, and the trailing fence falls after the closing brace.
 #
+# TRANSPORT FRAMES. `codex exec --json` does not emit one object: it emits a
+# JSONL event stream whose FIRST line is {"type":"thread.started",...}. The
+# first-balanced-object rule returns that line, and a parseability guard cannot
+# catch it, because a transport frame is perfectly valid JSON. The payload lives
+# in the `agent_message` item, so the stream is unwrapped before scanning, and a
+# recovered object that is itself a transport frame is rejected outright. A
+# guard that only asks "does this parse" cannot tell the right object from the
+# wrong one; this one asks what the object IS.
+#
 # String-aware: braces inside string literals do not affect depth, and
 # backslash escapes are honoured, so {"a": "}"} and {"a": "\""} both survive.
 #
@@ -23,8 +32,59 @@
 # recovered text is not valid JSON. Callers keep their existing retry as the
 # fallback for genuinely broken responses.
 
+# Known codex transport event types. An object carrying one of these as its
+# top-level "type" is a stream frame, never a reviewer payload.
+_eej_is_transport_frame() {
+  printf '%s' "$1" | awk '
+    { data = data $0 }
+    END {
+      if (match(data, /"type"[[:space:]]*:[[:space:]]*"(thread\.started|thread\.finished|turn\.started|turn\.completed|turn\.failed|item\.started|item\.updated|item\.completed)"/)) exit 0
+      exit 1
+    }'
+}
+
+# Unwrap a JSONL event stream to the agent's message text. Emits nothing when
+# the input is not such a stream, so the caller falls through to the plain scan.
+_eej_unwrap_stream() {
+  local _f="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import json,sys
+last=""
+for ln in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    ln=ln.strip()
+    if not ln.startswith("{"): continue
+    try: d=json.loads(ln)
+    except ValueError: continue
+    it=d.get("item")
+    if isinstance(it,dict) and it.get("type")=="agent_message" and it.get("text"):
+        last=it["text"]
+sys.stdout.write(last)
+' "$_f" 2>/dev/null
+  elif command -v jq >/dev/null 2>&1; then
+    jq -r -s 'map(select(.item?.type == "agent_message") | .item.text) | last // ""' "$_f" 2>/dev/null
+  fi
+}
+
 ensemble_extract_json() {
-  local _src="${1:-/dev/stdin}" _out
+  local _src="${1:-/dev/stdin}" _out _tmp _unwrapped
+
+  # Materialise stdin so the stream can be inspected and then rescanned.
+  if [ "$_src" = "/dev/stdin" ]; then
+    _tmp=$(mktemp) || return 1
+    cat > "$_tmp"
+    _src="$_tmp"
+  fi
+
+  # A JSONL event stream carries its payload inside an agent_message item.
+  # Scanning the raw stream would return the first transport frame instead.
+  _unwrapped=$(_eej_unwrap_stream "$_src")
+  if [ -n "$_unwrapped" ]; then
+    _tmp="${_tmp:-$(mktemp)}"
+    printf '%s' "$_unwrapped" > "$_tmp"
+    _src="$_tmp"
+  fi
+
   _out=$(awk '
     { data = data $0 "\n" }
     END {
@@ -53,7 +113,14 @@ ensemble_extract_json() {
     }
   ' "$_src") || return 1
 
-  [ -n "$_out" ] || return 1
+  [ -n "$_out" ] || { [ -n "${_tmp:-}" ] && rm -f "$_tmp"; return 1; }
+  [ -n "${_tmp:-}" ] && rm -f "$_tmp"
+
+  # A transport frame is valid JSON, so parseability cannot reject it. Ask what
+  # the object is, not merely whether it parses.
+  if _eej_is_transport_frame "$_out"; then
+    return 1
+  fi
 
   # When jq is present, only hand back text that actually parses. Balanced but
   # invalid (a trailing comma, say) should fall through to the caller's retry
