@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN14
 title: Three artifact types for captured knowledge, replacing the flat learnings taxonomy
-status: open
+status: in_progress
 location: active
 created: 2026-08-28
 shipped:
@@ -17,7 +17,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-28
-peer_review_plan_hash: f9128989946297f83cafb6285eea9532fedc0858704773a2fdcc26391eef7dc3
+peer_review_plan_hash: ac9356ea19ebbbcfbe362cdfdbe41423d8fbdcdf75acc83a6d48c61440902cb3
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
