@@ -1157,28 +1157,71 @@ Files in `docs/generated/` are auto-derived — doc lints flag any direct human 
 
 ## 11. Compounding Learning Store
 
-### 11.1 What gets captured
+### 11.1 Three artifact types
 
-- **Bugs.** Symptom, what didn't work (failed hypotheses), root cause, fix, why-it-works, prevention.
-- **Patterns.** A reusable approach surfaced during build that should be applied elsewhere (e.g., "use `expectTypeOf` for type-only assertions in this project").
-- **Decisions.** Architectural or technical choices with durable rationale (e.g., "chose Drizzle over Prisma because of edge-runtime support; see commit X").
+Captured knowledge takes three forms. They are not flavours of one thing: they
+differ in **shape**, **lifecycle**, and **write path**, which is what makes the
+split load-bearing.
 
-### 11.2 Frontmatter schema (`docs/learnings/<category>/<slug>-<date>.md`)
+| Type | Path | Shape | Lifecycle |
+|---|---|---|---|
+| **Term** | `docs/CONTEXT.md` | Definition plus retired synonyms, in one shared file | Amended in place; the file accretes |
+| **Decision** | `docs/decisions/NNNN-<slug>.md` | Title states the claim; no frontmatter; invariants section | Append-only; dated `## Update` sections |
+| **Solution** | `docs/learnings/<slug>-<date>.md` | Six-field frontmatter; one paragraph until it earns more | Goes stale against code; refreshed |
+| *(ingested)* | `docs/learnings/sources/<slug>-<date>.md` | Solution shape plus `source_type`/`source_uri`/`fetched` | Written by `ingest`, not by capture |
+
+**Routing** is by what the candidate *is*, not what it is about, with an explicit
+tie-break for candidates that match two types: `term > decision > solution`. The
+more durable form outlives the occasion and can cite the other. Only one artifact
+is written — writing both reintroduces the duplication the capture gate's
+generalization step exists to prevent. Rules in
+`skills/en-learn/references/artifact-types.md`.
+
+**The gate comes first.** `capture-gate.md` decides *whether* to write at all;
+routing only sees candidates that already passed. The default is to write
+nothing, and a rejected capture reports which condition failed.
+
+This replaced a `bugs | patterns | decisions | sources` taxonomy (TD5, closed by
+EN14). Those four produced the same artifact in different directories, and the
+boundary between a "pattern" and a "decision" was not one a writer could apply
+twice the same way. Two of the three types above did not previously exist:
+nothing captured domain vocabulary, and decisions recorded what was chosen
+without stating the rules that followed from it.
+
+### 11.2 Solution frontmatter (`docs/learnings/<slug>-<date>.md`)
+
+Six required fields. Terms and decisions carry **none** — nothing queries them by
+field, so every field would be bookkeeping nobody reads and nothing keeps current.
 
 ```yaml
 ---
 title: <one-line title>
+applies_when: <the situation that should surface this entry>
 date: YYYY-MM-DD
-category: bugs | patterns | decisions
-problem_type: <enum from references/learning-frontmatter-schema.md>
-component: <module or area>
-applies_when: <one-line description of when this applies>
 tags: [...]
 related: [<paths-to-other-learnings>]
-confidence: <1-10>
 status: active | deprecated | superseded
 ---
 ```
+
+`applies_when` is **the retrieval field** and sits second for that reason: it is
+what decides whether an entry is ever found again. Write the situation, not the
+subject — a future agent does not search for your entry's topic, it is in the
+middle of some work and needs to recognise that the entry is about the work it is
+doing. Full schema in `skills/en-learn/references/learning-frontmatter-schema.md`.
+
+### 11.2a Grounding
+
+A written artifact becomes knowledge future agents act on **without
+re-verifying**. Before it is indexed, `scripts/ensemble-validate-claims` checks
+the claims it can: cited paths, links, SHAs, and unrendered template
+placeholders.
+
+Advisory, never a gate — a solution doc legitimately cites a path the fix deleted
+or describes a pre-fix state. Three exit codes, and the third carries the weight:
+`0` clean, `1` findings to adjudicate, `2` the validator could not run. A run that
+exits 2 may **not** be reported as grounded; collapsing 2 into 1 would make "this
+doc has a dead link" indistinguishable from "nothing checked this doc".
 
 ### 11.3 Query mechanism
 
@@ -1188,6 +1231,7 @@ status: active | deprecated | superseded
 
 - **Capture.** `learn capture` (default mode) writes after a feature ships, a bug is fixed, or a synthesis worth keeping emerges in `en-plan` / `en-review` / `en-brainstorm` (`--from-conversation`).
 - **Ingest.** `learn ingest <path-or-url>` brings external sources into the wiki — articles, papers, design references, customer-call notes. URL inputs use WebFetch with Wayback fallback; file inputs use Read.
+- **Migrate.** A repo carrying the retired directories is migrated before capture writes into it (`references/layout-migration.md`). Legacy decisions become ADRs rather than flattening into solutions.
 - **Refresh.** `learn --refresh` audits content staleness across the store: keep, update, replace, or archive each learning.
 - **Pack.** `learn --pack <library>` creates a flattened external reference at `docs/references/<library>-llms.txt`. Re-pack when the library version bumps or the cached docs go stale.
 - **Lint.** `learn --lint` audits *structural* health of the wiki graph: orphans, missing back-refs, broken links, missing pages for frequently-cited concepts, contradictions, data gaps. `--lint --fix` auto-applies mechanical repairs; non-mechanical findings go to the user.

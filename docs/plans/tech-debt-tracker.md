@@ -79,31 +79,32 @@ updated: 2026-08-26
 
 ### TD5. The learning `category` taxonomy has four values and no reliable way to pick one
 
-`docs/learnings/<category>/` accepts `bugs | patterns | decisions | sources`.
-Under the capture gate (`skills/en-learn/references/capture-gate.md`) almost
-nothing that qualifies is a "bug" entry, because the gate rejects what a reader
-can recover from the code and a fixed bug usually is. What survives is a
-decision or a pattern, and that boundary is not one a writer can apply
-consistently: drafting a real entry, the same content was defensible under
-either.
+**Resolved 2026-08-28 by EN14**, which replaced the taxonomy rather than
+collapsing it. `docs/learnings/<category>/` accepted `bugs | patterns | decisions
+| sources`; captured knowledge is now three artifact types that differ in shape,
+lifecycle, and write path — a term in `docs/CONTEXT.md`, a decision in
+`docs/decisions/`, a solution flat in `docs/learnings/`, with ingested sources
+keeping their own directory.
 
-`sources` is different in kind and does earn its own directory: it holds
-ingested external material with `source_type` / `source_uri` / `fetched`, and it
-is populated by a different command path.
+The original diagnosis held: under the capture gate almost nothing qualifying is
+a "bug" entry, because the gate rejects what a reader recovers from the code and
+a fixed bug usually is. What survived was a decision or a pattern, and that
+boundary was not one a writer could apply twice the same way.
 
-The likely resolution is to collapse to captured-vs-ingested, but the cost is
-not in the decision. **39 files** reference the category directories, including
-four copies of `learnings-research`, `learn-index-format.md`, `learn-lint.md`,
-`learn-cross-ref-maintenance.md`, and the enum validation plus required-field
-list in `ensemble-lint`.
+**Correcting the cost analysis this entry originally carried.** It claimed the
+migration was cheap only while the wiki was empty. Half of that was wrong, and it
+was the half the decision rested on. The two costs behave differently: the ~39
+reference files are **time-invariant** and cost the same whenever the work is
+done, while the entries are the cheap half and stay cheap — `git mv` plus a
+frontmatter line, with `learn-lint`'s `broken-links` check watching the result.
+Urgency was inferred from the half that was never expensive.
 
-**Why now is the cheap moment:** this repo has zero learning entries. The
-migration cost is entirely in references, not content. That gap closes the first
-time the wiki is populated, so this is worth deciding before the first capture
-run rather than after.
+What actually settled it was not cost. Collapsing to captured-vs-ingested would
+have kept one artifact shape and left the two highest-value gaps unaddressed:
+nothing captured domain vocabulary, and decisions recorded what was chosen
+without stating the rules that followed.
 
-Deliberately excluded from the 2026-08-28 frontmatter reduction, which cut
-`problem_type`, `component`, and `confidence` and left `category` untouched.
+Migration for repos already holding entries is EN14's U13.
 
 ### TD6. `ensemble-extract-json` returned a transport frame instead of the reviewer payload
 
