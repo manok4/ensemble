@@ -97,6 +97,12 @@ assert_file_missing() {
 }
 
 # Print a per-file summary; exit code reflects pass/fail.
+# Flatten a markdown file to one line with emphasis markers stripped, so an
+# assertion can match a sentence that wraps or carries **bold**/`code` without
+# encoding the line breaks. Ten copies of this had accumulated across the
+# reference-checking suites under three different names.
+flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
+
 report() {
   local total=$((TEST_PASS + TEST_FAIL))
   if [ "$TEST_FAIL" -eq 0 ]; then

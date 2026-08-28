@@ -159,14 +159,13 @@ done
 # specification is wired into the skill and that the fixture corpus exists. They
 # do NOT show that a candidate routes correctly — no shell assertion reaches it.
 
-flatf() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 grep -q 'references/artifact-types.md' "$SKILL" \
   && pass "capture reads the artifact-types reference" \
   || fail "capture reads the artifact-types reference"
 
 # The retired taxonomy must be gone from the capture flow, not merely unused.
-if flatf "$SKILL" | grep -qE 'Identify category|bugs/ \(|patterns/ \(|decisions/ \('; then
+if flat "$SKILL" | grep -qE 'Identify category|bugs/ \(|patterns/ \(|decisions/ \('; then
   fail "the four-category step is gone from capture"
 else
   pass "the four-category step is gone from capture"
@@ -205,7 +204,7 @@ grep -q '^expect_type: none$' "$FIX"/*.md \
 
 # The README must not claim the fixtures are executed — that would be the exact
 # overclaim TD7 exists to prevent.
-flatf "$FIX/README.md" | grep -qi 'not run by any shell test\|not executed' \
+flat "$FIX/README.md" | grep -qi 'not run by any shell test\|not executed' \
   && pass "the corpus states plainly that it is not executed" \
   || fail "the corpus states plainly that it is not executed"
 

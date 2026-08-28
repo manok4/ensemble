@@ -99,7 +99,6 @@ second=$(grep -oE '^\| `[a-z_]+` \| yes' "$SCHEMA" | sed -n '2p' | grep -oE '`[a
 assert_eq "$second" "applies_when" "applies_when is still the second field"
 
 # --- the flat solution path --------------------------------------------------
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 flat "$SCHEMA" | grep -q 'docs/learnings/<slug>-<date>.md' \
   && pass "the schema names the flat solution path" \
   || fail "the schema names the flat solution path"

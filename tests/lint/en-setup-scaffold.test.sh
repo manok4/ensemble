@@ -17,7 +17,6 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-setup scaffold"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 # --- the skeleton creates the new layout -------------------------------------
 # Scoped to the fenced skeleton block. Grepping the whole file also matched the

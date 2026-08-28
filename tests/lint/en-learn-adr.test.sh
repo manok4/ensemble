@@ -16,7 +16,6 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-learn ADR format"
 
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 FMT="$REPO_ROOT/skills/en-learn/references/adr-format.md"
 TMPL="$REPO_ROOT/skills/en-learn/references/templates/adr-template.md"

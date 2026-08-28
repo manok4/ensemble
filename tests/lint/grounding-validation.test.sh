@@ -108,7 +108,6 @@ assert_contains "$( cd "$REPO_ROOT" && "$SCRIPT" 2>&1 || true )" "usage" \
   "invoked with no argument, it prints usage rather than a traceback"
 
 # --- the reference states the adjudication contract --------------------------
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 # 'advisory' alone also matched prose elsewhere in the file, so deleting the
 # rule left this green. Match the rule's substance: findings are adjudicated,
 # never auto-applied.
@@ -202,18 +201,17 @@ grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1 | {
     || fail "the grounding step invokes the real script path"
 }
 
-flatk() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 # The distinction the whole three-code design exists for.
-flatk "$SKILL" | grep -qi 'exit 2 means the artifact is unverified\|could not run' \
+flat "$SKILL" | grep -qi 'exit 2 means the artifact is unverified\|could not run' \
   && pass "the skill states that exit 2 means unverified" \
   || fail "the skill states that exit 2 means unverified"
 
-flatk "$SKILL" | grep -qi 'must not be reported as grounded' \
+flat "$SKILL" | grep -qi 'must not be reported as grounded' \
   && pass "an exit-2 run may not be reported as grounded" \
   || fail "an exit-2 run may not be reported as grounded"
 
-flatk "$SKILL" | grep -qi 'adjudicate, never auto-apply\|never auto-apply' \
+flat "$SKILL" | grep -qi 'adjudicate, never auto-apply\|never auto-apply' \
   && pass "findings are adjudicated rather than auto-applied" \
   || fail "findings are adjudicated rather than auto-applied"
 

@@ -20,7 +20,6 @@ TEST_NAME="en-learn artifact types"
 
 # Prose gets reflowed; a single-line grep goes red on a wrapped sentence, which
 # is a false failure about formatting. Flatten before matching.
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 REF="$REPO_ROOT/skills/en-learn/references/artifact-types.md"
 SKILL="$REPO_ROOT/skills/en-learn/SKILL.md"

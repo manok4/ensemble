@@ -22,7 +22,6 @@ TEST_NAME="en-learn glossary"
 # Prose gets reflowed. An assertion that greps a single line goes red when a
 # sentence wraps, which is a false failure about formatting, not content. Flatten
 # to one line and strip markdown emphasis before matching.
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 RULES="$REPO_ROOT/skills/en-learn/references/glossary-rules.md"
 TMPL="$REPO_ROOT/skills/en-learn/references/templates/context-template.md"

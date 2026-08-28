@@ -24,7 +24,6 @@ REF="$REPO_ROOT/skills/en-learn/references/layout-migration.md"
 SKILL="$REPO_ROOT/skills/en-learn/SKILL.md"
 FIX="$REPO_ROOT/tests/fixtures/legacy-store"
 
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 assert_file_exists "$REF" "the migration reference exists"
 

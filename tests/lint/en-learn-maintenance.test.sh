@@ -19,7 +19,6 @@ TEST_NAME="en-learn maintenance"
 
 SKILL="$REPO_ROOT/skills/en-learn/SKILL.md"
 LINT="$REPO_ROOT/skills/en-learn/references/learn-lint.md"
-flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 REFRESH=$(sed -n '/^## Process — Mode B: `--refresh`/,/^## Process — Mode C/p' "$SKILL")
 
