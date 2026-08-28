@@ -158,3 +158,31 @@ corpus in place (`tests/fixtures/routing/`, and the worked examples in
 
 Until this lands, treat "the tests pass" on any model-behaviour unit as evidence
 about the specification only.
+
+### TD8. The phase-invariant lint compares risk only, so it cannot see a category-induced promotion
+
+`ensemble-lint`'s `phase-invariant.dependency-vs-risk` rule builds a U-ID → risk
+map and compares risk across every dependency edge. `/en-build` classifies phases
+from **risk and category**: `risk: medium` plus `category: migration | backfill |
+schema-evolution` lands in P3 while plain `risk: medium` lands in P2.
+
+So a unit can be promoted across a phase boundary by its *category* while its
+*risk* is unchanged, and the lint sees nothing. Every unit can be `medium`, the
+lint passes, and `/en-build` still refuses the plan at preflight.
+
+**Observed 2026-08-28** on EN14. All 13 units were `medium` or lower and the plan
+linted clean through two peer-review iterations. `/en-build` then rejected it: U13
+was `medium` + `migration` (P3) and U10 was `medium` + `other` (P2), with U10
+depending on U13. Resolved by correcting U13's category, but the lint that exists
+to catch this class had already passed the plan twice.
+
+The rule's own comment says the check exists so a plan does not "force /en-build
+to either reject the plan or violate phase purity" — which is precisely what
+happened, because the rule asks a narrower question than the one it is standing
+in for.
+
+**Fix direction:** replicate `/en-build`'s full classifier in the rule — phase
+from risk *and* category — and compare phases rather than risks. Rename to
+`phase-invariant.dependency-vs-phase`, since risk is no longer what it compares.
+Needs a negative control: a plan whose units are all `medium`, one of them
+`category: migration` with a non-migration dependent, must go red.
