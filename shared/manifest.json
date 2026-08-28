@@ -11,40 +11,12 @@
       ]
     },
     {
-      "source": "agents/correctness-reviewer.md",
-      "dest": "agents/",
-      "skills": [
-        "en-review"
-      ]
-    },
-    {
       "source": "agents/learnings-research.md",
       "dest": "agents/",
       "skills": [
         "en-foundation",
         "en-learn",
         "en-plan",
-        "en-review"
-      ]
-    },
-    {
-      "source": "agents/maintainability-reviewer.md",
-      "dest": "agents/",
-      "skills": [
-        "en-review"
-      ]
-    },
-    {
-      "source": "agents/migrations-reviewer.md",
-      "dest": "agents/",
-      "skills": [
-        "en-review"
-      ]
-    },
-    {
-      "source": "agents/performance-reviewer.md",
-      "dest": "agents/",
-      "skills": [
         "en-review"
       ]
     },
@@ -57,27 +29,6 @@
         "en-learn",
         "en-plan",
         "en-sweep"
-      ]
-    },
-    {
-      "source": "agents/security-reviewer.md",
-      "dest": "agents/",
-      "skills": [
-        "en-review"
-      ]
-    },
-    {
-      "source": "agents/standards-reviewer.md",
-      "dest": "agents/",
-      "skills": [
-        "en-review"
-      ]
-    },
-    {
-      "source": "agents/testing-reviewer.md",
-      "dest": "agents/",
-      "skills": [
-        "en-review"
       ]
     },
     {

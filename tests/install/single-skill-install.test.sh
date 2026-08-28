@@ -54,7 +54,12 @@ done < <(grep -rhoE '`(references|templates|agents|scripts)/[A-Za-z0-9._/-]+`' "
 assert_eq "" "$missing" "every asset the lone skill names resolves inside it"
 
 # It carries agent definitions, and the fallback that makes them usable.
-assert_file_exists "$ISO/en-review/agents/correctness-reviewer.md" "the lone skill carries its reviewer agents"
+# EN13 U11 deleted the reviewer agents: 81% of each was boilerplate the peer
+# contract now owns, and their unique scopes are dimensions in the brief. So the
+# assertion inverts — a lone skill must carry its BRIEF, not seven agent files.
+assert_file_missing "$ISO/en-review/agents/correctness-reviewer.md" "reviewer agents are gone; their scopes are dimensions in the brief"
+assert_file_exists "$ISO/en-review/references/peer-brief.md" "the lone skill carries the brief that replaced them"
+assert_file_exists "$ISO/en-review/references/peer-contract.md" "and the wire contract it shares"
 assert_file_exists "$ISO/en-review/references/agent-dispatch.md"   "the lone skill carries the dispatch fallback"
 grep -q 'agents/<name>.md' "$ISO/en-review/references/agent-dispatch.md" \
   && pass "the fallback resolves an agent from the skill's own directory" \
@@ -62,7 +67,8 @@ grep -q 'agents/<name>.md' "$ISO/en-review/references/agent-dispatch.md" \
 
 # A bundled agent definition is usable as a prompt on its own: non-empty, with
 # the frontmatter a dispatch needs.
-a="$ISO/en-review/agents/correctness-reviewer.md"
+# en-review still dispatches learnings-research; the reviewers are gone.
+a="$ISO/en-review/agents/learnings-research.md"
 [ -s "$a" ] && head -1 "$a" | grep -q '^---' \
   && pass "the bundled agent definition is complete enough to dispatch from" \
   || fail "the bundled agent definition is complete enough to dispatch from"

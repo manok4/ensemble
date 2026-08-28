@@ -57,8 +57,8 @@ for mode in copy symlink; do
   done
   assert_eq "" "$(echo $broken)" "[$mode] every installed skill resolves everything it names"
 
-  assert_eq "11" "$(ls "$root/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')" \
-    "[$mode] agents are published for dispatch"
+  assert_eq "4" "$(ls "$root/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')" \
+    "[$mode] the 4 remaining agents are published for dispatch (7 reviewers cut in EN13 U11)"
 done
 
 # --- the property the whole plan exists to produce ---
