@@ -12,6 +12,8 @@ requires:
   - references/artifact-types.md
   - references/capture-gate.md
   - references/glossary-rules.md
+  - references/grounding-validation.md
+  - scripts/ensemble-validate-claims
   - references/learn-bootstrap-patterns.md
   - references/learn-cross-ref-maintenance.md
   - references/learn-index-format.md

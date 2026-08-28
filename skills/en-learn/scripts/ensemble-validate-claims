@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# ensemble-validate-claims — check a document's claims against the tree.
+#
+# A doc that en-learn writes becomes trusted knowledge: future agents act on its
+# claims without re-verifying them. This checks the checkable ones first — the
+# paths, links, and commits it cites — so a broken reference is caught before it
+# compounds rather than after someone follows it.
+#
+# ADVISORY, NEVER A GATE. A solution doc legitimately cites a path that a fix
+# deleted, or describes a pre-fix state. Every finding is adjudicated by the
+# agent; the script's job is to notice, not to decide.
+#
+# Exit codes are three, and the third is the point:
+#   0  clean — nothing unresolvable found
+#   1  findings — claims to adjudicate
+#   2  operational failure — the validator could not run
+#
+# 1 and 2 must not collapse into each other. "This doc has a dead link" and
+# "nothing checked this doc" are different facts, and only the second means the
+# artifact went unverified. A caller that treats 2 as 1 reports a doc as grounded
+# when nothing looked at it.
+
+set -u
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: ensemble-validate-claims <file.md>
+
+Reports unresolvable paths, links, SHAs, and unrendered template placeholders.
+Exit 0 clean, 1 findings to adjudicate, 2 could not run.
+USAGE
+}
+
+[ $# -eq 1 ] || { usage; exit 2; }
+FILE="$1"
+[ -f "$FILE" ] || { echo "ensemble-validate-claims: no such file: $FILE" >&2; usage; exit 2; }
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "ensemble-validate-claims: not inside a git repository" >&2; exit 2; }
+
+# Resolve relative links from the DOCUMENT's directory, per markdown semantics.
+# Repo-root resolution would accept broken links and reject valid ones.
+DOC_DIR=$(cd "$(dirname "$FILE")" && pwd)
+
+findings=0
+report() { printf '  %s: %s\n' "$1" "$2"; findings=$((findings + 1)); }
+
+# Strip fenced blocks: a doc showing what a path looks like is not claiming that
+# path exists. Everything below runs over the masked body.
+BODY=$(awk '
+  /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+  { print (fence ? "" : $0) }
+' "$FILE")
+
+# --- unrendered template placeholders ---------------------------------------
+# A file that IS a template is supposed to contain them.
+case "$FILE" in
+  *template*|*templates/*) : ;;
+  *)
+    while IFS= read -r ph; do
+      [ -n "$ph" ] && report "template-leftover" "$ph"
+    done < <(printf '%s\n' "$BODY" | grep -o '{{[^}]*}}' | sort -u)
+    ;;
+esac
+
+# --- markdown links ----------------------------------------------------------
+# External URLs are never fetched: the network is not a correctness dependency.
+while IFS= read -r target; do
+  [ -n "$target" ] || continue
+  case "$target" in
+    http://*|https://*|mailto:*|'#'*) continue ;;
+  esac
+  path=${target%%#*}                       # an anchor checks the file only
+  [ -n "$path" ] || continue
+  case "$path" in
+    /*) resolved="$path" ;;
+    *)  resolved="$DOC_DIR/$path" ;;
+  esac
+  [ -e "$resolved" ] || report "dead-link" "$target"
+done < <(printf '%s\n' "$BODY" | grep -o '](\([^)[:space:]]*\))' | sed 's/^](//; s/)$//' | sort -u)
+
+# --- backtick tokens: paths and SHAs ----------------------------------------
+while IFS= read -r tok; do
+  [ -n "$tok" ] || continue
+
+  # A hex-shaped token is a commit claim. There is no syntactic way to tell a
+  # dead SHA from a colour literal, so this does not pretend to: an unresolvable
+  # one is reported and the agent adjudicates, exactly as for a path.
+  if printf '%s' "$tok" | grep -qE '^[0-9a-f]{7,40}$'; then
+    git -C "$REPO_ROOT" cat-file -e "${tok}^{commit}" 2>/dev/null || report "unresolved-sha" "$tok"
+    continue
+  fi
+
+  # Only CONCRETE FILE claims are checked. Dogfooding against this repo showed
+  # everything else is noise, and a check that cries wolf gets ignored: slash
+  # commands (`/en-learn`), placeholder paths (`agents/<name>.md`), globs
+  # (`skills/*/agents/*.md`), and bare directories (`archive/`, `lib/`) are all
+  # illustrative rather than claims that a particular file exists.
+  case "$tok" in
+    *'<'*|*'>'*|*'*'*|*'{'*|*'}'*|*'...'*) continue ;;   # placeholder or glob
+    http://*|https://*|*' '*|-*) continue ;;
+  esac
+  # Slash commands (`/en-learn`) need no special case: the extension requirement
+  # below already excludes them.
+  # Must name a file: an extension is what distinguishes a claim ("x/y.md is
+  # there") from a gesture at a directory that may not exist yet.
+  printf '%s' "${tok%%#*}" | grep -qE '\.[a-z0-9]{1,5}$' || continue
+  printf '%s' "$tok" | grep -q '/' || continue          # bare filenames need a path
+  path=${tok%%#*}
+  # A backticked path in prose is normally repo-relative, but a sibling cited by
+  # bare filename ("see `capture-gate.md`") is relative to the document. Accept
+  # either: the alternative is flagging every sibling reference in the tree.
+  case "$path" in
+    /*) [ -e "$path" ] || report "dead-path" "$tok" ;;
+    *)  [ -e "$REPO_ROOT/$path" ] || [ -e "$DOC_DIR/$path" ] || report "dead-path" "$tok" ;;
+  esac
+done < <(printf '%s\n' "$BODY" | grep -o '`[^`]*`' | sed 's/^`//; s/`$//' | sort -u)
+
+if [ "$findings" -gt 0 ]; then
+  printf '%s: %d claim(s) to adjudicate\n' "$FILE" "$findings"
+  exit 1
+fi
+exit 0
