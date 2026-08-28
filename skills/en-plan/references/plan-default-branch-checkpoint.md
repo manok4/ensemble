@@ -2,7 +2,13 @@
 
 Read this only when the checkpoint's gate fires: the current branch **is** the detected default branch, and neither `--commit-branch` nor `--no-commit` was passed. Most `en-plan` runs are already on a feature branch and skip this entirely.
 
-Canonical spec: `docs/en-plan-default-branch-spec.md`. This file is the operational subset the skill executes.
+**This file is the contract.** It carries every step the checkpoint executes —
+three-source detection, the four responses, and the flag that pre-answers it.
+Design rationale and rejected alternatives live in
+`docs/en-plan-default-branch-spec.md` in the Ensemble repo, which does **not**
+ship with the skill: `setup` installs `skills/*/` only, so a `docs/` path read
+from an installed skill resolves against the user's own project. Nothing here
+depends on reaching it.
 
 The checkpoint resolves the target branch **before** the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`.
 

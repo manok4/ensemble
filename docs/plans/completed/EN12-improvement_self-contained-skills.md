@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN12
 title: Self-contained skill directories with a synced shared tree
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-08-26
-shipped:
+shipped: 2026-08-27
 deepened:
 covers_requirements: [G9, G10, G13]
 requirements_pending: false

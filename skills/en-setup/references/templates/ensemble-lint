@@ -465,7 +465,7 @@ check_cross_links() {
       # Skip if this is a system-describing reference doc — those reference plan-IDs in narrative,
       # not as citations to real plans in this repo.
       case "$file" in
-        docs/foundation.md|docs/workflow-and-catalog.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md|docs/*-spec.md) ;;
+        docs/foundation.md|https://github.com/manok4/ensemble/blob/main/docs/workflow-and-catalog.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md|docs/*-spec.md) ;;
         *)
           emit "cross-link.broken-fr" "$file" "" "P1" "$frid cited but no plan file matches docs/plans/{active,completed}/$frid-*.md" "Create the plan or remove the citation"
           ;;

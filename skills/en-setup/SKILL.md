@@ -199,7 +199,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     >   - **OAuth** (Pro/Max subscription) — free within rate limits. Requires `CLAUDE_CODE_OAUTH_TOKEN` repo secret (generate with `claude setup-token`).
     >   - **API key** — pay-per-use, no rate cap. Requires `ANTHROPIC_API_KEY` repo secret. Edit the workflow after install to switch."
 
-    On `y` → write `.github/workflows/claude-code-review.yml` from `references/templates/github-workflow-claude-review.yml`. Surface a one-line follow-up: "Add `CLAUDE_CODE_OAUTH_TOKEN` to repo secrets (Settings → Secrets and variables → Actions). See `docs/integrations/anthropic-code-review-action.md` for setup."
+    On `y` → write `.github/workflows/claude-code-review.yml` from `references/templates/github-workflow-claude-review.yml`. Surface a one-line follow-up: "Add `CLAUDE_CODE_OAUTH_TOKEN` to repo secrets (Settings → Secrets and variables → Actions). See `https://github.com/manok4/ensemble/blob/main/docs/integrations/anthropic-code-review-action.md` for setup."
     On `n` → record in the report; skip.
 
     Idempotent — if the workflow already exists, note it and don't overwrite.

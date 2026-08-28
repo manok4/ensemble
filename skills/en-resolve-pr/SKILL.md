@@ -154,7 +154,7 @@ This skill does **not** at v1:
 
 - Run cluster analysis across review rounds. (When the same concern keeps appearing, the cycle-3 escalation surfaces the pattern.)
 - Dispatch parallel resolver subagents. (Sequential. Add parallel later if PRs commonly have >10 comments.)
-- Run reviews of its own. That's `/en-review` (pre-PR self) and the Anthropic Code Review GitHub Action (post-PR external — see `docs/integrations/anthropic-code-review-action.md`).
+- Run reviews of its own. That's `/en-review` (pre-PR self) and the Anthropic Code Review GitHub Action (post-PR external — see `https://github.com/manok4/ensemble/blob/main/docs/integrations/anthropic-code-review-action.md`).
 - Auto-fire on PR comment events. Manual only — `needs-human` and `declined` need a user in the loop anyway.
 
 ## Reference files
