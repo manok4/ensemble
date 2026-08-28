@@ -17,6 +17,7 @@ requires:
   - references/learn-log-format.md
   - references/learning-frontmatter-schema.md
   - references/pack-reference-template.md
+  - references/peer-contract.md
   - references/research-dispatch.md
   - references/templates/architecture-template.md
   - references/templates/learning-template.md
@@ -30,6 +31,11 @@ requires:
 
 
 Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat folder. Adopts Karpathy's LLM Wiki pattern: agent-maintained, with `index.md` + `log.md` for navigation and `--lint` for graph health.
+
+> **Severity vocabulary.** This skill emits findings graded P0-P3. Those levels,
+> and the confidence scale beside them, are defined in
+> `references/peer-contract.md` and mean the same thing to every skill that
+> reads them.
 
 ## Modes
 

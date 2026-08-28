@@ -32,6 +32,34 @@ done
   && pass "the contract is carried by ${#carriers[@]} skills: ${carriers[*]}" \
   || fail "the contract is carried by at least two skills" "found ${#carriers[@]}"
 
+# --- a skill cannot quietly stop being a carrier ---
+# Discovering carriers by looking for the file means a skill that deletes its
+# copy AND its declaration simply drops off the list, and every remaining copy
+# still agrees with every other. Nothing fails, and that skill goes on
+# exchanging findings against a contract it no longer holds.
+#
+# So carriership is derived from what a skill DOES, not from what it has:
+# anything with a peer brief takes part in peer review, and anything taking part
+# needs the wire format. (Found by the branch-level peer review of EN13 itself.)
+uncovered=""
+for d in "$REPO_ROOT"/skills/*/; do
+  s="$(basename "${d%/}")"
+  [ -f "$d/references/peer-brief.md" ] || continue
+  [ -f "$d$CONTRACT" ] || uncovered="$uncovered $s"
+done
+assert_eq "" "$(echo $uncovered)" "every skill with a peer brief also carries the contract"
+
+# en-sweep has no brief but emits findings on the P0-P3 scale from its own
+# references, so it is a party to the contract too. Anything that emits a
+# severity value must hold the definition of what it means.
+emitters=""
+for d in "$REPO_ROOT"/skills/*/; do
+  s="$(basename "${d%/}")"
+  grep -rqE '"severity"[[:space:]]*:[[:space:]]*"P[0-3]"' "$d" 2>/dev/null || continue
+  [ -f "$d$CONTRACT" ] || emitters="$emitters $s"
+done
+assert_eq "" "$(echo $emitters)" "every skill that emits a severity value carries the contract"
+
 # --- every copy byte-identical to the first ---
 ref="$REPO_ROOT/skills/${carriers[0]}/$CONTRACT"
 drifted=""

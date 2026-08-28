@@ -10,6 +10,7 @@ requires:
   - references/learn-bootstrap-patterns.md
   - references/learn-index-format.md
   - references/learn-log-format.md
+  - references/peer-contract.md
   - references/recursion-guard.md
   - references/script-invocation.md
   - references/setup-state-detection.md
@@ -42,6 +43,11 @@ requires:
 Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./setup` script (machine-level install).
 
 > **Hard rule:** This skill is mechanical setup work. **No code review, no peer cross-review, no implementation.** Off-loads anything ambiguous to `/en-brainstorm`, `/en-foundation`, or `/en-plan`.
+
+> **Severity vocabulary.** This skill emits findings graded P0-P3. Those levels,
+> and the confidence scale beside them, are defined in
+> `references/peer-contract.md` and mean the same thing to every skill that
+> reads them.
 
 ## Process
 
