@@ -35,7 +35,7 @@ fixtures=(
   "plan-completed/valid.md|docs/plans/completed/FR42-test.md|"
   "learning/valid.md|docs/learnings/patterns/test-2026-04-29.md|"
   "learning/invalid-category.md|docs/learnings/bugs/test-2026-04-29.md|frontmatter.invalid-enum"
-  "learning/invalid-confidence.md|docs/learnings/bugs/test-2026-04-29.md|frontmatter.invalid-enum"
+  "learning/invalid-missing-required.md|docs/learnings/patterns/test-2026-04-29.md|frontmatter.required-field-missing"
   "design/valid.md|docs/designs/2026-04-29-test-design.md|"
   "design/invalid-status.md|docs/designs/2026-04-29-test-design.md|frontmatter.invalid-enum"
   "agents-md/valid.md|AGENTS.md|"

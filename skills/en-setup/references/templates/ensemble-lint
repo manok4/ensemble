@@ -259,7 +259,7 @@ check_plan_required_fields() {
 check_learning_required_fields() {
   case "$1" in docs/learnings/bugs/*.md|docs/learnings/patterns/*.md|docs/learnings/decisions/*.md|docs/learnings/sources/*.md) ;; *) return 0 ;; esac
   local file="$1"
-  for f in title date category problem_type component applies_when tags related confidence status; do
+  for f in title date category applies_when tags related status; do
     if ! grep -q "^$f:" <(extract_frontmatter "$file"); then
       emit "frontmatter.required-field-missing" "$file" "" "P1" \
         "Learning missing required frontmatter field: $f" \
@@ -339,10 +339,6 @@ check_frontmatter_enums_and_dates() {
       case "$s" in ""|active|deprecated|superseded) ;; *)
         emit "frontmatter.invalid-enum" "$file" "" "P1" "learning status: $s" "Use one of: active, deprecated, superseded" ;;
       esac
-      local conf; conf=$(get_field "$file" confidence)
-      if [ -n "$conf" ] && ! printf '%s' "$conf" | grep -qE '^([1-9]|10)$'; then
-        emit "frontmatter.invalid-enum" "$file" "" "P1" "confidence: $conf" "Use an integer 1-10"
-      fi
       ;;
     docs/designs/*.md)
       local s; s=$(get_field "$file" status)
