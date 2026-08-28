@@ -106,10 +106,8 @@
       "source": "bin/ensemble-build-peer-prompt",
       "dest": "scripts/",
       "skills": [
-        "en-build",
         "en-cross-review",
-        "en-foundation",
-        "en-review"
+        "en-foundation"
       ]
     },
     {
