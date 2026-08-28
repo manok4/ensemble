@@ -109,8 +109,11 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 3. **Create directory skeleton:**
    ```
    docs/
+     CONTEXT.md            <- the glossary; seeded at step 6
+     decisions/            <- ADRs, NNNN-<slug>.md
      plans/{active,completed}/
-     learnings/{bugs,patterns,decisions,sources}/
+     learnings/            <- solutions sit flat here
+     learnings/sources/    <- ingested material only
      references/
      generated/
      designs/
@@ -217,7 +220,9 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | Artifact | Check |
     |---|---|
     | `docs/plans/{active,completed}/` | both directories exist |
-    | `docs/learnings/{bugs,patterns,decisions,sources}/` | all four directories exist |
+    | `docs/learnings/` and `docs/learnings/sources/` | both exist |
+    | `docs/decisions/` | exists |
+    | `docs/CONTEXT.md` | exists and carries the flagged-ambiguities tail |
     | `docs/learnings/{index.md,log.md}` | both files exist |
     | `docs/generated/{plan-index.md,learning-index.md}` | both files exist with `generated: true` frontmatter |
     | `docs/{references,designs}/` | both directories exist |
@@ -333,7 +338,9 @@ State detected: state-2 (sub-variant 2c)
 Created:
   - docs/plans/active/
   - docs/plans/completed/
-  - docs/learnings/{bugs,patterns,decisions,sources}/
+  - docs/CONTEXT.md
+  - docs/decisions/
+  - docs/learnings/ (solutions, flat) and docs/learnings/sources/
   - docs/learnings/{index.md,log.md}
   - docs/generated/{plan-index.md,learning-index.md}
   - CLAUDE.md (from template)
