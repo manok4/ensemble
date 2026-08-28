@@ -123,18 +123,44 @@ After every write:
 
 ## Process — Mode B: `--refresh`
 
-Audit *content* staleness (distinct from `--lint`'s structural health):
+Audit *content* staleness — distinct from `--lint`, which audits structure. Run
+periodically (~monthly) or after a big architectural shift.
 
-1. List all entries in `docs/learnings/` (excluding `archive/`).
-2. For each entry:
-   - Read frontmatter + TL;DR.
-   - Determine: keep / update / replace / archive.
-   - User confirms each disposition (or `--auto` for non-judgment cases).
-3. **archive** → move to `docs/learnings/archive/`; update `index.md` (remove entry); append log line.
-4. **replace** → write a new entry citing the old via `replaced_by:`; mark old `status: superseded`.
-5. **update** → in-place edit; bump frontmatter `date:` doesn't change (immutable); add a "Last updated YYYY-MM-DD" inline note.
+**1. Ground the store first.** Run `scripts/ensemble-validate-claims` over every
+artifact. An entry citing three paths that no longer resolve is *evidence* of
+staleness; reading it and judging is opinion. Lead with what the validator found,
+then judge what it cannot see.
 
-Useful periodically (~monthly) or after a big architectural shift.
+**2. Each artifact type has its own lifecycle.** They differ in how they age, so
+one disposition set cannot serve all three.
+
+| Type | Dispositions |
+|---|---|
+| **Solutions** (`docs/learnings/`) | keep / update / replace / archive |
+| **Decisions** (`docs/decisions/`) | keep / **amend** — never replaced |
+| **Terms** (`docs/CONTEXT.md`) | keep / refine / retire |
+
+**Solutions** describe a solved problem against a codebase that moves, so they go
+stale and can be superseded. `replace` writes a successor citing the old via
+`replaced_by:` and marks it `status: superseded`; `archive` moves it to
+`docs/learnings/archive/` and drops it from the index; `update` edits in place
+and adds a "Last updated YYYY-MM-DD" note, leaving `date:` immutable.
+
+**Decisions are append-only.** A decision that no longer holds is still what was
+decided, and why, at the time. Amend it **in place** with a dated
+`## Update, YYYY-MM-DD` section saying what changed and what now holds — do not
+supersede the file. Replacing an ADR destroys the record its format exists to
+keep; a superseded decision with no trace of the reasoning is how a team relearns
+the same lesson.
+
+**Terms accrete.** `refine` sharpens a definition or adds a retired synonym;
+`retire` moves a word that left the domain into the `## Flagged ambiguities` tail
+rather than deleting it, because "we stopped using that word" is itself worth
+recording.
+
+**3. Confirm each disposition** with the user, or `--auto` for the non-judgment
+cases (a citation the validator resolved as a pure path move, an index line that
+drifted).
 
 ## Process — Mode C: `--lint` / `--lint --fix`
 

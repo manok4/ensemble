@@ -17,7 +17,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-28
-peer_review_plan_hash: 030c43f5be2db61070725195498bd3340da953c0e02f5396a2c9b5ac9d620e85
+peer_review_plan_hash: 6526fdb2c5d251e193932c4623adba3db9af21bbff1670be38ba07e70fa631b2
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -571,6 +571,42 @@ that depends on it.
   - `web-research` survives in the three skills that still dispatch it.
   - Negative control: reintroduce each removed mode, path, and frontmatter field in turn; confirm each goes red.
 - **Verification:** full suite green; `ensemble-lint --scope docs/` clean; `skill-payload` and all parity suites pass.
+
+### U17. Teach `--refresh` and `--lint` the three artifact types
+
+- **Goal:** The maintenance modes describe the store they maintain.
+- **Requirements covered:** none.
+- **Dependencies:** U16.
+- **Files:** `skills/en-learn/SKILL.md`, `skills/{en-learn,en-review,en-sweep}/references/learn-lint.md`, `skills/en-learn/references/templates/learning-template.md`, `tests/lint/en-learn-maintenance.test.sh` (new).
+- **Approach:** Both modes predate the artifact-type split and still describe a single flat store. Three defects and two unused opportunities.
+
+  **Dead check.** `data-gaps` is defined as "thin areas where `learn ingest` would add value" and appears in three places including the report format. U16 removed `ingest`, so the check now recommends a mode that does not exist. Remove it.
+
+  **Model mismatch, not just coverage.** `--refresh` offers keep / update / replace / archive, which is a *solution* lifecycle. An ADR is append-only and amended with a dated `## Update` section — "replace" is the operation its format exists to prevent. A term is amended in place and accretes. Give each type its own disposition set rather than pointing one model at three shapes.
+
+  **Stale reference.** Refresh reads "frontmatter + TL;DR"; the template dropped TL;DR when entries became one paragraph until they earn more.
+
+  **Unused: grounding as a staleness signal.** An entry citing three paths that no longer exist is stronger evidence of staleness than reading it and judging. `ensemble-validate-claims` already exists; refresh should run it across the store and lead with its findings.
+
+  **Unused: `missing-pages` is the glossary trigger.** It fires on a concept named in 3+ pages with no dedicated entry — which is exactly a project-specific term used repeatedly and never defined. Repointed at `docs/CONTEXT.md`, it becomes the mechanical half of vocabulary capture, complementing the model-judgment half in capture step 9.
+
+  `index-drift` also learns the three index sections; it currently compares against solutions only.
+- **Risk:** medium
+- **Category:** feature
+- **Reversibility:** reversible
+- **Gated:** false
+- **Execution note:** test-first
+- **Test scenarios:**
+  - No maintenance reference mentions `ingest` or `data-gaps`.
+  - `--refresh` names all three artifact types and gives each its own disposition set.
+  - Refresh's ADR dispositions exclude `replace`/`supersede` and include a dated in-place amendment.
+  - Refresh runs `ensemble-validate-claims` and treats unresolvable citations as staleness evidence.
+  - Refresh no longer reads a `TL;DR` the template does not produce.
+  - `missing-pages` points at `docs/CONTEXT.md`, not at creating a solution page.
+  - `index-drift` covers Terms, Decisions, and Solutions.
+  - All three carriers of `learn-lint.md` stay byte-identical.
+  - Negative control: reintroduce `data-gaps`, confirm red. Give ADRs a `replace` disposition, confirm red. Point `missing-pages` back at a solution page, confirm red. Drift one carrier, confirm red.
+- **Verification:** full suite green; `ensemble-lint --scope docs/` clean; parity suites pass.
 
 ## Decisions, assumptions & risks
 
