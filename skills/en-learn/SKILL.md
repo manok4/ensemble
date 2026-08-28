@@ -87,14 +87,20 @@ After every write:
 6. **Gather what the entry needs.** Read the relevant commits and search `docs/learnings/` for overlap — an existing entry to extend beats a near-duplicate. Dispatch a sub-agent only when the search is genuinely broad; a gate-passing learning is usually a few sentences whose material you already hold, and three parallel sub-agents to produce a paragraph costs more than it returns.
 7. **Compose entry.** Per `references/templates/learning-template.md`. **One paragraph until it earns more** — lead with the conclusion, name specifics (paths, constants, error strings), say why rather than what. The four optional sections are added only when they carry something the paragraph cannot.
 8. **Write to the routed path.** A **term** is appended to `docs/CONTEXT.md` per `references/glossary-rules.md` (amend an existing entry rather than adding a second). A **decision** takes the next unused number at `docs/decisions/NNNN-<slug>.md` per `references/adr-format.md`. A **solution** generates `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`) at `docs/learnings/<slug>-<date>.md`.
-9. **Vocabulary accretion — read `references/glossary-rules.md`.** Independent of what was routed above: if the work surfaced a term whose meaning was not obvious, define it in `docs/CONTEXT.md`. Friction is what surfaces peripheral terms, so a capture is when they are visible.
+9. **Ground the claims — run `scripts/ensemble-validate-claims <written-file>` and read `references/grounding-validation.md`.** The artifact is about to become knowledge future agents act on without re-verifying. Check it before that happens, not after someone follows a dead reference.
+
+   Exit **0** clean, **1** findings to adjudicate, **2** the validator could not run. **Adjudicate, never auto-apply:** a solution doc legitimately cites a path the fix deleted or describes a pre-fix state.
+
+   **Exit 2 means the artifact is unverified.** Record degraded verification and say so in the report — a run whose grounding could not execute must not be reported as grounded. That is the case which otherwise looks identical to clean.
+
+10. **Vocabulary accretion — read `references/glossary-rules.md`.** Independent of what was routed above: if the work surfaced a term whose meaning was not obvious, define it in `docs/CONTEXT.md`. Friction is what surfaces peripheral terms, so a capture is when they are visible.
 
    **Report the outcome even when nothing qualified.** "No new terms" is a result; silence is indistinguishable from having skipped the step. Do not invent a term to have something to report — the bar is that a new engineer would need it defined.
 
-10. **Apply always-on behaviors** (cross-refs, index update, log append).
-11. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
-12. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-13. **Plan-lifecycle handling.** Step 13 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per `docs/en-ship-plan-completion-checkpoint-spec.md`) is the backstop for cases where `/en-learn` isn't invoked at all.
+11. **Apply always-on behaviors** (cross-refs, index update, log append).
+12. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
+13. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
+14. **Plan-lifecycle handling.** Step 14 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per `docs/en-ship-plan-completion-checkpoint-spec.md`) is the backstop for cases where `/en-learn` isn't invoked at all.
 
    **11a. Lifecycle flip (always runs when a plan_id is in context).** If `/en-learn capture` was invoked within the context of a specific plan (derivable from the current branch name per `<plan_id>-<slug>` convention, or passed via `--plan <plan-path>`), perform the lifecycle flip:
    - Read frontmatter; check `status:`.
@@ -113,9 +119,9 @@ After every write:
    **11b is skipped when the user said "skip — no learnings worth capturing"** earlier in the flow; lifecycle flip (11a) still happens, just without the documentation-tense rewrite.
 
    **Edge case: no plan_id in context.** If `/en-learn capture` is invoked outside any plan context (no plan branch, no `--plan` argument), step 11 is a silent no-op — there's nothing to flip.
-14. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
-15. **Update `docs/README.md` index** if it exists.
-16. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
+15. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
+16. **Update `docs/README.md` index** if it exists.
+17. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
 
 ## Process — Mode B: `ingest <path-or-url>`
 

@@ -172,4 +172,49 @@ assert_eq "$(code "$TMP/docs/has-subpath.md")" "0" \
 f=$(doc barename.md 'See `capture-gate.md` for detail.')
 assert_eq "$(code "$f")" "0" "a bare filename is not treated as a path claim"
 
+# --- U7: grounding is wired into capture -------------------------------------
+# Position matters: grounding runs after the artifact is written and before the
+# index and log record it, so a doc is never indexed as trustworthy before its
+# claims were looked at.
+
+write_ln=$(grep -n 'Write to the routed path' "$SKILL" | head -1 | cut -d: -f1)
+ground_ln=$(grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1)
+index_ln=$(grep -n 'Apply always-on behaviors' "$SKILL" | head -1 | cut -d: -f1)
+
+if [ -n "$write_ln" ] && [ -n "$ground_ln" ] && [ "$write_ln" -lt "$ground_ln" ]; then
+  pass "grounding runs after the artifact is written"
+else
+  fail "grounding runs after the artifact is written" "write=$write_ln ground=$ground_ln"
+fi
+if [ -n "$ground_ln" ] && [ -n "$index_ln" ] && [ "$ground_ln" -lt "$index_ln" ]; then
+  pass "grounding runs before the index and log are updated"
+else
+  fail "grounding runs before the index and log are updated" "ground=$ground_ln index=$index_ln"
+fi
+
+# The script path in the INVOCATION must be the file U4 created. Grepping the
+# whole file also matched the requires: entry, so a wrong command in the step
+# itself went unnoticed — check the step's own line.
+grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1 | {
+  read -r ln
+  sed -n "${ln}p" "$SKILL" | grep -q 'scripts/ensemble-validate-claims' \
+    && pass "the grounding step invokes the real script path" \
+    || fail "the grounding step invokes the real script path"
+}
+
+flatk() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
+
+# The distinction the whole three-code design exists for.
+flatk "$SKILL" | grep -qi 'exit 2 means the artifact is unverified\|could not run' \
+  && pass "the skill states that exit 2 means unverified" \
+  || fail "the skill states that exit 2 means unverified"
+
+flatk "$SKILL" | grep -qi 'must not be reported as grounded' \
+  && pass "an exit-2 run may not be reported as grounded" \
+  || fail "an exit-2 run may not be reported as grounded"
+
+flatk "$SKILL" | grep -qi 'adjudicate, never auto-apply\|never auto-apply' \
+  && pass "findings are adjudicated rather than auto-applied" \
+  || fail "findings are adjudicated rather than auto-applied"
+
 report
