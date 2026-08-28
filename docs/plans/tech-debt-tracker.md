@@ -76,3 +76,31 @@ updated: 2026-08-26
 ## Resolved
 
 <!-- none yet -->
+
+### TD5. The learning `category` taxonomy has four values and no reliable way to pick one
+
+`docs/learnings/<category>/` accepts `bugs | patterns | decisions | sources`.
+Under the capture gate (`skills/en-learn/references/capture-gate.md`) almost
+nothing that qualifies is a "bug" entry, because the gate rejects what a reader
+can recover from the code and a fixed bug usually is. What survives is a
+decision or a pattern, and that boundary is not one a writer can apply
+consistently: drafting a real entry, the same content was defensible under
+either.
+
+`sources` is different in kind and does earn its own directory: it holds
+ingested external material with `source_type` / `source_uri` / `fetched`, and it
+is populated by a different command path.
+
+The likely resolution is to collapse to captured-vs-ingested, but the cost is
+not in the decision. **39 files** reference the category directories, including
+four copies of `learnings-research`, `learn-index-format.md`, `learn-lint.md`,
+`learn-cross-ref-maintenance.md`, and the enum validation plus required-field
+list in `ensemble-lint`.
+
+**Why now is the cheap moment:** this repo has zero learning entries. The
+migration cost is entirely in references, not content. That gap closes the first
+time the wiki is populated, so this is worth deciding before the first capture
+run rather than after.
+
+Deliberately excluded from the 2026-08-28 frontmatter reduction, which cut
+`problem_type`, `component`, and `confidence` and left `category` untouched.
