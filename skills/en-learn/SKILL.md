@@ -55,6 +55,7 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | `--pack <library>` | Curate external library reference | `docs/references/<library>-llms.txt` |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
 | `--bootstrap-patterns` | Retrofit existing project (one-time during/after `/en-foundation --retrofit`) | 5-10 entries in `docs/learnings/` flagged `source: bootstrap`, `confidence: 6`, `requires_validation: true` |
+| `--migrate` | A project still on the retired `bugs/`/`patterns/`/`decisions/` layout | Entries moved to the artifact-type layout; legacy decisions converted to ADRs |
 
 ## Always-on behaviors (across `capture` and `ingest`)
 
@@ -125,6 +126,21 @@ After every write:
 15. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
 16. **Update `docs/README.md` index** if it exists.
 17. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
+
+## Process — Mode D: `--migrate`
+
+Runs the layout migration directly, for a project that predates the artifact-type
+layout. **Read `references/layout-migration.md` and follow it** — the same
+procedure capture's step 2a invokes. One procedure, two entry points; two
+descriptions would drift and the drift would only be discovered mid-migration.
+
+Use this when upgrading an existing project. Capture's step 2a is a safety net
+for someone who reaches for capture first, not the intended route: a project
+holding a hundred entries should not have to start writing a new learning to be
+told the old ones are about to stop being read.
+
+Reports what moved, what converted to an ADR, what was renamed to avoid a
+collision, and anything left for classification.
 
 ## Process — Mode B: `ingest <path-or-url>`
 

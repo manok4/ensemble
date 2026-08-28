@@ -25,9 +25,10 @@ PAT='learnings/[b]ugs|learnings/[p]atterns|learnings/[d]ecisions|learnings/<[c]a
 # had been swept; widening this line is what proved U9 finished.
 SCOPE="${TAXONOMY_SCOPE:-$REPO_ROOT/skills}"
 
-# One file must name the retired directories: capture's legacy-layout check, whose
-# job is to DETECT them. Anything else naming one is a leftover that would send an
-# agent to write into a directory nobody creates any more.
+# Two files must name the retired directories, because their job is to DETECT
+# them: capture's legacy-layout check, and en-setup's State-3 probe. Anything else
+# naming one is a leftover that would send an agent to write into a directory
+# nobody creates any more.
 #
 # layout-migration.md is deliberately NOT here. It refers to the old layout in
 # brace form, so it never matched, and listing it would have been an exemption
@@ -36,10 +37,10 @@ SCOPE="${TAXONOMY_SCOPE:-$REPO_ROOT/skills}"
 # The exemption is a fixed list whose size is asserted, and each entry must still
 # actually contain what it is exempted for — so the list cannot grow quietly into
 # a hole, and a stale entry cannot sit here masking nothing.
-EXEMPT='en-learn/SKILL.md'
+EXEMPT='en-learn/SKILL.md|en-setup/SKILL.md'
 # wc -l counts newlines, so a list with no trailing newline undercounts by one.
 exempt_n=$(printf '%s' "$EXEMPT" | tr '|' '\n' | grep -c .)
-assert_eq "$exempt_n" "1" "exactly one file is exempt from the sweep"
+assert_eq "$exempt_n" "2" "exactly two files are exempt from the sweep"
 
 for e in $(printf '%s' "$EXEMPT" | tr '|' ' '); do
   if grep -qE "$PAT" "$REPO_ROOT/skills/$e" 2>/dev/null; then

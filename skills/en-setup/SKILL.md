@@ -8,6 +8,7 @@ requires:
   - references/doc-lints.md
   - references/glossary-rules.md
   - references/host-detect.md
+  - references/layout-migration.md
   - references/learn-bootstrap-patterns.md
   - references/learn-index-format.md
   - references/learn-log-format.md
@@ -59,6 +60,12 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
    - State 1 — Greenfield (empty repo or initial-commit, no `docs/foundation.md`).
    - State 2 — Existing project, no Ensemble (source code present, foundation or learnings missing). Identify sub-variant 2a/2b/2c/2d by which of `AGENTS.md`/`CLAUDE.md` exist.
    - State 3 — Existing project with Ensemble (`docs/foundation.md` and `docs/learnings/` both present).
+
+     **Legacy learning store.** If `docs/learnings/bugs/`, `patterns/`, or `decisions/` exists, this project predates the artifact-type layout. Surface it before doing anything else:
+
+     > "This project has N entries under the retired directories. The new layout reads `docs/learnings/` flat, `docs/decisions/`, and `docs/CONTEXT.md` — so those entries are **invisible** to capture, lint, and research **without being deleted**. Nothing announces that on its own. Run `/en-learn --migrate` to move them."
+
+     **`en-setup` does not run the migration itself.** It reports and hands off. The procedure is interactive by design — entries whose artifact type is ambiguous need a human, and a scaffolding run is not the place for per-entry classification. Read `references/layout-migration.md` for what the migration does; scaffolding continues around the existing store, which is left untouched.
 4. **Run the state-specific flow** (below).
 5. **Output** a structured report listing what was created, what was modified (if anything), and the recommended next step.
 

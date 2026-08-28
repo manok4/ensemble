@@ -131,4 +131,64 @@ flat "$SKILL" | grep -qi 'half-migrated' \
   && pass "capture refuses to write into a half-migrated store" \
   || fail "capture refuses to write into a half-migrated store"
 
+# --- U14: the migration has an entry point someone would find ----------------
+# U13 wired one trigger, inside capture. That is backwards for the case the
+# procedure exists for: a project with a hundred existing entries would have to
+# start writing a NEW learning to be told the old ones are about to go unread.
+
+SETUP="$REPO_ROOT/skills/en-setup/SKILL.md"
+
+grep -q '`--migrate`' "$SKILL" \
+  && pass "en-learn has a --migrate mode" \
+  || fail "en-learn has a --migrate mode"
+
+# In the modes table, so it is discoverable rather than buried in capture's steps.
+sed -n '/^## Modes/,/^## Always-on/p' "$SKILL" | grep -q '`--migrate`' \
+  && pass "--migrate appears in the modes table" \
+  || fail "--migrate appears in the modes table"
+
+# One procedure, two entry points. Two descriptions would drift.
+sed -n '/^## Process — Mode D: `--migrate`/,/^## Process — Mode B/p' "$SKILL" | grep -q 'references/layout-migration.md' \
+  && pass "the mode reads the same reference capture reads" \
+  || fail "the mode reads the same reference capture reads"
+
+# --- en-setup surfaces it on upgrade -----------------------------------------
+# The run someone performs when upgrading must not scaffold around a store that
+# is about to stop being read.
+flat "$SETUP" | grep -qi 'retired.*director\|legacy learning store\|layout-migration' \
+  && pass "en-setup detects a legacy learning store" \
+  || fail "en-setup detects a legacy learning store"
+
+flat "$SETUP" | grep -qi 'invisible' \
+  && pass "en-setup names what is at stake, not just that it found something" \
+  || fail "en-setup names what is at stake, not just that it found something"
+
+# en-setup reports and hands off. The procedure is interactive and needs per-entry
+# classification, which is not what a scaffolding run is for.
+# 'hand off' alone also matched a pre-existing unrelated line ("Hand off to the
+# right skill"), so deleting the rule left this green. Match the rule itself.
+flat "$SETUP" | grep -qi 'does not run the migration itself' \
+  && pass "en-setup hands off rather than running the migration itself" \
+  || fail "en-setup hands off rather than running the migration itself"
+
+# --- the reference is carried by both, byte-identical -------------------------
+declared=""; present=""
+for skill in "$REPO_ROOT"/skills/*/; do
+  name=$(basename "$skill")
+  grep -q '^  - references/layout-migration.md$' "$skill/SKILL.md" 2>/dev/null && declared="$declared $name"
+  [ -f "$skill/references/layout-migration.md" ] && present="$present $name"
+done
+dn=$(echo $declared | wc -w | tr -d ' '); pn=$(echo $present | wc -w | tr -d ' ')
+
+assert_eq "$dn" "2" "two skills declare the migration reference"
+assert_eq "$pn" "$dn" "every declaring skill carries the migration reference"
+
+ref=""; skew=0
+for skill in $present; do
+  sum=$(shasum "$REPO_ROOT/skills/$skill/references/layout-migration.md" | cut -d' ' -f1)
+  [ -z "$ref" ] && ref="$sum"
+  [ "$sum" = "$ref" ] || skew=$((skew+1))
+done
+assert_eq "$skew" "0" "both copies of the migration reference are byte-identical"
+
 report

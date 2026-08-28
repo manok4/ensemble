@@ -17,7 +17,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-28
-peer_review_plan_hash: ac9356ea19ebbbcfbe362cdfdbe41423d8fbdcdf75acc83a6d48c61440902cb3
+peer_review_plan_hash: ccf5a37b9f75f7b485440954bf6ae063784a7abf7e14bb63a28bbf67090dc436
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -495,6 +495,28 @@ that depends on it.
 - **Test expectation:** none — documentation only; `ensemble-lint` covers the frontmatter of the files touched.
 - **Verification:** `ensemble-lint` clean on the three files; TD5 shows resolved.
 
+### U14. Give the migration an entry point
+
+- **Goal:** A project on the legacy layout can be migrated deliberately, and an upgrade run says so.
+- **Requirements covered:** none.
+- **Dependencies:** U13, U11.
+- **Files:** `skills/en-learn/SKILL.md`, `skills/en-setup/SKILL.md`, `skills/en-setup/references/layout-migration.md` (new carrier), `tests/lint/layout-migration.test.sh`, `tests/lint/en-setup-scaffold.test.sh`, `tests/parity/glossary-rules-parity.test.sh`.
+- **Approach:** U13 built the procedure and wired one trigger: `capture` step 2a. That is backwards for the case it exists for — a project with a hundred existing entries would have to start writing a *new* learning to be told the old ones are about to go unread. Add a `--migrate` mode to `en-learn` that runs the procedure directly, and detection in `en-setup`'s State-3 path so the run someone performs when upgrading surfaces the legacy store instead of silently scaffolding around it. `layout-migration.md` becomes a second carrier and needs the parity treatment.
+- **Risk:** medium
+- **Category:** feature
+- **Reversibility:** trivial
+- **Gated:** false
+- **Execution note:** test-first
+- **Test scenarios:**
+  - `--migrate` appears in the modes table with its trigger and output, so it is discoverable rather than folded into capture.
+  - The mode reads the same reference capture's step 2a reads — one procedure, two entry points, not two descriptions that can drift.
+  - `en-setup` State 3 detects a retired directory and surfaces the migration rather than scaffolding around it.
+  - Detection names what is at stake: entries under retired paths are invisible to the new layout without being deleted.
+  - `en-setup` does not run the migration itself — it reports and hands off, since the procedure is interactive and en-setup's State-3 path is not the place for per-entry classification.
+  - `layout-migration.md` is byte-identical across both carriers, with carriership derived from `requires:` declarations.
+  - Negative control: remove `--migrate` from the modes table, confirm red. Remove the State-3 detection, confirm red. Drift one carrier, confirm red. Delete a carrier's file and its declaration together, confirm red rather than vacuously green.
+- **Verification:** `tests/lint/layout-migration.test.sh`, `tests/lint/en-setup-scaffold.test.sh`, and the parity suites pass; full suite green.
+
 ## Decisions, assumptions & risks
 
 **Decision: three types, not two.** Collapsing to captured-vs-ingested was the
@@ -534,6 +556,12 @@ eval suite, and this plan leaves the fixture corpus it would need.
 drift. Both units add guards whose carriership is derived from `requires:`
 declarations rather than file presence, so the EN13 hole — deleting file and
 declaration together going unnoticed — cannot reopen.
+
+**Added after the build, on the user's request (U14).** U13 shipped the migration
+procedure with a single trigger inside capture. Reviewing what a real upgrade
+looks like — three projects holding 181 entries between them — made it obvious
+that the one place a person looks when upgrading, `/en-setup`, said nothing. The
+procedure was right; its reachability was not.
 
 **Noted, out of scope:** `EN12` and `EN13` are still in `docs/plans/active/` with
 non-terminal status despite having shipped. That is an `en-learn` plan-lifecycle
