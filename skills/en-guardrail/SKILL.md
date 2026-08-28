@@ -4,6 +4,9 @@ description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writin
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - bin/check-guardrail.sh
+  - bin/guardrail_analyze.py
+  - bin/install-guardrail
   - references/host-detect.md
   - references/recursion-guard.md
   - scripts/ensemble-detect-host

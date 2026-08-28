@@ -7,10 +7,6 @@
       "dest": "agents/",
       "skills": [
         "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
-        "en-review",
         "en-simplify"
       ]
     },
@@ -18,10 +14,6 @@
       "source": "agents/correctness-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
         "en-review"
       ]
     },
@@ -29,24 +21,16 @@
       "source": "agents/learnings-research.md",
       "dest": "agents/",
       "skills": [
-        "en-brainstorm",
-        "en-build",
-        "en-cross-review",
         "en-foundation",
         "en-learn",
         "en-plan",
-        "en-review",
-        "en-setup"
+        "en-review"
       ]
     },
     {
       "source": "agents/maintainability-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
         "en-review"
       ]
     },
@@ -54,10 +38,6 @@
       "source": "agents/migrations-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
         "en-review"
       ]
     },
@@ -65,10 +45,6 @@
       "source": "agents/performance-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
         "en-review"
       ]
     },
@@ -76,13 +52,10 @@
       "source": "agents/repo-research.md",
       "dest": "agents/",
       "skills": [
-        "en-brainstorm",
         "en-debug",
         "en-foundation",
         "en-learn",
         "en-plan",
-        "en-review",
-        "en-setup",
         "en-sweep"
       ]
     },
@@ -90,10 +63,6 @@
       "source": "agents/security-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
         "en-review"
       ]
     },
@@ -101,22 +70,13 @@
       "source": "agents/standards-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
       "source": "agents/testing-reviewer.md",
       "dest": "agents/",
       "skills": [
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-plan",
         "en-review"
       ]
     },
@@ -318,21 +278,6 @@
       ]
     },
     {
-      "source": "references/architecture-fitness.md",
-      "dest": "references/",
-      "skills": [
-        "en-brainstorm",
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-learn",
-        "en-plan",
-        "en-review",
-        "en-setup",
-        "en-sweep"
-      ]
-    },
-    {
       "source": "references/architecture-update-rules.md",
       "dest": "references/",
       "skills": [
@@ -350,8 +295,7 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
@@ -362,31 +306,18 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
       "source": "references/cli-wrappers.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
         "en-build",
         "en-cross-review",
-        "en-debug",
-        "en-flow",
         "en-foundation",
-        "en-guardrail",
-        "en-learn",
-        "en-loop",
         "en-plan",
-        "en-qa",
-        "en-resolve-pr",
-        "en-review",
-        "en-setup",
-        "en-ship",
-        "en-simplify",
-        "en-sweep"
+        "en-review"
       ]
     },
     {
@@ -406,23 +337,19 @@
         "en-foundation",
         "en-plan",
         "en-qa",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
       "source": "references/doc-lints.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
         "en-build",
         "en-cross-review",
         "en-foundation",
-        "en-learn",
         "en-plan",
         "en-review",
         "en-setup",
-        "en-ship",
         "en-sweep"
       ]
     },
@@ -434,8 +361,7 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
@@ -505,32 +431,15 @@
       "source": "references/learning-frontmatter-schema.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
         "en-learn",
-        "en-plan",
-        "en-review",
-        "en-setup",
-        "en-ship",
-        "en-sweep"
+        "en-review"
       ]
     },
     {
       "source": "references/observability-conventions.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
-        "en-build",
-        "en-cross-review",
-        "en-debug",
-        "en-foundation",
-        "en-learn",
-        "en-plan",
-        "en-review",
-        "en-setup",
-        "en-sweep"
+        "en-debug"
       ]
     },
     {
@@ -548,8 +457,7 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
@@ -560,8 +468,7 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
@@ -572,8 +479,7 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
@@ -604,14 +510,11 @@
       "dest": "references/",
       "skills": [
         "en-brainstorm",
-        "en-build",
-        "en-cross-review",
         "en-debug",
         "en-foundation",
         "en-learn",
         "en-plan",
         "en-review",
-        "en-setup",
         "en-sweep"
       ]
     },
@@ -642,15 +545,11 @@
       "source": "references/severity.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
         "en-build",
         "en-cross-review",
         "en-foundation",
-        "en-learn",
         "en-plan",
         "en-review",
-        "en-setup",
-        "en-ship",
         "en-sweep"
       ]
     },
@@ -662,23 +561,19 @@
         "en-cross-review",
         "en-foundation",
         "en-plan",
-        "en-review",
-        "en-ship"
+        "en-review"
       ]
     },
     {
       "source": "references/stable-ids.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
         "en-build",
         "en-cross-review",
         "en-foundation",
-        "en-learn",
         "en-plan",
         "en-review",
         "en-setup",
-        "en-ship",
         "en-sweep"
       ]
     },
@@ -710,14 +605,7 @@
       "source": "references/tech-debt-tracker-format.md",
       "dest": "references/",
       "skills": [
-        "en-brainstorm",
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-learn",
-        "en-plan",
         "en-review",
-        "en-setup",
         "en-sweep"
       ]
     },
@@ -781,16 +669,11 @@
       "source": "references/templates/plan-template.md",
       "dest": "references/templates/",
       "skills": [
-        "en-brainstorm",
         "en-build",
         "en-cross-review",
         "en-foundation",
-        "en-learn",
         "en-plan",
-        "en-review",
-        "en-setup",
-        "en-ship",
-        "en-sweep"
+        "en-review"
       ]
     }
   ]

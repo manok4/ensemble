@@ -22,9 +22,11 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="skill payload matches what each skill names"
 
-# U2 flips this to true as its final step. Do not flip it early: the suite goes
-# red for the whole migration and stops being a signal.
-ENFORCING=false
+# Flipped to true by U2, which is where the tree first satisfies it. From here
+# any unit that adds an undeclared file, or declares a deleted one, fails the
+# suite at its own verification gate — that is what keeps the declarations
+# maintained through U3 to U11 without relying on anyone remembering.
+ENFORCING=true
 
 # Files a skill needs = what it DECLARES in its `requires:` frontmatter.
 #
@@ -62,11 +64,9 @@ for d in "$REPO_ROOT"/skills/*/; do
   # en-guardrail keeps its executables in bin/ rather than scripts/; those are
   # skill-owned, not granted, so they must not read as excess.
   excess="$(comm -23 <(printf '%s\n' "$carried" | grep -v '^$') <(printf '%s\n' "$named" | grep -v '^$'))"
-  # `cmd && grep || cat` runs cat when grep merely matches nothing, so the
-  # carve-out has to be a real branch.
-  if [ "$skill" = "en-guardrail" ]; then
-    excess="$(printf '%s\n' "$excess" | grep -v '^bin/' || true)"
-  fi
+  # No en-guardrail carve-out: it declares its own bin/ scripts like any other
+  # skill declares its assets. The walker needed a special case; a declaration
+  # does not.
   n=$(printf '%s\n' "$excess" | grep -c . || true)
   total_excess=$((total_excess + n))
   [ "$n" -eq 0 ] || report="$report  $skill: $n unnamed ($(printf '%s\n' "$excess" | head -2 | tr '\n' ' '))\n"
