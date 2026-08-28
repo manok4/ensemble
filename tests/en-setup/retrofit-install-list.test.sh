@@ -101,9 +101,23 @@ else
 fi
 
 # --- The verification table mentions each required artifact ---
+# Scoped to the table. This grepped the whole SKILL.md, so every entry also
+# matched the install steps that create the artifact — meaning none of these
+# assertions could tell a present table row from an absent one. Removing a row
+# left them all green.
+TABLE=$(sed -n '/Required artifacts/,/Optional artifacts/p' "$SKILL")
+# Fail loudly if the extraction found nothing: an empty TABLE would make every
+# assertion below vacuously fail rather than silently pass, but a near-empty one
+# is the dangerous case. Assert it actually captured rows.
+table_rows=$(printf '%s' "$TABLE" | grep -c '^ *| ')
+[ "$table_rows" -ge 10 ] \
+  && pass "the verification table was extracted ($table_rows rows)" \
+  || fail "the verification table was extracted" "found $table_rows rows"
 for required in \
   "docs/plans/{active,completed}/" \
-  "docs/learnings/{bugs,patterns,decisions,sources}/" \
+  "docs/learnings/sources/" \
+  "docs/decisions/" \
+  "docs/CONTEXT.md" \
   "docs/learnings/{index.md,log.md}" \
   "docs/generated/{plan-index.md,learning-index.md}" \
   "AGENTS.md" \
@@ -114,7 +128,7 @@ for required in \
   "bin/ensemble-doc-only-check" \
   "bin/ensemble-lint" \
   ".ensemble/config.local.example.yaml"; do
-  if grep -qF "$required" "$SKILL"; then
+  if printf '%s' "$TABLE" | grep -qF "$required"; then
     pass "verification list includes: $required"
   else
     fail "verification list missing: $required"
