@@ -86,7 +86,7 @@ Lifecycle pipeline plus four orthogonal skills:
                                                        ▼
                                                 ┌──────────────┐
                                                 │  /en-learn   │  capture / ingest / refresh / pack / lint /
-                                                │              │  bootstrap-patterns. Syncs architecture.md;
+                                                │              │  --migrate.        Syncs architecture.md;
                                                 │              │  moves plan to completed/
                                                 └──────┬───────┘
                                                        │

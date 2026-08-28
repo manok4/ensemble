@@ -111,7 +111,7 @@ Original en-ship placement: a new preflight step **as the FIRST preflight step -
 
 **Backward compatibility.** Existing log entries without a SHA continue to parse. The checkpoint logic (step 6 in Change 1) falls back to the conservative "imprecise baseline" path with a one-line notice and unconditional prompt. The first new capture re-establishes precise detection.
 
-**`/en-learn capture` write path.** On every capture, `/en-learn` writes the new log entry with `| $(git rev-parse --short HEAD)` substituted in. Other capture modes (refresh, ingest, bootstrap-patterns) don't include SHA — only `capture` mode does, since only `capture` represents a baseline reset.
+**`/en-learn capture` write path.** On every capture, `/en-learn` writes the new log entry with `| $(git rev-parse --short HEAD)` substituted in. Other capture modes (refresh, ingest, CONTEXT.md seeding) don't include SHA — only `capture` mode does, since only `capture` represents a baseline reset.
 
 **Refresh mode does NOT update the baseline.** `## [YYYY-MM-DD] refresh | ...` entries don't carry SHA and don't reset the en-ship checkpoint baseline. Only explicit `capture | ` entries do. (Per open question #2 from the original spec — resolved here in favor of capture-only.)
 

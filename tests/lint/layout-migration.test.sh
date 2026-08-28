@@ -148,7 +148,7 @@ sed -n '/^## Modes/,/^## Always-on/p' "$SKILL" | grep -q '`--migrate`' \
   || fail "--migrate appears in the modes table"
 
 # One procedure, two entry points. Two descriptions would drift.
-sed -n '/^## Process — Mode D: `--migrate`/,/^## Process — Mode B/p' "$SKILL" | grep -q 'references/layout-migration.md' \
+sed -n '/^## Process — Mode F: `--migrate`/,$p' "$SKILL" | grep -q 'references/layout-migration.md' \
   && pass "the mode reads the same reference capture reads" \
   || fail "the mode reads the same reference capture reads"
 

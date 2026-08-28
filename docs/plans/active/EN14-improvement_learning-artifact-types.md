@@ -17,7 +17,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-28
-peer_review_plan_hash: ccf5a37b9f75f7b485440954bf6ae063784a7abf7e14bb63a28bbf67090dc436
+peer_review_plan_hash: 9366091b2f376580e42a1271ca0d1eb531cc4f0b08ed4668c9676da6deec3c43
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -516,6 +516,31 @@ that depends on it.
   - `layout-migration.md` is byte-identical across both carriers, with carriership derived from `requires:` declarations.
   - Negative control: remove `--migrate` from the modes table, confirm red. Remove the State-3 detection, confirm red. Drift one carrier, confirm red. Delete a carrier's file and its declaration together, confirm red rather than vacuously green.
 - **Verification:** `tests/lint/layout-migration.test.sh`, `tests/lint/en-setup-scaffold.test.sh`, and the parity suites pass; full suite green.
+
+### U15. Remove `--bootstrap-patterns`; repair what the path sweep could not see
+
+- **Goal:** No mode writes past the capture gate, and no mode emits a field or section the schema retired.
+- **Requirements covered:** none.
+- **Dependencies:** U5, U8, U10.
+- **Files:** `skills/en-learn/SKILL.md`, `skills/en-learn/CONTRACT.md`, `skills/{en-learn,en-setup}/references/learn-bootstrap-patterns.md` (deleted), `skills/en-setup/SKILL.md`, `skills/en-setup/references/templates/ensemble-lint`, five copies of `agents/repo-research.md`, `docs/foundation.md`, `docs/workflow-and-catalog.md`, `docs/en-learn-checkpoint-spec.md`, `tests/lint/lint-rules.test.sh`, `tests/lint/en-learn-capture-gate.test.sh`.
+- **Approach:** `--bootstrap-patterns` dispatched an agent to read the codebase and file 5–10 conventions as learnings, under a **self-declared exemption from the capture gate** — its own words: *"These entries fail condition 1 by construction — a convention read out of the codebase is by definition recoverable from the codebase."* That is exactly what the gate rejects, and the exemption was the only documented route around it. Its stated purpose, orienting a retrofit project, is now better served by seeding `docs/CONTEXT.md`, which captures vocabulary a reader genuinely cannot recover. Remove the mode, both carriers of its reference, the `learnings.bootstrap-unvalidated` lint rule that existed only to chase its `requires_validation` flag, and the `repo-research` dispatch branch that served it. Point the retrofit follow-up at glossary seeding instead.
+
+  Two stale references die with it (`confidence: 6`, which the schema dropped, and an index update under a `Patterns` section that no longer exists). A third is repaired directly: `ingest` still advertised `--category {sources|patterns|decisions}`, a flag whose *values* were category names — which the path-based sweep in U8/U9 could not see, because it matched paths rather than enum values.
+- **Risk:** medium
+- **Category:** removal
+- **Reversibility:** reversible
+- **Gated:** false
+- **Execution note:** test-first
+- **Test scenarios:**
+  - No skill file references `--bootstrap-patterns`, `source: bootstrap`, `bootstrap_run`, or `requires_validation`.
+  - Neither carrier of `learn-bootstrap-patterns.md` exists, and no `requires:` block declares it — file and declaration removed together, so `skill-payload` stays consistent.
+  - The capture gate has no exemption clause left: nothing in `en-learn` claims a route around it.
+  - `ingest` no longer advertises a `--category` flag.
+  - No mode emits a frontmatter field outside the six-field schema — asserted across every mode, so a retired field cannot be reintroduced by a later edit.
+  - `ensemble-lint` no longer defines `learnings.bootstrap-unvalidated`, and its fixtures go with it.
+  - The retrofit follow-up suggestion points at `docs/CONTEXT.md` seeding rather than at the removed mode.
+  - Negative control: reintroduce a `--bootstrap-patterns` mention, confirm red. Reintroduce `confidence:` in a mode's emitted frontmatter, confirm red. Restore a carrier file without its declaration, confirm red.
+- **Verification:** full suite green; `ensemble-lint --scope docs/` clean; `skill-payload` and both parity suites pass.
 
 ## Decisions, assumptions & risks
 

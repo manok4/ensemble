@@ -92,11 +92,10 @@ for n in 'How the code works' 'What a fix changed' 'Point-in-time state'; do
   grep -qF "$n" "$GATE" && pass "rejected category kept: $n" || fail "rejected category kept: $n"
 done
 
-# --- bootstrap's exemption must stay explicit and narrow ---
-grep -qi 'Exempt from the capture gate' "$SKILL" \
-  && pass "bootstrap-patterns declares its gate exemption" || fail "bootstrap-patterns declares its gate exemption"
-grep -qi 'Never route ordinary capture through this exemption' "$SKILL" \
-  && pass "the exemption is fenced to bootstrap only" || fail "the exemption is fenced to bootstrap only"
+# --- no exemption survives ---------------------------------------------------
+# --bootstrap-patterns held the only documented route around the gate, and is
+# gone (U15). A documented exemption is worse than a bug: it is the seam a later
+# edit widens. tests/lint/no-gate-bypass.test.sh owns that assertion now.
 
 # --- The generalization step -------------------------------------------------
 # Several candidates sharing a cause are one learning. Without this step the gate

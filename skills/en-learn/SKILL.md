@@ -1,6 +1,6 @@
 ---
 name: en-learn
-description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Six modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
+description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Routes each capture to one of three artifact types — a term in docs/CONTEXT.md, a decision in docs/decisions/, or a solution in docs/learnings/ — and grounds its claims against the tree before indexing. Six modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --migrate (move a project off the retired category layout). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health', 'migrate learnings'."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
@@ -15,7 +15,6 @@ requires:
   - references/grounding-validation.md
   - scripts/ensemble-validate-claims
   - references/layout-migration.md
-  - references/learn-bootstrap-patterns.md
   - references/learn-cross-ref-maintenance.md
   - references/learn-index-format.md
   - references/learn-ingest.md
@@ -54,7 +53,6 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | `--refresh` | Audit content staleness (~monthly) | Per-entry: keep / update / replace / archive |
 | `--pack <library>` | Curate external library reference | `docs/references/<library>-llms.txt` |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
-| `--bootstrap-patterns` | Retrofit existing project (one-time during/after `/en-foundation --retrofit`) | 5-10 entries in `docs/learnings/` flagged `source: bootstrap`, `confidence: 6`, `requires_validation: true` |
 | `--migrate` | A project still on the retired `bugs/`/`patterns/`/`decisions/` layout | Entries moved to the artifact-type layout; legacy decisions converted to ADRs |
 
 ## Always-on behaviors (across `capture` and `ingest`)
@@ -127,21 +125,6 @@ After every write:
 16. **Update `docs/README.md` index** if it exists.
 17. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
 
-## Process — Mode D: `--migrate`
-
-Runs the layout migration directly, for a project that predates the artifact-type
-layout. **Read `references/layout-migration.md` and follow it** — the same
-procedure capture's step 2a invokes. One procedure, two entry points; two
-descriptions would drift and the drift would only be discovered mid-migration.
-
-Use this when upgrading an existing project. Capture's step 2a is a safety net
-for someone who reaches for capture first, not the intended route: a project
-holding a hundred entries should not have to start writing a new learning to be
-told the old ones are about to stop being read.
-
-Reports what moved, what converted to an ADR, what was renamed to avoid a
-collision, and anything left for classification.
-
 ## Process — Mode B: `ingest <path-or-url>`
 
 Per `references/learn-ingest.md`:
@@ -152,8 +135,6 @@ Per `references/learn-ingest.md`:
 4. **Write summary.** `docs/learnings/sources/<slug>-<date>.md` with frontmatter including `source_type: file|url`, `source_uri: <path-or-url>`, `fetched: YYYY-MM-DD`.
 5. **Walk 5–15 related pages.** Use `learnings-research` agent (or grep + read). Add reciprocal back-refs.
 6. **Apply always-on behaviors.**
-
-Optional: `--category {sources|patterns|decisions}` (default `sources`).
 
 ## Process — Mode C: `--refresh`
 
@@ -194,31 +175,21 @@ Per `references/learn-lint.md`. Audits the wiki *graph*:
 
 Output: JSON-lines + markdown summary.
 
-## Process — Mode F: `--bootstrap-patterns`
+## Process — Mode F: `--migrate`
 
-Seeds `docs/learnings/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
+Runs the layout migration directly, for a project that predates the artifact-type
+layout. **Read `references/layout-migration.md` and follow it** — the same
+procedure capture's step 2a invokes. One procedure, two entry points; two
+descriptions would drift and the drift would only be discovered mid-migration.
 
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
-3. **Refuse if already bootstrapped.** Scan `docs/learnings/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
-4. **Confirm with user.** Surface: *"Will dispatch `repo-research` to identify 5–10 strong conventions in this codebase and file them as `patterns/` entries flagged `requires_validation: true`. These are reconstructions, not captures from real moments — lower confidence by design. Continue? (y/n)"*
-5. **Dispatch `repo-research`.** Prompt structured per `references/learn-bootstrap-patterns.md` § "Research prompt." Asks the agent to identify durable conventions in: file layout, naming, dependency direction, error-handling shape, test placement, common abstractions, framework idioms. Returns 5–10 candidates as JSON.
-6. **Cap at 10.** If the research agent returns more than 10, take the top 10 by `confidence` field. Fewer than 5 → surface a warning; the codebase may not have strong conventions yet (typical for very young or scattered repos).
-7. **Compose entries.** For each candidate, write `docs/learnings/<slug>-<date>.md` using `references/templates/learning-template.md` with:
-   - Frontmatter: `source: bootstrap`, `confidence: 6`, `requires_validation: true`, `bootstrap_run: <YYYY-MM-DD>`.
-   - Body: the convention as a paragraph, plus **Where this applies** (file paths/globs), **How to follow it** (concrete rules), **Citations** (`file:line` examples that exhibit it), and a **Confidence note** (why this is 6 and what would raise it).
-   - **Exempt from the capture gate, deliberately and narrowly.** These entries fail condition 1 by construction — a convention read out of the codebase is by definition recoverable from the codebase. Bootstrap is not trying to record something unrecoverable; it is giving a retrofit project a starting index of what its own conventions already are. That is why every entry is stamped `confidence: 6` and `requires_validation: true`, and why the mode is one-time and opt-in. Never route ordinary capture through this exemption, and treat a bootstrap entry that reaches `confidence: 8`+ while still `requires_validation: true` as a lint finding rather than a success.
-8. **Apply always-on behaviors.** Cross-refs (none on first run), index update (one line per entry under "Patterns"), log append (one summary line: `## [<date>] bootstrap | <count> patterns from repo-research`).
-9. **Surface a follow-up suggestion.** *"Bootstrap complete. <count> patterns filed in `docs/learnings/` with `requires_validation: true`. Review and validate as you encounter them in `/en-review`, `/en-resolve-pr`, or via `/en-learn --refresh`. Validated entries clear the flag."*
+Use this when upgrading an existing project. Capture's step 2a is a safety net
+for someone who reaches for capture first, not the intended route: a project
+holding a hundred entries should not have to start writing a new learning to be
+told the old ones are about to stop being read.
 
-Flags:
+Reports what moved, what converted to an ADR, what was renamed to avoid a
+collision, and anything left for classification.
 
-| Flag | Effect |
-|---|---|
-| `--force` | Re-run even if previous bootstrap entries exist (existing bootstrap entries are kept; new ones append) |
-| `--dry-run` | Print the candidates the research agent returns without writing files |
-| `--max-patterns <N>` | Cap number of entries (default 10) |
-
-Cross-review: **off**. Bootstrap entries are explicitly lower-confidence; peer review on each one would be theater.
 
 ## Auto-invoke triggers (per A3 / D26)
 
@@ -236,7 +207,6 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 
 ## Reference files
 
-- `references/learn-bootstrap-patterns.md` — Mode F prompt + entry shape
 - `references/capture-gate.md` — whether to write a learning at all; the default is not to
 - `references/templates/learning-template.md` — body structure for capture/ingest writes
 - `references/learning-frontmatter-schema.md` — frontmatter rules + examples

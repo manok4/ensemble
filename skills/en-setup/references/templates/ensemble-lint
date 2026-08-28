@@ -568,49 +568,6 @@ check_generated_marker() {
   fi
 }
 
-# --- Rule: learnings.bootstrap-unvalidated (project-wide; advisory) ---
-# Counts bootstrapped patterns (source: bootstrap, requires_validation: true)
-# more than 30 days old. P3 — informational reminder, not a blocker.
-check_bootstrap_unvalidated() {
-  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
-  # Guarded on the store itself. This probed one of the retired category
-  # directories, which after the taxonomy was retired would have left the rule
-  # permanently skipped while still appearing to run.
-  [ -d docs/learnings ] || return 0
-  local count=0
-  local oldest=""
-  for entry in docs/learnings/*.md; do
-    [ -f "$entry" ] || continue
-    local source rv date
-    source=$(get_field "$entry" source)
-    rv=$(get_field "$entry" requires_validation)
-    [ "$source" = "bootstrap" ] && [ "$rv" = "true" ] || continue
-    date=$(get_field "$entry" bootstrap_run)
-    [ -z "$date" ] && date=$(get_field "$entry" date)
-    count=$((count + 1))
-    if [ -z "$oldest" ] || [ "$date" \< "$oldest" ]; then
-      oldest="$date"
-    fi
-  done
-  [ "$count" -eq 0 ] && return 0
-  # Only emit if oldest bootstrap is >30 days ago.
-  if [ -n "$oldest" ]; then
-    local now days_ago
-    now=$(date -u +%Y-%m-%d)
-    days_ago=$(python3 -c "
-from datetime import date
-o = date.fromisoformat('$oldest')
-n = date.fromisoformat('$now')
-print((n - o).days)
-" 2>/dev/null || echo 0)
-    if [ "$days_ago" -gt 30 ]; then
-      emit "learnings.bootstrap-unvalidated" "" "" "P3" \
-        "$count bootstrapped pattern(s) still flagged requires_validation: true (oldest: $oldest, $days_ago days)" \
-        "Run /en-learn --refresh to validate, or edit each entry to set requires_validation: false and bump confidence to 8 once verified"
-    fi
-  fi
-}
-
 # --- Helper: is this a new-style plan? (presence of peer_review_resolutions field) ---
 # New-style plans (post-resilience-spec) MUST carry per-unit risk/gated.
 # Legacy plans get a P3 advisory until they're refreshed via /en-plan --resume.

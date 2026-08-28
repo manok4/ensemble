@@ -1,6 +1,6 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / gnhf CLI / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
+description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, seed docs/CONTEXT.md from the declared domain model, offer guardrail / Claude Code Review action / gnhf CLI. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
@@ -9,7 +9,6 @@ requires:
   - references/glossary-rules.md
   - references/host-detect.md
   - references/layout-migration.md
-  - references/learn-bootstrap-patterns.md
   - references/learn-index-format.md
   - references/learn-log-format.md
   - references/peer-contract.md
@@ -216,7 +215,6 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
 17. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
-    > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
 
     Don't auto-run it. The user decides.
 
@@ -293,7 +291,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     Once /en-foundation has settled and you've seen the codebase's
     conventions surface in real reviews, consider:
-      - /en-learn --bootstrap-patterns — seed docs/learnings/
+      - /en-learn capture — file the first real learning when one earns it
         from the codebase (opt-in; one-time; lower-confidence entries).
     ```
 
@@ -406,7 +404,6 @@ Next step:
 - `references/host-detect.md` — host detection (used briefly at start)
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
 - `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
-- `references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook
 - `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
