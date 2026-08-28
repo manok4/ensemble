@@ -1,6 +1,16 @@
 ---
 name: en-simplify
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Three parallel review dimensions (reuse / quality / efficiency), behavior-preserving, scoped verification. Default scope: the current branch diff vs base. Usable ad-hoc and called by /en-build's post-build phase. Use /en-debug for bugs, not this. Trigger phrases: 'simplify', 'tidy this up', 'refactor pass', 'clean up the diff', 'simplify before PR'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/code-simplifier.md
+  - references/agent-dispatch.md
+  - references/code-simplifier-dispatch.md
+  - references/host-detect.md
+  - references/recursion-guard.md
+  - scripts/ensemble-detect-host
+
 ---
 
 

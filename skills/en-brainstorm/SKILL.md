@@ -2,6 +2,21 @@
 name: en-brainstorm
 description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-aware approaches with a recommendation and devil's-advocate pass. Outputs a design doc to docs/designs/. Use before committing to a plan. Trigger phrases: 'brainstorm', 'explore options', 'think through', 'help me decide', 'what would it look like if', 'design doc for'."
 argument-hint: "[idea or question to explore]"
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/web-research.md
+  - references/agent-dispatch.md
+  - references/brainstorm-approaches.md
+  - references/brainstorm-blindspot.md
+  - references/host-detect.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
+  - references/script-invocation.md
+  - references/socratic-questions.md
+  - references/templates/design-doc-template.md
+  - scripts/ensemble-detect-host
+
 ---
 
 
@@ -61,7 +76,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 15. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
 16. **Verify-before-claiming.** Before writing the doc, any claim that something is **absent** in the codebase — a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support — must be **verified against the repo** first (read the relevant source), or **explicitly labeled an unverified assumption** in the doc. Applies to any checkable infrastructure claim; it is not a full research pass — just don't assert absence you haven't checked.
 17. **Write the design doc** to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
-18. **Validate before handing off.** Run `$SKILL_DIR/scripts/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
+18. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
 19. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
     > "This conversation produced [X]. Capture as a learning?"
     User accepts → invoke `/en-learn capture --from-conversation` with the design doc as input.
@@ -132,5 +147,5 @@ Gated — read only when their step's gate fires, never up front:
 | Blindspot gate fires in a non-interactive run | Never offer; treat the territory as a declined offer (recommended defaults recorded as explicit assumptions). |
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
 | `docs/foundation.md` too large to scan cheaply | Section-index read only (step 4); never fall back to reading it whole. |
-| `$SKILL_DIR/scripts/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
+| `bin/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |

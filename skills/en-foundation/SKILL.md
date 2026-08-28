@@ -1,6 +1,49 @@
 ---
 name: en-foundation
 description: "Produce or retrofit the foundational artifact set: docs/foundation.md (PRD + tech direction + architecture intent), docs/architecture.md (seed), AGENTS.md, CLAUDE.md. Walks depth-scaled discovery (product, users, R-IDs, stack, data, architecture, deployment, risks), asks for plan_id_prefix (2-3 uppercase letters; default FR), runs cross-agent peer review on the draft. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'PRD and architecture'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/learnings-research.md
+  - agents/repo-research.md
+  - agents/web-research.md
+  - references/agent-dispatch.md
+  - references/architecture-update-rules.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/cli-wrappers.md
+  - references/diff-signal-detection.md
+  - references/doc-lints.md
+  - references/finding-schema.md
+  - references/foundation-questions.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-brief.md
+  - references/peer-contract.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/templates/agents-md-merge-rules.md
+  - references/templates/agents-md-template.md
+  - references/templates/architecture-template.md
+  - references/templates/claude-md-template.md
+  - references/templates/foundation-template.md
+  - references/templates/plan-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
+  - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-extract-json
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
+  - scripts/ensemble-verify-peer-evidence
+
 ---
 
 
@@ -15,6 +58,11 @@ description: "Produce or retrofit the foundational artifact set: docs/foundation
 Combined PRD + technical direction + initial architecture seed for a project. Run **once** at project start (or `--retrofit` for an existing project); thereafter `/en-learn` keeps `docs/architecture.md` and the pointer maps current.
 
 > **Hard gate.** This skill writes documents only — `docs/foundation.md`, `docs/architecture.md`, `AGENTS.md`, `CLAUDE.md`, and (for new projects) the bootstrap plan `docs/plans/active/<PREFIX>01-feature_project-setup.md` where `<PREFIX>` is the resolved `plan_id_prefix` (default `FR`). **No implementation, no PR, no source-code edits.**
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## Process
 
@@ -62,7 +110,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
 10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
-    - Build the Outside Voice prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --artifact-type "markdown artifact" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
+    - Build the Outside Voice prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
     - Set `ENSEMBLE_PEER_REVIEW=true` env var.
     - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
     - Parse the JSON response (per `references/finding-schema.md`).

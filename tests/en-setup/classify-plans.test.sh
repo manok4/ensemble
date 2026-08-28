@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="ensemble-classify-plans"
 
-CLASSIFY="$REPO_ROOT/shared/bin/ensemble-classify-plans"
+CLASSIFY="$REPO_ROOT/skills/en-setup/scripts/ensemble-classify-plans"
 [ -x "$CLASSIFY" ] || { fail "missing or not executable: $CLASSIFY"; report; exit 1; }
 
 TMP=$(mktemp -d)

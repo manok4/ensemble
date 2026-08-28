@@ -13,14 +13,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-codex flag drift"
 
-DETECT="$REPO_ROOT/shared/bin/ensemble-detect-host"
-HOSTDOC="$REPO_ROOT/shared/references/host-detect.md"
-OUTVOICE="$REPO_ROOT/shared/references/outside-voice.md"
-HANDOFF="$REPO_ROOT/shared/references/build-handoff.md"
-ORCH="$REPO_ROOT/shared/references/build-orchestration.md"
+DETECT="$REPO_ROOT/skills/en-brainstorm/scripts/ensemble-detect-host"
+HOSTDOC="$REPO_ROOT/skills/en-brainstorm/references/host-detect.md"
+OUTVOICE="$REPO_ROOT/skills/en-build/references/outside-voice.md"
+HANDOFF="$REPO_ROOT/skills/en-build/references/build-handoff.md"
+ORCH="$REPO_ROOT/skills/en-build/references/build-orchestration.md"
 SETUP="$REPO_ROOT/setup"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
-SMOKE="$REPO_ROOT/shared/bin/ensemble-cli-smoke"
+SMOKE="$REPO_ROOT/skills/en-build/scripts/ensemble-cli-smoke"
 
 # ============================================================
 # U1: detect-host emits PEER_TURNS, resolved per peer agent (hermetic)
@@ -82,15 +82,21 @@ if printf 'codex exec --json --max-turns 1\n' | grep -qE "$DRIFT_PAT_B" \
 else
   fail "self-test: drift pattern mis-classifies the regression or prose"
 fi
-# EN12: scan the CANONICAL tree plus skill-owned files, never the generated
-# copies under skills/*/scripts/ and skills/*/references/. Those are
-# byte-identical to their source by construction and scripts/sync-shared
-# --check enforces it, so including them turns one real finding into N
-# identical ones and makes the report scale with the number of consumers
-# rather than with the number of defects.
-hardcoded=$(grep -rnE "$DRIFT_PAT_A|$DRIFT_PAT_B" \
-  "$REPO_ROOT/shared/references" "$REPO_ROOT/skills" "$SETUP" 2>/dev/null \
-  | "$REPO_ROOT/tests/lib/drop-generated" || true)
+# Scoped to markdown. The original scanned references + skills' prose, never
+# bin/, so ensemble-detect-host's deliberate `codex exec --json --max-turns 1`
+# availability probe was always out of scope; --include keeps it that way now
+# that every skill carries that script.
+# EN13: every skill owns its files, so there are no generated copies to skip.
+# A real finding now appears once per skill that carries the file, which is the
+# honest count: each of those copies is a place the defect actually lives.
+hardcoded=$(
+    # Markdown only. The original scanned references and skills' PROSE, never
+    # bin/, so ensemble-detect-host's deliberate `codex exec --json --max-turns 1`
+    # availability probe was always out of scope. Now that every skill carries
+    # that script, the scope has to say so explicitly.
+    grep -rnE --include='*.md' "$DRIFT_PAT_A|$DRIFT_PAT_B" "$REPO_ROOT/skills" 2>/dev/null
+    grep -nE "$DRIFT_PAT_A|$DRIFT_PAT_B" "$SETUP" 2>/dev/null
+    true)
 if [ -z "$hardcoded" ]; then
   pass "no hardcoded \$PEER_CMD/codex-exec --max-turns remains in the peer contract"
 else

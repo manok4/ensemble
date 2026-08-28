@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-setup retrofit install list"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
-WORKFLOW_TPL="$REPO_ROOT/shared/references/templates/github-workflow-en-sweep.yml"
+WORKFLOW_TPL="$REPO_ROOT/skills/en-setup/references/templates/github-workflow-en-sweep.yml"
 
 # --- Sanity: skill file present ---
 if [ -f "$SKILL" ]; then
@@ -31,10 +31,14 @@ fi
 #     has something to copy from). The bug was that en-setup didn't copy them;
 #     this also catches the case where someone deletes them from the plugin. ---
 for script in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check ensemble-lint; do
-  if [ -f "$REPO_ROOT/shared/bin/$script" ]; then
-    pass "plugin source has bin/$script"
+  # en-setup is the skill that copies these into the consuming project, so they
+  # must live in ITS directory. ensemble-lint is a template rather than a bundled
+  # script: EN13 U8 made it a project deliverable, so no skill runs it from its
+  # own scripts/.
+  if [ -f "$REPO_ROOT/skills/en-setup/scripts/$script" ] || [ -f "$REPO_ROOT/skills/en-setup/references/templates/$script" ]; then
+    pass "en-setup carries $script to install"
   else
-    fail "plugin source missing bin/$script — en-setup has nothing to copy"
+    fail "en-setup carries neither scripts/$script nor references/templates/$script — nothing to copy"
   fi
 done
 

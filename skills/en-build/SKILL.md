@@ -1,6 +1,41 @@
 ---
 name: en-build
 description: "Execute an implementation plan unit-by-unit on a feature branch. Picks build-by-orchestration (Claude host dispatches Codex worker) or build-handoff (Codex host with Claude peer reviewer) per host detection. Branch-level review model (D35, amended by D46): each ordinary unit is implement → tests + lint → commit; code-simplifier (/en-simplify) and cross-agent Outside Voice review (/en-review --peer: mandatory peer + host personas) run ONCE over the branch diff after all units, then the host applies findings. Destructive/gated units get a dedicated per-unit peer pass. A structured learning checkpoint fires last, after the branch-level review. Trigger phrases: 'build this plan', 'implement <plan_id>', 'start building', 'execute the plan'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/code-simplifier.md
+  - references/agent-dispatch.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/cli-wrappers.md
+  - references/code-simplifier-dispatch.md
+  - references/diff-signal-detection.md
+  - references/doc-lints.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-brief.md
+  - references/peer-contract.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
+  - references/recursion-guard.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/templates/plan-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
+  - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-extract-json
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
+  - scripts/ensemble-plan-hash
+  - scripts/ensemble-verify-peer-evidence
+
 ---
 
 
@@ -17,6 +52,15 @@ Execute a plan, unit by unit, with cross-agent peer review at every per-unit gat
 > **Hard preconditions.** A plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`; `<PREFIX>` from foundation's `plan_id_prefix`, default `FR`) with `status: open` (or `in_progress` when resuming), all U-IDs present, no unblocked dependencies. The skill verifies these at start. **Recoverable `status: draft`** (verdict `revise` with all findings resolved in `peer_review_resolutions:`) is offered a single finalize-and-build prompt instead of refused.
 
 > **Universal safety gates** (apply on EVERY code path — phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See "Universal safety gates" section below.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
+
+> **Peer brief.** What the peer is asked, and what this skill does with the
+> answer, is in `references/peer-brief.md`. The wire format it shares with every
+> other skill is `references/peer-contract.md`.
 
 ## Process
 

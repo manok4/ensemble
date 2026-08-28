@@ -1,6 +1,34 @@
 ---
 name: en-setup
 description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / gnhf CLI / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - references/agent-dispatch.md
+  - references/doc-lints.md
+  - references/host-detect.md
+  - references/learn-bootstrap-patterns.md
+  - references/learn-index-format.md
+  - references/learn-log-format.md
+  - references/peer-contract.md
+  - references/recursion-guard.md
+  - references/script-invocation.md
+  - references/setup-state-detection.md
+  - references/stable-ids.md
+  - references/templates/agents-md-merge-rules.md
+  - references/templates/agents-md-template.md
+  - references/templates/claude-md-template.md
+  - references/templates/config-local-example.yaml
+  - references/templates/ensemble-lint
+  - references/templates/github-workflow-claude-review.yml
+  - references/templates/github-workflow-en-sweep.yml
+  - references/templates/review-md-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-classify-plans
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-doc-only-check
+  - scripts/ensemble-sweep-activity-check
+
 ---
 
 
@@ -15,6 +43,11 @@ description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfie
 Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./setup` script (machine-level install).
 
 > **Hard rule:** This skill is mechanical setup work. **No code review, no peer cross-review, no implementation.** Off-loads anything ambiguous to `/en-brainstorm`, `/en-foundation`, or `/en-plan`.
+
+> **Severity vocabulary.** This skill emits findings graded P0-P3. Those levels,
+> and the confidence scale beside them, are defined in
+> `references/peer-contract.md` and mean the same thing to every skill that
+> reads them.
 
 ## Process
 
@@ -91,12 +124,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Optionally `docs/learnings/archive/` — ask the user.
 
    This step is verified again in the final-verification phase (step 17). Both checks must pass.
-9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these four scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
    - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
    - `$SKILL_DIR/scripts/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
-   - `$SKILL_DIR/scripts/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
+   - `bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
 
    **Resolving the script path.** This skill carries the scripts it installs in its own `scripts/` directory, so there is nothing to discover: anchor to the skill directory as `references/script-invocation.md` describes. `${ENSEMBLE_PLUGIN_DIR:-}` is still honored when set, for a caller that deliberately points at another install.
 

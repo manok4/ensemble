@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ensemble-build-peer-prompt \
-#     --artifact-type <code|plan|markdown artifact|mixed> \
+#     --brief <path to the skill's references/peer-brief.md> \
 #     --project-context <one-line> \
 #     --goal <one-line> \
 #     --artifact-file <path>           # OR --artifact-stdin (read from stdin)
@@ -83,7 +83,7 @@
 
 set -u
 
-ARTIFACT_TYPE=""
+BRIEF_FILE=""
 PROJECT_CONTEXT=""
 GOAL=""
 ARTIFACT_FILE=""
@@ -98,7 +98,7 @@ usage() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --artifact-type)            ARTIFACT_TYPE="$2"; shift 2 ;;
+    --brief)                    BRIEF_FILE="$2"; shift 2 ;;
     --project-context)          PROJECT_CONTEXT="$2"; shift 2 ;;
     --goal)                     GOAL="$2"; shift 2 ;;
     --artifact-file)            ARTIFACT_FILE="$2"; shift 2 ;;
@@ -111,7 +111,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Validate required args
-[ -z "$ARTIFACT_TYPE" ]    && { echo "missing --artifact-type" >&2; exit 2; }
+[ -z "${BRIEF_FILE:-}" ]   && { echo "missing --brief" >&2; exit 2; }
 [ -z "$PROJECT_CONTEXT" ]  && { echo "missing --project-context" >&2; exit 2; }
 [ -z "$GOAL" ]             && { echo "missing --goal" >&2; exit 2; }
 if [ -z "$ARTIFACT_FILE" ] && [ "$ARTIFACT_STDIN" != "true" ]; then
@@ -140,21 +140,16 @@ else
 fi
 
 # Conditional: plan-specific review dimensions
-if [ "$ARTIFACT_TYPE" = "plan" ]; then
-  PLAN_REVIEW_DIMENSIONS="
-Plan review dimensions: does the plan build the right thing, and is it safe to run?
-
-A. Does it achieve the goal? Read GOAL, then the units. Flag work the goal needs that no unit covers, and units that serve no stated goal.
-B. Unit decomposition. Flag units too large to review or commit atomically, units that should have been split (auth/payments/migrations always stand alone), and independent concerns fused into one unit.
-C. Test scenarios. Every feature-bearing unit needs real scenarios with concrete inputs and expected outcomes across happy path, edge cases and error paths — not \"tests pass\". A feature unit with none, or with vague ones, is P1.
-D. risk: correctness. Cross-check against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high). Misclassified destructive units are P0/P1.
-E. Dependency-vs-phase violations (a low-risk unit depending on a higher-risk one).
-F. gated: correctness. gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag gated:true on an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state.
-G. Stated assumptions. Flag anything the plan bets on without saying so, especially claims that something does not already exist.
-
-Do NOT flag: prose style, heading format, markdown formatting, unit ID numbering, or wording preferences. This is a plan, not a document review."
-else
-  PLAN_REVIEW_DIMENSIONS=""
+# The review dimensions live in the skill's own brief, not in this script. A
+# empty string and reviewed with no dimensions at all.
+PLAN_REVIEW_DIMENSIONS=""
+if [ -n "${BRIEF_FILE:-}" ] && [ -f "$BRIEF_FILE" ]; then
+  PLAN_REVIEW_DIMENSIONS=$(sed -n '/^## What the peer is asked$/,/^## Where a finding points$/p' "$BRIEF_FILE" \
+                            | sed '1d;$d')
+fi
+if [ -z "$PLAN_REVIEW_DIMENSIONS" ]; then
+  echo "peer prompt: no review dimensions. Pass --brief <path> to the skill's references/peer-brief.md." >&2
+  exit 2
 fi
 
 # Optional: previous-review-context section for re-review iterations
@@ -168,19 +163,14 @@ fi
 
 # Location hint and u_id field are artifact-type aware: a plan's findings anchor
 # to units (en-build dispatches per-unit off u_id), code anchors to file:line.
-if [ "$ARTIFACT_TYPE" = "plan" ]; then
   LOCATION_HINT='Use the unit id (e.g. "U3") when the finding is about a unit, the section name for plan-level issues, or "global".'
   U_ID_FIELD='  u_id            "U<N>" when the finding is about a specific unit, else null.
                   The host dispatches per-unit off this field, so set it
                   whenever the finding belongs to a unit.'
-else
-  LOCATION_HINT='Use "<file>:<line>" for code, the section name for docs, or "global".'
-  U_ID_FIELD=""
-fi
 
 # Emit the prompt
 cat <<PROMPT_EOF
-Peer review of a $ARTIFACT_TYPE. You are the REPORTER, not the fixer:
+Peer review of a plan. You are the REPORTER, not the fixer:
 read the artifact, return structured JSON findings only. Do NOT edit files,
 run commands, make commits, or take any action. The host applies findings.
 $SINGLE_AGENT_NOTE

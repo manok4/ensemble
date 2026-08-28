@@ -1,6 +1,44 @@
 ---
 name: en-plan
 description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs and plan_type (feature | improvement | bug). Reads foundation, runs research agents (repo-research + learnings-research; web-research conditional), breaks work into units with files / tests / execution notes; runs cross-agent peer review on the draft. Modes: --resume <plan> (promote a draft); --from-legacy <path> (migrate legacy plan). Outputs docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/learnings-research.md
+  - agents/repo-research.md
+  - agents/web-research.md
+  - references/agent-dispatch.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/cli-wrappers.md
+  - references/diff-signal-detection.md
+  - references/doc-lints.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-brief.md
+  - references/peer-contract.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
+  - references/plan-default-branch-checkpoint.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/templates/plan-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
+  - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-extract-json
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
+  - scripts/ensemble-plan-hash
+  - scripts/ensemble-verify-peer-evidence
+
 ---
 
 
@@ -17,6 +55,11 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 > **Priority principle (D39): performance > speed ≥ cost.** Optimize first for plan quality (does the plan lead to the right thing, built well), then for speed, then for token/tool cost. Research depth, peer-review iterations, and plan-content rigor are worth their cost when they lift build quality; keep them self-gating so lightweight work stays fast.
 
 > **Hard gate.** Plan only — no code, no commits, no PR. Output is a markdown plan file plus the peer-review verdict.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## Process
 
@@ -119,7 +162,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 14. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
 15. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
-    - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
+    - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
     - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
     - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
@@ -221,7 +264,7 @@ If `docs/foundation.md` doesn't exist yet (the user is using `/en-plan` before `
 
 - Set `covers_requirements: []` and `requirements_pending: true` in the plan's frontmatter.
 - Surface the gap: "No `docs/foundation.md` yet. Plan will reference requirements as `requirements_pending: true`. Run `/en-foundation --retrofit` later to back-fill R-IDs."
-- `$SKILL_DIR/scripts/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
+- `bin/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
 
 ## Output
 

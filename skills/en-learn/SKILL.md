@@ -1,6 +1,27 @@
 ---
 name: en-learn
 description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Six modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/learnings-research.md
+  - agents/repo-research.md
+  - references/agent-dispatch.md
+  - references/architecture-update-rules.md
+  - references/capture-gate.md
+  - references/learn-bootstrap-patterns.md
+  - references/learn-cross-ref-maintenance.md
+  - references/learn-index-format.md
+  - references/learn-ingest.md
+  - references/learn-lint.md
+  - references/learn-log-format.md
+  - references/learning-frontmatter-schema.md
+  - references/pack-reference-template.md
+  - references/peer-contract.md
+  - references/research-dispatch.md
+  - references/templates/architecture-template.md
+  - references/templates/learning-template.md
+
 ---
 
 
@@ -10,6 +31,11 @@ description: "Compounding wiki maintainer for docs/learnings/. Capture is gated:
 
 
 Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat folder. Adopts Karpathy's LLM Wiki pattern: agent-maintained, with `index.md` + `log.md` for navigation and `--lint` for graph health.
+
+> **Severity vocabulary.** This skill emits findings graded P0-P3. Those levels,
+> and the confidence scale beside them, are defined in
+> `references/peer-contract.md` and mean the same thing to every skill that
+> reads them.
 
 ## Modes
 
@@ -32,7 +58,6 @@ After every write:
 
 ## Process — Mode A: `capture` (default)
 
-1. **Detect host (light).** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip (no peer review on capture).
 3. **Detect input source.**
    - **Default** (post-build / post-qa) — read recent commits + branch summary.
@@ -133,7 +158,6 @@ Output: JSON-lines + markdown summary.
 
 Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
 
-1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Refuse if already bootstrapped.** Scan `docs/learnings/patterns/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
 4. **Confirm with user.** Surface: *"Will dispatch `repo-research` to identify 5–10 strong conventions in this codebase and file them as `patterns/` entries flagged `requires_validation: true`. These are reconstructions, not captures from real moments — lower confidence by design. Continue? (y/n)"*
@@ -183,7 +207,6 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 - `references/learn-lint.md` — check catalog and auto-fix rules
 - `references/architecture-update-rules.md` — when to touch `docs/architecture.md`
 - `references/pack-reference-template.md` — `*-llms.txt` structure
-- `references/host-detect.md`
 
 ## Failure protocol
 

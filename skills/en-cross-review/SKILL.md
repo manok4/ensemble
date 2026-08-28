@@ -1,6 +1,38 @@
 ---
 name: en-cross-review
 description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, branch, uncommitted work). Ships the target to the peer agent (Codex if host is Claude; Claude if Codex; same-CLI fresh subprocess as single-agent fallback) and returns findings grouped by severity. Optional --focus (security | performance | tests | all). Trigger phrases: 'cross-review', 'second opinion', 'peer review this', 'outside voice on'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - references/agent-dispatch.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/cli-wrappers.md
+  - references/diff-signal-detection.md
+  - references/doc-lints.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-brief.md
+  - references/peer-contract.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
+  - references/recursion-guard.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/templates/plan-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
+  - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-extract-json
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
+  - scripts/ensemble-verify-peer-evidence
+
 ---
 
 
@@ -13,6 +45,15 @@ description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, 
 
 
 Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host parses findings JSON and surfaces them; the host applies the user-selected ones.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
+
+> **Peer brief.** What the peer is asked, and what this skill does with the
+> answer, is in `references/peer-brief.md`. The shared wire format is
+> `references/peer-contract.md`.
 
 ## Process
 

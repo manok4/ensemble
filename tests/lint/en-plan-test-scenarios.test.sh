@@ -7,10 +7,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-plan test-scenarios gate"
 
-TEMPLATE="$REPO_ROOT/shared/references/templates/plan-template.md"
+TEMPLATE="$REPO_ROOT/skills/en-build/references/templates/plan-template.md"
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
-LINT="$REPO_ROOT/shared/bin/ensemble-lint"
-DOCLINTS="$REPO_ROOT/shared/references/doc-lints.md"
+LINT="$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint"
+DOCLINTS="$REPO_ROOT/skills/en-build/references/doc-lints.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- plan-template documents the categories + escape ---

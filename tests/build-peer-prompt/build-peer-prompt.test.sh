@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="ensemble-build-peer-prompt"
 
-BIN="$REPO_ROOT/shared/bin/ensemble-build-peer-prompt"
+BIN="$REPO_ROOT/skills/en-plan/scripts/ensemble-build-peer-prompt"
 
 # --- Required-arg validation ---
 if "$BIN" 2>/dev/null; then
@@ -18,13 +18,13 @@ else
   pass "no args exits non-zero"
 fi
 
-if "$BIN" --artifact-type plan --project-context X --goal Y 2>/dev/null; then
+if "$BIN" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context X --goal Y 2>/dev/null; then
   fail "missing artifact source should error"
 else
   pass "missing --artifact-file/--artifact-stdin exits non-zero"
 fi
 
-if "$BIN" --artifact-type plan --project-context X --goal Y --artifact-stdin --peer-mode bogus </dev/null 2>/dev/null; then
+if "$BIN" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context X --goal Y --artifact-stdin --peer-mode bogus </dev/null 2>/dev/null; then
   fail "invalid --peer-mode should error"
 else
   pass "invalid --peer-mode exits non-zero"
@@ -32,7 +32,7 @@ fi
 
 # --- Cross-agent + plan: smoke ---
 out=$(echo "fake plan body" | "$BIN" \
-  --artifact-type plan \
+  --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" \
   --project-context "Test project" \
   --goal "Test goal" \
   --artifact-stdin \
@@ -81,8 +81,11 @@ else
 fi
 
 # --- Code artifact + single-agent fallback ---
-out2=$(echo "function foo() {}" | "$BIN" \
-  --artifact-type code \
+# EN13 U5-U7: there is no artifact-type mode any more. Each peer skill owns a
+# builder and a brief, so the code case is en-review's builder, not a flag on
+# en-plan's.
+out2=$(echo "function foo() {}" | "$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt" \
+  --brief "$REPO_ROOT/skills/en-review/references/peer-brief.md" \
   --project-context "X" \
   --goal "Y" \
   --artifact-stdin \
@@ -100,10 +103,17 @@ else
   fail "[code/single] single-agent note missing"
 fi
 
-if echo "$out2" | grep -q "Plan review dimensions:"; then
-  fail "[code/single] plan-specific block should NOT appear for non-plan artifact"
+# Before U6 this block was the empty string for code review. The assertion
+# inverts: the code dimensions must be PRESENT, and the plan ones absent.
+if echo "$out2" | grep -q "### correctness"; then
+  pass "[code/single] code dimensions present (they were empty before U6)"
 else
-  pass "[code/single] plan-specific block suppressed for non-plan"
+  fail "[code/single] code dimensions missing"
+fi
+if echo "$out2" | grep -q "Plan review dimensions:"; then
+  fail "[code/single] plan dimensions leaked into a code review"
+else
+  pass "[code/single] plan dimensions absent from a code review"
 fi
 
 if echo "$out2" | grep -q 'echo "single-agent-fallback"'; then
@@ -121,7 +131,7 @@ Deferred: 1-2 — Edge case (rationale: low conf)
 EOF
 
 out3=$(echo "fake plan v2" | "$BIN" \
-  --artifact-type plan \
+  --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" \
   --project-context "X" \
   --goal "Y" \
   --artifact-stdin \
@@ -142,7 +152,7 @@ fi
 rm -f "$TMP_IT"
 
 # --- Iteration-context file missing → should error ---
-if "$BIN" --artifact-type plan --project-context X --goal Y --artifact-stdin --iteration-context-file /nonexistent/path </dev/null 2>/dev/null; then
+if "$BIN" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context X --goal Y --artifact-stdin --iteration-context-file /nonexistent/path </dev/null 2>/dev/null; then
   fail "missing iteration context file should error"
 else
   pass "missing --iteration-context-file path exits non-zero"
@@ -157,7 +167,7 @@ cat > "$TMP_PLAN" <<'EOF'
 - **Risk:** destructive
 EOF
 out4=$("$BIN" \
-  --artifact-type plan \
+  --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" \
   --project-context "X" \
   --goal "Y" \
   --artifact-file "$TMP_PLAN" \
@@ -179,18 +189,39 @@ rm -f "$TMP_PLAN"
 # ~5,600-token plan artifact — under 2% — for a peer that grades to a stated
 # scale instead of an invented one. The guard stays live at the new ceiling;
 # raise it again only with the same kind of justification, never to fit a diff.
-# Empty-artifact stress test:
+# Empty-artifact stress test.
+#
+# This guard used to read 270 words, and only because it passed
+# --artifact-type code, which produced an EMPTY dimensions block. It was
+# measuring the scaffold by accident, and the accident was the defect U6
+# removed: code review really was going out with no dimensions.
+#
+# So it measures the scaffold deliberately now — the prompt minus whatever the
+# brief contributes. That number is comparable to the old one (308 vs 270; the
+# growth is the peer-contract reference and the brief pointer) and it still
+# fails if the boilerplate creeps, which is what the guard is for. The
+# dimensions themselves are budgeted by the brief's own review, not here.
 out5=$(echo "" | "$BIN" \
-  --artifact-type code \
+  --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" \
   --project-context "P" \
   --goal "G" \
   --artifact-stdin \
   --peer-mode cross-agent)
-words=$(echo "$out5" | wc -w | tr -d ' ')
-if [ "$words" -lt 300 ]; then
-  pass "[size] slim prompt scaffold is under 300 words ($words words)"
+dims_words=$(echo "$out5" | sed -n '/Plan review dimensions/,/Do NOT flag/p' | wc -w | tr -d ' ')
+total_words=$(echo "$out5" | wc -w | tr -d ' ')
+scaffold_words=$(( total_words - dims_words ))
+if [ "$scaffold_words" -lt 350 ]; then
+  pass "[size] prompt scaffold is under 350 words ($scaffold_words, excluding $dims_words of dimensions)"
 else
-  fail "[size] slim prompt scaffold too large" "$words words (target <300)"
+  fail "[size] prompt scaffold too large" "$scaffold_words words excluding dimensions (target <350)"
+fi
+
+# And the dimensions must actually be there — a zero-word block would make the
+# scaffold check pass while reproducing the bug it replaced.
+if [ "$dims_words" -gt 50 ]; then
+  pass "[size] the dimensions block is non-empty ($dims_words words)"
+else
+  fail "[size] dimensions block empty or missing" "$dims_words words"
 fi
 
 # --- Regression: the doc template uses $VAR not {VAR} (P1 from Codex) ---
@@ -199,7 +230,7 @@ fi
 # the artifact. Fix: the template now uses shell-style $VAR placeholders so
 # both `bin/ensemble-build-peer-prompt` (HEREDOC) and raw envsubst work.
 # This test guards against drift back to the {VAR} form.
-TEMPLATE_DOC="$REPO_ROOT/shared/references/outside-voice.md"
+TEMPLATE_DOC="$REPO_ROOT/skills/en-build/references/outside-voice.md"
 
 # Extract just the prompt template block (the first ```text ... ``` fence).
 template=$(awk '

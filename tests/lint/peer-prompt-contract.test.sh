@@ -8,18 +8,18 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="peer prompt contract"
 
-BUILD="$REPO_ROOT/shared/bin/ensemble-build-peer-prompt"
-SCHEMA="$REPO_ROOT/shared/references/finding-schema.md"
+BUILD="$REPO_ROOT/skills/en-plan/scripts/ensemble-build-peer-prompt"
+SCHEMA="$REPO_ROOT/skills/en-build/references/finding-schema.md"
 TMP="${TMPDIR:-/tmp}/enpp.$$"; mkdir -p "$TMP"
 printf -- '---\ntype: plan\n---\n# Test plan\n### U1. thing\n' > "$TMP/plan.md"
 printf -- '- finding_id: 1-1 (P1) "x" — status: applied.\n' > "$TMP/ctx.md"
 
-P1OUT=$(bash "$BUILD" --artifact-type plan --project-context P --goal G \
+P1OUT=$(bash "$BUILD" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context P --goal G \
   --artifact-file "$TMP/plan.md" --peer-mode cross-agent 2>&1)
-P2OUT=$(bash "$BUILD" --artifact-type plan --project-context P --goal G \
+P2OUT=$(bash "$BUILD" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context P --goal G \
   --artifact-file "$TMP/plan.md" --peer-mode cross-agent \
   --iteration-context-file "$TMP/ctx.md" 2>&1)
-CODEOUT=$(bash "$BUILD" --artifact-type code --project-context P --goal G \
+CODEOUT=$(bash "$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt" --brief "$REPO_ROOT/skills/en-review/references/peer-brief.md" --project-context P --goal G \
   --artifact-file "$TMP/plan.md" --peer-mode cross-agent 2>&1)
 rm -rf "$TMP"
 

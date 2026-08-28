@@ -1,6 +1,34 @@
 ---
 name: en-sweep
 description: "Scheduled doc-drift cleanup (default weekly; configurable via sweep.schedule). Runs file-shape lint + wiki-graph health + architecture/plan-lifecycle/pointer-map drift. Activity gate skips runs when no non-sweep commits have landed since the last sweep. Opens auto-merging doc-only PRs after /en-review (mode:report-only) clears them. Code-level findings file to tech-debt-tracker.md. Optional continuous monitoring (dead-code + dep-vuln) → TD or draft plan. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/repo-research.md
+  - references/agent-dispatch.md
+  - references/architecture-update-rules.md
+  - references/doc-lints.md
+  - references/host-detect.md
+  - references/learn-lint.md
+  - references/peer-contract.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/stable-ids.md
+  - references/sweep-checks.md
+  - references/sweep-loop-guards.md
+  - references/sweep-security-model.md
+  - references/tech-debt-tracker-format.md
+  - references/templates/architecture-template.md
+  - references/templates/github-workflow-en-sweep.yml
+  - scripts/continuous-monitor
+  - scripts/en-sweep-ci
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-doc-only-check
+  - scripts/ensemble-sweep-activity-check
+  - scripts/triage-findings
+
 ---
 
 
@@ -15,6 +43,11 @@ description: "Scheduled doc-drift cleanup (default weekly; configurable via swee
 Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
 
 > **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$SKILL_DIR/scripts/ensemble-doc-only-check`.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## When invoked
 
@@ -33,7 +66,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 1. **Detect host.** Source `references/host-detect.md`. CI runner determines which CLI is available.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The CI workflow enforces Guards 1, 2, 3, 5 before the skill runs; Guard 4 (no-material-diff) fires inside the skill at step 9.
-4. **Run file-shape lint.** `$SKILL_DIR/scripts/ensemble-lint --json --scope docs/`. Capture violations.
+4. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
 5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
 6. **Architecture drift check.** Dispatch `repo-research` to compare `docs/architecture.md` against the codebase:
    - Documented components still present?
@@ -141,7 +174,7 @@ Otherwise: PR stays open for human resolution.
 - `references/templates/github-workflow-en-sweep.yml` — installed workflow
 - `$SKILL_DIR/scripts/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
 - `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
-- `$SKILL_DIR/scripts/ensemble-lint` — file-shape lint runner
+- `bin/ensemble-lint` — file-shape lint runner
 - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
 
 ## Failure protocol

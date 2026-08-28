@@ -1,6 +1,51 @@
 ---
 name: en-review
 description: "Multi-persona code review of the current branch, with the cross-agent peer ON BY DEFAULT (skip via --no-peer). Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Host and peer findings reconcile into four buckets (corroborated / peer-only / host-only / conflicting). Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep; never runs a peer). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/learnings-research.md
+  - references/agent-dispatch.md
+  - references/architecture-update-rules.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/cli-wrappers.md
+  - references/diff-signal-detection.md
+  - references/doc-lints.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/learn-lint.md
+  - references/learning-frontmatter-schema.md
+  - references/outside-voice.md
+  - references/peer-brief.md
+  - references/peer-contract.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
+  - references/review-confidence-gating.md
+  - references/script-invocation.md
+  - references/severity-and-routing.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/sweep-checks.md
+  - references/sweep-loop-guards.md
+  - references/sweep-security-model.md
+  - references/tech-debt-tracker-format.md
+  - references/templates/architecture-template.md
+  - references/templates/plan-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
+  - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-doc-only-check
+  - scripts/ensemble-extract-json
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
+  - scripts/ensemble-verify-peer-evidence
+
 ---
 
 
@@ -13,6 +58,15 @@ description: "Multi-persona code review of the current branch, with the cross-ag
 
 
 Multi-persona, confidence-gated code review **with the cross-agent peer on by default** (EN11). Host personas and the blind peer run concurrently; their findings reconcile into four explicit buckets.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
+
+> **Peer brief.** What the peer is asked, and what this skill does with the
+> answer, is in `references/peer-brief.md`. The wire format it shares with every
+> other skill is `references/peer-contract.md`.
 
 ## Process
 
@@ -58,7 +112,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
-6. **Pre-flight lint.** Run `$SKILL_DIR/scripts/ensemble-lint --scope docs/` and `$SKILL_DIR/scripts/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
+6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` and `bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
 7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
 
    **Peer-only short-circuit (`--peer-only`).** If `--peer-only` is set, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** — the sole reviewer is the cross-agent Outside Voice peer (step 9). This is the mode `/en-build`'s post-build phase uses: the host implemented the code, so review must come from the *other* agent, with no host-side personas. `--peer-only` and `--lite` are mutually exclusive (lite is a host-persona roster; peer-only has no host personas) — if both are passed, `--peer-only` wins. Proceed directly to step 9.

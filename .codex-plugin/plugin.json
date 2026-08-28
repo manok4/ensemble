@@ -16,6 +16,5 @@
     "agents",
     "ensemble"
   ],
-  "skills": "./skills",
-  "agents": "./shared/agents"
+  "skills": "./skills"
 }

@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-sweep doc-only enforcement"
 
-CHECK="$REPO_ROOT/shared/bin/ensemble-doc-only-check"
+CHECK="$REPO_ROOT/skills/en-review/scripts/ensemble-doc-only-check"
 
 setup_temp_repo() {
   local tmp="$1"

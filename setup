@@ -109,24 +109,6 @@ else
   log ""
 fi
 
-# Shared-tree parity. Each skill directory carries its own copy of every
-# reference, script and agent it reads, generated from shared/ by
-# scripts/sync-shared. If someone edited shared/ without re-running the sync,
-# the copies are stale — and installing them would hand every host a mixture of
-# old and new, silently. Refuse instead: the fix is one command, and a wrong
-# install is far more expensive to notice than a failed one.
-if [ -x "$SOURCE_DIR/scripts/sync-shared" ]; then
-  if ! "$SOURCE_DIR/scripts/sync-shared" --root "$SOURCE_DIR" --check --quiet >/dev/null 2>&1; then
-    log ""
-    log "✗ The skill copies are out of sync with shared/."
-    "$SOURCE_DIR/scripts/sync-shared" --root "$SOURCE_DIR" --check 2>&1 | sed 's/^/    /' | head -12
-    log ""
-    log "  Run:  scripts/sync-shared"
-    log "  Then re-run ./setup. Nothing has been installed."
-    exit 1
-  fi
-  log "Shared-tree parity: clean"
-fi
 
 if [ "$VERIFY_ONLY" = "true" ]; then
   log "--verify-only: stopping after checks. No files written."
@@ -326,8 +308,17 @@ fi
 # in a shared, sourceable helper (EN10) so the drift test exercises the REAL
 # classifier. On failure it distinguishes flag drift from an un-authenticated
 # CLI (a fresh machine is not a flag mismatch).
-# shellcheck source=shared/bin/ensemble-cli-smoke
-. "$SOURCE_DIR/shared/bin/ensemble-cli-smoke"
+# The CLI smoke probe lives with the skills that use it now. Any copy will do —
+# they are identical — so take the first one rather than naming a skill, which
+# would break when that skill stops carrying it.
+_smoke="$(ls "$SOURCE_DIR"/skills/*/scripts/ensemble-cli-smoke 2>/dev/null | head -1)"
+if [ -n "$_smoke" ]; then
+  # shellcheck source=/dev/null
+  . "$_smoke"
+else
+  log "  ⚠ ensemble-cli-smoke not found in any skill; skipping the CLI smoke test."
+  ensemble_smoke_probe() { :; }
+fi
 if [ "$QUIET" != "true" ]; then
   log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
   # claude -p supports --max-turns; codex exec does not (single-shot) — EN10.

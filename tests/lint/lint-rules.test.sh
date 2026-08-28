@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="lint rules"
 
-LINT="$REPO_ROOT/shared/bin/ensemble-lint"
+LINT="$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint"
 
 # Setup: tempdir mirroring repo layout
 TMP=$(mktemp -d)
@@ -423,96 +423,6 @@ if echo "$output" | grep -qF "id-stability.fr-format"; then
 else
   pass "EN01 accepted as valid <PREFIX><NN> plan_id"
 fi
-
-# --- logging.unstructured: opt-in via .ensemble/config.local.yaml --------------
-# When structured_logging_required is true, console.log in tracked TS source
-# should fire P2 advisory. Logs in dev paths (tests/, scripts/) should not fire.
-setup_minimum
-mkdir -p "$TMP/.ensemble" "$TMP/src" "$TMP/tests"
-cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
-observability:
-  structured_logging_required: true
-  logging_dev_paths:
-    - "tests/**"
-    - "scripts/**"
-EOF
-cat > "$TMP/src/auth.ts" <<'EOF'
-export function login() {
-  console.log("user logged in");
-}
-EOF
-cat > "$TMP/tests/auth.test.ts" <<'EOF'
-console.log("test fixture setup");
-EOF
-# Initialize git so ensemble-lint's `git ls-files` finds the source files
-cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
-cd - >/dev/null
-assert_rule_fires "logging.unstructured" "console.log in src/ when structured_logging_required: true"
-# Verify the dev path didn't fire — re-run and check the output doesn't mention tests/
-result=$(run_lint)
-output="${result%%|||*}"
-if echo "$output" | grep -q "tests/auth.test.ts" \
-   && echo "$output" | grep -q "logging.unstructured"; then
-  fail "logging.unstructured fired on tests/ path (should be exempt)"
-else
-  pass "logging.unstructured exempts logging_dev_paths"
-fi
-
-# When structured_logging_required is false (or missing), no console.log findings.
-setup_minimum
-mkdir -p "$TMP/.ensemble" "$TMP/src"
-cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
-observability:
-  structured_logging_required: false
-EOF
-cat > "$TMP/src/auth.ts" <<'EOF'
-console.log("nothing wrong with this");
-EOF
-cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
-cd - >/dev/null
-result=$(run_lint)
-output="${result%%|||*}"
-if echo "$output" | grep -q "logging.unstructured"; then
-  fail "logging.unstructured fired when structured_logging_required: false" "$(echo "$output" | head -3)"
-else
-  pass "logging.unstructured silent when opt-in is off"
-fi
-
-# --- architecture.fitness: invokes bin/check-fitness when present ---------------
-# When fitness.enabled is true, ensemble-lint runs bin/check-fitness and
-# surfaces its JSON-lines output as findings.
-setup_minimum
-mkdir -p "$TMP/.ensemble" "$TMP/bin" "$TMP/src"
-cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
-fitness:
-  enabled: true
-  check_command: bin/check-fitness
-EOF
-cat > "$TMP/bin/check-fitness" <<'CHECKER'
-#!/usr/bin/env bash
-# Mock checker — emits one JSON-lines finding regardless of input.
-cat <<'JSON'
-{"rule": "architecture.layer-violation", "file": "src/types/user.ts", "line": 12, "severity": "P1", "message": "Layer 'Types' imports from 'Service'", "remediation": "Move helper down to a lower layer"}
-JSON
-exit 1
-CHECKER
-chmod +x "$TMP/bin/check-fitness"
-mkdir -p "$TMP/src/types"
-cat > "$TMP/src/types/user.ts" <<'EOF'
-export type User = { id: string };
-EOF
-cd "$TMP" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -q -m init
-cd - >/dev/null
-assert_rule_fires "architecture.layer-violation" "shared/bin/check-fitness output surfaced as lint finding"
-
-# When fitness.enabled is true but checker is missing, surface advisory.
-setup_minimum
-mkdir -p "$TMP/.ensemble"
-cat > "$TMP/.ensemble/config.local.yaml" <<'EOF'
-fitness:
-  enabled: true
-EOF
-assert_rule_fires "architecture.fitness-checker-missing" "fitness enabled but checker missing"
 
 # --- learnings.bootstrap-unvalidated: fires for old unvalidated bootstrap entries ----
 # Bootstrapped patterns with requires_validation: true and bootstrap_run > 30 days

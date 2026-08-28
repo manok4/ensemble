@@ -15,7 +15,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="frontmatter goldens"
 
-LINT="$REPO_ROOT/shared/bin/ensemble-lint"
+LINT="$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint"
 
 # Each entry: <fixture-relative-from-script-dir> <staged-path-in-tempdir> <expected-rule-or-empty>
 # Empty expected-rule means "should lint clean".
