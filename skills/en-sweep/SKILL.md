@@ -10,6 +10,7 @@ requires:
   - references/doc-lints.md
   - references/host-detect.md
   - references/learn-lint.md
+  - references/peer-contract.md
   - references/recursion-guard.md
   - references/research-dispatch.md
   - references/script-invocation.md
@@ -43,6 +44,11 @@ requires:
 Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Doc-only by contract; code-level findings go to `docs/plans/tech-debt-tracker.md`. Auto-merges its own PRs after `/en-review` (in `mode:report-only`) clears them.
 
 > **Strict scope: doc-only.** Sweep never modifies source code, configuration, tests, or any non-doc artifact. Enforced at runtime via `$SKILL_DIR/scripts/ensemble-doc-only-check`.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## When invoked
 

@@ -16,6 +16,7 @@ requires:
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
+  - references/peer-contract.md
   - references/peer-model-policy.md
   - references/persona-dispatch.md
   - references/plan-default-branch-checkpoint.md
@@ -54,6 +55,11 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 > **Priority principle (D39): performance > speed ≥ cost.** Optimize first for plan quality (does the plan lead to the right thing, built well), then for speed, then for token/tool cost. Research depth, peer-review iterations, and plan-content rigor are worth their cost when they lift build quality; keep them self-gating so lightweight work stays fast.
 
 > **Hard gate.** Plan only — no code, no commits, no PR. Output is a markdown plan file plus the peer-review verdict.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## Process
 

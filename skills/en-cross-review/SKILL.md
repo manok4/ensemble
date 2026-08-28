@@ -13,6 +13,7 @@ requires:
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
+  - references/peer-contract.md
   - references/peer-model-policy.md
   - references/persona-dispatch.md
   - references/recursion-guard.md
@@ -44,6 +45,11 @@ requires:
 
 
 Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host parses findings JSON and surfaces them; the host applies the user-selected ones.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## Process
 

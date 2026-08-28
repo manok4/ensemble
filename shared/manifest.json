@@ -447,6 +447,18 @@
       ]
     },
     {
+      "source": "references/peer-contract.md",
+      "dest": "references/",
+      "skills": [
+        "en-build",
+        "en-cross-review",
+        "en-foundation",
+        "en-plan",
+        "en-review",
+        "en-sweep"
+      ]
+    },
+    {
       "source": "references/peer-model-policy.md",
       "dest": "references/",
       "skills": [

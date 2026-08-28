@@ -24,6 +24,7 @@ requires:
   - references/learn-lint.md
   - references/learning-frontmatter-schema.md
   - references/outside-voice.md
+  - references/peer-contract.md
   - references/peer-model-policy.md
   - references/persona-dispatch.md
   - references/recursion-guard.md
@@ -64,6 +65,11 @@ requires:
 
 
 Multi-persona, confidence-gated code review **with the cross-agent peer on by default** (EN11). Host personas and the blind peer run concurrently; their findings reconcile into four explicit buckets.
+
+> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
+> object and its reason enum are defined once in `references/peer-contract.md`
+> and are byte-identical across every skill that exchanges findings. What this
+> skill *does* with a finding is its own policy, not part of that contract.
 
 ## Process
 
