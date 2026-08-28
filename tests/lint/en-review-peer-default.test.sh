@@ -20,14 +20,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-review peer default (EN11)"
 
-POLICY="$REPO_ROOT/shared/references/peer-model-policy.md"
-DISPATCH="$REPO_ROOT/shared/references/persona-dispatch.md"
-SCHEMA="$REPO_ROOT/shared/references/finding-schema.md"
+POLICY="$REPO_ROOT/skills/en-build/references/peer-model-policy.md"
+DISPATCH="$REPO_ROOT/skills/en-build/references/persona-dispatch.md"
+SCHEMA="$REPO_ROOT/skills/en-build/references/finding-schema.md"
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
-FLAGS="$REPO_ROOT/shared/bin/ensemble-peer-flags"
-INVOKE="$REPO_ROOT/shared/bin/ensemble-peer-invoke"
-CFGGET="$REPO_ROOT/shared/bin/ensemble-config-get"
+FLAGS="$REPO_ROOT/skills/en-build/scripts/ensemble-peer-flags"
+INVOKE="$REPO_ROOT/skills/en-build/scripts/ensemble-peer-invoke"
+CFGGET="$REPO_ROOT/skills/en-build/scripts/ensemble-config-get"
 SETUP="$REPO_ROOT/setup"
 
 has() {  # has <file> <fixed-string> <label>
@@ -40,7 +40,7 @@ hasnt() {
 # ============================================================
 # U1 — the policy reference
 # ============================================================
-assert_file_exists "$POLICY" "shared/references/peer-model-policy.md exists"
+assert_file_exists "$POLICY" "skills/en-build/references/peer-model-policy.md exists"
 
 for tier in '`high`' '`low`' '`medium`'; do
   has "$POLICY" "$tier" "policy names tier $tier"
@@ -108,7 +108,7 @@ fi
 # ============================================================
 # U2 — bin/ensemble-peer-flags (behavioral, the REAL executable)
 # ============================================================
-assert_file_exists "$FLAGS" "shared/bin/ensemble-peer-flags exists"
+assert_file_exists "$FLAGS" "skills/en-build/scripts/ensemble-peer-flags exists"
 
 pf() { "$FLAGS" --effort "$1" --peer-cmd "$2" ${3:+--model-alias "$3"} 2>/dev/null | tr '\n' ' '; }
 assert_eq "PEER_MODEL='--model sonnet' PEER_EFFORT='--effort medium' " \
@@ -151,7 +151,7 @@ rm -rf "$PT"
 # ============================================================
 # U9 — bin/ensemble-config-get (behavioral) + setup merge
 # ============================================================
-assert_file_exists "$CFGGET" "shared/bin/ensemble-config-get exists"
+assert_file_exists "$CFGGET" "skills/en-build/scripts/ensemble-config-get exists"
 
 CT=$(mktemp -d); mkdir -p "$CT/r/.ensemble" "$CT/h/.ensemble"
 cg() { "$CFGGET" "$@" --repo-root "$CT/r" --home "$CT/h"; }
@@ -256,7 +256,7 @@ fi
 # ============================================================
 # U8 — bin/ensemble-peer-invoke (behavioral; PROVES the retry contract)
 # ============================================================
-assert_file_exists "$INVOKE" "shared/bin/ensemble-peer-invoke exists"
+assert_file_exists "$INVOKE" "skills/en-build/scripts/ensemble-peer-invoke exists"
 
 IT=$(mktemp -d); echo "prompt" > "$IT/p"; CALLS="$IT/calls"; ARGV="$IT/argv"
 # Each stub records BOTH a call marker and its complete argv. Recording argv is

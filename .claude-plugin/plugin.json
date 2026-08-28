@@ -1,7 +1,7 @@
 {
   "name": "ensemble",
   "version": "0.1.0",
-  "description": "Host-agnostic product-development toolkit: 11 skills + 11 agents covering brainstorm → foundation → plan → build → review → qa → learn → ship, with cross-agent peer review (Claude Code ↔ Codex) and a compounding learning store.",
+  "description": "Host-agnostic product-development toolkit: 11 skills + 11 agents covering brainstorm \u2192 foundation \u2192 plan \u2192 build \u2192 review \u2192 qa \u2192 learn \u2192 ship, with cross-agent peer review (Claude Code \u2194 Codex) and a compounding learning store.",
   "author": {
     "name": "Mano Kulasingam",
     "url": "https://github.com/manok4"
@@ -18,6 +18,5 @@
     "ensemble"
   ],
   "skills": "./skills",
-  "agents": "./shared/agents",
   "hooks": "./hooks/hooks.json"
 }

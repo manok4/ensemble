@@ -7,8 +7,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-sweep CI fix"
 
-CI="$REPO_ROOT/shared/bin/en-sweep-ci"
-WF="$REPO_ROOT/shared/references/templates/github-workflow-en-sweep.yml"
+CI="$REPO_ROOT/skills/en-build/scripts/en-sweep-ci"
+WF="$REPO_ROOT/skills/en-setup/references/templates/github-workflow-en-sweep.yml"
 SETUP="$REPO_ROOT/skills/en-setup/SKILL.md"
 
 # --- syntax valid ---

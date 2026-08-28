@@ -44,7 +44,7 @@ check_source() {
   local script="$WORK/src-$shell-$helper-$fn.sh"
   cat > "$script" <<INNER
 set -u
-. "$REPO_ROOT/shared/bin/$helper"
+. "$REPO_ROOT/skills/en-review/scripts/$helper"
 if command -v $fn >/dev/null 2>&1 || typeset -f $fn >/dev/null 2>&1; then
   echo DEFINED
 fi
@@ -80,7 +80,7 @@ for shell in bash zsh; do
   command -v "$shell" >/dev/null 2>&1 || continue
   cat > "$WORK/nofilter-$shell.sh" <<INNER
 set -u
-. "$REPO_ROOT/shared/bin/ensemble-extract-json"
+. "$REPO_ROOT/skills/en-build/scripts/ensemble-extract-json"
 echo SOURCED_ONLY
 INNER
   out=$(printf 'stdin must not be consumed\n' | "$shell" "$WORK/nofilter-$shell.sh" 2>/dev/null)
@@ -90,7 +90,7 @@ done
 # ...but direct execution still must.
 for shell in bash zsh; do
   command -v "$shell" >/dev/null 2>&1 || continue
-  out=$(printf 'prefix {"a":1} suffix\n' | "$shell" "$REPO_ROOT/shared/bin/ensemble-extract-json" 2>/dev/null)
+  out=$(printf 'prefix {"a":1} suffix\n' | "$shell" "$REPO_ROOT/skills/en-build/scripts/ensemble-extract-json" 2>/dev/null)
   assert_contains "$out" '"a"' "[$shell] executing ensemble-extract-json still filters"
 done
 

@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="research evidence dossier"
 
-DISPATCH="$REPO_ROOT/shared/references/research-dispatch.md"
+DISPATCH="$REPO_ROOT/skills/en-brainstorm/references/research-dispatch.md"
 
 # --- central protocol documented ---
 if grep -qiE "Evidence dossier" "$DISPATCH"; then
@@ -37,7 +37,7 @@ fi
 
 # --- each of the three agents references the protocol ---
 for agent in repo-research learnings-research web-research; do
-  f="$REPO_ROOT/shared/agents/$agent.md"
+  f="$(ls "$REPO_ROOT"/skills/*/agents/"$agent".md 2>/dev/null | head -1)"
   if grep -qiE "Evidence dossier" "$f" && grep -qF "dossier_path" "$f"; then
     pass "$agent documents the dossier contract"
   else

@@ -12,8 +12,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build simplify gate"
 
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
-BUILD_ORCH="$REPO_ROOT/shared/references/build-orchestration.md"
-BUILD_HANDOFF="$REPO_ROOT/shared/references/build-handoff.md"
+BUILD_ORCH="$REPO_ROOT/skills/en-build/references/build-orchestration.md"
+BUILD_HANDOFF="$REPO_ROOT/skills/en-build/references/build-handoff.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- step 10.4: emits the simplify-verdict trailer with the outcome enum ---

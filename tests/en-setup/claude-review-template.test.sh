@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="claude-review action template"
 
-TEMPLATE="$REPO_ROOT/shared/references/templates/github-workflow-claude-review.yml"
+TEMPLATE="$REPO_ROOT/skills/en-setup/references/templates/github-workflow-claude-review.yml"
 
 # --- Template exists ---
 if [ -f "$TEMPLATE" ]; then

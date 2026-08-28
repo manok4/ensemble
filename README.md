@@ -347,15 +347,16 @@ For full process detail, mode flags, and reference files per skill, see [`docs/w
 |---|---|
 | `code-simplifier` | Per-unit cleanup pass during `/en-build`. Runs between gate 1 (tests pass) and gate 2 (re-verify after simplifier). On gate 2 failure, simplifier edits revert automatically. |
 
-For agent invariants, dispatch matrix, and per-agent prompts, see [`docs/workflow-and-catalog.md`](./docs/workflow-and-catalog.md) and [`shared/agents/`](./shared/agents).
+For agent invariants, dispatch matrix, and per-agent prompts, see [`docs/workflow-and-catalog.md`](./docs/workflow-and-catalog.md) and [`skills/*/agents/`](./skills).
 
 ---
 
 ## Repository layout
 
-Every skill directory is **self-contained**: it carries its own copy of every
-reference, template, script and agent it reads, so the folder works wherever it
-lands. Nothing inside a skill resolves a path above itself.
+Every skill directory is **self-contained**: it holds its own copy of every
+reference, template, script and agent it reads, and declares them in its own
+frontmatter. Nothing inside a skill resolves a path above itself, and there is no
+shared tree to keep in sync.
 
 ```
 ensemble/
@@ -363,59 +364,57 @@ ensemble/
 ├── .codex-plugin/                 # Codex plugin manifest
 ├── skills/                        # 17 skills (en-*)
 │   └── en-plan/                   # every skill has the same shape:
-│       ├── SKILL.md
+│       ├── SKILL.md               #   including a `requires:` list of what it needs
 │       ├── CONTRACT.md            #   what other skills may rely on (callable skills only)
-│       ├── references/            #   its own copies — generated + skill-owned
+│       ├── references/            #   its own references, briefs and templates
 │       ├── agents/                #   its own copies of the agents it dispatches
 │       └── scripts/               #   its own copies of the scripts it runs
-├── shared/                        # BUILD INPUT — never installed, never read at runtime
-│   ├── references/                #   42 files: canonical text with 2+ consumers
-│   ├── bin/                       #   15 scripts: ensemble-lint, ensemble-plan-hash, …
-│   ├── agents/                    #   11 agent definitions
-│   ├── manifest.json              #   which skill receives which file
-│   └── README.md                  #   how to work in here — read this before editing
-├── scripts/
-│   ├── sync-shared                # propagates shared/ into the skills that read it
-│   ├── check-health
-│   └── sync-to-codex
+├── scripts/                       # repo tooling only — check-health, sync-to-codex
 ├── hooks/                         # Optional SessionStart hook
 ├── docs/
 │   ├── foundation.md              # Full design (PRD + TDD + architecture intent)
-│   ├── workflow-and-catalog.md    # Scannable skill + agent reference
 │   ├── plans/                     # active/, completed/, tech-debt-tracker.md
 │   └── integrations/              # Anthropic + Codex code-review action setup
-├── tests/                         # 70 test files
+├── tests/
 ├── setup                          # Bash install script
 └── package.json
 ```
 
-## Editing shared material
+## Working on a skill
 
-Anything two or more skills read lives once in `shared/` and is copied into each
-consumer. There are 399 such copies. **Never edit a copy under `skills/`.** Edit
-the file in `shared/`, then propagate:
+**Edit the file where it lives.** A skill owns everything under its directory, so
+a change to `skills/en-plan/references/peer-brief.md` affects en-plan and nothing
+else. There is no propagation step.
 
-```bash
-scripts/sync-shared
+Two skills sometimes need the same file, and then the copies are genuinely
+duplicated. That is the trade this layout makes: a folder that works wherever it
+lands, at the cost of editing a file more than once when it is truly shared. In
+practice almost nothing is — after the EN13 prune, most references have exactly
+one consumer.
+
+### Adding a file to a skill
+
+Put it in the skill, then declare it:
+
+```yaml
+requires:
+  - references/my-new-reference.md
 ```
 
-One edit to `shared/references/host-detect.md` updates all 17 copies.
+`tests/lint/skill-payload.test.sh` fails if a skill carries a file it does not
+declare, declares one it does not carry, or declares a file that names another
+undeclared file. It replaced a scheme that inferred dependencies by scanning
+text, which was wrong in five distinct ways — a mention is not a dependency, and
+no pattern reliably tells them apart. So the skill states its own.
 
-`scripts/sync-shared --check` verifies without writing. It fails when a
-generated copy has drifted, when a skill names a relative path with no file
-behind it, and when the manifest grants a file to a skill that never reads it.
-That check runs in CI and in `./setup`, which refuses to install a tree whose
-copies are stale rather than shipping a mixture of old and new.
+### The one thing that must stay identical
 
-If you edit a copy by mistake, the check tells you where to go instead:
-
-```
-✗ drift: skills/en-plan/references/severity.md differs from shared/references/severity.md
-✗        do not edit the generated copy — change shared/references/severity.md, then run scripts/sync-shared
-```
-
-Adding a consumer is one line in `shared/manifest.json` plus a sync. Full
-details in [`shared/README.md`](./shared/README.md).
+`references/peer-contract.md` is the wire format for peer review: severity,
+confidence, the autofix classes, and the `peer_decision` object. A peer emits P1
+and a host parses P1, so every copy must agree exactly.
+`tests/parity/peer-contract-parity.test.sh` enforces that, and also enforces the
+opposite where the opposite is right — each skill's `peer-brief.md` is meant to
+differ, and pinning those would be a bug.
 
 ---
 
@@ -452,7 +451,7 @@ sweep:
   max_drafts_per_run: 3
 ```
 
-Full schema in [`shared/references/templates/config-local-example.yaml`](./shared/references/templates/config-local-example.yaml).
+Full schema in [`skills/en-setup/references/templates/config-local-example.yaml`](./skills/en-setup/references/templates/config-local-example.yaml).
 
 ---
 

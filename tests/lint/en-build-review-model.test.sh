@@ -11,7 +11,7 @@ SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
 EN_REVIEW="$REPO_ROOT/skills/en-review/SKILL.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 EN_LOOP="$REPO_ROOT/skills/en-loop/SKILL.md"
-VERIFY="$REPO_ROOT/shared/bin/ensemble-verify-peer-evidence"
+VERIFY="$REPO_ROOT/skills/en-build/scripts/ensemble-verify-peer-evidence"
 
 # --- post-build phase exists ---
 if grep -qiE "Post-build phase" "$SKILL"; then

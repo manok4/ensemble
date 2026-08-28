@@ -22,7 +22,7 @@ if [ -f "$CHECKPOINT_REF" ]; then
 else
   fail "skills/en-plan/references/plan-default-branch-checkpoint.md must exist (checkpoint body lives there)"
 fi
-CONFIG_EXAMPLE="$REPO_ROOT/shared/references/templates/config-local-example.yaml"
+CONFIG_EXAMPLE="$REPO_ROOT/skills/en-setup/references/templates/config-local-example.yaml"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- Default-branch checkpoint heading exists ---

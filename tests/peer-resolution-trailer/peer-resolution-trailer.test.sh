@@ -160,8 +160,8 @@ else
 fi
 
 # --- Both reference docs include the trailer format example (no drift) ---
-HANDOFF_DOC="$REPO_ROOT/shared/references/build-handoff.md"
-ORCH_DOC="$REPO_ROOT/shared/references/build-orchestration.md"
+HANDOFF_DOC="$REPO_ROOT/skills/en-build/references/build-handoff.md"
+ORCH_DOC="$REPO_ROOT/skills/en-build/references/build-orchestration.md"
 
 if grep -q "^peer-resolution: " "$HANDOFF_DOC"; then
   pass "build-handoff.md includes peer-resolution: trailer example"
@@ -300,8 +300,8 @@ fi
 # "Not logged in · Please run /login" on subscription-only hosts. So we
 # CANNOT use --bare; we use weaker isolation flags that are auth-compatible.
 
-OUTSIDE_VOICE="${REPO_ROOT}/shared/references/outside-voice.md"
-HELPER="${REPO_ROOT}/shared/bin/ensemble-build-peer-prompt"
+OUTSIDE_VOICE="${REPO_ROOT}/skills/en-build/references/outside-voice.md"
+HELPER="${REPO_ROOT}/skills/en-build/scripts/ensemble-build-peer-prompt"
 
 # 1. Both build-handoff and outside-voice document piping helper-stdout
 #    directly into the peer command (no `prompt=$(...)` capture).
@@ -458,13 +458,13 @@ fi
 
 # === Verify-peer-evidence gate (PR #14: fail-closed peer enforcement) ===
 
-VERIFY_HELPER="${REPO_ROOT}/shared/bin/ensemble-verify-peer-evidence"
+VERIFY_HELPER="${REPO_ROOT}/skills/en-build/scripts/ensemble-verify-peer-evidence"
 
 # 10. The verify helper exists and is executable.
 if [ -x "$VERIFY_HELPER" ]; then
-  pass "shared/bin/ensemble-verify-peer-evidence exists and is executable"
+  pass "skills/en-build/scripts/ensemble-verify-peer-evidence exists and is executable"
 else
-  fail "shared/bin/ensemble-verify-peer-evidence must exist and be executable"
+  fail "skills/en-build/scripts/ensemble-verify-peer-evidence must exist and be executable"
 fi
 
 # 11. peer-skipped trailer schema documented in build-handoff with the
@@ -540,7 +540,7 @@ fi
 # per-finding peer-resolution: trailers.
 
 # 19. peer-verdict: trailer documented in both reference docs and SKILL.md.
-for doc in "$HANDOFF_DOC" "${REPO_ROOT}/shared/references/build-orchestration.md" "$SKILL"; do
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/skills/en-build/references/build-orchestration.md" "$SKILL"; do
   doc_name=$(basename "$doc")
   if grep -qF "peer-verdict:" "$doc"; then
     pass "[$doc_name] documents peer-verdict: trailer"
@@ -714,7 +714,7 @@ done
 # which the planning LLM read too liberally. New bar: gated is for
 # production-state-changing units only.
 
-PLAN_TEMPLATE="${REPO_ROOT}/shared/references/templates/plan-template.md"
+PLAN_TEMPLATE="${REPO_ROOT}/skills/en-build/references/templates/plan-template.md"
 
 # A. The vague "any non-destructive unit" catch-all is GONE.
 if grep -qE "any non-destructive unit that needs explicit confirmation" "$PLAN_TEMPLATE"; then
@@ -790,10 +790,13 @@ fi
 # I. The helper script's PLAN_REVIEW_DIMENSIONS substitution carries the
 #    same instruction (so peer calls dispatched via the helper get the
 #    challenge-over-gating language).
-if grep -qiE "(challenge gated|flag.*gated:true.*internal/UI|over-gating)" "$HELPER"; then
-  pass "ensemble-build-peer-prompt PLAN_REVIEW_DIMENSIONS challenges over-gating"
+# EN13 U5 moved the review dimensions out of the helper and into en-plan's own
+# brief, so this assertion follows them. Only the location changed.
+PLAN_BRIEF="${REPO_ROOT}/skills/en-plan/references/peer-brief.md"
+if grep -qiE "(challenge gated|flag.*gated:true.*internal/UI|over-gating)" "$PLAN_BRIEF"; then
+  pass "en-plan's peer brief challenges over-gating"
 else
-  fail "ensemble-build-peer-prompt PLAN_REVIEW_DIMENSIONS should challenge over-gating"
+  fail "en-plan's peer brief should challenge over-gating"
 fi
 
 # J. en-plan SKILL.md's per-unit gated guidance matches the new bar.
@@ -813,23 +816,23 @@ fi
 #    old "admin endpoints / flag flips / rate-limited APIs" phrasing
 #    (PR #17 review found the lint script was still recommending the old
 #    bar on missing-Gated violations, undoing the tightening).
-LINT_SCRIPT="${REPO_ROOT}/shared/bin/ensemble-lint"
+LINT_SCRIPT="${REPO_ROOT}/skills/en-setup/references/templates/ensemble-lint"
 # Old phrasing that must NOT appear in the suggestion text.
 if grep -qE 'admin endpoints[[:space:]]*/[[:space:]]*flag flips[[:space:]]*/[[:space:]]*rate-limited APIs' "$LINT_SCRIPT"; then
-  fail "shared/bin/ensemble-lint still uses the old gated suggestion (admin endpoints / flag flips / rate-limited APIs) — that contradicts the tightened criteria"
+  fail "skills/en-setup/references/templates/ensemble-lint still uses the old gated suggestion (admin endpoints / flag flips / rate-limited APIs) — that contradicts the tightened criteria"
 else
-  pass "shared/bin/ensemble-lint no longer uses the old gated suggestion language"
+  pass "skills/en-setup/references/templates/ensemble-lint no longer uses the old gated suggestion language"
 fi
 # New phrasing must reference the production-state criterion AND point at the canonical doc.
 if grep -qF "production user state or external system state" "$LINT_SCRIPT"; then
-  pass "shared/bin/ensemble-lint suggestion references the production-state criterion"
+  pass "skills/en-setup/references/templates/ensemble-lint suggestion references the production-state criterion"
 else
-  fail "shared/bin/ensemble-lint gated suggestion should reference 'production user state or external system state'"
+  fail "skills/en-setup/references/templates/ensemble-lint gated suggestion should reference 'production user state or external system state'"
 fi
 if grep -qF "references/templates/plan-template.md" "$LINT_SCRIPT"; then
-  pass "shared/bin/ensemble-lint suggestion points at plan-template.md for full criteria"
+  pass "skills/en-setup/references/templates/ensemble-lint suggestion points at plan-template.md for full criteria"
 else
-  fail "shared/bin/ensemble-lint gated suggestion should point at references/templates/plan-template.md"
+  fail "skills/en-setup/references/templates/ensemble-lint gated suggestion should point at references/templates/plan-template.md"
 fi
 
 # 32. en-setup advisory is non-blocking (per the resolved open question).

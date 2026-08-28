@@ -31,7 +31,7 @@ jobs:
           done
 
       - name: Run lint on docs/
-        run: shared/bin/ensemble-lint --scope docs/
+        run: skills/en-setup/references/templates/ensemble-lint --scope docs/
 
       - name: Run test suite
         run: ./tests/run.sh

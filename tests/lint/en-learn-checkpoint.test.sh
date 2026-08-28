@@ -12,7 +12,7 @@ TEST_NAME="en-learn checkpoint"
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
 EN_QA="$REPO_ROOT/skills/en-qa/SKILL.md"
 EN_LEARN="$REPO_ROOT/skills/en-learn/SKILL.md"
-LOG_FORMAT="$REPO_ROOT/shared/references/learn-log-format.md"
+LOG_FORMAT="$REPO_ROOT/skills/en-learn/references/learn-log-format.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- en-build completion has a learning checkpoint ---

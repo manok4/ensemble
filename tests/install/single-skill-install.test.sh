@@ -23,13 +23,13 @@ trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 # --- the full install still publishes the same agent set ---
 ( cd "$REPO_ROOT" && HOME="$WORK/full" ./setup --host claude --copy --quiet ) >/dev/null 2>&1
 published=$(ls "$WORK/full/.claude/agents" 2>/dev/null | sort | tr '\n' ' ')
-canonical=$(ls "$REPO_ROOT/shared/agents" | sort | tr '\n' ' ')
+canonical=$(ls "$REPO_ROOT"/skills/*/agents/*.md | xargs -n1 basename | sort -u | tr '\n' ' ')
 assert_eq "$canonical" "$published" "publishing from skills yields the canonical agent set"
 
 # Order-independent: the union has one copy per name, byte-identical to source.
 dupe_mismatch=""
 for a in "$WORK/full/.claude/agents"/*.md; do
-  cmp -s "$a" "$REPO_ROOT/shared/agents/$(basename "$a")" || dupe_mismatch="$dupe_mismatch $(basename "$a")"
+  cmp -s "$a" "$(ls "$REPO_ROOT"/skills/*/agents/"$(basename "$a")" | head -1)" || dupe_mismatch="$dupe_mismatch $(basename "$a")"
 done
 assert_eq "" "$dupe_mismatch" "every published agent is byte-identical to its canonical source"
 

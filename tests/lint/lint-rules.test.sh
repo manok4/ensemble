@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="lint rules"
 
-LINT="$REPO_ROOT/shared/bin/ensemble-lint"
+LINT="$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint"
 
 # Setup: tempdir mirroring repo layout
 TMP=$(mktemp -d)

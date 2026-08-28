@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="root doc links"
 cd "$REPO_ROOT"
 
-for doc in README.md CONTRIBUTING.md CHANGELOG.md shared/README.md; do
+for doc in README.md CONTRIBUTING.md CHANGELOG.md; do
   [ -f "$doc" ] || continue
   broken=""
   # Markdown links to a repo-relative path: ](./x) and ](x/y). Skip URLs,
@@ -37,17 +37,17 @@ done
 # The README must not describe the pre-EN12 layout: those directories are gone,
 # and pointing an editor at them is how the single-edit-point scheme gets
 # bypassed.
-for stale in '](./references' '](./bin' '](./agents/'; do
+for stale in '](./references' '](./bin' '](./agents/' '](./shared'; do
   if grep -qF "$stale" README.md; then
-    fail "README links to a path that moved under shared/: $stale"
+    fail "README links to a path that no longer exists: $stale"
   else
     pass "README does not link to the pre-EN12 location $stale"
   fi
 done
 
 # And it must say where shared material is edited.
-grep -q 'scripts/sync-shared' README.md \
-  && pass "README tells contributors how to propagate a shared edit" \
-  || fail "README must document scripts/sync-shared"
+grep -q 'requires:' README.md \
+  && pass "README tells contributors how to declare a skill's files" \
+  || fail "README must document the requires: declaration"
 
 report
