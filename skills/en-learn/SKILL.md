@@ -6,6 +6,7 @@ description: "Compounding wiki maintainer for docs/learnings/. Capture is gated:
 requires:
   - agents/learnings-research.md
   - agents/repo-research.md
+  - references/adr-format.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
   - references/artifact-types.md
@@ -22,6 +23,7 @@ requires:
   - references/peer-contract.md
   - references/research-dispatch.md
   - references/templates/architecture-template.md
+  - references/templates/adr-template.md
   - references/templates/context-template.md
   - references/templates/learning-template.md
 
