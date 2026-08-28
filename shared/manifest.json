@@ -168,21 +168,6 @@
       ]
     },
     {
-      "source": "bin/ensemble-lint",
-      "dest": "scripts/",
-      "skills": [
-        "en-brainstorm",
-        "en-build",
-        "en-cross-review",
-        "en-foundation",
-        "en-learn",
-        "en-plan",
-        "en-review",
-        "en-setup",
-        "en-sweep"
-      ]
-    },
-    {
       "source": "bin/ensemble-peer-flags",
       "dest": "scripts/",
       "skills": [

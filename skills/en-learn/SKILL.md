@@ -20,7 +20,6 @@ requires:
   - references/research-dispatch.md
   - references/templates/architecture-template.md
   - references/templates/learning-template.md
-  - scripts/ensemble-lint
 
 ---
 

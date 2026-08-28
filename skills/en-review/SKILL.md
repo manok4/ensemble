@@ -49,7 +49,6 @@ requires:
   - scripts/ensemble-detect-host
   - scripts/ensemble-doc-only-check
   - scripts/ensemble-extract-json
-  - scripts/ensemble-lint
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
   - scripts/ensemble-verify-peer-evidence
@@ -120,7 +119,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
-6. **Pre-flight lint.** Run `$SKILL_DIR/scripts/ensemble-lint --scope docs/` and `$SKILL_DIR/scripts/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
+6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` and `bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
 7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
 
    **Peer-only short-circuit (`--peer-only`).** If `--peer-only` is set, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** — the sole reviewer is the cross-agent Outside Voice peer (step 9). This is the mode `/en-build`'s post-build phase uses: the host implemented the code, so review must come from the *other* agent, with no host-side personas. `--peer-only` and `--lite` are mutually exclusive (lite is a host-persona roster; peer-only has no host personas) — if both are passed, `--peer-only` wins. Proceed directly to step 9.

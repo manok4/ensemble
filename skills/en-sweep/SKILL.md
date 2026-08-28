@@ -26,7 +26,6 @@ requires:
   - scripts/en-sweep-ci
   - scripts/ensemble-detect-host
   - scripts/ensemble-doc-only-check
-  - scripts/ensemble-lint
   - scripts/ensemble-sweep-activity-check
   - scripts/triage-findings
 
@@ -67,7 +66,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 1. **Detect host.** Source `references/host-detect.md`. CI runner determines which CLI is available.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The CI workflow enforces Guards 1, 2, 3, 5 before the skill runs; Guard 4 (no-material-diff) fires inside the skill at step 9.
-4. **Run file-shape lint.** `$SKILL_DIR/scripts/ensemble-lint --json --scope docs/`. Capture violations.
+4. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
 5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
 6. **Architecture drift check.** Dispatch `repo-research` to compare `docs/architecture.md` against the codebase:
    - Documented components still present?
@@ -175,7 +174,7 @@ Otherwise: PR stays open for human resolution.
 - `references/templates/github-workflow-en-sweep.yml` — installed workflow
 - `$SKILL_DIR/scripts/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
 - `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
-- `$SKILL_DIR/scripts/ensemble-lint` — file-shape lint runner
+- `bin/ensemble-lint` — file-shape lint runner
 - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
 
 ## Failure protocol

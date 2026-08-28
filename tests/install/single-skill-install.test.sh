@@ -67,13 +67,18 @@ a="$ISO/en-review/agents/correctness-reviewer.md"
   && pass "the bundled agent definition is complete enough to dispatch from" \
   || fail "the bundled agent definition is complete enough to dispatch from"
 
-# Its bundled scripts run from the isolated copy, with cwd somewhere unrelated.
-if [ -x "$ISO/en-review/scripts/ensemble-lint" ]; then
-  out=$(cd "$WORK" && "$ISO/en-review/scripts/ensemble-lint" --help 2>&1 | head -1)
-  assert_contains "$out" "ensemble-lint" "a bundled script runs from the isolated copy with an unrelated cwd"
+# A bundled script still runs from the isolated copy, with cwd elsewhere.
+# ensemble-lint is deliberately NOT one: U8 made it a project deliverable that
+# en-setup installs into the consuming repo, so no skill carries it.
+if [ -d "$ISO/en-review/scripts" ] && [ -n "$(ls -A "$ISO/en-review/scripts" 2>/dev/null)" ]; then
+  first="$(ls "$ISO/en-review/scripts" | head -1)"
+  out=$(cd "$WORK" && "$ISO/en-review/scripts/$first" --help 2>&1 </dev/null | head -1)
+  [ -n "$out" ] && pass "a bundled script runs from the isolated copy with an unrelated cwd" \
+                || fail "a bundled script runs from the isolated copy with an unrelated cwd"
 else
-  fail "the lone skill carries an executable ensemble-lint"
+  pass "en-review bundles no scripts (its linter is a project deliverable)"
 fi
+assert_file_missing "$ISO/en-review/scripts/ensemble-lint" "no skill bundles the linter; en-setup installs it into the project"
 
 # Nothing inside it climbs out.
 escapes=$(grep -rlE '\$ENSEMBLE_ROOT|\.\./\.\.' "$ISO/en-review" 2>/dev/null | head -3 || true)

@@ -34,7 +34,6 @@ requires:
   - scripts/ensemble-config-get
   - scripts/ensemble-detect-host
   - scripts/ensemble-extract-json
-  - scripts/ensemble-lint
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
   - scripts/ensemble-plan-hash
@@ -265,7 +264,7 @@ If `docs/foundation.md` doesn't exist yet (the user is using `/en-plan` before `
 
 - Set `covers_requirements: []` and `requirements_pending: true` in the plan's frontmatter.
 - Surface the gap: "No `docs/foundation.md` yet. Plan will reference requirements as `requirements_pending: true`. Run `/en-foundation --retrofit` later to back-fill R-IDs."
-- `$SKILL_DIR/scripts/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
+- `bin/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
 
 ## Output
 

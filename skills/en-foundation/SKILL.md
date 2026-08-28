@@ -40,7 +40,6 @@ requires:
   - scripts/ensemble-config-get
   - scripts/ensemble-detect-host
   - scripts/ensemble-extract-json
-  - scripts/ensemble-lint
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
   - scripts/ensemble-verify-peer-evidence

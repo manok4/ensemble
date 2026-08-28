@@ -18,6 +18,7 @@ requires:
   - references/templates/agents-md-template.md
   - references/templates/claude-md-template.md
   - references/templates/config-local-example.yaml
+  - references/templates/ensemble-lint
   - references/templates/github-workflow-claude-review.yml
   - references/templates/github-workflow-en-sweep.yml
   - references/templates/review-md-template.md
@@ -25,7 +26,6 @@ requires:
   - scripts/ensemble-classify-plans
   - scripts/ensemble-detect-host
   - scripts/ensemble-doc-only-check
-  - scripts/ensemble-lint
   - scripts/ensemble-sweep-activity-check
 
 ---
@@ -118,12 +118,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Optionally `docs/learnings/archive/` — ask the user.
 
    This step is verified again in the final-verification phase (step 17). Both checks must pass.
-9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these four scripts from the plugin's `bin/` into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
    - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
    - `$SKILL_DIR/scripts/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
-   - `$SKILL_DIR/scripts/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
+   - `bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
 
    **Resolving the script path.** This skill carries the scripts it installs in its own `scripts/` directory, so there is nothing to discover: anchor to the skill directory as `references/script-invocation.md` describes. `${ENSEMBLE_PLUGIN_DIR:-}` is still honored when set, for a caller that deliberately points at another install.
 
