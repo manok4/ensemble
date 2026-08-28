@@ -14,7 +14,13 @@ apply twice the same way.
 | **Term** | `docs/CONTEXT.md` | An entry in one shared file: definition, retired synonyms | Amended in place; the file accretes |
 | **Decision** | `docs/decisions/NNNN-<slug>.md` | Title states the claim; no frontmatter; invariants section | Append-only; amended by dated `## Update` sections |
 | **Solution** | `docs/learnings/<slug>-<date>.md` | Six-field frontmatter; one paragraph until it earns more | Goes stale against the code; refreshed |
-| *(ingested)* | `docs/learnings/sources/<slug>-<date>.md` | Solution shape plus `source_type` / `source_uri` / `fetched` | Written by `ingest`, not by capture |
+
+Three types, not four. External material used to have a fourth,
+a summary filed under its own directory. It was removed because a summary of
+something lookupable is a second copy that goes stale and competes with the
+source it summarises. What
+this repository taught is not lookupable, which is the whole reason it is worth
+storing.
 
 ## The gate runs first
 

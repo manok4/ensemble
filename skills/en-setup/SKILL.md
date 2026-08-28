@@ -119,8 +119,6 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
      decisions/            <- ADRs, NNNN-<slug>.md
      plans/{active,completed}/
      learnings/            <- solutions sit flat here
-     learnings/sources/    <- ingested material only
-     references/
      generated/
      designs/
    ```
@@ -225,12 +223,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | Artifact | Check |
     |---|---|
     | `docs/plans/{active,completed}/` | both directories exist |
-    | `docs/learnings/` and `docs/learnings/sources/` | both exist |
+    | `docs/learnings/` | exists |
     | `docs/decisions/` | exists |
     | `docs/CONTEXT.md` | exists and carries the flagged-ambiguities tail |
     | `docs/learnings/{index.md,log.md}` | both files exist |
     | `docs/generated/{plan-index.md,learning-index.md}` | both files exist with `generated: true` frontmatter |
-    | `docs/{references,designs}/` | both directories exist |
+    | `docs/designs/` | exists |
     | `AGENTS.md` | exists; contains the Ensemble pointer-map section marker |
     | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
@@ -345,7 +343,6 @@ Created:
   - docs/plans/completed/
   - docs/CONTEXT.md
   - docs/decisions/
-  - docs/learnings/ (solutions, flat) and docs/learnings/sources/
   - docs/learnings/{index.md,log.md}
   - docs/generated/{plan-index.md,learning-index.md}
   - CLAUDE.md (from template)

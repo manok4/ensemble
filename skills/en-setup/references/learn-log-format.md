@@ -19,7 +19,6 @@ updated: YYYY-MM-DD
 ## [2026-04-28] capture | Single-flight cache for per-user side-effecting operations | 4b0424d
 ## [2026-04-27] ingest-url | OpenAI harness-engineering essay summary
 ## [2026-04-26] capture | Refresh token race when two requests arrive within rotation window | 7caca49
-## [2026-04-25] pack | drizzle-orm
 ## [2026-04-24] lint-fix | Repaired 3 missing back-refs
 ## [2026-04-23] refresh | Archived 2 entries; updated 4
 ## [2026-04-22] capture-from-conversation | Plan-vs-reality drift in FR03
@@ -42,7 +41,6 @@ Legacy entries without `| <head-sha>` continue to parse. The en-ship checkpoint 
 | `[YYYY-MM-DD]` | yes | Date in brackets; immutable after write |
 | `<op>` | yes | One of the operations below |
 | ` \| ` | yes | Pipe separator |
-| `<subject>` | yes | Short description; usually the page's `title:` for capture/ingest, the action for lint/refresh/pack |
 
 ## `<op>` values
 
@@ -52,7 +50,6 @@ Legacy entries without `| <head-sha>` continue to parse. The en-ship checkpoint 
 | `capture-from-conversation` | `en-learn capture --from-conversation` (synthesis-driven) |
 | `ingest-file` | `en-learn ingest <path>` |
 | `ingest-url` | `en-learn ingest <url>` |
-| `pack` | `en-learn --pack <library>` |
 | `refresh` | `en-learn --refresh` (audit pass) |
 | `lint-fix` | `en-learn --lint --fix` (auto-repair pass) |
 | `archive` | Page moved to `archive/` (during refresh) |

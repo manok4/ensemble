@@ -32,7 +32,7 @@ The retired directories map onto artifact types, not onto one flat store:
 |---|---|---|
 | `bugs/`, `patterns/` | `docs/learnings/<slug>-<date>.md` | Solved problems; solution shape |
 | `decisions/` | `docs/decisions/NNNN-<slug>.md` | Decisions; ADR shape |
-| `sources/` | **untouched** | Ingested material, already correct |
+| `sources/` | `docs/learnings/<slug>-<date>.md` | Ingest was removed; nothing produces these any more |
 
 **Legacy decisions become ADRs.** Flattening them into `docs/learnings/` would
 preserve the files and destroy their artifact semantics, which is the entire
@@ -44,6 +44,14 @@ read `adr-format.md`.
 whose type is genuinely ambiguous stays where it is and is reported for
 classification. A wrong silent classification is the failure mode that loses
 knowledge: the file survives, and it is filed as something it is not.
+
+**`sources/` flattens too.** It held summaries of external material, and the
+`ingest` mode that produced them was removed: a summary of something lookupable
+is a second copy that goes stale and competes with the source it summarises.
+Existing entries are not discarded — they move to the flat store as solutions,
+with their `source_uri` kept in the body as a citation, so the **provenance
+survives** even though the field does not. After migration there is one store,
+not two.
 
 ## 3. Move — one entry at a time, restartable
 

@@ -17,7 +17,7 @@ peer_review_verdict: revise
 peer_review_overridden: cap-hit-accepted-by-user
 peer_review_iterations: 2
 peer_review_last_run: 2026-08-28
-peer_review_plan_hash: 9366091b2f376580e42a1271ca0d1eb531cc4f0b08ed4668c9676da6deec3c43
+peer_review_plan_hash: 030c43f5be2db61070725195498bd3340da953c0e02f5396a2c9b5ac9d620e85
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -541,6 +541,36 @@ that depends on it.
   - The retrofit follow-up suggestion points at `docs/CONTEXT.md` seeding rather than at the removed mode.
   - Negative control: reintroduce a `--bootstrap-patterns` mention, confirm red. Reintroduce `confidence:` in a mode's emitted frontmatter, confirm red. Restore a carrier file without its declaration, confirm red.
 - **Verification:** full suite green; `ensemble-lint --scope docs/` clean; `skill-payload` and both parity suites pass.
+
+### U16. Remove `ingest` and `--pack`; en-learn captures from this repo only
+
+- **Goal:** `en-learn` writes only what this repository taught, and the artifact types reduce to three.
+- **Requirements covered:** none.
+- **Dependencies:** U15.
+- **Files:** `skills/en-learn/SKILL.md`, `skills/en-learn/references/{learn-ingest.md,pack-reference-template.md}` (deleted), `skills/{en-learn,en-review}/references/learning-frontmatter-schema.md`, `skills/{en-learn,en-setup}/references/learn-log-format.md`, `skills/en-learn/references/{artifact-types.md,learn-index-format.md}`, `skills/en-setup/SKILL.md`, `skills/{en-foundation,en-setup}/references/templates/agents-md-template.md`, `skills/{en-sweep,en-review}/references/sweep-checks.md`, `skills/en-setup/references/templates/ensemble-lint`, `docs/foundation.md`, `docs/workflow-and-catalog.md`, and the affected tests and fixtures.
+- **Approach:** External material is lookupable on demand; a summary of it in the store is a second copy that goes stale and competes with the source. `en-learn`'s value is what **this repository** taught — the constraint someone hit, the alternative that was rejected, the word that means something specific here — none of which is recoverable by looking anything up.
+
+  Removing a mode removes what only it produced. `ingest` was the sole producer of `docs/learnings/sources/`, so that directory goes and the artifact types reduce from four to three; `source_type`, `source_uri`, and `fetched` leave the frontmatter, which becomes six fields with no variant. `--pack` was the sole producer of `docs/references/`, so the directory, its `AGENTS.md` pointer row, and its scaffolding go with it — leaving a consumer pointed at a directory nothing fills would be worse than removing both.
+
+  `web-research` is untouched: `en-learn` never declared it, and `en-plan`, `en-brainstorm`, and `en-foundation` still dispatch it during research, where looking something up is the point.
+
+  Evidence: across three real projects holding 181 entries, there are **zero** source entries and **zero** packs. Both modes shipped and neither was ever used.
+- **Risk:** medium
+- **Category:** removal
+- **Reversibility:** reversible
+- **Gated:** false
+- **Execution note:** test-first
+- **Test scenarios:**
+  - No skill file references `ingest`, `--pack`, `learnings/sources`, `docs/references/`, `source_type`, `source_uri`, or `fetched`.
+  - Neither deleted reference has a carrier or a `requires:` declaration.
+  - `en-learn` has exactly four modes, and the artifact-type table lists exactly three types.
+  - The frontmatter schema has six required fields and **no** conditional variant.
+  - The index format has no `Sources` section.
+  - `en-setup` scaffolds neither `docs/learnings/sources/` nor `docs/references/`, and the verification checklist matches.
+  - The `AGENTS.md` template has no external-library-references row pointing at a directory nothing produces.
+  - `web-research` survives in the three skills that still dispatch it.
+  - Negative control: reintroduce each removed mode, path, and frontmatter field in turn; confirm each goes red.
+- **Verification:** full suite green; `ensemble-lint --scope docs/` clean; `skill-payload` and all parity suites pass.
 
 ## Decisions, assumptions & risks
 

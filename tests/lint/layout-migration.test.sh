@@ -33,7 +33,7 @@ assert_file_exists "$REF" "the migration reference exists"
 assert_file_exists "$FIX/docs/learnings/patterns/single-flight-2026-03-20.md" "fixture: patterns entry"
 assert_file_exists "$FIX/docs/learnings/bugs/single-flight-2026-03-20.md"     "fixture: colliding basename"
 assert_file_exists "$FIX/docs/learnings/decisions/drizzle-over-prisma-2026-02-10.md" "fixture: legacy decision"
-assert_file_exists "$FIX/docs/learnings/sources/openai-harness-2026-04-20.md" "fixture: ingested source"
+assert_file_exists "$FIX/docs/learnings/sources/openai-harness-2026-04-20.md" "fixture: a legacy ingested source to flatten"
 
 n=$(find "$FIX/docs/learnings" -name '*.md' | wc -l | tr -d ' ')
 assert_eq "$n" "5" "the fixture store holds five entries"
@@ -67,9 +67,12 @@ flat "$REF" | grep -qi 'surfaced.*rather than guessed\|cannot be.*confidently' \
   || fail "an unconvertible decision is surfaced, not guessed"
 
 # --- sources are untouched ---------------------------------------------------
-flat "$REF" | grep -qi 'sources.*untouched\|untouched.*sources' \
-  && pass "ingested sources keep their path" \
-  || fail "ingested sources keep their path"
+# sources/ used to be left alone. With ingest removed nothing produces those
+# entries any more, so leaving the directory behind would strand a second store
+# nothing writes to and the layout no longer defines.
+flat "$REF" | grep -qi 'sources.*flattens too\|provenance survives' \
+  && pass "sources flatten into the one store, provenance preserved in the body" \
+  || fail "sources flatten into the one store, provenance preserved in the body"
 
 # --- cross-references are rewritten -----------------------------------------
 # related: paths embed the category segment; a move without a rewrite leaves
@@ -148,7 +151,7 @@ sed -n '/^## Modes/,/^## Always-on/p' "$SKILL" | grep -q '`--migrate`' \
   || fail "--migrate appears in the modes table"
 
 # One procedure, two entry points. Two descriptions would drift.
-sed -n '/^## Process — Mode F: `--migrate`/,$p' "$SKILL" | grep -q 'references/layout-migration.md' \
+sed -n '/^## Process — Mode D: `--migrate`/,$p' "$SKILL" | grep -q 'references/layout-migration.md' \
   && pass "the mode reads the same reference capture reads" \
   || fail "the mode reads the same reference capture reads"
 

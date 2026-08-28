@@ -37,15 +37,6 @@ line per term, no link target of its own — the glossary is a single file.
 - [`single-flight-cache-2026-03-20.md`](./single-flight-cache-2026-03-20.md) — Single-flight cache for per-user side-effecting operations. (related: 3)
 - [`refresh-token-race-2026-04-15.md`](./refresh-token-race-2026-04-15.md) — Refresh token race when two requests arrive within the rotation window. (related: 2)
 
-## Sources
-
-- [`sources/openai-harness-engineering-2026-04-20.md`](./sources/openai-harness-engineering-2026-04-20.md) — OpenAI harness-engineering essay summary. (related: 4)
-```
-
-Sections are ordered by durability — `term > decision > solution`, the same
-ordering the router uses — so the most durable material is what a reader meets
-first.
-
 ## Entry format
 
 Each line follows the pattern:
@@ -108,13 +99,6 @@ _(no entries yet)_
 ## Solutions
 
 _(no entries yet)_
-
-## Sources
-
-_(no entries yet)_
-```
-
-`/en-setup` State 2 seeds this when creating `docs/learnings/`.
 
 ## Lint rule
 

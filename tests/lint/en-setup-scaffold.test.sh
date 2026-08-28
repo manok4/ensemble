@@ -25,7 +25,7 @@ flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 # left these green.
 SKEL=$(awk '/Create directory skeleton/,/^   - Use the platform/' "$SKILL")
 
-for want in 'CONTEXT.md' 'decisions/' 'learnings/sources/'; do
+for want in 'CONTEXT.md' 'decisions/' 'learnings/'; do
   printf '%s' "$SKEL" | grep -q "$want" \
     && pass "the skeleton block creates $want" \
     || fail "the skeleton block creates $want"

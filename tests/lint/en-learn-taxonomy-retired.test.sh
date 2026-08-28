@@ -62,14 +62,14 @@ fi
 IDX="$REPO_ROOT/skills/en-learn/references/learn-index-format.md"
 assert_file_exists "$IDX" "the index format exists"
 
-for h in Terms Decisions Solutions Sources; do
+for h in Terms Decisions Solutions; do
   grep -q "^## $h\$" "$IDX" \
     && pass "the index has a $h section" \
     || fail "the index has a $h section"
 done
 
 # Bugs and Patterns were sections of the old taxonomy, not artifact types.
-for h in Bugs Patterns; do
+for h in Bugs Patterns Sources; do
   if grep -q "^## $h\$" "$IDX"; then
     fail "the index no longer has a $h section"
   else

@@ -1,6 +1,6 @@
 ---
 name: en-learn
-description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Routes each capture to one of three artifact types — a term in docs/CONTEXT.md, a decision in docs/decisions/, or a solution in docs/learnings/ — and grounds its claims against the tree before indexing. Six modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --migrate (move a project off the retired category layout). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health', 'migrate learnings'."
+description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Routes each capture to one of three artifact types — a term in docs/CONTEXT.md, a decision in docs/decisions/, or a solution in docs/learnings/ — and grounds its claims against the tree before indexing. Captures only what THIS repository taught; external material is lookupable and belongs in research, not the store. Four modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); --refresh (audit staleness); --lint (graph health — orphans, broken links, contradictions); --migrate (move a project off the retired category layout). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'audit learnings', 'wiki health', 'migrate learnings'."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
@@ -17,11 +17,9 @@ requires:
   - references/layout-migration.md
   - references/learn-cross-ref-maintenance.md
   - references/learn-index-format.md
-  - references/learn-ingest.md
   - references/learn-lint.md
   - references/learn-log-format.md
   - references/learning-frontmatter-schema.md
-  - references/pack-reference-template.md
   - references/peer-contract.md
   - references/research-dispatch.md
   - references/templates/architecture-template.md
@@ -49,13 +47,11 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | Mode | Trigger | Output |
 |---|---|---|
 | `capture` (default) | After feature ships, bug fixed, or synthesis emerges | `docs/learnings/<slug>-<date>.md` + side effects |
-| `ingest <path-or-url>` | Reading external engineering material | `docs/learnings/sources/<slug>-<date>.md` + 5-15 page back-refs |
 | `--refresh` | Audit content staleness (~monthly) | Per-entry: keep / update / replace / archive |
-| `--pack <library>` | Curate external library reference | `docs/references/<library>-llms.txt` |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
 | `--migrate` | A project still on the retired `bugs/`/`patterns/`/`decisions/` layout | Entries moved to the artifact-type layout; legacy decisions converted to ADRs |
 
-## Always-on behaviors (across `capture` and `ingest`)
+## Always-on behaviors
 
 After every write:
 
@@ -125,18 +121,7 @@ After every write:
 16. **Update `docs/README.md` index** if it exists.
 17. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
 
-## Process — Mode B: `ingest <path-or-url>`
-
-Per `references/learn-ingest.md`:
-
-1. **Read source.** File: `Read`. URL: `WebFetch` with Wayback fallback (per A13).
-2. **Off-topic check.** LLM-judged relevance against `foundation.md`. Threshold 0.3 / 1.0 (per A18). Below → silently skip with note ("This source appears off-topic for an engineering wiki — skipped. Re-run with `--force` to ingest anyway."). `--force` overrides.
-3. **Discuss takeaways.** Brief — one or two paragraphs.
-4. **Write summary.** `docs/learnings/sources/<slug>-<date>.md` with frontmatter including `source_type: file|url`, `source_uri: <path-or-url>`, `fetched: YYYY-MM-DD`.
-5. **Walk 5–15 related pages.** Use `learnings-research` agent (or grep + read). Add reciprocal back-refs.
-6. **Apply always-on behaviors.**
-
-## Process — Mode C: `--refresh`
+## Process — Mode B: `--refresh`
 
 Audit *content* staleness (distinct from `--lint`'s structural health):
 
@@ -151,21 +136,7 @@ Audit *content* staleness (distinct from `--lint`'s structural health):
 
 Useful periodically (~monthly) or after a big architectural shift.
 
-## Process — Mode D: `--pack <library>`
-
-Per `references/pack-reference-template.md`:
-
-1. Resolve library identifier via Context7 (`mcp__context7__resolve-library-id`).
-2. Pull docs (`mcp__context7__get-library-docs` or `query-docs`).
-3. Optionally augment with WebSearch for recent best-practice content.
-4. Flatten to `docs/references/<library>-llms.txt` with frontmatter header.
-5. Add entry to `docs/references/index.md`.
-6. Append `log.md`: `## [<date>] pack | <library>`.
-7. Surface in `AGENTS.md` "Where things live" if the library is project-significant.
-
-Always re-fetches and re-flattens (per A12 — explicit invocation, fresh by default).
-
-## Process — Mode E: `--lint` / `--lint --fix`
+## Process — Mode C: `--lint` / `--lint --fix`
 
 Per `references/learn-lint.md`. Audits the wiki *graph*:
 
@@ -175,7 +146,7 @@ Per `references/learn-lint.md`. Audits the wiki *graph*:
 
 Output: JSON-lines + markdown summary.
 
-## Process — Mode F: `--migrate`
+## Process — Mode D: `--migrate`
 
 Runs the layout migration directly, for a project that predates the artifact-type
 layout. **Read `references/layout-migration.md` and follow it** — the same
@@ -208,21 +179,18 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 ## Reference files
 
 - `references/capture-gate.md` — whether to write a learning at all; the default is not to
-- `references/templates/learning-template.md` — body structure for capture/ingest writes
+- `references/templates/learning-template.md` — body structure for a solution entry
 - `references/learning-frontmatter-schema.md` — frontmatter rules + examples
 - `references/learn-cross-ref-maintenance.md` — always-on back-ref behavior
 - `references/learn-index-format.md` — `index.md` structure
 - `references/learn-log-format.md` — `log.md` structure
-- `references/learn-ingest.md` — file + URL ingest flow with Wayback fallback
 - `references/learn-lint.md` — check catalog and auto-fix rules
 - `references/architecture-update-rules.md` — when to touch `docs/architecture.md`
-- `references/pack-reference-template.md` — `*-llms.txt` structure
 
 ## Failure protocol
 
 | Failure | Behavior |
 |---|---|
-| Source unreadable on `ingest` (404, 403, paste declined) | Log; exit non-zero; no partial write |
 | Off-topic skip | Log; exit 0 with one-line note |
 | Cross-ref walk partial failure | Primary write succeeds; surface partial; `--lint` self-heals later |
 | Frontmatter schema validation fails | Log diff vs expected; user fixes manually |

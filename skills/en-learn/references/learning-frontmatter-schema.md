@@ -12,10 +12,6 @@ date: YYYY-MM-DD
 tags: [<tag>, ...]
 related: [<paths-to-other-learnings>]
 status: active | deprecated | superseded
-# an ingested source adds:
-source_type: file | url
-source_uri: <path or URL>
-fetched: YYYY-MM-DD
 ---
 ```
 
@@ -29,9 +25,6 @@ fetched: YYYY-MM-DD
 | `tags` | yes | List; lowercase-kebab-case; 1–6 tags |
 | `related` | yes | Repo-relative paths to other learnings; can be empty `[]` for net-new pages |
 | `status` | yes | `active` (current), `deprecated` (no longer applies), `superseded` (replaced — `replaced_by:` field optional) |
-| `source_type` | sources only | `file` or `url` |
-| `source_uri` | sources only | Repo-relative path for files; full URL for URLs |
-| `fetched` | sources only | `YYYY-MM-DD`; date the source was read |
 
 ## Writing `applies_when`
 
@@ -102,24 +95,7 @@ applies_when: "Choosing an ORM for a project that targets edge runtimes (Cloudfl
 date: 2026-02-10
 tags: [database, orm, edge-runtime]
 related:
-  - docs/learnings/sources/edge-runtime-orm-comparison-2026-01-30.md
 status: active
 ---
 ```
 
-### External source
-
-```yaml
----
-title: "OpenAI harness-engineering essay summary"
-applies_when: "Designing agent-driven development workflows; deciding on map-vs-encyclopedia documentation patterns"
-date: 2026-04-20
-tags: [agents, harness, openai]
-related:
-  - docs/learnings/agents-md-as-pointer-map-2026-04-21.md
-status: active
-source_type: url
-source_uri: https://openai.com/index/harness-engineering/
-fetched: 2026-04-20
----
-```

@@ -53,7 +53,6 @@ This catches the case where the user shipped without invoking `/en-learn` to fli
 | Check | Action |
 |---|---|
 | `AGENTS.md` "Where things live" cites a path that no longer exists | `chore(maps): remove stale pointer in AGENTS.md` (in scope) |
-| New top-level docs/ directory (e.g., first `docs/references/` after a `learn --pack`) not in `AGENTS.md` | `chore(maps): add pointer for docs/<X>/` (in scope) |
 | `CLAUDE.md` body has content that duplicates `AGENTS.md` (per `claude-md.no-shared-content` lint) | `chore(maps): remove duplicate content in CLAUDE.md` (in scope) — only if the duplication is mechanical to remove |
 | Project commands changed (e.g., new `package.json` script for `lint`) | `chore(maps): update project commands in AGENTS.md` (in scope) |
 

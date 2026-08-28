@@ -115,7 +115,7 @@ table_rows=$(printf '%s' "$TABLE" | grep -c '^ *| ')
   || fail "the verification table was extracted" "found $table_rows rows"
 for required in \
   "docs/plans/{active,completed}/" \
-  "docs/learnings/sources/" \
+  "docs/learnings/" \
   "docs/decisions/" \
   "docs/CONTEXT.md" \
   "docs/learnings/{index.md,log.md}" \
