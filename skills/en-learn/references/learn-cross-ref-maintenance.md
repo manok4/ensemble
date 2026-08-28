@@ -6,7 +6,7 @@ This is what makes the learning store an actual interlinked wiki rather than a f
 
 ## The procedure
 
-After writing the new entry at `docs/learnings/<category>/<slug>-<date>.md`:
+After writing the new entry at `docs/learnings/<slug>-<date>.md`:
 
 1. Read the new entry's `related: [...]` field.
 2. For each path in `related`:

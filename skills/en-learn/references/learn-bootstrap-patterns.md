@@ -1,6 +1,6 @@
 # `/en-learn --bootstrap-patterns` — seeding patterns from an existing codebase
 
-How `/en-learn`'s Mode F seeds `docs/learnings/patterns/` for retrofit projects.
+How `/en-learn`'s Mode F seeds `docs/learnings/` for retrofit projects.
 
 ## When this fires
 
@@ -10,7 +10,7 @@ How `/en-learn`'s Mode F seeds `docs/learnings/patterns/` for retrofit projects.
 
 ## What it produces
 
-5–10 entries in `docs/learnings/patterns/<slug>-<date>.md`. Each entry is a *forward-looking convention* drawn from existing code — not a captured bug fix or synthesis moment.
+5–10 entries in `docs/learnings/<slug>-<date>.md`. Each entry is a *forward-looking convention* drawn from existing code — not a captured bug fix or synthesis moment.
 
 Distinguished from organic capture entries by frontmatter:
 

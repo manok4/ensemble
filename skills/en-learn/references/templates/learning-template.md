@@ -1,4 +1,4 @@
-# Template — `docs/learnings/<category>/<slug>-<date>.md`
+# Template — `docs/learnings/<slug>-<date>.md`
 
 Used by `/en-learn capture` after `references/capture-gate.md` says to write.
 

@@ -121,7 +121,7 @@ generator: en-learn-pack
 Drizzle is a TypeScript ORM with a query-builder approach (vs Prisma's schema
 generator). Compiles to SQL at build time. First-class edge-runtime support.
 
-Project chose this over Prisma per docs/learnings/decisions/drizzle-over-
+Project chose this over Prisma per docs/learnings/drizzle-over-
 prisma-2026-02-10.md (edge-runtime requirement).
 
 ## Installation

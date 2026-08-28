@@ -41,7 +41,7 @@ Rationale: many engineering articles are blocked by anti-bot CDNs. Wayback usual
 1. **Read source.** File: `Read`. URL: WebFetch with Wayback fallback. On failure of all three: log and exit.
 2. **Off-topic check.** LLM relevance score vs `foundation.md`. Skip if < 0.3 (unless `--force`).
 3. **Discuss takeaways.** Briefly tell the user what's being extracted (one to two paragraphs).
-4. **Slug + path.** Generate `<slug>-<date>` from the source title; write to `docs/learnings/<category>/<slug>-<date>.md`.
+4. **Slug + path.** Generate `<slug>-<date>` from the source title; write to `docs/learnings/<slug>-<date>.md`.
 5. **Frontmatter.** Use the schema from `learning-frontmatter-schema.md` plus the sources fields:
    ```yaml
    source_type: file | url
@@ -108,10 +108,10 @@ Extracting:
 
 Writing docs/learnings/sources/openai-harness-engineering-2026-04-20.md
 Walking 12 related pages for back-refs:
-  + docs/learnings/decisions/agents-md-as-pointer-map-2026-04-21.md
-  + docs/learnings/patterns/plans-by-lifecycle-2026-03-12.md
-  + docs/learnings/patterns/sweep-event-driven-2026-04-15.md
-  + docs/learnings/decisions/failure-as-capability-gap-2026-04-22.md
+  + docs/learnings/agents-md-as-pointer-map-2026-04-21.md
+  + docs/learnings/plans-by-lifecycle-2026-03-12.md
+  + docs/learnings/sweep-event-driven-2026-04-15.md
+  + docs/learnings/failure-as-capability-gap-2026-04-22.md
   ... (8 more)
 
 Updated docs/learnings/index.md

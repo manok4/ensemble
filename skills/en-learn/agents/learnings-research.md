@@ -23,9 +23,9 @@ JSON shape:
   "summary": "<2-3 sentence overall>",
   "matches": [
     {
-      "path": "docs/learnings/<category>/<slug>.md",
+      "path": "docs/learnings/<slug>.md",
       "title": "<title from frontmatter>",
-      "category": "bugs | patterns | decisions | sources",
+      "artifact_type": "term | decision | solution | source",
       "applies_when": "<verbatim from frontmatter>",
       "relevance_score": 1,
       "why_relevant": "<1-2 sentence connection to the dispatcher's task>",
@@ -65,7 +65,7 @@ Drop matches < 5 unless the dispatcher's task is genuinely empty.
 {
   "summary": "No directly-relevant learnings found.",
   "matches": [],
-  "no_match_note": "Searched bugs/, patterns/, decisions/, sources/ for tags [auth, refresh-token, race]. Empty result. Suggests the area is under-documented; user may want to capture learnings from this work."
+  "no_match_note": "Searched CONTEXT.md, decisions/, learnings/, sources/ for tags [auth, refresh-token, race]. Empty result. Suggests the area is under-documented; user may want to capture learnings from this work."
 }
 ```
 
@@ -82,7 +82,7 @@ The `no_match_note` is a useful signal — it tells the dispatcher to capture ag
 
 ## Style
 
-- **Cite paths.** `docs/learnings/patterns/single-flight-cache-2026-03-20.md` — full path.
+- **Cite paths.** `docs/learnings/single-flight-cache-2026-03-20.md` — full path.
 - **Quote `applies_when:` verbatim** — don't paraphrase.
 - **`key_insight` is the TL;DR** — one line; the dispatcher can drill into the page if they want more.
 - **Don't recommend.** Surface; the dispatcher decides.
@@ -102,27 +102,27 @@ Dispatched by `/en-plan` for "FR07 — refresh-token rotation":
   "summary": "Three relevant entries. The refresh-token-race bug from April directly informs this work; the single-flight-cache pattern is the recommended approach.",
   "matches": [
     {
-      "path": "docs/learnings/bugs/refresh-token-race-2026-04-15.md",
+      "path": "docs/learnings/refresh-token-race-2026-04-15.md",
       "title": "Refresh token race when two requests arrive within rotation window",
-      "category": "bugs",
+      "artifact_type": "solution",
       "applies_when": "Multiple concurrent requests from one user during refresh-token rotation",
       "relevance_score": 10,
       "why_relevant": "Direct prior art — same problem class, same component (auth-middleware).",
       "key_insight": "Two near-simultaneous refresh requests both rotate; second invalidates first. Fix: serialize per-user with singleFlight cache."
     },
     {
-      "path": "docs/learnings/patterns/single-flight-cache-2026-03-20.md",
+      "path": "docs/learnings/single-flight-cache-2026-03-20.md",
       "title": "Single-flight cache for per-user side-effecting operations",
-      "category": "patterns",
+      "artifact_type": "solution",
       "applies_when": "Operation has side effects, must run at most once per key, with concurrent callers awaiting the same result",
       "relevance_score": 9,
       "why_relevant": "The recommended fix pattern for the FR07 race condition.",
       "key_insight": "singleFlight<K, V>(key, fn) de-dupes concurrent calls keyed on K; concurrent callers all await the same promise."
     },
     {
-      "path": "docs/learnings/decisions/cookie-attributes-2026-02-08.md",
+      "path": "docs/learnings/cookie-attributes-2026-02-08.md",
       "title": "Cookie attributes for refresh-token storage",
-      "category": "decisions",
+      "artifact_type": "decision",
       "applies_when": "Storing auth tokens in cookies",
       "relevance_score": 6,
       "why_relevant": "Tangential — relevant if FR07 also touches cookie attributes; otherwise just context.",

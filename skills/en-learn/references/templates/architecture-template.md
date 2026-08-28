@@ -30,7 +30,7 @@ freshness_target_days: 30
 
 > Status: **seed**. This document was initialized by `/en-foundation`. It will be flipped to `active` after the first feature ships and `en-learn` validates it against shipped reality.
 
-This file captures the **current architectural reality** of the project. For *intent* (the original vision and durable decisions), see [`foundation.md`](./foundation.md). For *changes over time*, see [`docs/learnings/decisions/`](./learnings/decisions/).
+This file captures the **current architectural reality** of the project. For *intent* (the original vision and durable decisions), see [`foundation.md`](./foundation.md). For *changes over time*, see [`docs/learnings/`](./learnings/).
 
 ## Components
 

@@ -48,12 +48,12 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 
 | Mode | Trigger | Output |
 |---|---|---|
-| `capture` (default) | After feature ships, bug fixed, or synthesis emerges | `docs/learnings/<category>/<slug>-<date>.md` + side effects |
+| `capture` (default) | After feature ships, bug fixed, or synthesis emerges | `docs/learnings/<slug>-<date>.md` + side effects |
 | `ingest <path-or-url>` | Reading external engineering material | `docs/learnings/sources/<slug>-<date>.md` + 5-15 page back-refs |
 | `--refresh` | Audit content staleness (~monthly) | Per-entry: keep / update / replace / archive |
 | `--pack <library>` | Curate external library reference | `docs/references/<library>-llms.txt` |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
-| `--bootstrap-patterns` | Retrofit existing project (one-time during/after `/en-foundation --retrofit`) | 5-10 entries in `docs/learnings/patterns/` flagged `source: bootstrap`, `confidence: 6`, `requires_validation: true` |
+| `--bootstrap-patterns` | Retrofit existing project (one-time during/after `/en-foundation --retrofit`) | 5-10 entries in `docs/learnings/` flagged `source: bootstrap`, `confidence: 6`, `requires_validation: true` |
 
 ## Always-on behaviors (across `capture` and `ingest`)
 
@@ -112,7 +112,7 @@ After every write:
 
    **11a always runs**, even when the user picked "skip — no learnings worth filing" earlier in the capture flow. The flip is lifecycle bookkeeping; it shouldn't be tied to whether wiki content was filed.
 
-   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (i.e. step 7's compose-entry produced a real file in `docs/learnings/<category>/`), AND 11a ran (plan was moved), also:
+   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (i.e. step 7's compose-entry produced a real file in `docs/learnings/`), AND 11a ran (plan was moved), also:
    - Replace plan-tense ("we will", "this should") with documentation-tense ("we did", "this does").
    - Note any deviations from the plan (sections of the plan that didn't ship as written, or that landed differently).
 
@@ -177,19 +177,19 @@ Output: JSON-lines + markdown summary.
 
 ## Process — Mode F: `--bootstrap-patterns`
 
-Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
+Seeds `docs/learnings/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
-3. **Refuse if already bootstrapped.** Scan `docs/learnings/patterns/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
+3. **Refuse if already bootstrapped.** Scan `docs/learnings/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
 4. **Confirm with user.** Surface: *"Will dispatch `repo-research` to identify 5–10 strong conventions in this codebase and file them as `patterns/` entries flagged `requires_validation: true`. These are reconstructions, not captures from real moments — lower confidence by design. Continue? (y/n)"*
 5. **Dispatch `repo-research`.** Prompt structured per `references/learn-bootstrap-patterns.md` § "Research prompt." Asks the agent to identify durable conventions in: file layout, naming, dependency direction, error-handling shape, test placement, common abstractions, framework idioms. Returns 5–10 candidates as JSON.
 6. **Cap at 10.** If the research agent returns more than 10, take the top 10 by `confidence` field. Fewer than 5 → surface a warning; the codebase may not have strong conventions yet (typical for very young or scattered repos).
-7. **Compose entries.** For each candidate, write `docs/learnings/patterns/<slug>-<date>.md` using `references/templates/learning-template.md` with:
+7. **Compose entries.** For each candidate, write `docs/learnings/<slug>-<date>.md` using `references/templates/learning-template.md` with:
    - Frontmatter: `source: bootstrap`, `confidence: 6`, `requires_validation: true`, `bootstrap_run: <YYYY-MM-DD>`.
    - Body: the convention as a paragraph, plus **Where this applies** (file paths/globs), **How to follow it** (concrete rules), **Citations** (`file:line` examples that exhibit it), and a **Confidence note** (why this is 6 and what would raise it).
    - **Exempt from the capture gate, deliberately and narrowly.** These entries fail condition 1 by construction — a convention read out of the codebase is by definition recoverable from the codebase. Bootstrap is not trying to record something unrecoverable; it is giving a retrofit project a starting index of what its own conventions already are. That is why every entry is stamped `confidence: 6` and `requires_validation: true`, and why the mode is one-time and opt-in. Never route ordinary capture through this exemption, and treat a bootstrap entry that reaches `confidence: 8`+ while still `requires_validation: true` as a lint finding rather than a success.
 8. **Apply always-on behaviors.** Cross-refs (none on first run), index update (one line per entry under "Patterns"), log append (one summary line: `## [<date>] bootstrap | <count> patterns from repo-research`).
-9. **Surface a follow-up suggestion.** *"Bootstrap complete. <count> patterns filed in `docs/learnings/patterns/` with `requires_validation: true`. Review and validate as you encounter them in `/en-review`, `/en-resolve-pr`, or via `/en-learn --refresh`. Validated entries clear the flag."*
+9. **Surface a follow-up suggestion.** *"Bootstrap complete. <count> patterns filed in `docs/learnings/` with `requires_validation: true`. Review and validate as you encounter them in `/en-review`, `/en-resolve-pr`, or via `/en-learn --refresh`. Validated entries clear the flag."*
 
 Flags:
 
