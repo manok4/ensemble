@@ -8,7 +8,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build learning checkpoint"
 
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
-SPEC="$REPO_ROOT/docs/en-learn-checkpoint-spec.md"
 
 # --- structured checkpoint present in en-build ---
 if grep -qE "Learning checkpoint\*\* \(structured" "$EN_BUILD"; then
@@ -63,11 +62,10 @@ else
   pass "no bare 'skipped' outcome value in en-build"
 fi
 
-# --- spec carries the relocation note ---
-if grep -qiE "relocated .*(to|from).*en-build|AUTHORITATIVE LOCATION.*en-build" "$SPEC"; then
-  pass "en-learn-checkpoint spec documents the relocation to en-build"
-else
-  fail "spec must document the relocation to en-build"
-fi
+# The relocation used to be asserted against a design spec in docs/. That spec
+# has been retired, and the assertion went with it: it checked that a DOCUMENT
+# described the move, not that the behaviour was where it belonged. The
+# assertions above already pin the checkpoint to en-build, which is the thing
+# that matters.
 
 report

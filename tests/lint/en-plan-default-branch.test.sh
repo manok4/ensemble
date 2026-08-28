@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Drift guards for /en-plan default-branch auto-branch checkpoint.
-# Per the spec at docs/en-plan-default-branch-spec.md (merged via PR #19).
+# The contract lives in skills/en-plan/references/plan-default-branch-checkpoint.md.
+# Shipped via PR #19; the design spec has been retired.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

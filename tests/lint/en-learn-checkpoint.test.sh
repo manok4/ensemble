@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Drift guards for the structured learning checkpoint (en-learn-checkpoint-spec).
-# Per docs/en-learn-checkpoint-spec.md. Relocated from en-ship preflight to
+# Drift guards for the structured learning checkpoint.
+# The contract lives in skills/en-build/SKILL.md. Relocated from en-ship preflight to
 # en-build completion by EN04 - checkpoint assertions target en-build.
 
 set -u

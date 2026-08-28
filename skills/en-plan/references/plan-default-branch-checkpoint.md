@@ -4,11 +4,9 @@ Read this only when the checkpoint's gate fires: the current branch **is** the d
 
 **This file is the contract.** It carries every step the checkpoint executes —
 three-source detection, the four responses, and the flag that pre-answers it.
-Design rationale and rejected alternatives live in
-`docs/en-plan-default-branch-spec.md` in the Ensemble repo, which does **not**
-ship with the skill: `setup` installs `skills/*/` only, so a `docs/` path read
-from an installed skill resolves against the user's own project. Nothing here
-depends on reaching it.
+Nothing here depends on a file outside this directory: `setup` installs
+`skills/*/` only, so a `docs/` path read from an installed skill would resolve
+against the user's own project.
 
 The checkpoint resolves the target branch **before** the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`.
 

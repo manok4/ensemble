@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drift guards for the /en-ship plan-completion checkpoint + /en-learn step 11
-# unbundle. Per docs/en-ship-plan-completion-checkpoint-spec.md (merged via PR #22).
+# unbundle. Shipped via PR #22; the design spec has been retired.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

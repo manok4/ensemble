@@ -192,6 +192,8 @@ Fifteen skills total: the lifecycle skills (brainstorm → foundation → plan �
 | 13 | `en-guardrail` | Always-on `PreToolUse` hook that prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, aws s3 rm --recursive, etc.). Localhost+test/dev DB exemption. Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. Installed globally via `~/.claude/settings.json` or project-scoped via `<repo>/.claude/settings.json`. | Bash tool input (intercepted) | Permission prompt or pass-through | Off | Optional |
 | 14 | `en-setup` | Project-level bootstrap and diagnostics. Detects state (1 / 2 / 3); for State 2 retrofit: archives non-conforming legacy plans, creates skeleton, generates `AGENTS.md` + `CLAUDE.md`, installs `.github/workflows/en-sweep.yml`, offers guardrail / Anthropic Code Review action / Codex Code Review action installs, checks repo-level `allow_auto_merge`, surfaces `CONTEXT.md seeding` offer. | Repo state | Project skeleton, config files, GH Action workflows, diagnostic report | Off | Yes |
 | 15 | `en-loop` | Bounded, objective-driven autonomous loop (wraps the `gnhf` CLI): one committed test-gated slice per iteration until an evidence-based stop condition; branch-level cross-agent review at checkpoints (`--review-every N` + loop end). Manual-invoke only; never auto-merges. | Objective + evidence-based stop condition | Reviewed feature branch + gnhf exit summary | On (branch-level, at checkpoints) | Yes |
+| 16 | `en-flow` | Pipeline runner: chains skills end to end for a single unit of work. | A task description | A completed pass through the chained skills | Off | Optional |
+| 17 | `en-simplify` | Behaviour-preserving simplification of the branch diff across reuse / quality / efficiency. Called by en-build post-build and usable ad hoc. | Branch diff vs base | Simplified working tree, unchanged behaviour | Off | Optional |
 
 ### 5.2 Skill details
 
@@ -747,6 +749,12 @@ Default-safe configuration:
 
 ## 6. Agent Catalog
 
+> EN13 retired seven reviewer agents (correctness, testing, maintainability,
+> standards, security, performance, migrations). Their scopes were absorbed into
+> the per-skill peer briefs; `references/peer-contract.md` owns the output format
+> and severity scale they used to restate. Four agents remain. **See TD9** — five
+> skills still name the retired seven as `subagent_type`.
+
 Eleven agents total: 7 reviewers (read-only) + 3 researchers (read-only) + 1 refiner (read-write). Short specialist prompts (~40–120 lines each), not multi-thousand-line monsters. Skills dispatch them via the platform's task primitive (Claude Code Agent tool, Codex `spawn_agent`).
 
 ### 6.1 Reviewer agents (7)
@@ -755,18 +763,11 @@ Eleven agents total: 7 reviewers (read-only) + 3 researchers (read-only) + 1 ref
 
 | Agent | Focus | Dispatched by |
 |---|---|---|
-| `correctness-reviewer` | Logic errors, edge cases, state bugs, error propagation, off-by-one | `en-review`, `en-build` (per-unit) |
-| `testing-reviewer` | Coverage gaps, weak assertions, brittle tests, missing categories | `en-review`, `en-build` (per-unit) |
-| `maintainability-reviewer` | Coupling, complexity, naming, dead code, abstraction debt | `en-review` |
-| `standards-reviewer` | CLAUDE.md / AGENTS.md compliance, repo conventions, file naming | `en-review` |
 
 **Conditional (3) — fire when the diff matches:**
 
 | Agent | Fires when diff touches | Dispatched by |
 |---|---|---|
-| `security-reviewer` | Auth, public endpoints, user input, secret handling, permissions | `en-review` |
-| `performance-reviewer` | DB queries, hot paths, async, caching, data transforms | `en-review` |
-| `migrations-reviewer` | Schema changes, migrations, backfills, data isolation | `en-review` |
 
 ### 6.2 Research agents (3)
 

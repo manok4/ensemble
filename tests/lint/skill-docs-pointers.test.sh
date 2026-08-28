@@ -3,8 +3,8 @@
 #
 # `setup` installs `skills/*/` only. A relative `docs/...` path read from an
 # installed skill therefore resolves against the USER'S project, not the Ensemble
-# repo — so a skill citing docs/en-plan-default-branch-spec.md sends its reader to
-# a file that does not exist wherever the skill actually runs.
+# repo — so a skill citing an Ensemble-only doc sends its reader to a file that
+# does not exist wherever the skill actually runs.
 #
 # Some docs/ paths are fine: foundation.md, architecture.md, plans/, learnings/,
 # decisions/, CONTEXT.md and friends are artifacts the skills CREATE in the user's

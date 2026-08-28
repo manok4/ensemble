@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Drift guards for the /en-build agent autonomy contract.
-# Per docs/en-build-autonomy-contract-spec.md (merged via PR #20 + #21).
+# The contract lives in skills/en-build/SKILL.md ("Agent autonomy contract").
+# Shipped via PR #20 + #21; the design spec has been retired.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
