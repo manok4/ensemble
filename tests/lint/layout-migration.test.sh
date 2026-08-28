@@ -110,9 +110,7 @@ flat "$REF" | grep -qi 'non-interactive\|refuses.*without.*flag' \
   && pass "a non-interactive run refuses rather than guessing" \
   || fail "a non-interactive run refuses rather than guessing"
 
-grep -q 'references/layout-migration.md' "$SKILL" \
-  && pass "the migration reference is declared in en-learn's requires:" \
-  || fail "the migration reference is declared in en-learn's requires:"
+assert_declared "$SKILL" "references/layout-migration.md" "the migration reference is declared in en-learn's requires:"
 
 # --- the migration is reachable from capture ---------------------------------
 # A procedure nothing invokes is documentation. The check must fire before
@@ -192,5 +190,51 @@ for skill in $present; do
   [ "$sum" = "$ref" ] || skew=$((skew+1))
 done
 assert_eq "$skew" "0" "both copies of the migration reference are byte-identical"
+
+# --- review findings: the P0 and its neighbours ------------------------------
+# Peer review found collision detection scoped to three retired directories while
+# the mapping named four. sources/ flattens into the same namespace, so a source
+# and a solution sharing a basename reached the same target unchecked.
+
+flat "$REF" | grep -qi 'all \*\*four\*\* retired directories\|all four' \
+  && pass "collision detection covers all four retired directories" \
+  || fail "collision detection covers all four retired directories"
+
+flat "$REF" | grep -qi 'refuse if the destination already exists' \
+  && pass "a move refuses an existing destination, independent of preflight" \
+  || fail "a move refuses an existing destination, independent of preflight"
+
+# The rollback claim was false: git checkout does not remove untracked files, and
+# every migrated ADR and solution is untracked at its new path.
+flat "$REF" | grep -q 'git clean -fd' \
+  && pass "rollback names the clean step, not just checkout" \
+  || fail "rollback names the clean step, not just checkout"
+
+# "Strip category" was not the whole transformation — legacy entries also carry
+# problem_type, component, confidence, and the source fields.
+# grep the RAW file: flat() strips _ as an emphasis marker, which mangles
+# snake_case identifiers (problem_type -> problemtype).
+for f in problem_type component confidence source_uri; do
+  grep -q -- "$f" "$REF" \
+    && pass "the field transformation names: $f" \
+    || fail "the field transformation names: $f"
+done
+
+flat "$REF" | grep -qi 'surfaced.*not defaulted\|inventing one is worse' \
+  && pass "a legacy entry with no applies_when is surfaced, not defaulted" \
+  || fail "a legacy entry with no applies_when is surfaced, not defaulted"
+
+# Retired directories are what capture's legacy check keys on, so removing one
+# early makes an incomplete migration look finished.
+flat "$REF" | grep -qi 'only \*\*after\*\* every entry\|only after every entry' \
+  && pass "a retired directory is removed only after its entries verify" \
+  || fail "a retired directory is removed only after its entries verify"
+
+# Both entry points must detect a source-only store, or it is stranded silently.
+for f in "$REPO_ROOT/skills/en-learn/SKILL.md" "$REPO_ROOT/skills/en-setup/SKILL.md"; do
+  grep -q 'or `sources/` exists' "$f" \
+    && pass "$(basename "$(dirname "$f")") detects a source-only legacy store" \
+    || fail "$(basename "$(dirname "$f")") detects a source-only legacy store"
+done
 
 report

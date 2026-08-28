@@ -40,6 +40,19 @@ Sort `matches` by `relevance_score` (1–10), descending. Cap at 10 results unle
 
 ## Process — Karpathy's pattern
 
+**Three sources, three retrieval paths.** Frontmatter filtering reaches solutions
+only — terms and decisions deliberately carry none, so a frontmatter-first search
+silently misses two thirds of the store.
+
+| Source | Matched on |
+|---|---|
+| `docs/CONTEXT.md` | term headings and their definition sentences |
+| `docs/decisions/*.md` | the H1 claim and the `## Invariants this creates` section |
+| `docs/learnings/*.md` | `applies_when`, then `tags` |
+
+`index.md` lists all three, so it stays the first read; the paths above are how
+you drill in once a section looks relevant.
+
 1. **Read `docs/learnings/index.md` first.** It's a curated catalog; the agent maintains it.
 2. **Grep-filter the index.** Find candidate entries by topic/tag/component overlap with the dispatcher's task.
 3. **Read frontmatter only** for top candidates (first ~30 lines). Score relevance based on `applies_when:` and `tags:`.

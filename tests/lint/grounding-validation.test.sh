@@ -121,12 +121,8 @@ flat "$REF" | grep -qE 'exit(ed)? 2|exit code 2' \
   && pass "the reference documents exit 2 as could-not-run" \
   || fail "the reference documents exit 2 as could-not-run"
 
-grep -q 'scripts/ensemble-validate-claims' "$SKILL" \
-  && pass "the script is declared in en-learn's requires:" \
-  || fail "the script is declared in en-learn's requires:"
-grep -q 'references/grounding-validation.md' "$SKILL" \
-  && pass "the reference is declared in en-learn's requires:" \
-  || fail "the reference is declared in en-learn's requires:"
+assert_declared "$SKILL" "scripts/ensemble-validate-claims" "the script is declared in en-learn's requires:"
+assert_declared "$SKILL" "references/grounding-validation.md" "the reference is declared in en-learn's requires:"
 
 # --- only CONCRETE FILE claims are checked -----------------------------------
 # Dogfooding against this repo's own references showed the first cut flagged
@@ -177,7 +173,7 @@ assert_eq "$(code "$f")" "0" "a bare filename is not treated as a path claim"
 # claims were looked at.
 
 write_ln=$(grep -n 'Write to the routed path' "$SKILL" | head -1 | cut -d: -f1)
-ground_ln=$(grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1)
+ground_ln=$(grep -n '\*\*Ground every artifact' "$SKILL" | head -1 | cut -d: -f1)
 index_ln=$(grep -n 'Apply always-on behaviors' "$SKILL" | head -1 | cut -d: -f1)
 
 if [ -n "$write_ln" ] && [ -n "$ground_ln" ] && [ "$write_ln" -lt "$ground_ln" ]; then
@@ -197,7 +193,7 @@ fi
 # NOT a pipeline. bash runs the last component of a pipeline in a subshell, so
 # pass/fail counter updates inside one are discarded and a printed failure leaves
 # the suite green. Assign first, assert in the current shell.
-ln=$(grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1)
+ln=$(grep -n '\*\*Ground every artifact' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$ln" ] && sed -n "${ln}p" "$SKILL" | grep -q 'scripts/ensemble-validate-claims'; then
   pass "the grounding step invokes the real script path"
 else

@@ -47,10 +47,23 @@ report() { printf '  %s: %s\n' "$1" "$2"; findings=$((findings + 1)); }
 
 # Strip fenced blocks: a doc showing what a path looks like is not claiming that
 # path exists. Everything below runs over the masked body.
-BODY=$(awk '
+# Exit 2 means "could not run", and it must cover a read that failed rather than
+# a file that happened to be empty. A silent empty BODY would report zero findings
+# and exit 0 — indistinguishable from a genuinely clean document, which is the one
+# confusion the three exit codes exist to prevent.
+if ! BODY=$(awk '
   /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
   { print (fence ? "" : $0) }
-' "$FILE")
+' "$FILE" 2>/dev/null); then
+  printf 'ensemble-validate-claims: could not read %s\n' "$FILE" >&2
+  exit 2
+fi
+
+# A file with no readable content is also not something this can vouch for.
+if [ ! -s "$FILE" ]; then
+  printf 'ensemble-validate-claims: %s is empty\n' "$FILE" >&2
+  exit 2
+fi
 
 # --- unrendered template placeholders ---------------------------------------
 # A file that IS a template is supposed to contain them.

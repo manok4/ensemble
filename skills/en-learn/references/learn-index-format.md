@@ -52,7 +52,19 @@ Each line follows the pattern:
 | `<title>` | The page's `title:` frontmatter, verbatim |
 | `(related: <count>)` | Number of items in the page's `related:` field |
 
-Sort order within each section: **most recent first** (descending by `date:`).
+### Entry rules per type
+
+One rule cannot serve three shapes: terms have no `date:` and no `related:`, and
+ADRs have no frontmatter at all.
+
+| Section | Line format | Sort |
+|---|---|---|
+| Terms | `- **<Term>** — <definition's first clause>` | alphabetical |
+| Decisions | `- [\`NNNN-<slug>.md\`](../decisions/NNNN-<slug>.md) — <H1 claim>` | descending by number |
+| Solutions | `- [\`<slug>-<date>.md\`](./<slug>-<date>.md) — <title>. (related: N)` | most recent first by `date:` |
+
+`total_entries` counts all three sections, so a store with terms and decisions and
+no solutions is not "empty".
 
 ## Frontmatter
 

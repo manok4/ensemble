@@ -60,7 +60,7 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
    - State 2 — Existing project, no Ensemble (source code present, foundation or learnings missing). Identify sub-variant 2a/2b/2c/2d by which of `AGENTS.md`/`CLAUDE.md` exist.
    - State 3 — Existing project with Ensemble (`docs/foundation.md` and `docs/learnings/` both present).
 
-     **Legacy learning store.** If `docs/learnings/bugs/`, `patterns/`, or `decisions/` exists, this project predates the artifact-type layout. Surface it before doing anything else:
+     **Legacy learning store.** If `docs/learnings/bugs/`, `patterns/`, `decisions/`, or `sources/` exists, this project predates the artifact-type layout. Surface it before doing anything else:
 
      > "This project has N entries under the retired directories. The new layout reads `docs/learnings/` flat, `docs/decisions/`, and `docs/CONTEXT.md` — so those entries are **invisible** to capture, lint, and research **without being deleted**. Nothing announces that on its own. Run `/en-learn --migrate` to move them."
 
@@ -126,7 +126,18 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Don't fail if directories already exist.
 4. **Seed `docs/learnings/index.md` and `log.md`** from the empty-state templates in `references/learn-index-format.md` and `references/learn-log-format.md`.
 5. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries (these are mandatory per foundation §10.1; lint requires their existence).
-6. **Seed `docs/CONTEXT.md` — read `references/glossary-rules.md`.** Copy `references/templates/context-template.md`, then define the project's **core domain nouns**.
+6. **Seed `docs/CONTEXT.md` — read `references/glossary-rules.md`.**
+
+   **If the file already exists, never overwrite it.** Copy
+   `references/templates/context-template.md` only when `docs/CONTEXT.md` is
+   absent. On an existing file the operation is **merge-only**: every existing
+   entry is preserved verbatim, and additions are limited to terms from the
+   declared domain model that are confirmed missing. `/en-setup` is idempotent, and
+   a second run that replaces a curated glossary with freshly model-authored terms
+   would break that in the most expensive way available — silently, over content
+   nobody can regenerate.
+
+   Then define the project's **core domain nouns**.
 
    This is the *seeding* path, and it exists because accretion alone cannot reach these terms. A capture defines a word when the work rubs against it, which reliably surfaces peripheral mechanics; the nouns a system is built around rarely break, so they rarely appear in a learning. Without seeding, the glossary fills with edge-case vocabulary and never names what the project is about.
 
@@ -212,11 +223,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
-17. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
-
-    Don't auto-run it. The user decides.
-
-18. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. This is the safety net — long mechanical sequences drop steps under context pressure, and a verification phase at the end catches that.
+17. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. This is the safety net — long mechanical sequences drop steps under context pressure, and a verification phase at the end catches that.
 
     **Required artifacts** (must exist; missing → fail):
 
@@ -280,7 +287,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Idempotency check:** running `/en-setup` again on the same repo must produce zero new changes once verification has passed. Encode this expectation in the report ("Final verification: 14 / 14 required artifacts present").
 
-19. **Recommend next steps:**
+18. **Recommend next steps:**
     ```
     Two paths:
       - Run /en-foundation --retrofit to back-fill docs/foundation.md and docs/architecture.md from existing code.

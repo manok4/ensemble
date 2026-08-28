@@ -45,9 +45,16 @@ done
 # Scoped to the Decisions ROW. Matching the whole refresh block also hit the
 # Terms paragraph ("rather than deleting it"), so swapping the row for a solution
 # lifecycle left this green.
-printf '%s' "$REFRESH" | grep '^| \*\*Decisions\*\*' | grep -qi 'never replaced' \
-  && pass "refresh's Decisions row says never replaced" \
-  || fail "refresh's Decisions row says never replaced"
+# The guarantee is not "never replaced" — a reversed decision does get a successor
+# ADR. It is that replacement is never SILENT: the old file survives with a
+# forward pointer, so the reasoning is never lost.
+printf '%s' "$REFRESH" | grep '^| \*\*Decisions\*\*' | grep -qi 'never silently replaced' \
+  && pass "refresh's Decisions row rules out silent replacement" \
+  || fail "refresh's Decisions row rules out silent replacement"
+
+printf '%s' "$REFRESH" | tr '\n' ' ' | grep -qi 'old file is never deleted or rewritten' \
+  && pass "a reversed decision keeps its original file intact" \
+  || fail "a reversed decision keeps its original file intact"
 
 printf '%s' "$REFRESH" | grep '^| \*\*Decisions\*\*' | grep -qiv 'replace /' \
   && pass "refresh's Decisions row offers no replace disposition" \
@@ -85,10 +92,14 @@ sed -n '/^### `missing-pages`/,/^### /p' "$LINT" | grep -q 'CONTEXT.md' \
   || fail "the missing-pages section points at the glossary"
 
 # --- index-drift knows the three sections ------------------------------------
+# Scoped to the index-drift SECTION. Scanning all of learn-lint.md also matched
+# these words elsewhere in the file, so the check passed for a section that never
+# mentioned them.
+DRIFT=$(sed -n '/^### `index-drift`/,/^### /p' "$LINT")
 for sect in Terms Decisions Solutions; do
-  flat "$LINT" | grep -q "$sect" \
-    && pass "index-drift covers the $sect section" \
-    || fail "index-drift covers the $sect section"
+  printf '%s' "$DRIFT" | grep -q "$sect" \
+    && pass "the index-drift section covers $sect" \
+    || fail "the index-drift section covers $sect"
 done
 
 # --- all three carriers stay identical ---------------------------------------

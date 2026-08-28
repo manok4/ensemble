@@ -25,7 +25,6 @@ paragraph. That is a complete, valid learning:
 title: Partner API rejects batches above 50 items
 applies_when: Changing batch size or adding a new bulk endpoint call
 date: 2026-08-27
-category: decisions
 tags: [partner-api, batching]
 related: []
 status: active

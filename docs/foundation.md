@@ -1189,7 +1189,18 @@ doc has a dead link" indistinguishable from "nothing checked this doc".
 
 ### 11.3 Query mechanism
 
-`learnings-research` agent uses grep-first filtering on frontmatter fields, then reads only frontmatter (first 30 lines) of candidates to score relevance, and finally fully reads only the strong matches. This keeps token cost bounded.
+`learnings-research` reads `docs/learnings/index.md` first (the curated catalog),
+then drills into the section that looks relevant. **Three sources need three
+retrieval paths** — frontmatter filtering reaches solutions only, because terms
+and decisions deliberately carry none:
+
+| Source | Matched on |
+|---|---|
+| `docs/CONTEXT.md` | term headings and their definition sentences |
+| `docs/decisions/*.md` | the H1 claim and the `## Invariants this creates` section |
+| `docs/learnings/*.md` | `applies_when` first, then `tags` |
+
+A frontmatter-first search would silently miss two thirds of the store.
 
 ### 11.4 Lifecycle
 

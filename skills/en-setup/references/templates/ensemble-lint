@@ -255,6 +255,13 @@ check_plan_required_fields() {
   fi
 }
 
+# Strip fenced code blocks before checking for a required heading. A fenced
+# example containing "## Invariants this creates" would otherwise satisfy the
+# rule for a document that has no such section.
+strip_fences() {
+  awk 'BEGIN{f=0} /^[[:space:]]*```/{f=!f; next} !f{print}' "$1"
+}
+
 # --- Rule: adr.has-frontmatter / adr.missing-invariants ---
 # An ADR carries no frontmatter: nothing queries it by field, so every field
 # would be bookkeeping nobody reads and nothing keeps current. And it must say
@@ -271,7 +278,7 @@ check_adr_shape() {
       "ADRs carry none — the title and body do the work. See references/adr-format.md"
   fi
 
-  if ! grep -q '^## Invariants this creates' "$file"; then
+  if ! strip_fences "$file" | grep -q '^## Invariants this creates'; then
     emit "adr.missing-invariants" "$file" "" "P2" \
       "ADR has no '## Invariants this creates' section" \
       "State the rules that now hold, written so they could be checked. A decision with no invariant may be a solution instead — see references/artifact-types.md"
@@ -283,7 +290,7 @@ check_adr_shape() {
 # of the glossary a reader can never reconstruct from the code.
 check_context_shape() {
   case "$1" in docs/CONTEXT.md) ;; *) return 0 ;; esac
-  grep -q '^## Flagged ambiguities' "$1" || \
+  strip_fences "$1" | grep -q '^## Flagged ambiguities' || \
     emit "context.missing-ambiguities" "$1" "" "P3" \
       "CONTEXT.md has no '## Flagged ambiguities' section" \
       "Keep the tail even when empty — it is where settled distinctions get recorded. See references/glossary-rules.md"

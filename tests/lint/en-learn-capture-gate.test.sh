@@ -25,7 +25,7 @@ assert_file_exists "$GATE" "the gate reference exists"
 grep -q 'references/capture-gate.md' "$SKILL" \
   && pass "capture reads the gate" || fail "capture reads the gate"
 gate_line=$(grep -n 'references/capture-gate.md' "$SKILL" | head -1 | cut -d: -f1)
-compose_line=$(grep -n 'Compose entry' "$SKILL" | head -1 | cut -d: -f1)
+compose_line=$(grep -n '\*\*Compose' "$SKILL" | head -1 | cut -d: -f1)
 [ "$gate_line" -lt "$compose_line" ] \
   && pass "the gate is applied before the entry is composed" \
   || fail "the gate is applied before the entry is composed" "gate:$gate_line compose:$compose_line"
@@ -160,9 +160,7 @@ done
 # do NOT show that a candidate routes correctly — no shell assertion reaches it.
 
 
-grep -q 'references/artifact-types.md' "$SKILL" \
-  && pass "capture reads the artifact-types reference" \
-  || fail "capture reads the artifact-types reference"
+assert_declared "$SKILL" "references/artifact-types.md" "capture reads the artifact-types reference"
 
 # The retired taxonomy must be gone from the capture flow, not merely unused.
 if flat "$SKILL" | grep -qE 'Identify category|bugs/ \(|patterns/ \(|decisions/ \('; then

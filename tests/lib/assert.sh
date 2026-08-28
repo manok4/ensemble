@@ -101,6 +101,8 @@ assert_file_missing() {
 # assertion can match a sentence that wraps or carries **bold**/`code` without
 # encoding the line breaks. Ten copies of this had accumulated across the
 # reference-checking suites under three different names.
+# NOTE: strips _ as an emphasis marker, so it mangles snake_case identifiers
+# (problem_type -> problemtype). grep the raw file when matching a field name.
 flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
 # Portable content hash. `md5 -q` is macOS-only; `md5sum` is the Linux spelling.
@@ -109,6 +111,18 @@ hash_file() {
   if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | cut -d' ' -f1
   elif command -v md5 >/dev/null 2>&1; then md5 -q "$1"
   else shasum "$1" | cut -d' ' -f1
+  fi
+}
+
+# Assert a path appears in a SKILL.md's `requires:` BLOCK, not merely somewhere in
+# the file. Several suites grepped the whole SKILL.md, so runtime prose naming the
+# same path satisfied them after the declaration itself was deleted.
+assert_declared() {  # $1=SKILL.md  $2=relative path  $3=label
+  if awk '/^requires:/{f=1;next} f&&/^  - /{print $2} f&&!/^  - /&&!/^#/{exit}' "$1" \
+       | grep -qx -- "$2"; then
+    pass "$3"
+  else
+    fail "$3" "not in the requires: block of $(basename "$(dirname "$1")")"
   fi
 }
 
