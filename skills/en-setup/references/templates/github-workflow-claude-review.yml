@@ -18,7 +18,7 @@
 # To switch to API-key auth: replace `claude_code_oauth_token` with
 # `anthropic_api_key` and use a secret named `ANTHROPIC_API_KEY`.
 #
-# See docs/integrations/anthropic-code-review-action.md for the full guide,
+# See https://github.com/manok4/ensemble/blob/main/docs/integrations/anthropic-code-review-action.md for the full guide,
 # trade-offs (rate limits vs. API cost), and ToS notes.
 
 name: Claude Code Review

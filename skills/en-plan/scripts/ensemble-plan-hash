@@ -6,7 +6,8 @@
 # mismatch (skills/en-build/SKILL.md steps 4a and 215).
 #
 # It exists because the contract was previously prose only
-# (docs/scope-aware-slicing-spec.md:374). Two agents each canonicalizing from
+# (rationale in the Ensemble repo's scope-aware-slicing spec, which does not ship
+# with the skill). Two agents each canonicalizing from
 # that prose cannot be expected to agree — and no model can compute sha256 in
 # the first place, so each run would shell out with its own ad-hoc
 # canonicalization. A hash whose producer and consumer disagree does not detect

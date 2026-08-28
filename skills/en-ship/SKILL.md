@@ -36,7 +36,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
 4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04) - you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The interactive checkpoints below **auto-resolve**; only the hard-stop safety floor pauses.
 
-   - **Learning capture is NOT decided here.** It was relocated to `/en-build`'s completion checkpoint (EN04; see `docs/en-learn-checkpoint-spec.md` and foundation D38) so capture happens at the point of insight. `/en-ship` no longer prompts for learnings on the default path.
+   - **Learning capture is NOT decided here.** It was relocated to `/en-build`'s completion checkpoint (EN04; see the EN04 checkpoint spec in the Ensemble repo and foundation D38) so capture happens at the point of insight. `/en-ship` no longer prompts for learnings on the default path.
    - **Auto-resolved under hands-off:** the scope-confirm (step 7) is auto-accepted; the plan-completion checkpoint (step 8) auto-flips a verifiably-complete plan and passes informationally otherwise (see those steps).
    - **Safety floor - always hard-stops, even hands-off (never auto-resolved):**
      - **Secret-scan match** (step 6) - stop; do not ship secrets.
