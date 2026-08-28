@@ -78,15 +78,19 @@ After every write:
 
    **One learning per run.** A session holding two distinct durable lessons gets two runs; batching pushes the weaker through on the stronger one's merit.
 
-5. **Identify category.** `bugs/` (a defect whose *durable* lesson is not the fix), `patterns/` (reusable approach), `decisions/` (a choice with rationale). Most entries that clear the gate are `decisions/`; a `bugs/` entry that describes the fix rather than the non-obvious trap has failed condition 1 and should not have reached this step.
+5. **Route to an artifact type — read `references/artifact-types.md` and follow it.** The gate decided *whether* to write; this decides *which artifact*, and the three differ in shape, lifecycle, and write path.
+
+   A candidate that says **what a word means here** is a **term** (`docs/CONTEXT.md`). One that records **a choice and the rules that now hold** is a **decision** (`docs/decisions/NNNN-<slug>.md`). One that records **a solved problem whose lesson outlives the fix** is a **solution** (`docs/learnings/<slug>-<date>.md`).
+
+   **Matching two types is normal.** Write the more durable one — `term > decision > solution` — and let it cite the other. Never write both: that reintroduces the duplication the gate's generalization step exists to prevent.
 
 6. **Gather what the entry needs.** Read the relevant commits and search `docs/learnings/` for overlap — an existing entry to extend beats a near-duplicate. Dispatch a sub-agent only when the search is genuinely broad; a gate-passing learning is usually a few sentences whose material you already hold, and three parallel sub-agents to produce a paragraph costs more than it returns.
 7. **Compose entry.** Per `references/templates/learning-template.md`. **One paragraph until it earns more** — lead with the conclusion, name specifics (paths, constants, error strings), say why rather than what. The four optional sections are added only when they carry something the paragraph cannot.
-8. **Slug + path.** Generate `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`). Write to `docs/learnings/<category>/<slug>-<date>.md`.
-8. **Apply always-on behaviors** (cross-refs, index update, log append).
-9. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
-10. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-11. **Plan-lifecycle handling.** Step 11 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per `docs/en-ship-plan-completion-checkpoint-spec.md`) is the backstop for cases where `/en-learn` isn't invoked at all.
+8. **Write to the routed path.** A **term** is appended to `docs/CONTEXT.md` per `references/glossary-rules.md` (amend an existing entry rather than adding a second). A **decision** takes the next unused number at `docs/decisions/NNNN-<slug>.md` per `references/adr-format.md`. A **solution** generates `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`) at `docs/learnings/<slug>-<date>.md`.
+9. **Apply always-on behaviors** (cross-refs, index update, log append).
+10. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
+11. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
+12. **Plan-lifecycle handling.** Step 12 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per `docs/en-ship-plan-completion-checkpoint-spec.md`) is the backstop for cases where `/en-learn` isn't invoked at all.
 
    **11a. Lifecycle flip (always runs when a plan_id is in context).** If `/en-learn capture` was invoked within the context of a specific plan (derivable from the current branch name per `<plan_id>-<slug>` convention, or passed via `--plan <plan-path>`), perform the lifecycle flip:
    - Read frontmatter; check `status:`.
@@ -105,9 +109,9 @@ After every write:
    **11b is skipped when the user said "skip — no learnings worth capturing"** earlier in the flow; lifecycle flip (11a) still happens, just without the documentation-tense rewrite.
 
    **Edge case: no plan_id in context.** If `/en-learn capture` is invoked outside any plan context (no plan branch, no `--plan` argument), step 11 is a silent no-op — there's nothing to flip.
-12. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
-13. **Update `docs/README.md` index** if it exists.
-14. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
+13. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
+14. **Update `docs/README.md` index** if it exists.
+15. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
 
 ## Process — Mode B: `ingest <path-or-url>`
 

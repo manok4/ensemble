@@ -152,4 +152,62 @@ done
   && pass "every carried copy of the schema is byte-identical" \
   || fail "every carried copy of the schema is byte-identical ($SKEW diverged)"
 
+# --- U5: capture routes to an artifact type ----------------------------------
+# The gate decides WHETHER to write; the router decides WHICH artifact. A router
+# that ran first would classify candidates that should never be written at all.
+#
+# SCOPE (TD7): routing is a model judgment. These assertions check that the
+# specification is wired into the skill and that the fixture corpus exists. They
+# do NOT show that a candidate routes correctly — no shell assertion reaches it.
+
+flatf() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
+
+grep -q 'references/artifact-types.md' "$SKILL" \
+  && pass "capture reads the artifact-types reference" \
+  || fail "capture reads the artifact-types reference"
+
+# The retired taxonomy must be gone from the capture flow, not merely unused.
+if flatf "$SKILL" | grep -qE 'Identify category|bugs/ \(|patterns/ \(|decisions/ \('; then
+  fail "the four-category step is gone from capture"
+else
+  pass "the four-category step is gone from capture"
+fi
+
+# Ordering: the gate is step 4, the router follows it.
+gate_ln=$(grep -n 'Apply the capture gate' "$SKILL" | head -1 | cut -d: -f1)
+route_ln=$(grep -n 'Route to an artifact type' "$SKILL" | head -1 | cut -d: -f1)
+if [ -n "$gate_ln" ] && [ -n "$route_ln" ] && [ "$gate_ln" -lt "$route_ln" ]; then
+  pass "the gate runs before the router (lines $gate_ln < $route_ln)"
+else
+  fail "the gate runs before the router" "gate=$gate_ln router=$route_ln"
+fi
+
+# --- the fixture corpus ------------------------------------------------------
+# Not executed here. It is what TD7's eval suite will run, and the source of the
+# worked examples that guide the model doing the routing.
+FIX="$REPO_ROOT/tests/fixtures/routing"
+assert_file_exists "$FIX/README.md" "the routing fixture corpus is documented"
+
+for t in term decision solution; do
+  n=$(grep -l "^expect_type: $t\$" "$FIX"/*.md 2>/dev/null | wc -l | tr -d ' ')
+  [ "$n" -ge 1 ] \
+    && pass "the corpus has a candidate expected to route to $t" \
+    || fail "the corpus has a candidate expected to route to $t"
+done
+
+# Both tie-break directions, and a candidate the gate rejects outright.
+[ "$(grep -l '^tie_break:' "$FIX"/*.md 2>/dev/null | wc -l | tr -d ' ')" -ge 2 ] \
+  && pass "the corpus covers both tie-break directions" \
+  || fail "the corpus covers both tie-break directions"
+
+grep -q '^expect_type: none$' "$FIX"/*.md \
+  && pass "the corpus includes a gate-rejected candidate" \
+  || fail "the corpus includes a gate-rejected candidate"
+
+# The README must not claim the fixtures are executed — that would be the exact
+# overclaim TD7 exists to prevent.
+flatf "$FIX/README.md" | grep -qi 'not run by any shell test\|not executed' \
+  && pass "the corpus states plainly that it is not executed" \
+  || fail "the corpus states plainly that it is not executed"
+
 report
