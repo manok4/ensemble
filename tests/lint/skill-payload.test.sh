@@ -26,39 +26,25 @@ TEST_NAME="skill payload matches what each skill names"
 # red for the whole migration and stops being a signal.
 ENFORCING=false
 
-# Files a skill needs = everything REACHABLE FROM SKILL.md, following read
-# instructions transitively. Not "mentioned by anything the skill carries" —
-# that is circular, and lets a file that should not be there justify another:
-# architecture-fitness.md reads as needed because ensemble-lint names it, while
-# ensemble-lint is itself unreachable. Rooting the walk at SKILL.md breaks the
-# cycle, and it keeps the legitimate edges: recursion-guard reaches skills that
-# never name it, via host-detect, which they do.
-refs_in() {
-  { grep -ohE '`(references|templates|agents|scripts)/[A-Za-z0-9._/-]+`' "$1" 2>/dev/null | tr -d '`'
-    grep -ohE '\$SKILL_DIR/scripts/[A-Za-z0-9._-]+' "$1" 2>/dev/null | sed 's|.*/|scripts/|'
-    grep -ohE '`[a-z-]+-(research|reviewer|simplifier)`' "$1" 2>/dev/null | tr -d '`' | sed 's|^|agents/|;s|$|.md|'
-  } | grep -v '^references/X$' | sort -u
-}
-
+# Files a skill needs = what it DECLARES in its `requires:` frontmatter.
+#
+# This replaced a reachability walk, and the walk is gone rather than kept as a
+# cross-check: it was wrong in five distinct ways, each found only by deleting
+# something. Full repo paths, the pre-EN12 `bin/X` alias, shell sourcing
+# closures, cross-skill paths credited to the wrong skill, and — decisively —
+# script COMMENTS naming references, which made en-ship read as clean while
+# carrying 15 files it never names. Measured excess moved 98 -> 54 -> 14 as each
+# was fixed. No regex reliably separates a dependency from a mention, so the
+# skill states its own.
 names_of() {
-  local d="${1%/}" seen="" frontier
-  frontier="$(refs_in "$d/SKILL.md")"
-  while [ -n "$frontier" ]; do
-    local next=""
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      case "
-$seen" in *"
-$f"*) continue ;; esac
-      seen="$seen
-$f"
-      [ -f "$d/$f" ] || continue
-      next="$next
-$(refs_in "$d/$f")"
-    done <<< "$frontier"
-    frontier="$(printf '%s\n' "$next" | grep -v '^$' | sort -u || true)"
-  done
-  printf '%s\n' "$seen" | grep -v '^$' | sort -u
+  local d="${1%/}"
+  [ -f "$d/SKILL.md" ] || return 0
+  awk '
+    /^requires:/                        { inblock = 1; next }
+    inblock && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); print; next }
+    inblock && /^---[[:space:]]*$/       { exit }
+    inblock && /^[A-Za-z_-]+:/          { exit }
+  ' "$d/SKILL.md" | sort -u
 }
 
 # Files a skill CARRIES, excluding its own entry points.
@@ -94,22 +80,46 @@ else
   [ "$total_excess" -eq 0 ] || printf "%b" "$report" >&2
 fi
 
-# --- the scenarios the unit specified, on scaffolds rather than the live tree ---
+# --- scenarios, on scaffolds rather than the live tree ---
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT INT TERM HUP
-mk() { mkdir -p "$WORK/$1/references"; printf -- '---\nname: %s\n---\n%s\n' "$1" "$2" > "$WORK/$1/SKILL.md"; }
+mk() {  # $1 skill, $2 declared paths (space-sep), $3.. files to create
+  local s="$1" decl="$2"; shift 2
+  mkdir -p "$WORK/$s/references"
+  { printf -- '---\nname: %s\nrequires:\n' "$s"
+    for r in $decl; do printf -- '  - %s\n' "$r"; done
+    printf -- '---\nbody\n'
+  } > "$WORK/$s/SKILL.md"
+  for f in "$@"; do mkdir -p "$WORK/$s/$(dirname "$f")"; : > "$WORK/$s/$f"; done
+}
 
-mk s1 'Reads `references/a.md`.'; : > "$WORK/s1/references/a.md"
-assert_eq "" "$(comm -23 <(carries_of "$WORK/s1") <(names_of "$WORK/s1"))" "a skill naming exactly what it carries reports no excess"
+mk s1 'references/a.md' references/a.md
+assert_eq "" "$(comm -23 <(carries_of "$WORK/s1") <(names_of "$WORK/s1"))" "a skill carrying exactly what it declares reports no excess"
 
-mk s2 'Reads `references/a.md`.'; : > "$WORK/s2/references/a.md"; : > "$WORK/s2/references/stray.md"
-assert_eq "references/stray.md" "$(comm -23 <(carries_of "$WORK/s2") <(names_of "$WORK/s2"))" "an unnamed file is reported, by name"
+mk s2 'references/a.md' references/a.md references/stray.md
+assert_eq "references/stray.md" "$(comm -23 <(carries_of "$WORK/s2") <(names_of "$WORK/s2"))" "an undeclared file is reported, by name"
 
-# A reference naming another reference is a real dependency edge.
-mk s3 'Reads `references/a.md`.'; printf 'then read `references/b.md`\n' > "$WORK/s3/references/a.md"; : > "$WORK/s3/references/b.md"
-assert_eq "" "$(comm -23 <(carries_of "$WORK/s3") <(names_of "$WORK/s3"))" "a file named only by another reference counts as named"
+# The point of declaring: a path mentioned in prose but not declared is still
+# excess. Under the old walk this file counted as needed, which is how junk
+# justified junk.
+mk s3 'references/a.md' references/a.md references/mentioned.md
+printf 'see `references/mentioned.md` for detail\n' >> "$WORK/s3/SKILL.md"
+assert_eq "references/mentioned.md" "$(comm -23 <(carries_of "$WORK/s3") <(names_of "$WORK/s3"))" "a path mentioned in prose but not declared is still excess"
 
-# The preamble placeholder is not a path.
-mk s4 'All `references/X` paths resolve relative to $ENSEMBLE_ROOT.'
-assert_eq "" "$(names_of "$WORK/s4")" "the references/X placeholder is not counted as a name"
+# A declaration naming a file that is not there is a typo, and must surface.
+mk s4 'references/a.md references/ghost.md' references/a.md
+assert_eq "references/ghost.md" "$(comm -13 <(carries_of "$WORK/s4") <(names_of "$WORK/s4"))" "a declared path with no file behind it is reported"
+
+# Multi-line and nested paths parse.
+mk s5 'references/a.md references/templates/t.md scripts/x agents/y.md' references/a.md references/templates/t.md scripts/x agents/y.md
+assert_eq "" "$(comm -3 <(carries_of "$WORK/s5") <(names_of "$WORK/s5"))" "nested reference, script and agent paths all parse"
+
+# The inference is gone, asserted structurally so it cannot creep back.
+# Match code constructs, not the words — an earlier version grepped for its own
+# pattern string and failed on itself.
+# The character classes keep this pattern from containing the literals it
+# searches for; two earlier versions matched themselves and failed on their own
+# assertion line.
+walker=$(grep -cE 'fronti[e]r=|re[f]s_in\(\)|reachabl[e]\(\)' "$SELF_DIR/skill-payload.test.sh" || true)
+assert_eq "0" "$walker" "no path-walking code remains in this test"
 
 report

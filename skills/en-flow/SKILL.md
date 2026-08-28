@@ -3,6 +3,12 @@ name: en-flow
 description: "Run the full hands-off Ensemble pipeline from plan through a ready-for-review PR: en-plan → en-build → en-learn (model-decided) → en-ship (with watch loop). Manual-invoke only (never auto-triggered). Flags: --plan <path> (skip planning), --no-ship (stop after build), --no-watch (pass through to en-ship). Trigger phrases: 'run the full pipeline', 'plan build and ship', 'take this end to end', 'en-flow'."
 disable-model-invocation: true
 argument-hint: "[feature description, or --plan <path>]"
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - references/en-flow-pipeline.md
+  - references/host-detect.md
+
 ---
 
 

@@ -1,6 +1,18 @@
 ---
 name: en-debug
 description: "Reproduce a bug from telemetry. Reads structured logs from the configured source, correlates by trace_id / request_id / event field, surfaces a hypothesis with file:line and confidence 1-10. Read-only. Pairs with /en-resolve-pr (when reviewer comments reference a runtime error) and /en-build (when a test or QA run fails with a real-world trace). Trigger phrases: 'debug this trace', 'reproduce this error', 'walk this log', 'why did this fail in prod'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/repo-research.md
+  - references/agent-dispatch.md
+  - references/debug-investigation.md
+  - references/host-detect.md
+  - references/observability-conventions.md
+  - references/observability-debug-mapping.md
+  - references/observability-hypothesis-format.md
+  - references/secret-patterns.md
+
 ---
 
 

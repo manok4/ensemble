@@ -1,6 +1,25 @@
 ---
 name: en-learn
 description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Six modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/learnings-research.md
+  - agents/repo-research.md
+  - references/agent-dispatch.md
+  - references/architecture-update-rules.md
+  - references/capture-gate.md
+  - references/host-detect.md
+  - references/learn-bootstrap-patterns.md
+  - references/learn-cross-ref-maintenance.md
+  - references/learn-index-format.md
+  - references/learn-ingest.md
+  - references/learn-lint.md
+  - references/learn-log-format.md
+  - references/learning-frontmatter-schema.md
+  - references/pack-reference-template.md
+  - references/templates/learning-template.md
+
 ---
 
 

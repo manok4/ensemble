@@ -1,6 +1,22 @@
 ---
 name: en-cross-review
 description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, branch, uncommitted work). Ships the target to the peer agent (Codex if host is Claude; Claude if Codex; same-CLI fresh subprocess as single-agent fallback) and returns findings grouped by severity. Optional --focus (security | performance | tests | all). Trigger phrases: 'cross-review', 'second opinion', 'peer review this', 'outside voice on'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - references/agent-dispatch.md
+  - references/build-handoff.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-model-policy.md
+  - references/recursion-guard.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-peer-invoke
+
 ---
 
 

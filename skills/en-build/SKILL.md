@@ -1,6 +1,26 @@
 ---
 name: en-build
 description: "Execute an implementation plan unit-by-unit on a feature branch. Picks build-by-orchestration (Claude host dispatches Codex worker) or build-handoff (Codex host with Claude peer reviewer) per host detection. Branch-level review model (D35, amended by D46): each ordinary unit is implement → tests + lint → commit; code-simplifier (/en-simplify) and cross-agent Outside Voice review (/en-review --peer: mandatory peer + host personas) run ONCE over the branch diff after all units, then the host applies findings. Destructive/gated units get a dedicated per-unit peer pass. A structured learning checkpoint fires last, after the branch-level review. Trigger phrases: 'build this plan', 'implement <plan_id>', 'start building', 'execute the plan'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - references/agent-dispatch.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/code-simplifier-dispatch.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/recursion-guard.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/templates/plan-template.md
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-plan-hash
+  - scripts/ensemble-verify-peer-evidence
+
 ---
 
 

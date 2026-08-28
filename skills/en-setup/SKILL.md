@@ -1,6 +1,30 @@
 ---
 name: en-setup
 description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / gnhf CLI / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - references/agent-dispatch.md
+  - references/host-detect.md
+  - references/learn-bootstrap-patterns.md
+  - references/learn-index-format.md
+  - references/learn-log-format.md
+  - references/script-invocation.md
+  - references/setup-state-detection.md
+  - references/templates/agents-md-merge-rules.md
+  - references/templates/agents-md-template.md
+  - references/templates/claude-md-template.md
+  - references/templates/config-local-example.yaml
+  - references/templates/github-workflow-claude-review.yml
+  - references/templates/github-workflow-en-sweep.yml
+  - references/templates/review-md-template.md
+  - scripts/en-sweep-ci
+  - scripts/ensemble-classify-plans
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-doc-only-check
+  - scripts/ensemble-lint
+  - scripts/ensemble-sweep-activity-check
+
 ---
 
 

@@ -1,6 +1,29 @@
 ---
 name: en-plan
 description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs and plan_type (feature | improvement | bug). Reads foundation, runs research agents (repo-research + learnings-research; web-research conditional), breaks work into units with files / tests / execution notes; runs cross-agent peer review on the draft. Modes: --resume <plan> (promote a draft); --from-legacy <path> (migrate legacy plan). Outputs docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/learnings-research.md
+  - agents/repo-research.md
+  - agents/web-research.md
+  - references/agent-dispatch.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-model-policy.md
+  - references/plan-default-branch-checkpoint.md
+  - references/research-dispatch.md
+  - references/script-invocation.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/stable-ids.md
+  - references/templates/plan-template.md
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-lint
+  - scripts/ensemble-peer-invoke
+  - scripts/ensemble-plan-hash
+
 ---
 
 

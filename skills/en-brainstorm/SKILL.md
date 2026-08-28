@@ -2,6 +2,20 @@
 name: en-brainstorm
 description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-aware approaches with a recommendation and devil's-advocate pass. Outputs a design doc to docs/designs/. Use before committing to a plan. Trigger phrases: 'brainstorm', 'explore options', 'think through', 'help me decide', 'what would it look like if', 'design doc for'."
 argument-hint: "[idea or question to explore]"
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/web-research.md
+  - references/agent-dispatch.md
+  - references/brainstorm-approaches.md
+  - references/brainstorm-blindspot.md
+  - references/host-detect.md
+  - references/research-dispatch.md
+  - references/script-invocation.md
+  - references/socratic-questions.md
+  - references/templates/design-doc-template.md
+  - scripts/ensemble-lint
+
 ---
 
 

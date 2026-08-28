@@ -1,6 +1,37 @@
 ---
 name: en-review
 description: "Multi-persona code review of the current branch, with the cross-agent peer ON BY DEFAULT (skip via --no-peer). Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Host and peer findings reconcile into four buckets (corroborated / peer-only / host-only / conflicting). Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep; never runs a peer). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
+# What this skill needs. Every path is skill-relative and must exist here.
+# A skill is self-contained: nothing outside this directory is listed.
+requires:
+  - agents/correctness-reviewer.md
+  - agents/learnings-research.md
+  - agents/maintainability-reviewer.md
+  - agents/migrations-reviewer.md
+  - agents/performance-reviewer.md
+  - agents/security-reviewer.md
+  - agents/standards-reviewer.md
+  - agents/testing-reviewer.md
+  - references/agent-dispatch.md
+  - references/diff-signal-detection.md
+  - references/finding-schema.md
+  - references/host-detect.md
+  - references/outside-voice.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
+  - references/recursion-guard.md
+  - references/review-confidence-gating.md
+  - references/script-invocation.md
+  - references/severity-and-routing.md
+  - references/severity.md
+  - references/single-agent-fallback.md
+  - references/sweep-checks.md
+  - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-config-get
+  - scripts/ensemble-lint
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
+
 ---
 
 
