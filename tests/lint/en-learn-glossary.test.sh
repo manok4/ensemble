@@ -91,4 +91,50 @@ for f in references/glossary-rules.md references/templates/context-template.md; 
     || fail "$f is declared in en-learn's requires:"
 done
 
+# --- U6: accretion and seeding are wired into their skills -------------------
+# Two paths, two skills, and they cover different gaps. Losing either is silent:
+# without seeding the file fills with peripheral mechanics and never names what
+# the project is about; without accretion it goes stale as the domain moves.
+
+SETUP="$REPO_ROOT/skills/en-setup/SKILL.md"
+
+grep -qi 'Vocabulary accretion' "$SKILL" \
+  && pass "capture carries a vocabulary-accretion step" \
+  || fail "capture carries a vocabulary-accretion step"
+
+# The step must run whatever was routed — a term surfaced by a solution capture
+# is exactly the case accretion exists for.
+flat "$SKILL" | grep -qi 'independent of what was routed\|regardless of.*routed' \
+  && pass "accretion runs independently of the routed artifact" \
+  || fail "accretion runs independently of the routed artifact"
+
+# Silence and "nothing qualified" must not look the same.
+flat "$SKILL" | grep -qi 'even when nothing qualified\|no new terms.*is a result' \
+  && pass "accretion reports an outcome even when nothing qualified" \
+  || fail "accretion reports an outcome even when nothing qualified"
+
+grep -qi 'Seed `docs/CONTEXT.md`' "$SETUP" \
+  && pass "setup carries a glossary-seeding step" \
+  || fail "setup carries a glossary-seeding step"
+
+flat "$SETUP" | grep -qi 'core domain nouns' \
+  && pass "seeding targets the core domain nouns" \
+  || fail "seeding targets the core domain nouns"
+
+# The bound is what stops seeding becoming a padding exercise.
+flat "$SETUP" | grep -qi 'never by a count\|not.*by a count\|do not pad' \
+  && pass "seeding is bounded by the source and bar, not a count" \
+  || fail "seeding is bounded by the source and bar, not a count"
+
+# Why both paths exist. If this rationale is lost, someone deletes one of them.
+flat "$SETUP" | grep -qi 'accretion alone cannot reach\|rarely appear in a learning' \
+  && pass "setup states why accretion alone is insufficient" \
+  || fail "setup states why accretion alone is insufficient"
+
+for f in references/glossary-rules.md references/templates/context-template.md; do
+  grep -q "$f" "$SETUP" \
+    && pass "$f is declared in en-setup's requires:" \
+    || fail "$f is declared in en-setup's requires:"
+done
+
 report
