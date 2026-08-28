@@ -24,7 +24,32 @@ PAT='learnings/[b]ugs|learnings/[p]atterns|learnings/[d]ecisions|learnings/<[c]a
 # Repo-wide since U9. Scoped to en-learn during U8, when only its own nine files
 # had been swept; widening this line is what proved U9 finished.
 SCOPE="${TAXONOMY_SCOPE:-$REPO_ROOT/skills}"
-hits=$(grep -rlE "$PAT" "$SCOPE" 2>/dev/null || true)
+
+# One file must name the retired directories: capture's legacy-layout check, whose
+# job is to DETECT them. Anything else naming one is a leftover that would send an
+# agent to write into a directory nobody creates any more.
+#
+# layout-migration.md is deliberately NOT here. It refers to the old layout in
+# brace form, so it never matched, and listing it would have been an exemption
+# masking nothing — which the staleness check below caught on its first run.
+#
+# The exemption is a fixed list whose size is asserted, and each entry must still
+# actually contain what it is exempted for — so the list cannot grow quietly into
+# a hole, and a stale entry cannot sit here masking nothing.
+EXEMPT='en-learn/SKILL.md'
+# wc -l counts newlines, so a list with no trailing newline undercounts by one.
+exempt_n=$(printf '%s' "$EXEMPT" | tr '|' '\n' | grep -c .)
+assert_eq "$exempt_n" "1" "exactly one file is exempt from the sweep"
+
+for e in $(printf '%s' "$EXEMPT" | tr '|' ' '); do
+  if grep -qE "$PAT" "$REPO_ROOT/skills/$e" 2>/dev/null; then
+    pass "exempt file still names the layout it detects: $e"
+  else
+    fail "exemption is dead — $e no longer names a retired layout; remove it"
+  fi
+done
+
+hits=$(grep -rlE "$PAT" "$SCOPE" 2>/dev/null | grep -vE "$EXEMPT" || true)
 if [ -z "$hits" ]; then
   pass "no file under $(basename "$SCOPE") references a retired category directory"
 else
