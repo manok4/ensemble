@@ -79,3 +79,5 @@ if grep -qiE "Re-sync on update|frozen snapshot|do NOT propagate" "$SETUP"; then
 else
   fail "en-setup must document the re-sync caveat"
 fi
+
+report

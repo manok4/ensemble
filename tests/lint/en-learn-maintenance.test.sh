@@ -94,7 +94,7 @@ done
 # --- all three carriers stay identical ---------------------------------------
 n=$(ls "$REPO_ROOT"/skills/*/references/learn-lint.md 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "$n" "3" "learn-lint is carried by three skills"
-d=$(md5 -q "$REPO_ROOT"/skills/*/references/learn-lint.md 2>/dev/null | sort -u | wc -l | tr -d ' ')
+d=$(for f in "$REPO_ROOT"/skills/*/references/learn-lint.md; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
 assert_eq "$d" "1" "every carried copy of learn-lint is byte-identical"
 
 report

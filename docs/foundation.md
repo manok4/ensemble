@@ -132,9 +132,9 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 - **D14. Scheduled doc-drift cleanup with activity gate (`en-sweep`).** A separate skill that runs on a configurable schedule (default weekly) with an activity gate that skips runs when no non-sweep commits have landed since the last sweep. Scans the repo against doc artifacts and lints, opens small doc-only PRs, and auto-merges them after `en-review` clears them. Manual invocation (`/en-sweep` or `workflow_dispatch`) also supported. Originally event-driven on every PR merge to `main`; revised to scheduled-with-gate on 2026-05-05 to address the cost concern that most merges introduce no detectable drift, making every-merge fire 70–90% wasted work.
 - **D15. Project-level `AGENTS.md` and `CLAUDE.md` as map, not encyclopedia.** Two pointer documents at repo root, ~100 lines each. **`AGENTS.md`** is the canonical, host-agnostic map — it orients any agent (Codex, Claude Code, or otherwise) toward deeper sources of truth in `docs/`. **`CLAUDE.md`** opens with a one-line cross-reference to `AGENTS.md` and contains *only* Claude-Code-specific guidance (slash command preferences for this project, skill invocation priority, auto-memory notes, status line / hook references, plugin pointers). No content duplicated from `AGENTS.md`. Doc lint `claude-md.no-shared-content` flags any duplication. Both files created by `en-foundation`, kept current by `en-learn` and `en-sweep`.
 - **D16. Plans split by lifecycle.** `docs/plans/active/` for in-flight plans, `docs/plans/completed/` for shipped ones, `docs/plans/tech-debt-tracker.md` as the canonical place for "noticed but deferred" items. `en-learn` moves plans from active to completed at ship time.
-- **D17. Pack-reference is a mode of `en-learn`, not a separate skill.** `learn --pack <library>` fetches docs once via Context7 + WebSearch and writes a flattened `docs/references/<lib>-llms.txt`. `en-plan`, `en-build`, and `en-brainstorm` consult these local references before falling back to network calls.
+- **D17. ~~Pack-reference is a mode of `en-learn`, not a separate skill.~~ SUPERSEDED by EN14 (`--pack` removed; external docs are looked up during research, not stored).** `learn --pack <library>` fetches docs once via Context7 + WebSearch and writes a flattened `docs/references/<lib>-llms.txt`. `en-plan`, `en-build`, and `en-brainstorm` consult these local references before falling back to network calls.
 - **D19. Learning store as a wiki, not a flat list.** Adopt Karpathy's "LLM Wiki" pattern: the `docs/learnings/` directory is a structured, interlinked, agent-maintained knowledge base, not a dumb folder of frontmatter files. New entries actively walk related pages and add reciprocal back-links. Two helper artifacts navigate the graph: `docs/learnings/index.md` (content catalog the agent reads first) and `docs/learnings/log.md` (append-only chronological record). `learn --lint` keeps the graph healthy (orphans, missing back-refs, contradictions, missing pages for frequently-cited concepts).
-- **D20. `learn ingest <source>` for proactive knowledge capture.** Distinct from `capture` (which is reactive, post-fix). `ingest` reads any engineering-relevant source — a file path or a URL — and writes a structured summary to `docs/learnings/sources/<slug>-<date>.md`, then walks 10–15 related pages and updates them. Use cases: library evaluation articles, design references from elsewhere, customer-call summaries, best-practice posts. URL inputs use WebFetch; file inputs use Read.
+- **D20. ~~`learn ingest <source>` for proactive knowledge capture.~~ SUPERSEDED by EN14 (`ingest` removed; a summary of lookupable material is a second copy that goes stale).** Distinct from `capture` (which is reactive, post-fix). `ingest` reads any engineering-relevant source — a file path or a URL — and writes a structured summary to `docs/learnings/sources/<slug>-<date>.md`, then walks 10–15 related pages and updates them. Use cases: library evaluation articles, design references from elsewhere, customer-call summaries, best-practice posts. URL inputs use WebFetch; file inputs use Read.
 - **D21. Capture-from-synthesis reflex.** When `en-plan`, `en-review`, or `en-brainstorm` produces a durable synthesis (a comparison, a non-obvious connection, a pattern across multiple files, an extracted lesson), the skill ends with a soft "**Capture this as a learning?**" prompt rather than letting the synthesis disappear into chat. The user accepts → `en-learn capture --from-conversation` files it.
 - **D22. Skill-name prefix `en-`.** All eleven skills use the `en-` prefix consistently across slash commands, directory names, and skill identifiers (`en-brainstorm`, `en-foundation`, `en-plan`, `en-build`, `en-review`, `en-qa`, `en-learn`, `en-ship`, `en-cross-review`, `en-sweep`, `en-setup`). Avoids namespace collision with other plugins.
 - **D23. Cross-review peer is always the *other* agent.** Resolved by host-detect on every invocation. Claude Code → peer is Codex. Codex → peer is Claude. No model-defaults table to maintain; the host *is* the routing.
@@ -183,7 +183,7 @@ Fifteen skills total: the lifecycle skills (brainstorm → foundation → plan �
 | 4 | `en-build` | Execute the plan with branch/worktree, batched. Flips `status: open → in_progress` at start. | Plan path | Code + commits on a feature branch | On (per unit) | Yes |
 | 5 | `en-review` | Multi-persona code review of current branch. **Confidence-gated** — sub-threshold findings file as TD entries, not surfaced. | Branch with changes | Review report + applied auto-fixes; sub-threshold → tech-debt-tracker.md | Off (default), `--peer` to enable | Yes |
 | 6 | `en-qa` | System checks + browser end-to-end testing | Branch + optional URL | Bug fixes + new regression tests | Off | Optional |
-| 7 | `en-learn` | Compounding wiki maintainer. **`capture`** (default): file a learning + sync architecture / foundation / plan + maintain cross-refs. **`ingest <path-or-url>`**: read external source. **`--pack <lib>`**: flatten library docs. **`--refresh`**: audit stale entries. **`--lint`**: graph health. **`--migrate`**: seed `patterns/` from existing codebase (one-time, retrofit). | Commits/branch, URL, library, or codebase | Learning doc, doc updates, index/log updates, cross-refs, library reference, or bootstrapped patterns | Off | Optional |
+| 7 | `en-learn` | Compounding wiki maintainer. **`capture`** (default): gate, route to one of three artifact types, ground the claims, sync architecture / foundation / plan, maintain cross-refs. **`--refresh`**: audit content staleness per artifact type. **`--lint`**: graph health. **`--migrate`**: move a project off the retired category layout. | Commits/branch, or an existing learning store | A term, decision, or solution; doc updates; index/log updates; cross-refs | Off | Optional |
 | 8 | `en-ship` | Pre-flight + commit + push + PR. `--auto-merge` enables `gh pr merge --auto` from the start. | Branch with clean changes | Commit + PR (with optional auto-merge) | Off | Optional |
 | 9 | `en-resolve-pr` | Address incoming PR review feedback. 6-verdict triage (`fixed` / `fixed-differently` / `replied` / `not-addressing` / `declined` / `needs-human`). Vendored GraphQL helpers; reports merge readiness; `--enable-auto-merge` flag. | Current branch's PR (or PR# / comment URL) | Code commits + replies + resolved threads | Off | Yes |
 | 10 | `en-debug` | Telemetry-driven debugging. Reads structured logs per `references/observability-conventions.md`; correlates by trace_id / request_id / event; surfaces hypothesis with file:line + confidence. **Read-only.** | Trace ID, request ID, error message, file:line, or none (tail) | Hypothesis + suggested next-step skill | Off | Yes |
@@ -406,8 +406,8 @@ Fifteen skills total: the lifecycle skills (brainstorm → foundation → plan �
 #### 5.2.7 `en-learn`
 
 - **Purpose.** Maintain `docs/learnings/` as a compounding, interlinked wiki — not a flat folder. Capture engineering events, ingest external sources, keep architecture/foundation/plans honest, curate external library references, and check graph health.
-- **Modes.** `capture` (default), `ingest <path-or-url>`, `--refresh`, `--pack <library>`, `--lint`, `--migrate` (one-time retrofit; seeds `patterns/` from existing codebase via `repo-research`; entries flagged `source: bootstrap` and `requires_validation: true`, default `confidence: 6`).
-- **Always-on behavior across modes that write entries (capture, ingest):**
+- **Modes.** `capture` (default), `--refresh`, `--lint`, `--migrate` (one-time retrofit; seeds `patterns/` from existing codebase via `repo-research`; entries flagged `source: bootstrap` and `requires_validation: true`, default `confidence: 6`).
+- **Always-on behavior for `capture`:**
   - **Active cross-reference maintenance.** After writing the new entry, walk through every page in its `related: []` field and append a reciprocal back-reference to those pages' frontmatter. Forward refs without back-refs make the graph one-directional and orphans accumulate.
   - **Index update.** Append a one-line entry to `docs/learnings/index.md` under the appropriate category, with date and one-line summary.
   - **Log append.** Append a single line to `docs/learnings/log.md` in the format `## [YYYY-MM-DD] <op> | <subject>` (grep-friendly — Karpathy's tip).
@@ -431,40 +431,11 @@ Run after a feature ships, after a bug is fixed, or anytime there is a durable i
   9. **Sync `AGENTS.md` / `CLAUDE.md`** if the artifact directory or top-level guidance changed (rare).
   10. Update `docs/README.md` index.
 
-##### Mode B: `ingest <path-or-url>`
-
-Proactive knowledge capture. Bring an engineering-relevant external source into the wiki. Use cases: library evaluations, design references from elsewhere, customer-call summaries, best-practice articles, design docs, papers.
-
-- **Input handling.**
-  - **File path** (e.g., `learn ingest path/to/article.md`) — read with the platform's read tool.
-  - **URL** (e.g., `learn ingest https://example.com/article`) — fetch via WebFetch (Claude Code) / equivalent (Codex). On 403/Cloudflare blocks, fall back to Wayback Machine (`https://web.archive.org/web/<URL>`); if that fails too, ask the user to paste the content.
-- **Optional flag.** `--category {sources|patterns|decisions}` — defaults to `sources/`. Use `--category decisions` when the source is itself a decision-log entry, `--category patterns` when it documents a pattern worth promoting (rare; usually patterns emerge from our own work, not external reads).
-- **Process.**
-  1. Read the source (file or URL).
-  2. Briefly discuss key takeaways with the user (one or two paragraphs of "here's what I'm extracting").
-  3. Write a summary page at `docs/learnings/sources/<slug>-<date>.md` with frontmatter including `source_type: file|url`, `source_uri: <path-or-url>`, `fetched: YYYY-MM-DD`.
-  4. Identify 5–15 related pages across the wiki using the Related Docs Finder agent; for each, add a one-line update or a citation to the new source. Walk `related: []` and add reciprocal back-refs.
-  5. Apply the always-on behaviors (index update, log append).
-- **Boundaries.** Engineering-relevant sources only. If the user wants a personal knowledge base for unrelated topics, they should run a different system. Lint may flag obviously off-topic ingests for review.
-
 ##### Mode C: `--refresh`
 
 Audit existing learnings for *content* staleness. For each entry: keep, update, replace, or archive (move to `docs/learnings/archive/`). Useful periodically (~monthly) or after a big architectural shift.
 
 Distinct from `--lint`, which audits *structural* health.
-
-##### Mode D: `--pack <library>`
-
-Flatten an external library's docs into `docs/references/<library>-llms.txt` for in-context lookup, eliminating most network round-trips on subsequent `en-plan`, `en-build`, and `en-brainstorm` runs.
-
-- **Process.**
-  1. Resolve library identifier via Context7 (`mcp__context7__resolve-library-id`).
-  2. Pull docs via Context7 (`mcp__context7__get-library-docs` or `query-docs`).
-  3. Optionally augment with WebSearch for recent best-practice content.
-  4. Flatten to a single `.txt` file at `docs/references/<library>-llms.txt` with a frontmatter header (library, version, source, fetched date).
-  5. Add an entry to `docs/references/index.md`.
-  6. Append a line to `docs/learnings/log.md`.
-  7. Surface the new reference in `AGENTS.md` / `CLAUDE.md` map.
 
 ##### Mode E: `--lint`
 
@@ -478,7 +449,6 @@ Structural health check on the wiki graph. Distinct from `--refresh`, which is c
   - **Stale references** — links pointing to files that have moved or been deleted.
   - **Index drift** — entries in `index.md` that no longer match underlying pages, or pages that exist but are missing from `index.md`.
   - **Log drift** — operations missing from `log.md` (compare against git log of `docs/learnings/`).
-  - **Data gaps** — areas where the wiki is thin and would benefit from a `learn ingest` of an external source. Suggest specific search queries.
 - **Output.** A report grouped by check, with severity (P1 = orphan, broken link, missing back-ref; P2 = missing page, data gap, log drift; P3 = contradiction needing human judgment). For mechanical findings (P1, most P2), `learn --lint --fix` auto-applies fixes (add the missing back-ref, repair the broken link, regenerate `index.md`). Contradictions and content-judgment items go to the user.
 - **Cadence.** On demand (`/en-learn --lint`), or invoked by `en-sweep` as part of its post-merge pass. `en-sweep` invokes `en-learn --lint` and routes the output through its PR-batching flow.
 
@@ -489,10 +459,8 @@ Structural health check on the wiki graph. Distinct from `--refresh`, which is c
   - `references/learn-cross-ref-maintenance.md` (the always-on behavior)
   - `references/learn-index-format.md` (curated `index.md` structure)
   - `references/learn-log-format.md` (append-only log conventions)
-  - `references/learn-ingest.md` (file + URL ingest flow, fallback handling)
   - `references/learn-lint.md` (the check catalog and auto-fix rules)
   - `references/architecture-update-rules.md` (when to touch `docs/architecture.md`, what counts as material)
-  - `references/pack-reference-template.md` (frontmatter + structure for `*-llms.txt` files)
 
 #### 5.2.8 `en-ship`
 
@@ -806,7 +774,7 @@ Eleven agents total: 7 reviewers (read-only) + 3 researchers (read-only) + 1 ref
 |---|---|---|
 | `repo-research` | Scan codebase for patterns, conventions, file paths, existing implementations | `en-plan`, `en-foundation`, `en-sweep`, `en-learn` (for `docs/architecture.md` sync) |
 | `learnings-research` | Query `docs/learnings/` for relevant past bugs, patterns, decisions | `en-plan`, `en-review`, `en-brainstorm`, `en-foundation` |
-| `web-research` | External docs (Context7) and best-practice search (WebSearch); URL fetch for ingested sources. Optional. | `en-plan`, `en-brainstorm`, `learn --pack`, `learn ingest <url>` |
+| `web-research` | External docs (Context7) and best-practice search (WebSearch). Optional. | `en-plan`, `en-brainstorm`, `learn --pack`, `learn ingest <url>` |
 
 ### 6.3 Refiner agents (1)
 
@@ -1058,7 +1026,7 @@ brainstorm → docs/designs/*.md
 | `en-build` | `code-simplifier` (per unit, before peer review); orchestrates peer agent or operates inline |
 | `en-review` | 4 always-on reviewers + 3 conditional reviewers + `learnings-research` |
 | `en-qa` | none; uses Playwright MCP directly |
-| `en-learn` | `repo-research` (for `docs/architecture.md` sync), `web-research` (for `--pack` and `ingest <url>` modes), Context Analyzer / Solution Extractor / Related Docs Finder sub-tasks (in-process) |
+| `en-learn` | `repo-research` (for `docs/architecture.md` sync), `web-research` (no longer used — external lookup moved to research-time skills), Context Analyzer / Solution Extractor / Related Docs Finder sub-tasks (in-process) |
 | `en-ship` | none; uses git + gh directly |
 | `en-cross-review` | none; pure subprocess wrapper |
 | `en-sweep` | `repo-research` + invokes `en-review` on each batch PR (which dispatches its own personas) |
@@ -1096,7 +1064,6 @@ brainstorm → docs/designs/*.md
 │   │   │   └── <slug>-<date>.md
 │   │   ├── decisions/
 │   │   │   └── <slug>-<date>.md
-│   │   ├── sources/                    # external sources brought in via learn ingest
 │   │   │   └── <slug>-<date>.md
 │   │   └── archive/                    # superseded entries (managed by learn --refresh)
 │   ├── references/                     # pre-flattened external library docs
@@ -1166,7 +1133,6 @@ split load-bearing.
 | **Term** | `docs/CONTEXT.md` | Definition plus retired synonyms, in one shared file | Amended in place; the file accretes |
 | **Decision** | `docs/decisions/NNNN-<slug>.md` | Title states the claim; no frontmatter; invariants section | Append-only; dated `## Update` sections |
 | **Solution** | `docs/learnings/<slug>-<date>.md` | Six-field frontmatter; one paragraph until it earns more | Goes stale against code; refreshed |
-| *(ingested)* | `docs/learnings/sources/<slug>-<date>.md` | Solution shape plus `source_type`/`source_uri`/`fetched` | Written by `ingest`, not by capture |
 
 **Routing** is by what the candidate *is*, not what it is about, with an explicit
 tie-break for candidates that match two types: `term > decision > solution`. The
@@ -1228,10 +1194,8 @@ doc has a dead link" indistinguishable from "nothing checked this doc".
 ### 11.4 Lifecycle
 
 - **Capture.** `learn capture` (default mode) writes after a feature ships, a bug is fixed, or a synthesis worth keeping emerges in `en-plan` / `en-review` / `en-brainstorm` (`--from-conversation`).
-- **Ingest.** `learn ingest <path-or-url>` brings external sources into the wiki — articles, papers, design references, customer-call notes. URL inputs use WebFetch with Wayback fallback; file inputs use Read.
 - **Migrate.** A repo carrying the retired directories is migrated before capture writes into it (`references/layout-migration.md`). Legacy decisions become ADRs rather than flattening into solutions.
 - **Refresh.** `learn --refresh` audits content staleness across the store: keep, update, replace, or archive each learning.
-- **Pack.** `learn --pack <library>` creates a flattened external reference at `docs/references/<library>-llms.txt`. Re-pack when the library version bumps or the cached docs go stale.
 - **Lint.** `learn --lint` audits *structural* health of the wiki graph: orphans, missing back-refs, broken links, missing pages for frequently-cited concepts, contradictions, data gaps. `--lint --fix` auto-applies mechanical repairs; non-mechanical findings go to the user.
 - **Surface.** `en-plan`, `en-review`, `en-brainstorm`, `en-foundation` query the store (and `docs/references/`) automatically. The `learnings-research` agent reads `docs/learnings/index.md` *first* to find candidate pages, then drills into them — Karpathy's pattern of indexing-as-cheap-RAG. Matches are surfaced in the artifact with a citation.
 
@@ -1255,7 +1219,7 @@ Cosmetic refactors, internal renames, bug fixes, and pure test additions don't t
 
 The learning store is treated as an interlinked wiki, not a flat collection of frontmatter files. Inspired directly by Karpathy's "LLM Wiki" pattern (April 2026): humans abandon wikis because *bookkeeping* (cross-refs, summaries, contradictions, consistency across pages) outpaces value. LLMs don't get bored — they touch 15 files in one pass — so the bookkeeping cost approaches zero and the wiki actually stays maintained.
 
-**Active cross-reference maintenance (always-on in `capture` and `ingest`).** When a new entry is written:
+**Active cross-reference maintenance (always-on in `capture`).** When a new entry is written:
 
 1. Resolve `related: [...]` from the new entry's frontmatter.
 2. For each related page, append a reciprocal back-reference. Forward refs without back-refs leave the graph one-directional and orphans accumulate.
@@ -1274,7 +1238,6 @@ The learning store is treated as an interlinked wiki, not a flat collection of f
 - Broken links (target file moved or deleted)
 - Missing pages (concepts referenced by name in 3+ pages without a dedicated entry → suggest creating one)
 - Contradictions (claims across pages that conflict — LLM judgment)
-- Data gaps (thin areas that would benefit from `learn ingest` — suggest specific search queries)
 - Index drift (entries in `index.md` that don't match underlying pages, or pages missing from `index.md`)
 - Log drift (operations missing from `log.md`)
 
@@ -1376,7 +1339,6 @@ Build the cross-cutting references first so every skill reuses them:
 - [ ] `references/learn-cross-ref-maintenance.md`
 - [ ] `references/learn-index-format.md`
 - [ ] `references/learn-log-format.md`
-- [ ] `references/learn-ingest.md`
 - [ ] `references/learn-lint.md`
 - [ ] `references/architecture-update-rules.md`
 - [ ] `references/agents-md-template.md`
@@ -1402,7 +1364,7 @@ In dependency order:
 
 ### 14.5 Phase 4 — Closure skills
 
-- [ ] `en-learn` (5 modes: `capture` + `ingest <path-or-url>` + `--refresh` + `--pack` + `--lint`; cross-ref maintenance; `index.md` + `log.md` upkeep; `docs/architecture.md` sync; plan move active→completed)
+- [ ] `en-learn` (4 modes: `capture` + `--refresh` + `--lint` + `--migrate`; cross-ref maintenance; `index.md` + `log.md` upkeep; `docs/architecture.md` sync; plan move active→completed)
 - [ ] `en-ship` (commit/push/PR)
 - [ ] `en-cross-review` (ad-hoc peer review)
 
@@ -1477,16 +1439,16 @@ All initial open questions have been answered. Resolutions captured here for the
 - **Q9 → A9.** `en-sweep` triggers on **`push` to `main`** (i.e., right after a PR merges), not on a daily/weekly schedule. Installed as `.github/workflows/en-sweep.yml` by the setup script. Manual invocation also supported.
 - **Q10 → A10.** `en-sweep` auto-merges its own PRs after `en-review` clears them, **and** `en-sweep` is strictly doc-only. It never modifies source code, configuration, or tests. Code-level findings get filed to `docs/plans/tech-debt-tracker.md` for `en-plan`/`en-build` to handle later.
 - **Q11 → A11.** `docs/core-beliefs.md` is seeded from a templated starter at `references/core-beliefs-starter.md`. User edits or extends after.
-- **Q12 → A12.** `en-learn --pack <library>` always re-fetches and re-flattens. The user invokes it explicitly, so always-fresh is the right default.
-- **Q13 → A13.** `en-learn ingest <url>` automatically tries the Wayback Machine if the original URL returns 403 / Cloudflare-blocked. Surfaces an error only if both fail.
+- **Q12 → A12.** *(superseded by EN14 — the mode this describes was removed.)* `en-learn --pack <library>` always re-fetches and re-flattens. The user invokes it explicitly, so always-fresh is the right default.
+- **Q13 → A13.** *(superseded by EN14 — the mode this describes was removed.)* `en-learn ingest <url>` automatically tries the Wayback Machine if the original URL returns 403 / Cloudflare-blocked. Surfaces an error only if both fail.
 - **Q14 → A14.** `en-learn --lint --fix` opens one PR per fix category (back-refs / broken-links / index-drift / etc.), mirroring `en-sweep`'s pattern. Each PR is small and reviewable.
 - **Q15 → A15.** Capture-from-synthesis is a **soft prompt** at the end of `en-plan`, `en-review`, `en-brainstorm`. Fires only when the final synthesis exceeds a structure/insight threshold; quietly skipped otherwise.
-- **Q16 → A16.** `en-learn ingest` silently skips low-signal / off-topic sources with a one-line note ("This source appears off-topic for an engineering wiki — skipped. Re-run with `--force` to ingest anyway."). No thin summary written.
+- **Q16 → A16.** *(superseded by EN14 — the mode this describes was removed.)* `en-learn ingest` silently skips low-signal / off-topic sources with a one-line note ("This source appears off-topic for an engineering wiki — skipped. Re-run with `--force` to ingest anyway."). No thin summary written.
 
 ### 16.2 Resolved v1-implementation questions (2026-04-28)
 
 - **Q17 → A17.** New-project detection in `en-foundation`: `docs/foundation.md` does not exist *and* repo has no source code outside `node_modules/`/`vendor/`/equivalents (or is in initial-commit state).
-- **Q18 → A18.** Off-topic detector for `en-learn ingest`: LLM-judged relevance score against the project's `foundation.md`. Threshold: **0.3 / 1.0**. Below threshold → silently skip with note (per A16); `--force` overrides.
+- **Q18 → A18.** *(superseded by EN14 — the mode this describes was removed.)* Off-topic detector for `en-learn ingest`: LLM-judged relevance score against the project's `foundation.md`. Threshold: **0.3 / 1.0**. Below threshold → silently skip with note (per A16); `--force` overrides.
 - **Q19 → A19.** `docs/plans/tech-debt-tracker.md` carries stable IDs `TD1`, `TD2`, … assigned append-only. `en-plan` cites them as `Resolves: TD7` in unit metadata when a plan addresses tracked debt.
 - **Q20 → A20.** GitHub Action permissions/secrets for `en-sweep` are documented during setup. The setup script generates a checklist (`docs/generated/sweep-setup-checklist.md`) listing required workflow permissions, optional PAT for cross-repo PRs, and trigger configuration.
 

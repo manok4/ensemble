@@ -163,3 +163,5 @@ if grep -qE "\`--no-peer\`.*post-build branch-level" "$SKILL"; then
 else
   fail "--no-peer must be documented for the post-build review"
 fi
+
+report

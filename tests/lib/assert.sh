@@ -103,6 +103,15 @@ assert_file_missing() {
 # reference-checking suites under three different names.
 flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
 
+# Portable content hash. `md5 -q` is macOS-only; `md5sum` is the Linux spelling.
+# A parity suite that dies on the hash never reaches the comparison it exists for.
+hash_file() {
+  if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | cut -d' ' -f1
+  elif command -v md5 >/dev/null 2>&1; then md5 -q "$1"
+  else shasum "$1" | cut -d' ' -f1
+  fi
+}
+
 report() {
   local total=$((TEST_PASS + TEST_FAIL))
   if [ "$TEST_FAIL" -eq 0 ]; then

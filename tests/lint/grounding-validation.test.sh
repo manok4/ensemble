@@ -194,12 +194,15 @@ fi
 # The script path in the INVOCATION must be the file U4 created. Grepping the
 # whole file also matched the requires: entry, so a wrong command in the step
 # itself went unnoticed — check the step's own line.
-grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1 | {
-  read -r ln
-  sed -n "${ln}p" "$SKILL" | grep -q 'scripts/ensemble-validate-claims' \
-    && pass "the grounding step invokes the real script path" \
-    || fail "the grounding step invokes the real script path"
-}
+# NOT a pipeline. bash runs the last component of a pipeline in a subshell, so
+# pass/fail counter updates inside one are discarded and a printed failure leaves
+# the suite green. Assign first, assert in the current shell.
+ln=$(grep -n 'Ground the claims' "$SKILL" | head -1 | cut -d: -f1)
+if [ -n "$ln" ] && sed -n "${ln}p" "$SKILL" | grep -q 'scripts/ensemble-validate-claims'; then
+  pass "the grounding step invokes the real script path"
+else
+  fail "the grounding step invokes the real script path" "line=$ln"
+fi
 
 
 # The distinction the whole three-code design exists for.
