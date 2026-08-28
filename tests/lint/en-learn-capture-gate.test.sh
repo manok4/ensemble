@@ -98,4 +98,58 @@ grep -qi 'Exempt from the capture gate' "$SKILL" \
 grep -qi 'Never route ordinary capture through this exemption' "$SKILL" \
   && pass "the exemption is fenced to bootstrap only" || fail "the exemption is fenced to bootstrap only"
 
+# --- The generalization step -------------------------------------------------
+# Several candidates sharing a cause are one learning. Without this step the gate
+# admits four near-duplicate entries and calls each of them individually correct.
+
+grep -q 'Generalize before you write' "$GATE" \
+  && pass "the gate has a generalization step" || fail "the gate has a generalization step"
+
+grep -qi 'is this an instance of something' "$GATE" \
+  && pass "generalization is posed as a question asked before writing" \
+  || fail "generalization is posed as a question asked before writing"
+
+grep -qi 'share a cause, not a topic' "$GATE" \
+  && pass "the class test is cause-based, not topic-based" \
+  || fail "the class test is cause-based, not topic-based"
+
+grep -qi 'extend it' "$GATE" \
+  && pass "an existing class entry is extended rather than duplicated" \
+  || fail "an existing class entry is extended rather than duplicated"
+
+# --- Frontmatter schema: reduced field set -----------------------------------
+SCHEMA="$REPO_ROOT/skills/en-learn/references/learning-frontmatter-schema.md"
+assert_file_exists "$SCHEMA" "the frontmatter schema exists"
+
+for dropped in problem_type confidence; do
+  grep -q "^| \`$dropped\`" "$SCHEMA" \
+    && fail "$dropped is no longer a schema field" \
+    || pass "$dropped is no longer a schema field"
+done
+
+grep -q 'The retrieval field' "$SCHEMA" \
+  && pass "applies_when is marked as the retrieval field" \
+  || fail "applies_when is marked as the retrieval field"
+
+grep -qi 'Write the \*\*situation\*\*, not the subject' "$SCHEMA" \
+  && pass "the schema says to write the situation, not the subject" \
+  || fail "the schema says to write the situation, not the subject"
+
+# --- Schema parity across carriers -------------------------------------------
+# The schema is duplicated per self-contained skill. Derive carriers from the
+# filesystem so that deleting a copy cannot make this check quietly vacuous.
+CARRIERS=$(ls "$REPO_ROOT"/skills/*/references/learning-frontmatter-schema.md 2>/dev/null | wc -l | tr -d ' ')
+[ "$CARRIERS" -ge 2 ] \
+  && pass "at least two skills carry the schema ($CARRIERS)" \
+  || fail "at least two skills carry the schema (found $CARRIERS)"
+
+REF_SUM=$(shasum "$SCHEMA" | cut -d' ' -f1)
+SKEW=0
+for c in "$REPO_ROOT"/skills/*/references/learning-frontmatter-schema.md; do
+  [ "$(shasum "$c" | cut -d' ' -f1)" = "$REF_SUM" ] || SKEW=$((SKEW+1))
+done
+[ "$SKEW" -eq 0 ] \
+  && pass "every carried copy of the schema is byte-identical" \
+  || fail "every carried copy of the schema is byte-identical ($SKEW diverged)"
+
 report

@@ -1,13 +1,10 @@
 ---
 title: "Test"
+applies_when: "never"
 date: 2026-04-29
 category: misc
-problem_type: correctness
-component: test
-applies_when: "never"
 tags: []
 related: []
-confidence: 5
 status: active
 ---
 

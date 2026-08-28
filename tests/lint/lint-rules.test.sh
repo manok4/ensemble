@@ -291,14 +291,11 @@ setup_minimum
 cat > "$TMP/docs/learnings/patterns/test-2026-04-29.md" <<EOF
 ---
 title: Test
+applies_when: never
 date: 2026-04-29
 category: patterns
-problem_type: correctness
-component: test
-applies_when: never
 tags: []
 related: []
-confidence: 5
 status: active
 ---
 
@@ -433,14 +430,11 @@ mkdir -p "$TMP/docs/learnings/patterns"
 cat > "$TMP/docs/learnings/patterns/old-pattern-2026-03-01.md" <<'EOF'
 ---
 title: Old bootstrapped pattern
+applies_when: forever
 date: 2026-03-01
 category: patterns
-problem_type: maintainability
-component: utils
-applies_when: forever
 tags: []
 related: []
-confidence: 6
 status: active
 source: bootstrap
 bootstrap_run: 2026-03-01
@@ -459,14 +453,11 @@ TODAY=$(date -u +%Y-%m-%d)
 cat > "$TMP/docs/learnings/patterns/fresh-pattern-${TODAY}.md" <<EOF
 ---
 title: Fresh bootstrapped pattern
+applies_when: forever
 date: ${TODAY}
 category: patterns
-problem_type: maintainability
-component: utils
-applies_when: forever
 tags: []
 related: []
-confidence: 6
 status: active
 source: bootstrap
 bootstrap_run: ${TODAY}
@@ -490,14 +481,11 @@ mkdir -p "$TMP/docs/learnings/patterns"
 cat > "$TMP/docs/learnings/patterns/validated-2025-12-01.md" <<'EOF'
 ---
 title: Validated bootstrap entry
+applies_when: forever
 date: 2025-12-01
 category: patterns
-problem_type: maintainability
-component: utils
-applies_when: forever
 tags: []
 related: []
-confidence: 8
 status: active
 source: bootstrap
 bootstrap_run: 2025-12-01

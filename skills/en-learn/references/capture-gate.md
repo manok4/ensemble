@@ -99,6 +99,39 @@ A silent skip is indistinguishable from a skill that did not run, so the report
 is not optional. Reporting a skip is a normal successful outcome, not a failure
 of the run.
 
+## Generalize before you write
+
+**Several candidates that share a shape are one learning, not several.** Ask,
+before writing any of them: is this an instance of something, either already
+filed or shared with other candidates from this session?
+
+When it is, file the **class** once and use the instances as evidence. A reader
+who meets the class recognises the next instance; a reader who meets four
+instances has to derive the class themselves, which is the work the entry was
+supposed to have done.
+
+Worked example, from the session that produced this gate. Four separate
+candidates qualified on their own:
+
+- a helper returned a well-formed failure when the helper itself was broken
+- a parity guard found its subjects by looking for them, so it could not see a
+  deletion
+- an assertion grepped the whole file for a phrase the description also contained
+- a regex contained the literal it searched for and matched itself
+
+Four entries would have been four-fifths noise. One entry — *a check whose
+subject is derived from what it verifies stops having an opinion rather than
+failing* — carries all four as evidence and applies to the fifth nobody has hit
+yet.
+
+**The test is whether the instances share a cause, not a topic.** Two bugs in the
+same module are not a class. Two bugs that both come from deriving a check's
+subject from its target are.
+
+When an existing entry already states the class, **extend it** with the new
+instance rather than filing beside it. A class entry that accretes evidence gets
+more convincing; two entries stating the same class get less.
+
 ## Judging the borderline
 
 One learning per run. A session producing two distinct durable lessons gets two

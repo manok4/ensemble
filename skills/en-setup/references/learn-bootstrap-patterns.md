@@ -17,14 +17,11 @@ Distinguished from organic capture entries by frontmatter:
 ```yaml
 ---
 title: <pattern title>
+applies_when: <one-line trigger>
 date: <YYYY-MM-DD>
 category: patterns
-problem_type: <correctness | maintainability | performance | …>
-component: <component or area>
-applies_when: <one-line trigger>
 tags: [<tag>, <tag>, …]
 related: []
-confidence: 6                    # ← lower than user-captured (8-9)
 status: active
 source: bootstrap                # ← marks reconstruction
 bootstrap_run: 2026-05-04        # ← run date
