@@ -8,6 +8,8 @@ requires:
   - references/agent-dispatch.md
   - references/code-simplifier-dispatch.md
   - references/host-detect.md
+  - references/recursion-guard.md
+  - scripts/ensemble-detect-host
 
 ---
 

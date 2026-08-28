@@ -10,10 +10,12 @@ requires:
   - references/brainstorm-approaches.md
   - references/brainstorm-blindspot.md
   - references/host-detect.md
+  - references/recursion-guard.md
   - references/research-dispatch.md
   - references/script-invocation.md
   - references/socratic-questions.md
   - references/templates/design-doc-template.md
+  - scripts/ensemble-detect-host
   - scripts/ensemble-lint
 
 ---

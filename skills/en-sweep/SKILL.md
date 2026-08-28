@@ -10,14 +10,20 @@ requires:
   - references/doc-lints.md
   - references/host-detect.md
   - references/learn-lint.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
   - references/script-invocation.md
+  - references/severity.md
+  - references/stable-ids.md
   - references/sweep-checks.md
   - references/sweep-loop-guards.md
   - references/sweep-security-model.md
   - references/tech-debt-tracker-format.md
+  - references/templates/architecture-template.md
   - references/templates/github-workflow-en-sweep.yml
   - scripts/continuous-monitor
   - scripts/en-sweep-ci
+  - scripts/ensemble-detect-host
   - scripts/ensemble-doc-only-check
   - scripts/ensemble-lint
   - scripts/ensemble-sweep-activity-check

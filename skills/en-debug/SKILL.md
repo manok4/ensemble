@@ -11,7 +11,10 @@ requires:
   - references/observability-conventions.md
   - references/observability-debug-mapping.md
   - references/observability-hypothesis-format.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
   - references/secret-patterns.md
+  - scripts/ensemble-detect-host
 
 ---
 

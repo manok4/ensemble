@@ -18,7 +18,12 @@ requires:
   - references/learn-log-format.md
   - references/learning-frontmatter-schema.md
   - references/pack-reference-template.md
+  - references/recursion-guard.md
+  - references/research-dispatch.md
+  - references/templates/architecture-template.md
   - references/templates/learning-template.md
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-lint
 
 ---
 

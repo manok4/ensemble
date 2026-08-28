@@ -7,6 +7,8 @@ argument-hint: "--objective \"<X>\" --stop-when \"<evidence-based condition>\" [
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - references/host-detect.md
+  - references/recursion-guard.md
+  - scripts/ensemble-detect-host
 
 ---
 

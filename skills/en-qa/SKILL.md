@@ -8,6 +8,8 @@ requires:
   - references/host-detect.md
   - references/playwright-helpers.md
   - references/qa-flows.md
+  - references/recursion-guard.md
+  - scripts/ensemble-detect-host
 
 ---
 

@@ -5,12 +5,15 @@ description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfie
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - references/agent-dispatch.md
+  - references/doc-lints.md
   - references/host-detect.md
   - references/learn-bootstrap-patterns.md
   - references/learn-index-format.md
   - references/learn-log-format.md
+  - references/recursion-guard.md
   - references/script-invocation.md
   - references/setup-state-detection.md
+  - references/stable-ids.md
   - references/templates/agents-md-merge-rules.md
   - references/templates/agents-md-template.md
   - references/templates/claude-md-template.md

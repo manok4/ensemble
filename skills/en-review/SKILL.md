@@ -13,24 +13,44 @@ requires:
   - agents/standards-reviewer.md
   - agents/testing-reviewer.md
   - references/agent-dispatch.md
+  - references/architecture-update-rules.md
+  - references/build-handoff.md
+  - references/build-orchestration.md
+  - references/cli-wrappers.md
   - references/diff-signal-detection.md
+  - references/doc-lints.md
   - references/finding-schema.md
   - references/host-detect.md
+  - references/learn-lint.md
+  - references/learning-frontmatter-schema.md
   - references/outside-voice.md
   - references/peer-model-policy.md
   - references/persona-dispatch.md
   - references/recursion-guard.md
+  - references/research-dispatch.md
   - references/review-confidence-gating.md
   - references/script-invocation.md
   - references/severity-and-routing.md
   - references/severity.md
   - references/single-agent-fallback.md
+  - references/stable-ids.md
   - references/sweep-checks.md
+  - references/sweep-loop-guards.md
+  - references/sweep-security-model.md
+  - references/tech-debt-tracker-format.md
+  - references/templates/architecture-template.md
+  - references/templates/plan-template.md
+  - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
   - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-doc-only-check
+  - scripts/ensemble-extract-json
   - scripts/ensemble-lint
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
+  - scripts/ensemble-verify-peer-evidence
 
 ---
 

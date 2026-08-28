@@ -4,20 +4,34 @@ description: "Execute an implementation plan unit-by-unit on a feature branch. P
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - agents/code-simplifier.md
   - references/agent-dispatch.md
   - references/build-handoff.md
   - references/build-orchestration.md
+  - references/cli-wrappers.md
   - references/code-simplifier-dispatch.md
+  - references/diff-signal-detection.md
+  - references/doc-lints.md
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
+  - references/peer-model-policy.md
+  - references/persona-dispatch.md
   - references/recursion-guard.md
   - references/script-invocation.md
   - references/severity.md
   - references/single-agent-fallback.md
   - references/stable-ids.md
   - references/templates/plan-template.md
+  - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
+  - scripts/ensemble-cli-smoke
+  - scripts/ensemble-config-get
+  - scripts/ensemble-detect-host
+  - scripts/ensemble-extract-json
+  - scripts/ensemble-lint
+  - scripts/ensemble-peer-flags
+  - scripts/ensemble-peer-invoke
   - scripts/ensemble-plan-hash
   - scripts/ensemble-verify-peer-evidence
 

@@ -8,6 +8,8 @@ argument-hint: "[feature description, or --plan <path>]"
 requires:
   - references/en-flow-pipeline.md
   - references/host-detect.md
+  - references/recursion-guard.md
+  - scripts/ensemble-detect-host
 
 ---
 

@@ -5,6 +5,8 @@ description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writin
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - references/host-detect.md
+  - references/recursion-guard.md
+  - scripts/ensemble-detect-host
 
 ---
 

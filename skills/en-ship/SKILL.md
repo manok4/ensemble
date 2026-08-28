@@ -7,8 +7,10 @@ requires:
   - references/agent-dispatch.md
   - references/conventional-commits.md
   - references/host-detect.md
+  - references/recursion-guard.md
   - references/script-invocation.md
   - references/secret-patterns.md
+  - scripts/ensemble-detect-host
   - scripts/ensemble-verify-peer-evidence
   - scripts/get-pr-comments
 

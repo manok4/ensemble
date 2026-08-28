@@ -122,4 +122,27 @@ assert_eq "" "$(comm -3 <(carries_of "$WORK/s5") <(names_of "$WORK/s5"))" "neste
 walker=$(grep -cE 'fronti[e]r=|re[f]s_in\(\)|reachabl[e]\(\)' "$SELF_DIR/skill-payload.test.sh" || true)
 assert_eq "0" "$walker" "no path-walking code remains in this test"
 
+# --- the declaration must be CLOSED ---
+# A declared file naming an undeclared one is a hole: U2 deletes the target and
+# the skill is left pointing at nothing. Found the hard way — en-debug declared
+# agents/repo-research.md, which names references/research-dispatch.md, which
+# was not declared. Closure is a consistency requirement on an explicit list,
+# not a return to inference: it never decides what a skill needs, only that the
+# list it wrote does not contradict itself.
+open_gaps=""
+for d in "$REPO_ROOT"/skills/*/; do
+  skill="$(basename "$d")"
+  declared="$(names_of "$d")"
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "${d%/}/$f" ] || continue
+    while IFS= read -r ref; do
+      [ -n "$ref" ] || continue
+      [ "$ref" = "references/X" ] && continue
+      [ -f "${d%/}/$ref" ] || continue
+      printf '%s\n' "$declared" | grep -qxF "$ref" || open_gaps="$open_gaps $skill:$f->$ref"
+    done < <(grep -ohE '`(references|templates|agents|scripts)/[A-Za-z0-9._/-]+`' "${d%/}/$f" 2>/dev/null | tr -d '`' | sort -u)
+  done <<< "$declared"
+done
+assert_eq "" "$(echo $open_gaps | cut -c1-160)" "every declaration is closed: no declared file names an undeclared one"
+
 report

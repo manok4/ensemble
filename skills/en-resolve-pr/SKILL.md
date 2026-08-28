@@ -5,10 +5,12 @@ description: "Address review comments on the current PR. Fetches inline review t
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - references/host-detect.md
+  - references/recursion-guard.md
   - references/resolve-pr-reply-format.md
   - references/resolve-pr-rubric.md
   - references/resolve-pr-triage.md
   - scripts/check-merge-status
+  - scripts/ensemble-detect-host
   - scripts/get-pr-comments
   - scripts/get-thread-for-comment
   - scripts/reply-to-pr-thread
