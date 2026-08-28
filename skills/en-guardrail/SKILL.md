@@ -7,9 +7,6 @@ requires:
   - bin/check-guardrail.sh
   - bin/guardrail_analyze.py
   - bin/install-guardrail
-  - references/host-detect.md
-  - references/recursion-guard.md
-  - scripts/ensemble-detect-host
 
 ---
 
@@ -22,7 +19,6 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 
 ## Process (when invoked manually)
 
-1. **Detect host.** Source `references/host-detect.md`.
 2. **Status check.** Verify the hook is registered in `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `bin/check-guardrail.sh`). If missing, surface the install snippet (see "Installation" below) and stop.
 3. **Show protected patterns** — render the table from "What's protected" below.
 4. **Show recent fires** if `~/.ensemble/analytics/guardrail.jsonl` exists — last 10 lines, summarized as `pattern × count × repo`.
@@ -128,7 +124,6 @@ The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffec
 ## Reference files
 
 - `bin/check-guardrail.sh` — the hook script (canonical source).
-- `references/host-detect.md` — host detection.
 - Upstream: `gstack/careful` — the original this is vendored from. To pull updates, diff against the upstream and selectively re-apply.
 
 ## Failure protocol

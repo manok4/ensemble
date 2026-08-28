@@ -9,7 +9,6 @@ requires:
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
   - references/capture-gate.md
-  - references/host-detect.md
   - references/learn-bootstrap-patterns.md
   - references/learn-cross-ref-maintenance.md
   - references/learn-index-format.md
@@ -18,11 +17,9 @@ requires:
   - references/learn-log-format.md
   - references/learning-frontmatter-schema.md
   - references/pack-reference-template.md
-  - references/recursion-guard.md
   - references/research-dispatch.md
   - references/templates/architecture-template.md
   - references/templates/learning-template.md
-  - scripts/ensemble-detect-host
   - scripts/ensemble-lint
 
 ---
@@ -56,7 +53,6 @@ After every write:
 
 ## Process — Mode A: `capture` (default)
 
-1. **Detect host (light).** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip (no peer review on capture).
 3. **Detect input source.**
    - **Default** (post-build / post-qa) — read recent commits + branch summary.
@@ -157,7 +153,6 @@ Output: JSON-lines + markdown summary.
 
 Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time** retrofit step — meant to give a State-2 project a starting wiki rather than waiting months for organic capture. Per `references/learn-bootstrap-patterns.md`.
 
-1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Refuse if already bootstrapped.** Scan `docs/learnings/patterns/` for entries with frontmatter `source: bootstrap`. If any exist, refuse with: *"Bootstrap was already run on `<date>`. Use `/en-learn --refresh` to validate or update existing bootstrapped patterns. Force re-run with `--force`."*
 4. **Confirm with user.** Surface: *"Will dispatch `repo-research` to identify 5–10 strong conventions in this codebase and file them as `patterns/` entries flagged `requires_validation: true`. These are reconstructions, not captures from real moments — lower confidence by design. Continue? (y/n)"*
@@ -207,7 +202,6 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 - `references/learn-lint.md` — check catalog and auto-fix rules
 - `references/architecture-update-rules.md` — when to touch `docs/architecture.md`
 - `references/pack-reference-template.md` — `*-llms.txt` structure
-- `references/host-detect.md`
 
 ## Failure protocol
 

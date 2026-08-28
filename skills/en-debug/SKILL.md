@@ -7,14 +7,11 @@ requires:
   - agents/repo-research.md
   - references/agent-dispatch.md
   - references/debug-investigation.md
-  - references/host-detect.md
   - references/observability-conventions.md
   - references/observability-debug-mapping.md
   - references/observability-hypothesis-format.md
-  - references/recursion-guard.md
   - references/research-dispatch.md
   - references/secret-patterns.md
-  - scripts/ensemble-detect-host
 
 ---
 
@@ -49,7 +46,6 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Read observability config** from `.ensemble/config.local.yaml` `observability:` block.
    - `log_source` — `stdout` (read from stdin), `file` (read `log_path`), or `command` (run `log_command`).
@@ -162,7 +158,6 @@ When there's no usable telemetry, run a systematic diagnosis loop adapted from c
 - `references/observability-hypothesis-format.md` — output template
 - `references/secret-patterns.md` — redaction patterns for logged secrets
 - `references/debug-investigation.md` — code-mode anti-patterns + investigation techniques
-- `references/host-detect.md`
 
 ## Failure protocol
 

@@ -5,11 +5,8 @@ description: "Test the work like a real user. Phase 1: lint + typecheck + test s
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - references/diff-signal-detection.md
-  - references/host-detect.md
   - references/playwright-helpers.md
   - references/qa-flows.md
-  - references/recursion-guard.md
-  - scripts/ensemble-detect-host
 
 ---
 
@@ -20,7 +17,6 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
 ## Process
 
-1. **Detect host (light).** Source `references/host-detect.md` only for path conventions; no peer-review setup needed (cross-review is off for QA).
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocess shouldn't QA in CI).
 3. **Phase 1 — system checks.** Run in this order; stop on first failure:
    - Project lint (from `AGENTS.md` `{{LINT_CMD}}`).
@@ -155,7 +151,6 @@ URL: https://preview-fr07.vercel.app
 
 - `references/qa-flows.md` — flow catalog and bug protocol
 - `references/playwright-helpers.md` — MCP usage patterns
-- `references/host-detect.md` — light usage
 
 ## Failure protocol
 

@@ -6,11 +6,8 @@ description: "Push clean changes to the remote with a meaningful commit and PR. 
 requires:
   - references/agent-dispatch.md
   - references/conventional-commits.md
-  - references/host-detect.md
-  - references/recursion-guard.md
   - references/script-invocation.md
   - references/secret-patterns.md
-  - scripts/ensemble-detect-host
   - scripts/ensemble-verify-peer-evidence
   - scripts/get-pr-comments
 
@@ -29,7 +26,6 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
 ## Process
 
-1. **Detect host (light).** Source `references/host-detect.md` for path conventions.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't ship).
 3. **Pre-flight.**
    - `git status` — show unstaged + staged + untracked.
@@ -217,7 +213,6 @@ Next: PR is green and clean - ready for your review/merge.
 
 - `references/conventional-commits.md` — message format
 - `references/secret-patterns.md` — secret-scan regex catalog
-- `references/host-detect.md`
 
 ## Failure protocol
 
