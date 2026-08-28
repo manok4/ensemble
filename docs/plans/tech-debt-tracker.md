@@ -138,10 +138,14 @@ Likely a codex output-format change; earlier runs (EN13, 3 iterations, 11
 findings) parsed fine, so this probably regressed under us rather than never
 having worked.
 
-**Fix direction:** select the object by event type — the `agent_message` item's
-`text` — rather than by position, and make the guard assert the *shape* it needs
-(a `verdict` key) rather than mere parseability. A guard that only checks
-well-formedness cannot distinguish the right object from the wrong one.
+**Resolved 2026-08-28.** The stream is unwrapped to the last `agent_message`
+item's `text` before scanning, and a recovered object whose top-level `type` is a
+known codex event is rejected outright rather than returned. The guard now asks
+what the object *is*, not merely whether it parses — parseability could never
+have caught this, since a transport frame is valid JSON.
+
+Covered by six cases in `tests/extract-json/extract-json.test.sh`, each verified
+to fail against the pre-fix extractor.
 
 ### TD7. No behavioural coverage for units whose logic is a model judgment
 
