@@ -132,3 +132,29 @@ is the durable part — a guard that only checks well-formedness cannot tell the
 right object from the wrong one, which is why a valid-JSON frame survived a
 validity check. Six cases in `tests/extract-json/extract-json.test.sh`, each
 verified to fail against the pre-fix extractor.
+
+### TD7. No behavioural coverage for units whose logic is a model judgment
+
+Ensemble's tests are shell scripts that grep specifications. That works for
+structure (a file exists, two copies are byte-identical, a required field is
+enforced) and is worthless for behaviour: `en-learn`'s artifact router and its
+glossary writer are prose instructions executed by a model, and no shell
+assertion can show that a given candidate produces the right artifact type or
+that an amendment preserves unrelated glossary entries.
+
+Raised twice by the peer during EN14 review (findings 2-3 and 2-5), correctly
+both times. EN14 responds by **stating the limit** rather than claiming coverage
+it does not have — its router and glossary units assert specification presence
+and self-consistency, and say so.
+
+The gap is real: a broken writer, a duplicate insertion, or a destructive rewrite
+would satisfy every assertion those units make.
+
+**Fix direction:** an eval suite that feeds fixture candidates through the skill
+and asserts the emitted artifact type and path. `claude plugin eval` exists for
+exactly this and would not require inventing a harness. EN14 leaves the fixture
+corpus in place (`tests/fixtures/routing/`, and the worked examples in
+`artifact-types.md`), so the inputs an eval suite needs are already written.
+
+Until this lands, treat "the tests pass" on any model-behaviour unit as evidence
+about the specification only.
