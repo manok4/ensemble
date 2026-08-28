@@ -8,6 +8,7 @@ requires:
   - agents/repo-research.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
+  - references/artifact-types.md
   - references/capture-gate.md
   - references/learn-bootstrap-patterns.md
   - references/learn-cross-ref-maintenance.md
