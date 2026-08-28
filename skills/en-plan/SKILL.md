@@ -16,6 +16,7 @@ requires:
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
+  - references/peer-brief.md
   - references/peer-contract.md
   - references/peer-model-policy.md
   - references/persona-dispatch.md
@@ -162,7 +163,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 14. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
 15. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
-    - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --artifact-type plan --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
+    - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
     - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
     - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
