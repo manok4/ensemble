@@ -1,6 +1,6 @@
 ---
 name: en-learn
-description: "Compounding wiki maintainer for docs/learnings/. Six modes: capture (default; file a learning post-build/qa, sync architecture/foundation/plan, move plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
+description: "Compounding wiki maintainer for docs/learnings/. Capture is gated: the default is to write NOTHING, and an entry must clear three conditions — not recoverable from the code, changes a named future decision, outlives its occasion — because coding agents already read code well and a wiki restating it makes them read more to learn less. Six modes: capture (default; gate-checked, one learning per run, one paragraph until it earns more; syncs architecture/foundation/plan, moves plan to completed); ingest <path-or-url>; --refresh (audit staleness); --pack <library>; --lint (graph health — orphans, broken links, contradictions); --bootstrap-patterns (one-time retrofit, seeds patterns/ from existing codebase). Always-on cross-reference maintenance. Trigger phrases: 'capture this', 'learn from', 'ingest', 'pack docs', 'audit learnings', 'wiki health'."
 ---
 
 
@@ -38,13 +38,19 @@ After every write:
    - **Default** (post-build / post-qa) — read recent commits + branch summary.
    - **`--from-conversation`** — take user-confirmed synthesis as input (fired by D21 capture-from-synthesis).
    - **Explicit subject** — user describes what to capture.
-4. **Identify category.** `bugs/` (bug fixes), `patterns/` (reusable approach), `decisions/` (architectural/technical choice with rationale).
-5. **Spawn parallel sub-tasks.**
-   - **Context Analyzer** — extract problem, symptoms, root cause from conversation + commits.
-   - **Solution Extractor** — capture the fix, why it works, prevention strategy.
-   - **Related Docs Finder** — search `docs/learnings/` for overlap; flag near-duplicates; identify pages that should back-link.
-6. **Compose entry.** Body shape from `references/templates/learning-template.md` (TL;DR / Context / What didn't work / Root cause / Fix / Why it works / Prevention / Related / Citations).
-7. **Slug + path.** Generate `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`). Write to `docs/learnings/<category>/<slug>-<date>.md`.
+4. **Apply the capture gate — read `references/capture-gate.md` and follow it.** This runs BEFORE any other work and decides whether to write at all. **The default is to write nothing.** Three conditions, all required, each answered by naming something: the file an agent would read to learn this (condition 1), the decision this changes and who makes it (condition 2), and whether it survives a rewrite of the code that prompted it (condition 3). An unnamed answer is a failed condition, not a judgment call.
+
+   Coding agents reconstruct *what* and *how* from the tree without help. Capture only what reading cannot recover: constraints living outside the code, paths tried and abandoned, deliberate deviations from the obvious, failure modes that do not announce themselves.
+
+   **On failure, write nothing and report which condition failed and what could not be named** (format in the reference). A reported skip is a normal successful outcome. Then continue to step 8 — the always-on behaviors and the plan-lifecycle flip in step 11 still run, because bookkeeping is not conditional on filing content.
+
+   **One learning per run.** A session holding two distinct durable lessons gets two runs; batching pushes the weaker through on the stronger one's merit.
+
+5. **Identify category.** `bugs/` (a defect whose *durable* lesson is not the fix), `patterns/` (reusable approach), `decisions/` (a choice with rationale). Most entries that clear the gate are `decisions/`; a `bugs/` entry that describes the fix rather than the non-obvious trap has failed condition 1 and should not have reached this step.
+
+6. **Gather what the entry needs.** Read the relevant commits and search `docs/learnings/` for overlap — an existing entry to extend beats a near-duplicate. Dispatch a sub-agent only when the search is genuinely broad; a gate-passing learning is usually a few sentences whose material you already hold, and three parallel sub-agents to produce a paragraph costs more than it returns.
+7. **Compose entry.** Per `references/templates/learning-template.md`. **One paragraph until it earns more** — lead with the conclusion, name specifics (paths, constants, error strings), say why rather than what. The four optional sections are added only when they carry something the paragraph cannot.
+8. **Slug + path.** Generate `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`). Write to `docs/learnings/<category>/<slug>-<date>.md`.
 8. **Apply always-on behaviors** (cross-refs, index update, log append).
 9. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
 10. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
@@ -60,7 +66,7 @@ After every write:
 
    **11a always runs**, even when the user picked "skip — no learnings worth filing" earlier in the capture flow. The flip is lifecycle bookkeeping; it shouldn't be tied to whether wiki content was filed.
 
-   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (i.e. step 6's compose-entry produced a real file in `docs/learnings/<category>/`), AND 11a ran (plan was moved), also:
+   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (i.e. step 7's compose-entry produced a real file in `docs/learnings/<category>/`), AND 11a ran (plan was moved), also:
    - Replace plan-tense ("we will", "this should") with documentation-tense ("we did", "this does").
    - Note any deviations from the plan (sections of the plan that didn't ship as written, or that landed differently).
 
@@ -135,8 +141,8 @@ Seeds `docs/learnings/patterns/` from an existing project's codebase. **One-time
 6. **Cap at 10.** If the research agent returns more than 10, take the top 10 by `confidence` field. Fewer than 5 → surface a warning; the codebase may not have strong conventions yet (typical for very young or scattered repos).
 7. **Compose entries.** For each candidate, write `docs/learnings/patterns/<slug>-<date>.md` using `references/templates/learning-template.md` with:
    - Frontmatter: `source: bootstrap`, `confidence: 6`, `requires_validation: true`, `bootstrap_run: <YYYY-MM-DD>`.
-   - Body: TL;DR, **Where this applies** (file paths/globs), **Pattern** (the convention), **Why** (rationale inferred from codebase signals), **How to follow it** (concrete rules), **Citations** (specific file:line examples that exhibit the pattern).
-   - **Skip** the "What didn't work" / "Root cause" / "Fix" sections — those don't apply to forward-looking conventions.
+   - Body: the convention as a paragraph, plus **Where this applies** (file paths/globs), **How to follow it** (concrete rules), **Citations** (`file:line` examples that exhibit it), and a **Confidence note** (why this is 6 and what would raise it).
+   - **Exempt from the capture gate, deliberately and narrowly.** These entries fail condition 1 by construction — a convention read out of the codebase is by definition recoverable from the codebase. Bootstrap is not trying to record something unrecoverable; it is giving a retrofit project a starting index of what its own conventions already are. That is why every entry is stamped `confidence: 6` and `requires_validation: true`, and why the mode is one-time and opt-in. Never route ordinary capture through this exemption, and treat a bootstrap entry that reaches `confidence: 8`+ while still `requires_validation: true` as a lint finding rather than a success.
 8. **Apply always-on behaviors.** Cross-refs (none on first run), index update (one line per entry under "Patterns"), log append (one summary line: `## [<date>] bootstrap | <count> patterns from repo-research`).
 9. **Surface a follow-up suggestion.** *"Bootstrap complete. <count> patterns filed in `docs/learnings/patterns/` with `requires_validation: true`. Review and validate as you encounter them in `/en-review`, `/en-resolve-pr`, or via `/en-learn --refresh`. Validated entries clear the flag."*
 
@@ -167,6 +173,7 @@ Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/e
 ## Reference files
 
 - `references/learn-bootstrap-patterns.md` — Mode F prompt + entry shape
+- `references/capture-gate.md` — whether to write a learning at all; the default is not to
 - `references/templates/learning-template.md` — body structure for capture/ingest writes
 - `references/learning-frontmatter-schema.md` — frontmatter rules + examples
 - `references/learn-cross-ref-maintenance.md` — always-on back-ref behavior
