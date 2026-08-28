@@ -103,14 +103,6 @@
       ]
     },
     {
-      "source": "bin/ensemble-build-peer-prompt",
-      "dest": "scripts/",
-      "skills": [
-        "en-cross-review",
-        "en-foundation"
-      ]
-    },
-    {
       "source": "bin/ensemble-classify-plans",
       "dest": "scripts/",
       "skills": [

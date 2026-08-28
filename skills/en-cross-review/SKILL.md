@@ -13,6 +13,7 @@ requires:
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
+  - references/peer-brief.md
   - references/peer-contract.md
   - references/peer-model-policy.md
   - references/persona-dispatch.md
@@ -50,6 +51,10 @@ Ad-hoc peer review. Wraps any artifact and ships it to the peer agent. The host 
 > object and its reason enum are defined once in `references/peer-contract.md`
 > and are byte-identical across every skill that exchanges findings. What this
 > skill *does* with a finding is its own policy, not part of that contract.
+
+> **Peer brief.** What the peer is asked, and what this skill does with the
+> answer, is in `references/peer-brief.md`. The shared wire format is
+> `references/peer-contract.md`.
 
 ## Process
 
