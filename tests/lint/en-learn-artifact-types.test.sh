@@ -18,6 +18,10 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-learn artifact types"
 
+# Prose gets reflowed; a single-line grep goes red on a wrapped sentence, which
+# is a false failure about formatting. Flatten before matching.
+flat() { tr '\n' ' ' < "$1" | sed 's/[*_`]//g; s/  */ /g'; }
+
 REF="$REPO_ROOT/skills/en-learn/references/artifact-types.md"
 SKILL="$REPO_ROOT/skills/en-learn/SKILL.md"
 
@@ -39,11 +43,11 @@ PAIRS
 # A candidate can match two types. Prose saying "prefer the more durable one"
 # is invertible by a reader who disagrees about which is more durable; an
 # explicit ordering is not.
-grep -qE 'term[[:space:]]*>[[:space:]]*decision[[:space:]]*>[[:space:]]*solution' "$REF" \
+flat "$REF" | grep -qE 'term *> *decision *> *solution' \
   && pass "the tie-break is written as an explicit ordering" \
   || fail "the tie-break is written as an explicit ordering"
 
-grep -qi 'more durable' "$REF" \
+flat "$REF" | grep -qi 'more durable' \
   && pass "the ordering is justified by durability" \
   || fail "the ordering is justified by durability"
 
@@ -58,14 +62,14 @@ ex=$(grep -c '^### Routes to ' "$REF" 2>/dev/null || echo 0)
 # --- the gate runs first -----------------------------------------------------
 # The gate decides WHETHER to write; the router decides WHICH artifact. A router
 # that ran first would classify candidates that should never have been written.
-grep -qi 'capture gate.*first\|after the capture gate\|gate.*runs first' "$REF" \
+flat "$REF" | grep -qi 'capture gate.*first\|after the capture gate\|gate.*runs first' \
   && pass "the gate is stated to run before the router" \
   || fail "the gate is stated to run before the router"
 
 # --- honesty about what is verified -----------------------------------------
 # TD7: shell tests check specifications. A reference claiming its routing is
 # test-verified would be claiming coverage that does not exist.
-grep -qi 'TD7\|not.*mechanically verif\|specification, not.*behaviour' "$REF" \
+flat "$REF" | grep -qi 'TD7\|not.*mechanically verif\|specification, not.*behaviour' \
   && pass "the reference states that routing is not mechanically verified" \
   || fail "the reference states that routing is not mechanically verified"
 

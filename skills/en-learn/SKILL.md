@@ -10,6 +10,7 @@ requires:
   - references/architecture-update-rules.md
   - references/artifact-types.md
   - references/capture-gate.md
+  - references/glossary-rules.md
   - references/learn-bootstrap-patterns.md
   - references/learn-cross-ref-maintenance.md
   - references/learn-index-format.md
@@ -21,6 +22,7 @@ requires:
   - references/peer-contract.md
   - references/research-dispatch.md
   - references/templates/architecture-template.md
+  - references/templates/context-template.md
   - references/templates/learning-template.md
 
 ---
