@@ -39,7 +39,7 @@ Reserve 🔴 **Important** for findings that would:
 - Lose data: migrations without backfill, deletes without `WHERE`, broken
   cache-invalidation that produces stale reads in production.
 - Violate a rule documented in `CLAUDE.md`, `AGENTS.md`, or
-  `docs/learnings/patterns/`. (Treat documented violations as Important —
+  `docs/learnings/`. (Treat documented violations as Important —
   the project explicitly opted into the rule.)
 
 Style, naming, refactoring suggestions, and missing test coverage on
@@ -115,10 +115,10 @@ Concrete patterns to cite:
 
 - `CLAUDE.md` rule (file path + brief quote).
 - `AGENTS.md` rule (file path + brief quote).
-- A specific learning under `docs/learnings/patterns/<slug>-<date>.md`.
+- A specific learning under `docs/learnings/<slug>-<date>.md`.
 
 Example: *"Declined: this would add a defensive null check the type system
-already guarantees. See `docs/learnings/patterns/no-defensive-null-checks-2026-02-15.md`."*
+already guarantees. See `docs/learnings/no-defensive-null-checks-2026-02-15.md`."*
 
 ## Summary shape
 

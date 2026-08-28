@@ -19,24 +19,32 @@ total_entries: <N>
 
 > Auto-maintained by `en-learn`. Do not hand-edit. Run `en-learn --lint --fix` to repair drift.
 
-## Bugs
+## Terms
 
-- [`bugs/refresh-token-race-2026-04-15.md`](./bugs/refresh-token-race-2026-04-15.md) — Refresh token race when two requests arrive within rotation window. (related: 2)
-- [`bugs/empty-cart-state-2026-03-08.md`](./bugs/empty-cart-state-2026-03-08.md) — Empty-cart state crash on mobile. (related: 1)
+Defined in `docs/CONTEXT.md`, listed here so the index is a complete map. One
+line per term, no link target of its own — the glossary is a single file.
 
-## Patterns
-
-- [`patterns/single-flight-cache-2026-03-20.md`](./patterns/single-flight-cache-2026-03-20.md) — Single-flight cache for per-user side-effecting operations. (related: 3)
-- [`patterns/typed-action-creators-2026-02-28.md`](./patterns/typed-action-creators-2026-02-28.md) — Typed action creators for the redux-toolkit boundary. (related: 0)
+- **Carrier** — a skill holding a byte-identical copy of a shared reference.
+- **Declaration closure** — a declared file may not name an undeclared one.
 
 ## Decisions
 
-- [`decisions/drizzle-over-prisma-2026-02-10.md`](./decisions/drizzle-over-prisma-2026-02-10.md) — Chose Drizzle over Prisma for edge-runtime support. (related: 1)
+- [`../decisions/0002-requires-over-walking.md`](../decisions/0002-requires-over-walking.md) — Declare each skill's files rather than inferring them by walking references.
+- [`../decisions/0001-flat-solution-store.md`](../decisions/0001-flat-solution-store.md) — Store solutions flat; split artifacts by type rather than by topic.
+
+## Solutions
+
+- [`single-flight-cache-2026-03-20.md`](./single-flight-cache-2026-03-20.md) — Single-flight cache for per-user side-effecting operations. (related: 3)
+- [`refresh-token-race-2026-04-15.md`](./refresh-token-race-2026-04-15.md) — Refresh token race when two requests arrive within the rotation window. (related: 2)
 
 ## Sources
 
 - [`sources/openai-harness-engineering-2026-04-20.md`](./sources/openai-harness-engineering-2026-04-20.md) — OpenAI harness-engineering essay summary. (related: 4)
 ```
+
+Sections are ordered by durability — `term > decision > solution`, the same
+ordering the router uses — so the most durable material is what a reader meets
+first.
 
 ## Entry format
 
@@ -53,7 +61,7 @@ Each line follows the pattern:
 | `<title>` | The page's `title:` frontmatter, verbatim |
 | `(related: <count>)` | Number of items in the page's `related:` field |
 
-Sort order within each category: **most recent first** (descending by `date:`).
+Sort order within each section: **most recent first** (descending by `date:`).
 
 ## Frontmatter
 
@@ -74,7 +82,7 @@ Sort order within each category: **most recent first** (descending by `date:`).
 
 ## Empty-state
 
-When the wiki is empty (just initialized), `index.md` is seeded with empty category sections:
+When the wiki is empty (just initialized), `index.md` is seeded with empty sections, ordered by durability:
 
 ```markdown
 ---
@@ -89,15 +97,15 @@ total_entries: 0
 
 > Auto-maintained by `en-learn`. Do not hand-edit.
 
-## Bugs
-
-_(no entries yet)_
-
-## Patterns
+## Terms
 
 _(no entries yet)_
 
 ## Decisions
+
+_(no entries yet)_
+
+## Solutions
 
 _(no entries yet)_
 

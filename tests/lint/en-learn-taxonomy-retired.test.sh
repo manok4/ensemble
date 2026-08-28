@@ -21,10 +21,9 @@ TEST_NAME="retired taxonomy"
 # guard in this repo matched its own pattern string and could never go red.
 PAT='learnings/[b]ugs|learnings/[p]atterns|learnings/[d]ecisions|learnings/<[c]ategory>'
 
-# en-learn owns the taxonomy, so its own files must be clean first (U8). The
-# repo-wide sweep across every other carrier is U9's; SCOPE widens when that
-# lands, and the widening is itself the assertion that U9 finished.
-SCOPE="${TAXONOMY_SCOPE:-$REPO_ROOT/skills/en-learn}"
+# Repo-wide since U9. Scoped to en-learn during U8, when only its own nine files
+# had been swept; widening this line is what proved U9 finished.
+SCOPE="${TAXONOMY_SCOPE:-$REPO_ROOT/skills}"
 hits=$(grep -rlE "$PAT" "$SCOPE" 2>/dev/null || true)
 if [ -z "$hits" ]; then
   pass "no file under $(basename "$SCOPE") references a retired category directory"

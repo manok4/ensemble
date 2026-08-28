@@ -124,9 +124,9 @@ No auto-fix.
 JSON-lines for machine consumption (one finding per line) plus a markdown summary at the end.
 
 ```json
-{"check":"missing-back-refs","severity":"P1","page":"docs/learnings/patterns/single-flight-cache-2026-03-20.md","missing_from":"docs/learnings/bugs/refresh-token-race-2026-04-15.md","fixable":true}
-{"check":"orphans","severity":"P2","page":"docs/learnings/decisions/old-decision-2025-11-01.md","inbound_count":0,"fixable":false}
-{"check":"contradictions","severity":"P3","pages":["docs/learnings/patterns/A.md","docs/learnings/patterns/B.md"],"summary":"<explanation>","fixable":false}
+{"check":"missing-back-refs","severity":"P1","page":"docs/learnings/single-flight-cache-2026-03-20.md","missing_from":"docs/learnings/refresh-token-race-2026-04-15.md","fixable":true}
+{"check":"orphans","severity":"P2","page":"docs/learnings/old-decision-2025-11-01.md","inbound_count":0,"fixable":false}
+{"check":"contradictions","severity":"P3","pages":["docs/learnings/A.md","docs/learnings/B.md"],"summary":"<explanation>","fixable":false}
 ```
 
 ```markdown

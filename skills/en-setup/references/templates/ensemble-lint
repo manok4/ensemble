@@ -257,7 +257,7 @@ check_plan_required_fields() {
 
 # --- Rule: frontmatter.required-field-missing for learnings ---
 check_learning_required_fields() {
-  case "$1" in docs/learnings/bugs/*.md|docs/learnings/patterns/*.md|docs/learnings/decisions/*.md|docs/learnings/sources/*.md) ;; *) return 0 ;; esac
+  case "$1" in docs/learnings/*.md|docs/learnings/*.md|docs/learnings/*.md|docs/learnings/sources/*.md) ;; *) return 0 ;; esac
   local file="$1"
   for f in title date category applies_when tags related status; do
     if ! grep -q "^$f:" <(extract_frontmatter "$file"); then
@@ -479,7 +479,7 @@ check_index_coverage() {
 
   # Learnings
   if [ -f docs/generated/learning-index.md ]; then
-    for learning in docs/learnings/bugs/*.md docs/learnings/patterns/*.md docs/learnings/decisions/*.md docs/learnings/sources/*.md; do
+    for learning in docs/learnings/*.md docs/learnings/*.md docs/learnings/*.md docs/learnings/sources/*.md; do
       [ -f "$learning" ] || continue
       local learning_basename
       learning_basename=$(basename "$learning")
@@ -539,10 +539,13 @@ check_generated_marker() {
 # more than 30 days old. P3 — informational reminder, not a blocker.
 check_bootstrap_unvalidated() {
   [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
-  [ -d docs/learnings/patterns ] || return 0
+  # Guarded on the store itself. This probed one of the retired category
+  # directories, which after the taxonomy was retired would have left the rule
+  # permanently skipped while still appearing to run.
+  [ -d docs/learnings ] || return 0
   local count=0
   local oldest=""
-  for entry in docs/learnings/patterns/*.md; do
+  for entry in docs/learnings/*.md; do
     [ -f "$entry" ] || continue
     local source rv date
     source=$(get_field "$entry" source)

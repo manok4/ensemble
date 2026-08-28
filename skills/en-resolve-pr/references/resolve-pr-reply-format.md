@@ -74,7 +74,7 @@ Example:
 
 Persistence across restarts. The single-flight cache TTL exceeds typical container restart
 windows, so an in-memory cache would lose state and cause duplicate token rotations during
-deploys. See docs/learnings/decisions/redis-for-token-cache-2026-03-12.md for the full
+deploys. See docs/learnings/redis-for-token-cache-2026-03-12.md for the full
 rationale.
 ```
 
@@ -119,7 +119,7 @@ for scenarios that can't happen / shouldn't be silently swallowed.")
 > Extract the validation logic into a `Validator` class for reusability.
 
 Declined: this is the only call site for validation in this shape. Extracting now would be
-premature abstraction. (Per docs/learnings/patterns/no-premature-abstraction-2026-02-08.md:
+premature abstraction. (Per docs/learnings/no-premature-abstraction-2026-02-08.md:
 "Three similar lines is better than a premature abstraction.")
 ```
 
@@ -199,7 +199,7 @@ This keeps the conversation honest (acknowledges the concern is valid) while kee
 
 ## Capture-from-synthesis addendum (Ensemble-specific)
 
-When a `declined` or `needs-human` verdict surfaces a recurring anti-pattern not yet in `docs/learnings/patterns/`, the SKILL soft-prompts after the run:
+When a `declined` or `needs-human` verdict surfaces a recurring anti-pattern not yet in `docs/learnings/`, the SKILL soft-prompts after the run:
 
 > *"Reviewer flagged a recurring concern in `<thread>`. Capture as a learning?"*
 

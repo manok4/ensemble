@@ -17,7 +17,7 @@ trap "rm -rf '$TMP'" EXIT
 
 setup_minimum() {
   rm -rf "$TMP"/*
-  mkdir -p "$TMP/docs/plans/active" "$TMP/docs/plans/completed" "$TMP/docs/learnings/bugs" "$TMP/docs/learnings/patterns" "$TMP/docs/learnings/decisions" "$TMP/docs/learnings/sources" "$TMP/docs/generated" "$TMP/docs/designs"
+  mkdir -p "$TMP/docs/plans/active" "$TMP/docs/plans/completed" "$TMP/docs/learnings/sources" "$TMP/docs/generated" "$TMP/docs/designs"
   cat > "$TMP/docs/generated/plan-index.md" <<EOF
 ---
 type: learning-index
@@ -288,7 +288,7 @@ assert_rule_fires "index-coverage.plan-missing" "plan not in plan-index.md"
 
 # --- index-coverage.learning-missing ---
 setup_minimum
-cat > "$TMP/docs/learnings/patterns/test-2026-04-29.md" <<EOF
+cat > "$TMP/docs/learnings/test-2026-04-29.md" <<EOF
 ---
 title: Test
 applies_when: never
@@ -425,9 +425,9 @@ fi
 # Bootstrapped patterns with requires_validation: true and bootstrap_run > 30 days
 # old surface as P3 advisory.
 setup_minimum
-mkdir -p "$TMP/docs/learnings/patterns"
+mkdir -p "$TMP/docs/learnings"
 # Old bootstrap entry (>30 days)
-cat > "$TMP/docs/learnings/patterns/old-pattern-2026-03-01.md" <<'EOF'
+cat > "$TMP/docs/learnings/old-pattern-2026-03-01.md" <<'EOF'
 ---
 title: Old bootstrapped pattern
 applies_when: forever
@@ -443,14 +443,14 @@ requires_validation: true
 
 # Old pattern
 EOF
-echo "- [\`old-pattern-2026-03-01.md\`](../learnings/patterns/old-pattern-2026-03-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
+echo "- [\`old-pattern-2026-03-01.md\`](../learnings/old-pattern-2026-03-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
 assert_rule_fires "learnings.bootstrap-unvalidated" "stale unvalidated bootstrap entries"
 
 # Recent bootstrap entry (<30 days) should NOT fire the rule.
 setup_minimum
-mkdir -p "$TMP/docs/learnings/patterns"
+mkdir -p "$TMP/docs/learnings"
 TODAY=$(date -u +%Y-%m-%d)
-cat > "$TMP/docs/learnings/patterns/fresh-pattern-${TODAY}.md" <<EOF
+cat > "$TMP/docs/learnings/fresh-pattern-${TODAY}.md" <<EOF
 ---
 title: Fresh bootstrapped pattern
 applies_when: forever
@@ -466,7 +466,7 @@ requires_validation: true
 
 # Fresh pattern
 EOF
-echo "- [\`fresh-pattern-${TODAY}.md\`](../learnings/patterns/fresh-pattern-${TODAY}.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
+echo "- [\`fresh-pattern-${TODAY}.md\`](../learnings/fresh-pattern-${TODAY}.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
 result=$(run_lint)
 output="${result%%|||*}"
 if echo "$output" | grep -q "learnings.bootstrap-unvalidated"; then
@@ -477,8 +477,8 @@ fi
 
 # Validated bootstrap entry (requires_validation: false) should NOT fire even if old.
 setup_minimum
-mkdir -p "$TMP/docs/learnings/patterns"
-cat > "$TMP/docs/learnings/patterns/validated-2025-12-01.md" <<'EOF'
+mkdir -p "$TMP/docs/learnings"
+cat > "$TMP/docs/learnings/validated-2025-12-01.md" <<'EOF'
 ---
 title: Validated bootstrap entry
 applies_when: forever
@@ -494,7 +494,7 @@ requires_validation: false
 
 # Validated
 EOF
-echo "- [\`validated-2025-12-01.md\`](../learnings/patterns/validated-2025-12-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
+echo "- [\`validated-2025-12-01.md\`](../learnings/validated-2025-12-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
 result=$(run_lint)
 output="${result%%|||*}"
 if echo "$output" | grep -q "learnings.bootstrap-unvalidated"; then

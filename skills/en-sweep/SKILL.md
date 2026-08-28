@@ -110,7 +110,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
     All 3 passed `/en-review` and were auto-merged.
 
     Surfaced as judgment items (in PR comment, not auto-fixed):
-    - 1 contradiction in `docs/learnings/patterns/`
+    - 1 contradiction in `docs/learnings/`
     - 2 data-gap suggestions (sparse coverage on [performance, database])
 
     Code-level findings filed to tech-debt-tracker.md:

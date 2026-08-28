@@ -92,7 +92,7 @@ Hypothesis (confidence: 4/10)
   Full-text search on the error message matches three locations:
     - src/auth/refresh.ts:42  (most likely)
     - tests/auth/refresh.test.ts:80  (skipped — test fixture)
-    - docs/learnings/bugs/auth-null-email-2025-11-08.md:12  (skipped — learning)
+    - docs/learnings/auth-null-email-2025-11-08.md:12  (skipped — learning)
 
 Anchor log line:
   ts: 2026-05-04T10:13:42Z

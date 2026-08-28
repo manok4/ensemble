@@ -206,7 +206,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
 17. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
-    > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/patterns/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
+    > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
 
     Don't auto-run it. The user decides.
 
@@ -281,7 +281,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     Once /en-foundation has settled and you've seen the codebase's
     conventions surface in real reviews, consider:
-      - /en-learn --bootstrap-patterns — seed docs/learnings/patterns/
+      - /en-learn --bootstrap-patterns — seed docs/learnings/
         from the codebase (opt-in; one-time; lower-confidence entries).
     ```
 
