@@ -36,3 +36,5 @@ if grep -qiE "proceeding is always allowed|default on any non-answer|proceed str
 else
   fail "must state proceeding is always allowed"
 fi
+
+report

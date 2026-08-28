@@ -96,7 +96,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Reversibility:** trivial | reversible | rollback-required | irreversible
 - **Gated:** false (default; set `true` ONLY when running this unit at build time changes production user state or external system state — see Generation notes for the exact criteria; over-gating trains users to autopilot through prompts)
 - **Execution note:** test-first | characterization-first | pragmatic
-- **Patterns to follow:** <citations from `docs/learnings/patterns/` if relevant>
+- **Patterns to follow:** <citations from `docs/learnings/` if relevant>
 - **Test scenarios:** For a **feature-bearing** unit (anything that adds/changes behavior), enumerate **actual** scenarios across the applicable categories — each with concrete inputs, actions, and expected outcomes:
   - *Happy path:* <core behavior — input → action → expected outcome>
   - *Edge case:* <boundary / empty / nil / concurrent — expected outcome>
@@ -260,7 +260,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 - **Reversibility:** reversible
 - **Gated:** false
 - **Execution note:** test-first
-- **Patterns to follow:** `docs/learnings/patterns/single-flight-cache-2026-03-20.md`
+- **Patterns to follow:** `docs/learnings/single-flight-cache-2026-03-20.md`
 - **Test scenarios:**
   - Single caller — token rotates, response returned.
   - Two concurrent callers — both get the same token; underlying rotate fires once.

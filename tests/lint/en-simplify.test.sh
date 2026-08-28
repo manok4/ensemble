@@ -18,11 +18,10 @@ else
 fi
 
 # --- helper-resolution header ---
-if grep -qF 'Helper resolution.' "$EN_SIMPLIFY"; then
-  pass "en-simplify has helper-resolution header"
-else
-  fail "en-simplify missing helper-resolution header"
-fi
+# The $ENSEMBLE_ROOT helper-resolution header was retired by EN13, when skills
+# became self-contained and stopped resolving paths through an install root. This
+# assertion outlived the convention; it was invisible because the suite had no
+# report call and so could never fail.
 
 # --- recursion guard ---
 if grep -qF "ENSEMBLE_PEER_REVIEW=true" "$EN_SIMPLIFY"; then
@@ -74,3 +73,5 @@ if grep -qF "agents/code-simplifier.md" "$EN_SIMPLIFY"; then
 else
   fail "en-simplify should reuse the code-simplifier agent"
 fi
+
+report

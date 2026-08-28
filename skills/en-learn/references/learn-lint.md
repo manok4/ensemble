@@ -15,11 +15,10 @@ Audits the structural health of `docs/learnings/`. Distinct from `--refresh` (co
 | `missing-back-refs` | A.related contains B but B.related doesn't contain A | P1 | Yes (`--fix`) |
 | `broken-links` | A.related points to a path that doesn't exist | P1 | Sometimes (auto when target moved is obvious; surface otherwise) |
 | `contradictions` | Claims across pages that conflict | P3 | No (judgment) |
-| `missing-pages` | Concept named in 3+ pages without a dedicated entry | P2 | No (suggest creating) |
+| `missing-pages` | Project-specific term used in 3+ pages with no entry in `docs/CONTEXT.md` | P2 | No (suggest defining) |
 | `stale-references` | Links pointing to files moved or deleted | P1 | Sometimes |
-| `index-drift` | `index.md` doesn't match underlying pages | P1 | Yes (regenerate) |
+| `index-drift` | `index.md` doesn't match the three sources behind it | P1 | Yes (regenerate) |
 | `log-drift` | Operations missing from `log.md` (compared against git log of `docs/learnings/`) | P2 | Yes (append) |
-| `data-gaps` | Thin areas where `learn ingest` would add value | P3 | No (suggest queries) |
 
 ## How each check runs
 
@@ -74,11 +73,14 @@ Pairs are found by overlapping `tags` and `component` fields. Output: P3 advisor
 
 ### `missing-pages`
 
-Concept extraction: scan all page bodies for noun-phrase mentions of capitalized terms or quoted phrases. Count occurrences. If a term appears in 3+ pages and there's no page with that term in `title:`:
+A term used in three or more pages with no entry in `docs/CONTEXT.md` is a
+project-specific word nobody defined. That is the glossary's accretion trigger,
+reached mechanically: capture's step 9 catches terms the work rubbed against,
+and this catches the ones that were always there and never earned a definition.
 
-- Emit P2 advisory: "Concept 'X' appears in 3+ pages without a dedicated entry. Consider creating one."
-
-No auto-fix.
+Surfaced, never auto-written — whether a repeated word is domain vocabulary or
+just a common noun is a judgment, and the bar is that a new engineer would need
+it defined.
 
 ### `stale-references`
 
@@ -86,12 +88,14 @@ Same as `broken-links` but for cross-doc references **outside** `docs/learnings/
 
 ### `index-drift`
 
-Compare `index.md` against actual pages:
+`index.md` has three sections and three sources behind them: **Terms** from
+`docs/CONTEXT.md`, **Decisions** from `docs/decisions/`, and **Solutions** from
+`docs/learnings/`. Drift in any one of them is drift.
 
-- Page exists but missing from `index.md` → P1 (auto-fix: add).
-- `index.md` line points to a non-existent page → P1 (auto-fix: remove or update path).
-- Title in `index.md` differs from page's `title:` frontmatter → P2 (auto-fix: sync).
-- `(related: <count>)` differs from page's `related:` length → P2 (auto-fix: update).
+Checking only the solutions would leave two thirds of the store able to fall out
+of the index while the check reports clean.
+
+Auto-fixable: regenerate from all three.
 
 ### `log-drift`
 
@@ -101,56 +105,3 @@ For every page in `docs/learnings/` (excluding `archive/`):
 - Look for a corresponding `log.md` entry on or near that date.
 - If missing → P2 (auto-fix: append a `## [<date>] capture | <title>` line).
 
-### `data-gaps`
-
-Heuristic: identify topical clusters (via tag co-occurrence) where the wiki has < 3 pages. For each thin area:
-
-- Emit P3 advisory with suggested search queries:
-
-> "Sparse coverage on `[performance, database]` (1 page). Suggested ingest queries: `database query performance optimization`, `n+1 query patterns`, `query plan analysis`."
-
-No auto-fix.
-
-## CLI
-
-```bash
-/en-learn --lint                # Report only
-/en-learn --lint --fix          # Auto-apply mechanical fixes; report judgment items
-/en-learn --lint --fix --dry-run # Show what would change without applying
-```
-
-## Output format
-
-JSON-lines for machine consumption (one finding per line) plus a markdown summary at the end.
-
-```json
-{"check":"missing-back-refs","severity":"P1","page":"docs/learnings/patterns/single-flight-cache-2026-03-20.md","missing_from":"docs/learnings/bugs/refresh-token-race-2026-04-15.md","fixable":true}
-{"check":"orphans","severity":"P2","page":"docs/learnings/decisions/old-decision-2025-11-01.md","inbound_count":0,"fixable":false}
-{"check":"contradictions","severity":"P3","pages":["docs/learnings/patterns/A.md","docs/learnings/patterns/B.md"],"summary":"<explanation>","fixable":false}
-```
-
-```markdown
-## Wiki lint summary
-
-- **Auto-fixed (with --fix):** 5
-  - 3 missing back-refs added
-  - 2 index-drift entries reconciled
-- **Need human judgment:** 4
-  - 2 orphans
-  - 1 contradiction
-  - 1 missing-page suggestion
-- **Suggested ingests:** 1 data-gap query in `[performance, database]`
-```
-
-## Cadence
-
-- On demand: `/en-learn --lint`
-- Invoked by `en-sweep`: every PR-merge pass. Auto-fixes go into sweep's batch PRs (separate batches per fix category).
-
-## When `en-sweep` invokes `--lint --fix`
-
-Sweep routes the output through its PR-batching flow:
-
-- One PR per fix category (back-refs / broken-links / index-drift / log-drift).
-- Each PR has its own conventional-commit message: `chore(learnings): fix N missing back-refs`, `chore(learnings): regenerate index.md`, etc.
-- Judgment items (orphans, contradictions, missing-pages, data-gaps) → posted as a comment on the source PR for human attention. Sweep does not auto-fix these.

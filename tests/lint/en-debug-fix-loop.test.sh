@@ -65,3 +65,5 @@ if grep -qiE "[Aa]nti-pattern" "$REF" && grep -qiE "[Ss]mart escalation" "$REF";
 else
   fail "reference must document anti-patterns + smart escalation"
 fi
+
+report

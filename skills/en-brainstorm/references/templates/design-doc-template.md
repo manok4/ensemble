@@ -97,7 +97,7 @@ What's wrong with the recommendation? Honest stress-test:
 
 > "This conversation produced [a non-obvious connection / a comparison across approaches / an extracted lesson]. Capture as a learning?"
 
-If the user accepts → invoke `/en-learn capture --from-conversation` with the design doc as input. The learning lands in `docs/learnings/decisions/` or `patterns/` depending on the synthesis type.
+If the user accepts → invoke `/en-learn capture --from-conversation` with the design doc as input. The learning lands in `docs/learnings/` or `patterns/` depending on the synthesis type.
 
 If the user declines → no-op. The design doc stays.
 

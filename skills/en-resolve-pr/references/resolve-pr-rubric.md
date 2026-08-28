@@ -46,7 +46,7 @@ The bar for declining is **specific harm**, not "low priority" or "not in style.
 - Suppresses errors that should propagate to the caller.
 - Premature abstraction (one call site, no second use case in sight).
 - Restates code in comments (the code already says it).
-- Violates a project rule in `CLAUDE.md` / `AGENTS.md` / `docs/learnings/patterns/`.
+- Violates a project rule in `CLAUDE.md` / `AGENTS.md` / `docs/learnings/`.
 - Introduces a backwards-compat shim where there's no existing usage to support.
 
 When declining, **cite the specific source**: file path + brief quote, or learning slug. Generic "violates project guidelines" is not enough — name the rule.

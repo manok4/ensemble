@@ -62,7 +62,7 @@ jobs:
               - Test coverage gaps
               - Performance regressions
               - Adherence to project conventions in CLAUDE.md and AGENTS.md
-              - Adherence to filed learnings under docs/learnings/patterns/
+              - Adherence to filed learnings under docs/learnings/
 
             Aim for high-precision findings. Three important comments are more
             useful than fifteen nits — but do flag clear bugs and security issues

@@ -51,3 +51,5 @@ if grep -qiE "anchor 50|cap.*fast-pass|fast-pass.*cap" "$PERSONA"; then
 else
   fail "persona-dispatch must document fast-pass confidence cap"
 fi
+
+report

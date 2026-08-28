@@ -59,7 +59,6 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 | Shipped feature plans (living documentation) | [`docs/plans/completed/`](./docs/plans/completed/) |
 | Tracked technical debt | [`docs/plans/tech-debt-tracker.md`](./docs/plans/tech-debt-tracker.md) |
 | Compounding learnings (bugs, patterns, decisions) | [`docs/learnings/`](./docs/learnings/) — start at [`index.md`](./docs/learnings/index.md) |
-| External library references | [`docs/references/`](./docs/references/) |
 | Brainstorm / design exploration | [`docs/designs/`](./docs/designs/) |
 
 ## Conventions
@@ -90,7 +89,6 @@ The repo is the system of record. Maps are short; encyclopedias are long. Failur
 
 ## Notes on generation
 
-- The template above is the **starting** state. `en-learn` and `en-sweep` will refine it as the project evolves (adding entries to "Where things live" if `docs/references/` gains content, dropping rows if a section is empty).
 - When the project has no `foundation.md` yet (State 2 retrofit), substitute `{{ONE_LINE_PURPOSE}}` with `<TODO: run /en-foundation to seed this>`.
 - When commands aren't detected, leave the value as `<unset>` rather than guessing.
 - The `host: any` frontmatter is critical — it's how `bin/ensemble-lint` knows this file is the host-agnostic map.
@@ -106,3 +104,4 @@ When an existing `AGENTS.md` is present, `/en-setup` does **not** overwrite it. 
 5. Never modify existing user content.
 
 See `references/templates/agents-md-merge-rules.md` for the full append-merge logic.
+

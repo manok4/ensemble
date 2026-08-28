@@ -17,7 +17,7 @@ trap "rm -rf '$TMP'" EXIT
 
 setup_minimum() {
   rm -rf "$TMP"/*
-  mkdir -p "$TMP/docs/plans/active" "$TMP/docs/plans/completed" "$TMP/docs/learnings/bugs" "$TMP/docs/learnings/patterns" "$TMP/docs/learnings/decisions" "$TMP/docs/learnings/sources" "$TMP/docs/generated" "$TMP/docs/designs"
+  mkdir -p "$TMP/docs/plans/active" "$TMP/docs/plans/completed" "$TMP/docs/learnings/sources" "$TMP/docs/generated" "$TMP/docs/designs"
   cat > "$TMP/docs/generated/plan-index.md" <<EOF
 ---
 type: learning-index
@@ -288,17 +288,14 @@ assert_rule_fires "index-coverage.plan-missing" "plan not in plan-index.md"
 
 # --- index-coverage.learning-missing ---
 setup_minimum
-cat > "$TMP/docs/learnings/patterns/test-2026-04-29.md" <<EOF
+cat > "$TMP/docs/learnings/test-2026-04-29.md" <<EOF
 ---
 title: Test
+applies_when: never
 date: 2026-04-29
 category: patterns
-problem_type: correctness
-component: test
-applies_when: never
 tags: []
 related: []
-confidence: 5
 status: active
 ---
 
@@ -422,97 +419,6 @@ if echo "$output" | grep -qF "id-stability.fr-format"; then
   fail "EN01 should be accepted as valid plan_id format" "$(echo "$output" | grep id-stability.fr-format)"
 else
   pass "EN01 accepted as valid <PREFIX><NN> plan_id"
-fi
-
-# --- learnings.bootstrap-unvalidated: fires for old unvalidated bootstrap entries ----
-# Bootstrapped patterns with requires_validation: true and bootstrap_run > 30 days
-# old surface as P3 advisory.
-setup_minimum
-mkdir -p "$TMP/docs/learnings/patterns"
-# Old bootstrap entry (>30 days)
-cat > "$TMP/docs/learnings/patterns/old-pattern-2026-03-01.md" <<'EOF'
----
-title: Old bootstrapped pattern
-date: 2026-03-01
-category: patterns
-problem_type: maintainability
-component: utils
-applies_when: forever
-tags: []
-related: []
-confidence: 6
-status: active
-source: bootstrap
-bootstrap_run: 2026-03-01
-requires_validation: true
----
-
-# Old pattern
-EOF
-echo "- [\`old-pattern-2026-03-01.md\`](../learnings/patterns/old-pattern-2026-03-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
-assert_rule_fires "learnings.bootstrap-unvalidated" "stale unvalidated bootstrap entries"
-
-# Recent bootstrap entry (<30 days) should NOT fire the rule.
-setup_minimum
-mkdir -p "$TMP/docs/learnings/patterns"
-TODAY=$(date -u +%Y-%m-%d)
-cat > "$TMP/docs/learnings/patterns/fresh-pattern-${TODAY}.md" <<EOF
----
-title: Fresh bootstrapped pattern
-date: ${TODAY}
-category: patterns
-problem_type: maintainability
-component: utils
-applies_when: forever
-tags: []
-related: []
-confidence: 6
-status: active
-source: bootstrap
-bootstrap_run: ${TODAY}
-requires_validation: true
----
-
-# Fresh pattern
-EOF
-echo "- [\`fresh-pattern-${TODAY}.md\`](../learnings/patterns/fresh-pattern-${TODAY}.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
-result=$(run_lint)
-output="${result%%|||*}"
-if echo "$output" | grep -q "learnings.bootstrap-unvalidated"; then
-  fail "bootstrap rule fired on fresh entry (should require >30 days)"
-else
-  pass "bootstrap rule silent on fresh entries"
-fi
-
-# Validated bootstrap entry (requires_validation: false) should NOT fire even if old.
-setup_minimum
-mkdir -p "$TMP/docs/learnings/patterns"
-cat > "$TMP/docs/learnings/patterns/validated-2025-12-01.md" <<'EOF'
----
-title: Validated bootstrap entry
-date: 2025-12-01
-category: patterns
-problem_type: maintainability
-component: utils
-applies_when: forever
-tags: []
-related: []
-confidence: 8
-status: active
-source: bootstrap
-bootstrap_run: 2025-12-01
-requires_validation: false
----
-
-# Validated
-EOF
-echo "- [\`validated-2025-12-01.md\`](../learnings/patterns/validated-2025-12-01.md) — fixture" >> "$TMP/docs/generated/learning-index.md"
-result=$(run_lint)
-output="${result%%|||*}"
-if echo "$output" | grep -q "learnings.bootstrap-unvalidated"; then
-  fail "bootstrap rule fired on validated entry"
-else
-  pass "bootstrap rule silent once entry is validated"
 fi
 
 # --- unit.risk-class: new-style plan missing Risk fires P1 ---

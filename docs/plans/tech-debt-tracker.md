@@ -77,6 +77,35 @@ updated: 2026-08-26
 
 <!-- none yet -->
 
+### TD5. The learning `category` taxonomy has four values and no reliable way to pick one
+
+**Resolved 2026-08-28 by EN14**, which replaced the taxonomy rather than
+collapsing it. `docs/learnings/<category>/` accepted `bugs | patterns | decisions
+| sources`; captured knowledge is now three artifact types that differ in shape,
+lifecycle, and write path — a term in `docs/CONTEXT.md`, a decision in
+`docs/decisions/`, a solution flat in `docs/learnings/`, with ingested sources
+keeping their own directory.
+
+The original diagnosis held: under the capture gate almost nothing qualifying is
+a "bug" entry, because the gate rejects what a reader recovers from the code and
+a fixed bug usually is. What survived was a decision or a pattern, and that
+boundary was not one a writer could apply twice the same way.
+
+**Correcting the cost analysis this entry originally carried.** It claimed the
+migration was cheap only while the wiki was empty. Half of that was wrong, and it
+was the half the decision rested on. The two costs behave differently: the ~39
+reference files are **time-invariant** and cost the same whenever the work is
+done, while the entries are the cheap half and stay cheap — `git mv` plus a
+frontmatter line, with `learn-lint`'s `broken-links` check watching the result.
+Urgency was inferred from the half that was never expensive.
+
+What actually settled it was not cost. Collapsing to captured-vs-ingested would
+have kept one artifact shape and left the two highest-value gaps unaddressed:
+nothing captured domain vocabulary, and decisions recorded what was chosen
+without stating the rules that followed.
+
+Migration for repos already holding entries is EN14's U13.
+
 ### TD6. `ensemble-extract-json` returned a transport frame instead of the reviewer payload
 
 **Resolved 2026-08-28**, recorded because the failure shape is worth keeping.
@@ -104,3 +133,57 @@ is the durable part — a guard that only checks well-formedness cannot tell the
 right object from the wrong one, which is why a valid-JSON frame survived a
 validity check. Six cases in `tests/extract-json/extract-json.test.sh`, each
 verified to fail against the pre-fix extractor.
+
+### TD7. No behavioural coverage for units whose logic is a model judgment
+
+Ensemble's tests are shell scripts that grep specifications. That works for
+structure (a file exists, two copies are byte-identical, a required field is
+enforced) and is worthless for behaviour: `en-learn`'s artifact router and its
+glossary writer are prose instructions executed by a model, and no shell
+assertion can show that a given candidate produces the right artifact type or
+that an amendment preserves unrelated glossary entries.
+
+Raised twice by the peer during EN14 review (findings 2-3 and 2-5), correctly
+both times. EN14 responds by **stating the limit** rather than claiming coverage
+it does not have — its router and glossary units assert specification presence
+and self-consistency, and say so.
+
+The gap is real: a broken writer, a duplicate insertion, or a destructive rewrite
+would satisfy every assertion those units make.
+
+**Fix direction:** an eval suite that feeds fixture candidates through the skill
+and asserts the emitted artifact type and path. `claude plugin eval` exists for
+exactly this and would not require inventing a harness. EN14 leaves the fixture
+corpus in place (`tests/fixtures/routing/`, and the worked examples in
+`artifact-types.md`), so the inputs an eval suite needs are already written.
+
+Until this lands, treat "the tests pass" on any model-behaviour unit as evidence
+about the specification only.
+
+### TD8. The phase-invariant lint compares risk only, so it cannot see a category-induced promotion
+
+`ensemble-lint`'s `phase-invariant.dependency-vs-risk` rule builds a U-ID → risk
+map and compares risk across every dependency edge. `/en-build` classifies phases
+from **risk and category**: `risk: medium` plus `category: migration | backfill |
+schema-evolution` lands in P3 while plain `risk: medium` lands in P2.
+
+So a unit can be promoted across a phase boundary by its *category* while its
+*risk* is unchanged, and the lint sees nothing. Every unit can be `medium`, the
+lint passes, and `/en-build` still refuses the plan at preflight.
+
+**Observed 2026-08-28** on EN14. All 13 units were `medium` or lower and the plan
+linted clean through two peer-review iterations. `/en-build` then rejected it: U13
+was `medium` + `migration` (P3) and U10 was `medium` + `other` (P2), with U10
+depending on U13. Resolved by correcting U13's category, but the lint that exists
+to catch this class had already passed the plan twice.
+
+The rule's own comment says the check exists so a plan does not "force /en-build
+to either reject the plan or violate phase purity" — which is precisely what
+happened, because the rule asks a narrower question than the one it is standing
+in for.
+
+**Fix direction:** replicate `/en-build`'s full classifier in the rule — phase
+from risk *and* category — and compare phases rather than risks. Rename to
+`phase-invariant.dependency-vs-phase`, since risk is no longer what it compares.
+Needs a negative control: a plan whose units are all `medium`, one of them
+`category: migration` with a non-migration dependent, must go red.

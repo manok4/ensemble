@@ -1,13 +1,14 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, offer guardrail / Claude Code Review action / gnhf CLI / bootstrap-patterns. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
+description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, seed docs/CONTEXT.md from the declared domain model, offer guardrail / Claude Code Review action / gnhf CLI. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - references/agent-dispatch.md
   - references/doc-lints.md
+  - references/glossary-rules.md
   - references/host-detect.md
-  - references/learn-bootstrap-patterns.md
+  - references/layout-migration.md
   - references/learn-index-format.md
   - references/learn-log-format.md
   - references/peer-contract.md
@@ -19,6 +20,7 @@ requires:
   - references/templates/agents-md-template.md
   - references/templates/claude-md-template.md
   - references/templates/config-local-example.yaml
+  - references/templates/context-template.md
   - references/templates/ensemble-lint
   - references/templates/github-workflow-claude-review.yml
   - references/templates/github-workflow-en-sweep.yml
@@ -57,6 +59,12 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
    - State 1 — Greenfield (empty repo or initial-commit, no `docs/foundation.md`).
    - State 2 — Existing project, no Ensemble (source code present, foundation or learnings missing). Identify sub-variant 2a/2b/2c/2d by which of `AGENTS.md`/`CLAUDE.md` exist.
    - State 3 — Existing project with Ensemble (`docs/foundation.md` and `docs/learnings/` both present).
+
+     **Legacy learning store.** If `docs/learnings/bugs/`, `patterns/`, `decisions/`, or `sources/` exists, this project predates the artifact-type layout. Surface it before doing anything else:
+
+     > "This project has N entries under the retired directories. The new layout reads `docs/learnings/` flat, `docs/decisions/`, and `docs/CONTEXT.md` — so those entries are **invisible** to capture, lint, and research **without being deleted**. Nothing announces that on its own. Run `/en-learn --migrate` to move them."
+
+     **`en-setup` does not run the migration itself.** It reports and hands off. The procedure is interactive by design — entries whose artifact type is ambiguous need a human, and a scaffolding run is not the place for per-entry classification. Read `references/layout-migration.md` for what the migration does; scaffolding continues around the existing store, which is left untouched.
 4. **Run the state-specific flow** (below).
 5. **Output** a structured report listing what was created, what was modified (if anything), and the recommended next step.
 
@@ -107,9 +115,10 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 3. **Create directory skeleton:**
    ```
    docs/
+     CONTEXT.md            <- the glossary; seeded at step 6
+     decisions/            <- ADRs, NNNN-<slug>.md
      plans/{active,completed}/
-     learnings/{bugs,patterns,decisions,sources}/
-     references/
+     learnings/            <- solutions sit flat here
      generated/
      designs/
    ```
@@ -117,14 +126,33 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Don't fail if directories already exist.
 4. **Seed `docs/learnings/index.md` and `log.md`** from the empty-state templates in `references/learn-index-format.md` and `references/learn-log-format.md`.
 5. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries (these are mandatory per foundation §10.1; lint requires their existence).
-6. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`.
-7. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
-8. **Add `.gitignore` entries** if missing. **Verify each entry is actually present after the write — do not assume the write succeeded.**
+6. **Seed `docs/CONTEXT.md` — read `references/glossary-rules.md`.**
+
+   **If the file already exists, never overwrite it.** Copy
+   `references/templates/context-template.md` only when `docs/CONTEXT.md` is
+   absent. On an existing file the operation is **merge-only**: every existing
+   entry is preserved verbatim, and additions are limited to terms from the
+   declared domain model that are confirmed missing. `/en-setup` is idempotent, and
+   a second run that replaces a curated glossary with freshly model-authored terms
+   would break that in the most expensive way available — silently, over content
+   nobody can regenerate.
+
+   Then define the project's **core domain nouns**.
+
+   This is the *seeding* path, and it exists because accretion alone cannot reach these terms. A capture defines a word when the work rubs against it, which reliably surfaces peripheral mechanics; the nouns a system is built around rarely break, so they rarely appear in a learning. Without seeding, the glossary fills with edge-case vocabulary and never names what the project is about.
+
+   **Bounded by the source and the bar, never by a count.** The source is the declared domain model — schema, core types, primary models, top-level domain docs. The bar is that a new engineer would need the term defined. A small domain yields a few terms; do not pad to reach a number, and do not reach outside the declared model to find more.
+
+   A full `/en-setup` run is the **repo-wide bootstrap**: it is the only path that can produce a coherent "what is this project" glossary, so it seeds the whole declared model rather than one area.
+
+7. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`.
+8. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
+9. **Add `.gitignore` entries** if missing. **Verify each entry is actually present after the write — do not assume the write succeeded.**
    - `.ensemble/config.local.yaml` — **required.** Confirm with `grep -qF '.ensemble/config.local.yaml' .gitignore` after writing. If `.gitignore` doesn't exist, create it with this line.
    - Optionally `docs/learnings/archive/` — ask the user.
 
    This step is verified again in the final-verification phase (step 17). Both checks must pass.
-9. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
    - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
@@ -141,7 +169,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
    **Re-sync on update (drift caveat).** Because these are *copied* into the project, a consuming repo carries a frozen snapshot from install time — fixes to the plugin's `bin/` scripts do NOT propagate automatically. When the plugin updates a sweep script (e.g. the `en-sweep-ci` guard fix), re-run this step to re-copy (it's idempotent — it overwrites when content differs). The current workflow template mitigates this for `en-sweep-ci` specifically by preferring the freshly-cloned `$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci` at run time and only falling back to the project-local copy; `ensemble-sweep-activity-check` still runs project-local (its job doesn't clone), so re-sync it on update.
 
-10. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
+11. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
     1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
     2. **Map to cron.** Named values map to:
        - `daily` → `0 9 * * *`
@@ -153,8 +181,8 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
     6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
 
-11. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
-12. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
+12. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
+13. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`). Choose:
     >   `p` — install project-scoped now (writes to `<repo>/.claude/settings.json`).
     >   `g` — print the global one-liner for me to run from my terminal (active everywhere; agents can't write `~/.claude/` themselves).
@@ -165,7 +193,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `s` → record in the report; don't ask again this session.
 
     Idempotent — if the status check reports any scope active, skip the prompt and note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
-13. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
+14. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
     > "Anthropic's Claude Code Review GitHub Action isn't installed. It runs Claude on every PR and posts inline review comments — these are exactly what `/en-resolve-pr` is built to handle. Install? (`y` / `n`)
     > Auth options:
     >   - **OAuth** (Pro/Max subscription) — free within rate limits. Requires `CLAUDE_CODE_OAUTH_TOKEN` repo secret (generate with `claude setup-token`).
@@ -182,24 +210,19 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `y` → run `npm i -g gnhf`; surface the result (and any npm error verbatim). On `n` → record in the report; skip. **Never a hard gate** — gnhf is optional, so declining (or a failed npm install) does not fail setup.
 
     Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence and skip the prompt.
-14. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
+15. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
     - `true` → record 🟢 "Auto-merge enabled at repo level."
     - `false` or empty → surface advisory (not blocking):
       > "Auto-merge is disabled at the repo level. `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` won't be able to enable auto-merge on PRs until you flip Settings → General → 'Allow auto-merge' on. Skipping for now — this is a manual repo setting."
 
     Idempotent. Don't try to flip it via API — that requires admin scope and is the kind of repo-policy change a human should make explicitly.
-15. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
+16. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
     > "`REVIEW.md` is a project-root file that tunes how PR review behaves on this repo — severity calibration, nit caps, skip rules, repo-specific checks, convergence behavior on multi-round reviews. Read automatically by Anthropic's managed Code Review service (Team/Enterprise plans); for the self-hosted action, the workflow's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action'). Seed `REVIEW.md` from the Ensemble-flavored default template? (`y` / `n`)"
 
     On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
-16. **Bootstrap-patterns offer.** Surface to user (informational; they decide later):
-    > "After you run `/en-foundation --retrofit`, consider `/en-learn --bootstrap-patterns` to seed `docs/learnings/patterns/` from the codebase's existing conventions. It's optional, opt-in, one-time. Bootstrapped entries are flagged `requires_validation: true` and lower-confidence by default — they give the wiki a starting point without pretending to be capture-fresh. See `references/learn-bootstrap-patterns.md`."
-
-    Don't auto-run it. The user decides.
-
 17. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. This is the safety net — long mechanical sequences drop steps under context pressure, and a verification phase at the end catches that.
 
     **Required artifacts** (must exist; missing → fail):
@@ -207,10 +230,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | Artifact | Check |
     |---|---|
     | `docs/plans/{active,completed}/` | both directories exist |
-    | `docs/learnings/{bugs,patterns,decisions,sources}/` | all four directories exist |
+    | `docs/learnings/` | exists |
+    | `docs/decisions/` | exists |
+    | `docs/CONTEXT.md` | exists and carries the flagged-ambiguities tail |
     | `docs/learnings/{index.md,log.md}` | both files exist |
     | `docs/generated/{plan-index.md,learning-index.md}` | both files exist with `generated: true` frontmatter |
-    | `docs/{references,designs}/` | both directories exist |
+    | `docs/designs/` | exists |
     | `AGENTS.md` | exists; contains the Ensemble pointer-map section marker |
     | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
@@ -271,7 +296,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     Once /en-foundation has settled and you've seen the codebase's
     conventions surface in real reviews, consider:
-      - /en-learn --bootstrap-patterns — seed docs/learnings/patterns/
+      - /en-learn capture — file the first real learning when one earns it
         from the codebase (opt-in; one-time; lower-confidence entries).
     ```
 
@@ -323,7 +348,8 @@ State detected: state-2 (sub-variant 2c)
 Created:
   - docs/plans/active/
   - docs/plans/completed/
-  - docs/learnings/{bugs,patterns,decisions,sources}/
+  - docs/CONTEXT.md
+  - docs/decisions/
   - docs/learnings/{index.md,log.md}
   - docs/generated/{plan-index.md,learning-index.md}
   - CLAUDE.md (from template)
@@ -382,7 +408,6 @@ Next step:
 - `references/host-detect.md` — host detection (used briefly at start)
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
 - `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
-- `references/learn-bootstrap-patterns.md` — Mode F (`/en-learn --bootstrap-patterns`) referenced from step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook
 - `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)

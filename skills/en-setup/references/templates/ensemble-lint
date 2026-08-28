@@ -143,7 +143,7 @@ check_frontmatter_present() {
   first_two=$(head -2 "$file" 2>/dev/null)
   if ! printf '%s' "$first_two" | grep -q '^---'; then
     case "$file" in
-      docs/foundation.md|docs/architecture.md|AGENTS.md|CLAUDE.md|docs/learnings/*/*.md|docs/plans/active/*.md|docs/plans/completed/*.md|docs/designs/*.md|docs/generated/*.md)
+      docs/foundation.md|docs/architecture.md|AGENTS.md|CLAUDE.md|docs/learnings/*.md|docs/plans/active/*.md|docs/plans/completed/*.md|docs/designs/*.md|docs/generated/*.md)
         emit "frontmatter.missing" "$file" "" "P1" "File requires YAML frontmatter" "Add a frontmatter block at the top of the file"
         ;;
     esac
@@ -255,11 +255,56 @@ check_plan_required_fields() {
   fi
 }
 
+# Strip fenced code blocks before checking for a required heading. A fenced
+# example containing "## Invariants this creates" would otherwise satisfy the
+# rule for a document that has no such section.
+strip_fences() {
+  awk 'BEGIN{f=0} /^[[:space:]]*```/{f=!f; next} !f{print}' "$1"
+}
+
+# --- Rule: adr.has-frontmatter / adr.missing-invariants ---
+# An ADR carries no frontmatter: nothing queries it by field, so every field
+# would be bookkeeping nobody reads and nothing keeps current. And it must say
+# what now holds — a decision without invariants records what happened but not
+# what a future agent has to uphold, which is the part that changes behaviour.
+check_adr_shape() {
+  case "$1" in docs/decisions/*.md) ;; *) return 0 ;; esac
+  local file="$1"
+  case "$(basename "$file")" in README.md|index.md) return 0 ;; esac
+
+  if [ "$(head -1 "$file")" = "---" ]; then
+    emit "adr.has-frontmatter" "$file" "1" "P2" \
+      "ADR carries YAML frontmatter" \
+      "ADRs carry none — the title and body do the work. See references/adr-format.md"
+  fi
+
+  if ! strip_fences "$file" | grep -q '^## Invariants this creates'; then
+    emit "adr.missing-invariants" "$file" "" "P2" \
+      "ADR has no '## Invariants this creates' section" \
+      "State the rules that now hold, written so they could be checked. A decision with no invariant may be a solution instead — see references/artifact-types.md"
+  fi
+}
+
+# --- Rule: context.missing-ambiguities ---
+# The tail is the audit trail for opinions the team has formed, and the one part
+# of the glossary a reader can never reconstruct from the code.
+check_context_shape() {
+  case "$1" in docs/CONTEXT.md) ;; *) return 0 ;; esac
+  strip_fences "$1" | grep -q '^## Flagged ambiguities' || \
+    emit "context.missing-ambiguities" "$1" "" "P3" \
+      "CONTEXT.md has no '## Flagged ambiguities' section" \
+      "Keep the tail even when empty — it is where settled distinctions get recorded. See references/glossary-rules.md"
+}
+
 # --- Rule: frontmatter.required-field-missing for learnings ---
 check_learning_required_fields() {
-  case "$1" in docs/learnings/bugs/*.md|docs/learnings/patterns/*.md|docs/learnings/decisions/*.md|docs/learnings/sources/*.md) ;; *) return 0 ;; esac
+  # index.md, log.md and README.md live at this level and are not solutions;
+  # they keep their own rules. Without the exclusion the flat matcher would
+  # demand solution frontmatter on the index.
+  case "$1" in docs/learnings/index.md|docs/learnings/log.md|docs/learnings/README.md) return 0 ;; esac
+  case "$1" in docs/learnings/*.md) ;; *) return 0 ;; esac
   local file="$1"
-  for f in title date category problem_type component applies_when tags related confidence status; do
+  for f in title applies_when date tags related status; do
     if ! grep -q "^$f:" <(extract_frontmatter "$file"); then
       emit "frontmatter.required-field-missing" "$file" "" "P1" \
         "Learning missing required frontmatter field: $f" \
@@ -330,19 +375,11 @@ check_frontmatter_enums_and_dates() {
         emit "frontmatter.invalid-enum" "$file" "" "P1" "data_scale: $ds" "Use one of: small, medium, large" ;;
       esac
       ;;
-    docs/learnings/*/*.md)
-      local cat; cat=$(get_field "$file" category)
-      case "$cat" in ""|bugs|patterns|decisions|sources) ;; *)
-        emit "frontmatter.invalid-enum" "$file" "" "P1" "learning category: $cat" "Use one of: bugs, patterns, decisions, sources" ;;
-      esac
+    docs/learnings/*.md)
       local s; s=$(get_field "$file" status)
       case "$s" in ""|active|deprecated|superseded) ;; *)
         emit "frontmatter.invalid-enum" "$file" "" "P1" "learning status: $s" "Use one of: active, deprecated, superseded" ;;
       esac
-      local conf; conf=$(get_field "$file" confidence)
-      if [ -n "$conf" ] && ! printf '%s' "$conf" | grep -qE '^([1-9]|10)$'; then
-        emit "frontmatter.invalid-enum" "$file" "" "P1" "confidence: $conf" "Use an integer 1-10"
-      fi
       ;;
     docs/designs/*.md)
       local s; s=$(get_field "$file" status)
@@ -483,7 +520,7 @@ check_index_coverage() {
 
   # Learnings
   if [ -f docs/generated/learning-index.md ]; then
-    for learning in docs/learnings/bugs/*.md docs/learnings/patterns/*.md docs/learnings/decisions/*.md docs/learnings/sources/*.md; do
+    for learning in docs/learnings/*.md; do
       [ -f "$learning" ] || continue
       local learning_basename
       learning_basename=$(basename "$learning")
@@ -535,46 +572,6 @@ check_generated_marker() {
     emit "generated.missing-marker" "$1" "" "P1" \
       "File in docs/generated/ lacks 'generated: true' frontmatter" \
       "Add 'generated: true' and a 'generator: <skill>' field; do not hand-edit generated files"
-  fi
-}
-
-# --- Rule: learnings.bootstrap-unvalidated (project-wide; advisory) ---
-# Counts bootstrapped patterns (source: bootstrap, requires_validation: true)
-# more than 30 days old. P3 — informational reminder, not a blocker.
-check_bootstrap_unvalidated() {
-  [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
-  [ -d docs/learnings/patterns ] || return 0
-  local count=0
-  local oldest=""
-  for entry in docs/learnings/patterns/*.md; do
-    [ -f "$entry" ] || continue
-    local source rv date
-    source=$(get_field "$entry" source)
-    rv=$(get_field "$entry" requires_validation)
-    [ "$source" = "bootstrap" ] && [ "$rv" = "true" ] || continue
-    date=$(get_field "$entry" bootstrap_run)
-    [ -z "$date" ] && date=$(get_field "$entry" date)
-    count=$((count + 1))
-    if [ -z "$oldest" ] || [ "$date" \< "$oldest" ]; then
-      oldest="$date"
-    fi
-  done
-  [ "$count" -eq 0 ] && return 0
-  # Only emit if oldest bootstrap is >30 days ago.
-  if [ -n "$oldest" ]; then
-    local now days_ago
-    now=$(date -u +%Y-%m-%d)
-    days_ago=$(python3 -c "
-from datetime import date
-o = date.fromisoformat('$oldest')
-n = date.fromisoformat('$now')
-print((n - o).days)
-" 2>/dev/null || echo 0)
-    if [ "$days_ago" -gt 30 ]; then
-      emit "learnings.bootstrap-unvalidated" "" "" "P3" \
-        "$count bootstrapped pattern(s) still flagged requires_validation: true (oldest: $oldest, $days_ago days)" \
-        "Run /en-learn --refresh to validate, or edit each entry to set requires_validation: false and bump confidence to 8 once verified"
-    fi
   fi
 }
 
@@ -890,6 +887,8 @@ while IFS= read -r file; do
   check_length_budget "$file"
   check_plan_required_fields "$file"
   check_learning_required_fields "$file"
+  check_adr_shape "$file"
+  check_context_shape "$file"
   check_frontmatter_enums_and_dates "$file"
   check_plan_unit_risk_class "$file"
   check_plan_unit_gated_flag "$file"

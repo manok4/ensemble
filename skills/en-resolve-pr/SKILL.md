@@ -58,7 +58,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    - `fixed-differently` — code changed using a better approach; explain why in the reply
    - `replied` — no code change; question answered or design decision explained
    - `not-addressing` — reviewer is factually wrong about the code (cite evidence)
-   - `declined` — concern may be valid, but the suggested fix would actively make the code worse (**must cite specific harm**, ideally referencing `CLAUDE.md`, `AGENTS.md`, or `docs/learnings/patterns/`)
+   - `declined` — concern may be valid, but the suggested fix would actively make the code worse (**must cite specific harm**, ideally referencing `CLAUDE.md`, `AGENTS.md`, or `docs/learnings/`)
    - `needs-human` — judgment call requiring user input (architectural change, security-sensitive, ambiguous business logic)
 
    For `fixed` / `fixed-differently`: edit the code, then run **only targeted tests** for the changed file(s). Never run the full suite per item — step 8 does that once for the combined diff.
@@ -81,7 +81,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
 11. **Verify.** Re-fetch via `scripts/get-pr-comments`. Empty → done. Threads remain:
     - **Cycle 1 or 2** (this is the 2nd or 3rd run within the same `/en-resolve-pr` invocation): repeat from step 5.
     - **Cycle 3** would begin: stop. Surface remaining items to the user as a recurring pattern: *"Multiple rounds of feedback on `<area>` suggest a deeper issue. Here's what's been addressed and what keeps appearing."* Use `needs-human` escalation; leave threads open.
-12. **Capture-from-synthesis (D21 reflex).** If a `declined` or `needs-human` finding exposed a real anti-pattern not yet in `docs/learnings/patterns/`, soft-prompt: *"Reviewer flagged a recurring concern in `<thread>`. Capture as a learning?"* On user accept → invoke `/en-learn capture --from-conversation`.
+12. **Capture-from-synthesis (D21 reflex).** If a `declined` or `needs-human` finding exposed a real anti-pattern not yet in `docs/learnings/`, soft-prompt: *"Reviewer flagged a recurring concern in `<thread>`. Capture as a learning?"* On user accept → invoke `/en-learn capture --from-conversation`.
 13. **Tech-debt routing.** If a `replied` verdict acknowledged something legitimate but out-of-PR-scope, file as a `TD<N>` entry in `docs/plans/tech-debt-tracker.md` and reference it in the reply: *"Filing as TD<N> for follow-up — out of scope for this PR."*
 14. **Merge readiness check.** Run `scripts/check-merge-status <PR>`. The output reports:
     - `repo_allows_auto_merge` — does the repo's settings allow auto-merge?
@@ -130,7 +130,7 @@ All replies start with `> [quoted excerpt of the original comment]` for thread c
 | `fixed-differently` | `Addressed differently: <what was done instead and why>` |
 | `replied` | `<direct answer to the question or explanation of the design decision>` |
 | `not-addressing` | `Not addressing: <reason with evidence, e.g., "null check already exists at line 85">` |
-| `declined` | `Declined: <specific harm cited, e.g., "this would add a defensive null check the type system already guarantees" or "violates docs/learnings/patterns/no-defensive-null-checks-2026-02-15.md">` |
+| `declined` | `Declined: <specific harm cited, e.g., "this would add a defensive null check the type system already guarantees" or "violates docs/learnings/no-defensive-null-checks-2026-02-15.md">` |
 | `needs-human` | Natural author-voice acknowledgment, e.g., `Good question — this is a tradeoff between X and Y. Going to think through this before making a call.` (The structured `decision_context` goes to the user via the summary, not to the PR thread.) |
 
 ## Outdated threads

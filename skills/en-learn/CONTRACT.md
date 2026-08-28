@@ -9,7 +9,6 @@ Owned by `en-learn`. Callers depend on this page, not on `SKILL.md`.
 | `/en-learn capture` | `en-build`'s learning checkpoint |
 | `/en-learn capture --from-conversation` | `en-brainstorm`, with a design doc as input |
 | `/en-learn --lint` | `en-sweep`, wiki-graph health |
-| `/en-learn --refresh` · `--pack <library>` · `--bootstrap-patterns` | user-invoked modes |
 | `--fix` | with `--lint`, auto-applies mechanical repairs |
 
 ## Non-interactive guarantee

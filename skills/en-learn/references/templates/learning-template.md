@@ -1,4 +1,4 @@
-# Template — `docs/learnings/<category>/<slug>-<date>.md`
+# Template — `docs/learnings/<slug>-<date>.md`
 
 Used by `/en-learn capture` after `references/capture-gate.md` says to write.
 
@@ -23,14 +23,10 @@ paragraph. That is a complete, valid learning:
 ```markdown
 ---
 title: Partner API rejects batches above 50 items
-date: 2026-08-27
-category: decisions
-problem_type: integration_issue
-component: sync/partner-client
 applies_when: Changing batch size or adding a new bulk endpoint call
+date: 2026-08-27
 tags: [partner-api, batching]
 related: []
-confidence: 9
 status: active
 ---
 

@@ -1,6 +1,5 @@
 ---
 name: repo-research
-description: "Scans the project codebase for patterns, conventions, file paths, and existing implementations relevant to a planning or analysis task. Read-only. Returns structured findings (patterns, conventions, file lists, prior art). Dispatched by en-plan, en-foundation (especially --retrofit), en-sweep (architecture drift), and en-learn (architecture sync, --bootstrap-patterns)."
 model: sonnet
 ---
 

@@ -19,24 +19,23 @@ total_entries: <N>
 
 > Auto-maintained by `en-learn`. Do not hand-edit. Run `en-learn --lint --fix` to repair drift.
 
-## Bugs
+## Terms
 
-- [`bugs/refresh-token-race-2026-04-15.md`](./bugs/refresh-token-race-2026-04-15.md) — Refresh token race when two requests arrive within rotation window. (related: 2)
-- [`bugs/empty-cart-state-2026-03-08.md`](./bugs/empty-cart-state-2026-03-08.md) — Empty-cart state crash on mobile. (related: 1)
+Defined in `docs/CONTEXT.md`, listed here so the index is a complete map. One
+line per term, no link target of its own — the glossary is a single file.
 
-## Patterns
-
-- [`patterns/single-flight-cache-2026-03-20.md`](./patterns/single-flight-cache-2026-03-20.md) — Single-flight cache for per-user side-effecting operations. (related: 3)
-- [`patterns/typed-action-creators-2026-02-28.md`](./patterns/typed-action-creators-2026-02-28.md) — Typed action creators for the redux-toolkit boundary. (related: 0)
+- **Carrier** — a skill holding a byte-identical copy of a shared reference.
+- **Declaration closure** — a declared file may not name an undeclared one.
 
 ## Decisions
 
-- [`decisions/drizzle-over-prisma-2026-02-10.md`](./decisions/drizzle-over-prisma-2026-02-10.md) — Chose Drizzle over Prisma for edge-runtime support. (related: 1)
+- [`../decisions/0002-requires-over-walking.md`](../decisions/0002-requires-over-walking.md) — Declare each skill's files rather than inferring them by walking references.
+- [`../decisions/0001-flat-solution-store.md`](../decisions/0001-flat-solution-store.md) — Store solutions flat; split artifacts by type rather than by topic.
 
-## Sources
+## Solutions
 
-- [`sources/openai-harness-engineering-2026-04-20.md`](./sources/openai-harness-engineering-2026-04-20.md) — OpenAI harness-engineering essay summary. (related: 4)
-```
+- [`single-flight-cache-2026-03-20.md`](./single-flight-cache-2026-03-20.md) — Single-flight cache for per-user side-effecting operations. (related: 3)
+- [`refresh-token-race-2026-04-15.md`](./refresh-token-race-2026-04-15.md) — Refresh token race when two requests arrive within the rotation window. (related: 2)
 
 ## Entry format
 
@@ -53,7 +52,19 @@ Each line follows the pattern:
 | `<title>` | The page's `title:` frontmatter, verbatim |
 | `(related: <count>)` | Number of items in the page's `related:` field |
 
-Sort order within each category: **most recent first** (descending by `date:`).
+### Entry rules per type
+
+One rule cannot serve three shapes: terms have no `date:` and no `related:`, and
+ADRs have no frontmatter at all.
+
+| Section | Line format | Sort |
+|---|---|---|
+| Terms | `- **<Term>** — <definition's first clause>` | alphabetical |
+| Decisions | `- [\`NNNN-<slug>.md\`](../decisions/NNNN-<slug>.md) — <H1 claim>` | descending by number |
+| Solutions | `- [\`<slug>-<date>.md\`](./<slug>-<date>.md) — <title>. (related: N)` | most recent first by `date:` |
+
+`total_entries` counts all three sections, so a store with terms and decisions and
+no solutions is not "empty".
 
 ## Frontmatter
 
@@ -74,7 +85,7 @@ Sort order within each category: **most recent first** (descending by `date:`).
 
 ## Empty-state
 
-When the wiki is empty (just initialized), `index.md` is seeded with empty category sections:
+When the wiki is empty (just initialized), `index.md` is seeded with empty sections, ordered by durability:
 
 ```markdown
 ---
@@ -89,11 +100,7 @@ total_entries: 0
 
 > Auto-maintained by `en-learn`. Do not hand-edit.
 
-## Bugs
-
-_(no entries yet)_
-
-## Patterns
+## Terms
 
 _(no entries yet)_
 
@@ -101,12 +108,9 @@ _(no entries yet)_
 
 _(no entries yet)_
 
-## Sources
+## Solutions
 
 _(no entries yet)_
-```
-
-`/en-setup` State 2 seeds this when creating `docs/learnings/`.
 
 ## Lint rule
 
