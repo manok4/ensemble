@@ -24,34 +24,56 @@ updated: 2026-08-26
 - **Sequencing:** deliberately deferred until EN12 ships. Building this first means building it against the current root layout and migrating it afterwards; building it second lands it directly in the target shape as one more `shared/manifest.json` entry. Decided with the user on 2026-08-26.
 - **Logged:** 2026-08-26
 
-### TD2. Most SKILL.md bodies exceed the Codex 8000-byte injection limit
+### TD2. Skill descriptions exceed Codex's initial-list context budget
 
-- **Source:** EN12 U12, measured during the build
-- **Severity:** P1
-- **Confidence:** 8/10
-- **Location:** `skills/*/SKILL.md` — 15 of 17 skills
-- **Why it matters:** Codex injects only the first 8000 bytes of a SKILL.md. Everything past that is invisible to that host, so a rule placed deep in a long body silently does not apply there — the skill appears to load and then behaves differently on Codex than on Claude Code, with no error. This is a cross-host correctness gap (G9), not a tidiness concern. EN12's plan named three skills from an earlier spot-check; the measured picture is worse:
+- **Source:** EN12 U12 (original, wrong premise); corrected 2026-08-29 against OpenAI's published Codex documentation
+- **Severity:** P2
+- **Confidence:** 9/10 — documented behaviour plus a runtime message observed from `codex exec`
+- **Location:** the `description:` frontmatter of all 17 `skills/*/SKILL.md`
 
-  | `en-build` | 49,768 | 6.2x |
-  | `en-plan` | 32,805 | 4.1x |
-  | `en-setup` | 27,656 | 3.5x |
-  | `en-review` | 25,527 | 3.2x |
-  | `en-ship` | 21,185 | 2.6x |
-  | `en-learn` | 16,213 | 2.0x |
-  | `en-loop` | 15,650 | 2.0x |
-  | `en-brainstorm` | 15,601 | 2.0x |
-  | `en-resolve-pr` | 15,169 | 1.9x |
-  | `en-debug` | 14,001 | 1.8x |
-  | `en-sweep` | 13,569 | 1.7x |
-  | `en-foundation` | 11,618 | 1.5x |
-  | `en-guardrail` | 11,012 | 1.4x |
-  | `en-qa` | 10,089 | 1.3x |
-  | `en-cross-review` | 8,188 | 1.0x |
+**This entry previously claimed the wrong thing.** It said Codex injects only the
+first 8,000 bytes of a `SKILL.md`, so rules deep in a long body silently do not
+apply on that host, and it listed 15 skills as "over" by up to 6.2x. That premise
+is false and the remediation it implied — restructuring five large skills to move
+content out of their bodies — would have been wasted work.
 
-  `en-cross-review` at 8,188 bytes is only just over, so it loses a few lines; `en-build` loses roughly five sixths of its body, including the whole post-build phase, the evidence audit and the learning checkpoint.
-- **Suggested fix:** Move load-bearing rules out of long bodies and into references the skill reads at a named early step, so what must be honored arrives through a read the agent performs rather than through an injection that may be truncated. The Compound Engineering plugin routes `lfg` to `references/plan-brief.md` for exactly this reason, and its parity test records the constraint explicitly. Audit per skill in body order: anything past roughly 8,000 bytes that changes behavior (a gate, an enum, a refusal condition, a safety rule) moves; narrative and examples can stay. Verify by loading each skill on Codex and checking that a rule from the tail is actually honored — byte count alone does not prove the rule survived.
-- **Not caused by EN12, and not fixed by it.** EN12 makes skills self-contained; it does not shorten them. Recorded here so the gap is tracked rather than absorbed into a migration unit, where it would weaken the atomic review of the riskiest change in that plan.
-- **Logged:** 2026-08-26
+Codex uses **progressive disclosure**. Per
+[Build skills](https://learn.chatgpt.com/docs/build-skills.md): "ChatGPT and Codex
+start with each skill's name and description, then load the full `SKILL.md`
+instructions when they decide to use that skill." And explicitly: "This budget
+applies only to the initial skills list. When Codex selects a skill, it still
+reads the full SKILL.md instructions for that skill."
+
+**Skill bodies are not truncated.** `en-build` at 51KB loads in full when selected.
+
+**What the 8,000 actually bounds** is the initial skills list — the name and
+description of every installed skill together: "at most 2% of the model's context
+window, or 8,000 characters when the context window is unknown." Under pressure
+Codex shortens descriptions first, and may omit whole skills from the list with a
+warning.
+
+**The real problem, measured 2026-08-29:** the 17 descriptions total **9,705
+characters against an 8,000 budget — 1.2x over**. `en-learn`'s is the largest at
+1,135. So descriptions get shortened, and a shortened description may fail to
+trigger its skill. The failure is discoverability, not truncated instructions.
+
+Confirmed empirically: `codex exec` emitted this during EN14's peer review —
+"Skill descriptions were shortened to fit the 2% skills context budget. Codex can
+still see every skill, but some descriptions are shorter."
+
+**Fix:** bring the combined descriptions under 8,000 characters, front-loading
+trigger words so a shortened description still matches. The docs advise exactly
+this: "Front-load the key use case and trigger words so a host can still match
+the skill if descriptions are shortened." Bodies need no restructuring.
+
+**How the error survived.** The original entry recorded confidence 8/10 and said
+"measured during the build" — the byte counts were measured, the mechanism was
+assumed. It even flagged its own gap: "byte count alone does not prove the rule
+survived." Nobody ran that check for three days, and the claim was repeated as
+fact in the interim. A number measured precisely against a mechanism nobody
+verified reads as evidence.
+
+- **Logged:** 2026-08-26. **Corrected:** 2026-08-29.
 
 ### TD3. `doc-lints.md` pointed at a CI template this repo never shipped
 

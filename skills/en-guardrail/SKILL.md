@@ -1,6 +1,6 @@
 ---
 name: en-guardrail
-description: "Always-on safety guardrail. PreToolUse hooks on Bash AND DB-writing MCP tools inspect each command/statement for destructive patterns (recursive rm, non-recursive deleters, DROP TABLE, TRUNCATE, DELETE/UPDATE-without-WHERE, SQL-from-file, ORM resets, force-push, git reset --hard, branch -D, kubectl delete, docker rm -f / system prune, terraform destroy, aws s3 rm --recursive, gcloud delete) and force a permission prompt. In-tree build artifacts and localhost+test/dev databases pass without prompting. Human-only bypass via exporting ENSEMBLE_GUARDRAIL_BYPASS=on before launch (the old inline ENSEMBLE_GUARDRAIL=off prefix no longer works). Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
+description: "Always-on safety guardrail against destructive commands. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'. PreToolUse hooks inspect Bash commands and DB-writing MCP tools for destructive patterns (recursive rm, DROP TABLE, TRUNCATE, force-push, terraform destroy, and similar) and force a permission prompt. Build artifacts and local test databases pass without prompting."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:

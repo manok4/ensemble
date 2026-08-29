@@ -1,6 +1,6 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Detects greenfield (State 1), existing project without Ensemble (State 2; sub-variants 2a/2b/2c/2d), or already integrated (State 3). State 2 retrofit: archive legacy plans, create docs/ skeleton, generate AGENTS.md/CLAUDE.md, install en-sweep workflow, seed docs/CONTEXT.md from the declared domain model, offer guardrail / Claude Code Review action / gnhf CLI. State 3: health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
+description: "Project-level Ensemble bootstrap and diagnostics. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'. Detects greenfield, existing-without-Ensemble, or already-integrated, then creates the docs skeleton, seeds docs/CONTEXT.md from the declared domain model, generates AGENTS.md and CLAUDE.md, and offers the optional integrations. Runs health checks on an integrated project."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:

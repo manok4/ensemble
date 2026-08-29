@@ -1,6 +1,6 @@
 ---
 name: en-review
-description: "Multi-persona code review of the current branch, with the cross-agent peer ON BY DEFAULT (skip via --no-peer). Always-on personas: correctness, testing, maintainability, standards. Conditional (fire when diff matches): security, performance, migrations. Host and peer findings reconcile into four buckets (corroborated / peer-only / host-only / conflicting). Confidence-gated — sub-threshold findings file as TD entries instead of cluttering output. Three modes: interactive (default), headless (skill-to-skill), report-only (mandatory in CI like en-sweep; never runs a peer). Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
+description: "Multi-persona code review of the current branch, with a cross-agent peer on by default. Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'. Always-on dimensions are correctness, testing, maintainability and standards; security, performance and migrations fire when the diff matches. Host and peer findings reconcile, and low-confidence ones file as tech debt rather than cluttering the output."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
