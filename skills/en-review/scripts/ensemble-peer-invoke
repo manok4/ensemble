@@ -72,12 +72,19 @@ _epi_json_escape() {
 
 # Emit the peer_decision object. Values come from the caller's resolved state,
 # so this helper never re-derives policy.
-_epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias
+_epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6=elapsed_s]
+  # Emitting a decision IS the terminal event, so the marker is cleared here
+  # rather than at each exit path. Clearing per-path meant an exit added later
+  # would leave a false orphan behind, and a false orphan is worse than none: it
+  # reports an interruption that never happened.
+  [ -n "${_epi_marker_out:-}" ] && _epi_marker_clear "$_epi_marker_out"
+  _epi_marker_out=""
   local _alias
   if [ -n "${5:-}" ]; then _alias="\"$(_epi_json_escape "$5")\""; else _alias="null"; fi
-  printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s}\n' \
+  local _el; if [ -n "${6:-}" ]; then _el="$6"; else _el="null"; fi
+  printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"elapsed_s":%s}\n' \
     "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
-    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias"
+    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_el"
 }
 
 # Recover the JSON envelope from a response wrapped in fences or prose. Applied
@@ -90,6 +97,43 @@ _epi_normalize_out() {
   [ -n "$_f" ] && [ "$_f" != "/dev/null" ] && [ -s "$_f" ] || return 0
   _clean=$(ensemble_extract_json "$_f") || return 0
   printf '%s' "$_clean" > "$_f"
+}
+
+# --- run marker: make a killed host call visible -----------------------------
+# `timeout` bounds a peer that runs too long, and exit 124 is reported. It cannot
+# help when the HOST's tool call dies — context exhaustion, Ctrl-C, a truncated
+# call. The subprocess dies with it and nothing is written, so the next step sees
+# an absent or stale output file and cannot tell "the peer was never asked" from
+# "the peer answered nothing".
+#
+# A marker written before the call and cleared after turns that silence into
+# evidence. This is deliberately not a job runner: no polling, no job roots, no
+# process supervision. The ceiling still does the bounding; the marker only makes
+# a death visible to the next invocation.
+_epi_marker_path() {
+  [ -n "${1:-}" ] && [ "$1" != "/dev/null" ] || return 1
+  printf '%s.run' "$1"
+}
+
+_epi_marker_write() {  # $1=out_file $2=peer_cmd $3=peer_mode
+  local _m; _m=$(_epi_marker_path "${1:-}") || return 0
+  printf '{"started":"%s","peer_cmd":"%s","peer_mode":"%s","host_pid":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(_epi_json_escape "${2:-}")" \
+    "$(_epi_json_escape "${3:-}")" "$$" > "$_m" 2>/dev/null || true
+}
+
+_epi_marker_clear() {
+  local _m; _m=$(_epi_marker_path "${1:-}") || return 0
+  rm -f "$_m" 2>/dev/null || true
+}
+
+# Public: report an orphaned marker from a previous run, if one is present.
+# A caller checks this BEFORE invoking, so an interrupted review is surfaced
+# rather than silently retried over a stale output file.
+ensemble_peer_orphaned_run() {  # $1=out_file
+  local _m; _m=$(_epi_marker_path "${1:-}") || return 1
+  [ -f "$_m" ] || return 1
+  cat "$_m" 2>/dev/null
 }
 
 # Resolve a timeout wrapper once. Same convention as references/outside-voice.md.
@@ -132,6 +176,11 @@ ensemble_peer_invoke() {
   local _tb; _tb=$(_epi_timeout_bin)
 
   # --- attempt 1 ---------------------------------------------------------
+  # Marker first: if this tool call is killed mid-flight, the marker is the only
+  # trace that a peer was ever asked. Cleared by _epi_decision on every exit.
+  _epi_marker_write "$out_file" "$peer_cmd" "$peer_mode"
+  _epi_marker_out="$out_file"
+  local _t0; _t0=$(date +%s)
   local _epi_argv=() _err _rc _class
   [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
   _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
@@ -141,22 +190,22 @@ ensemble_peer_invoke() {
   # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_normalize_out "$out_file"
-    _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias"
+    _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
     return 0
   else
     _rc=$?
   fi
 
   if [ "$_rc" -eq 124 ]; then
-    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
     return 1
   fi
 
   _class=$(ensemble_smoke_classify "$_err" "$_rc")
 
   case "$_class" in
-    auth)    _epi_decision "off" "peer-failed:auth"    "$peer_mode" "$effort" "$model_alias"; return 1 ;;
-    unknown) _epi_decision "off" "peer-failed:unknown" "$peer_mode" "$effort" "$model_alias"; return 1 ;;
+    auth)    _epi_decision "off" "peer-failed:auth"    "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"; return 1 ;;
+    unknown) _epi_decision "off" "peer-failed:unknown" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"; return 1 ;;
   esac
 
   # --- flagdrift: ONE bounded retry, dropping ONLY the rejected fragment ---
@@ -173,7 +222,7 @@ ensemble_peer_invoke() {
     elif [ -n "$peer_effort" ]; then _target="effort"
     else
       # Neither fragment is set, so no retry could change the outcome.
-      _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias"
+      _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
       return 1
     fi
   fi
@@ -196,16 +245,16 @@ ensemble_peer_invoke() {
   # a timed-out retry as retry-exhausted.
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_normalize_out "$out_file"
-    _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias"
+    _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
     return 0
   else
     _rc=$?
   fi
   if [ "$_rc" -eq 124 ]; then
-    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
     return 1
   fi
 
-  _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias"
+  _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
   return 1
 }

@@ -15,6 +15,45 @@ updated: 2026-08-26
 
 ### TD1. Peer review blocks one tool call, so a killed or truncated call reads as success
 
+**Resolved 2026-08-29**, and narrower than it was written.
+
+Part of the premise was already handled: `timeout` bounds a peer that runs too
+long, exit 124 maps to `peer-failed:timeout`, and `auth` / `unknown` have their
+own reasons. A peer that overruns has never read as success.
+
+The real gap was the **host's** call dying — context exhaustion, Ctrl-C, a
+truncated call. The subprocess dies with it and nothing is written, so the next
+step cannot tell "the peer was never asked" from "the peer answered nothing".
+
+Closed with a run marker rather than a job runner. A marker is written before the
+call and cleared when a decision is emitted; a killed call leaves it behind, and
+`ensemble_peer_orphaned_run` reports it to the next invocation with the start
+time, peer command and mode. Roughly 40 lines.
+
+**Why not the detached runner.** Polling was considered and rejected on the
+evidence. `timeout N` is a ceiling, not a fixed wait — the call already returns
+the moment the peer finishes, so polling buys no latency. It does not remove the
+need for a deadline either; it moves where the deadline lives. The reference
+implementation is 2,250 lines across 61 functions, and it brings failure modes
+this path does not have today: orphaned processes, stale job directories, partial
+files read as complete. That is the wrong trade for a rare failure in a path that
+otherwise works. The marker is the foundation a full runner would need anyway, so
+it is not throwaway if the evidence later changes.
+
+**The 600s ceiling is left alone, deliberately.** It was never measured against
+anything. Four real calls in one session ran 141s, 166s, 231s and 242s, and
+prompt size did not predict duration — a 138KB prompt finished faster than a 29KB
+one. Four samples on one machine is not enough to tighten a safety ceiling, so
+every decision now reports `elapsed_s` and the next tuning can be made on data
+rather than on this note.
+
+The clear lives inside `_epi_decision` rather than at each exit path, because a
+path added later would otherwise leave a false orphan — and a false orphan is
+worse than none: it reports an interruption that never happened.
+
+Guarded by `tests/lint/peer-run-marker.test.sh`, 17 assertions, five controls
+verified.
+
 - **Source:** review of the Compound Engineering plugin's cross-agent design, during EN12 planning
 - **Severity:** P1
 - **Confidence:** 9/10
