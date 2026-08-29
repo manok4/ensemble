@@ -1,6 +1,6 @@
 ---
 name: en-loop
-description: "Run a bounded, objective-driven autonomous loop (the ralph / good-night-have-fun pattern): keep an agent working, one committed test-gated slice per iteration, until an evidence-based stop condition. Wraps the gnhf CLI for the loop engine; adds Ensemble's per-iteration test-gate worker contract and branch-level cross-agent review at checkpoints. Manual-invoke only. Flags: --objective, --stop-when, --max-iterations, --max-tokens, --max-runtime, --worktree, --push, --agent, --review-every N, --mode hands-off|companion. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'."
+description: "Run a bounded, objective-driven autonomous loop until an evidence-based stop condition. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'. One committed, test-gated slice per iteration, with cross-agent review at checkpoints. Wraps the gnhf CLI. Manual-invoke only; bounded by --stop-when, --max-iterations, --max-tokens and --max-runtime."
 disable-model-invocation: true
 argument-hint: "--objective \"<X>\" --stop-when \"<evidence-based condition>\" [--mode hands-off|companion] [caps]"
 # What this skill needs. Every path is skill-relative and must exist here.

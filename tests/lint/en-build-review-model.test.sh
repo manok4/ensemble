@@ -151,10 +151,14 @@ if grep -qE "^- \*\*D46\." "$FOUNDATION" && grep -qiE "amends D35" "$FOUNDATION"
 else
   fail "foundation must record D46 as amending D35"
 fi
+# Checked in the BODY, not the description. Decision labels are maintainer
+# provenance with no triggering value, and every character of a description
+# competes with all 16 other skills for Codex's 8,000-char initial-list budget
+# (see TD2). The body is read in full once the skill is selected.
 if grep -qF "D35, amended by D46" "$SKILL"; then
-  pass "en-build description cites the amending decision, not just D35"
+  pass "en-build cites the amending decision, not just D35"
 else
-  fail "en-build description must cite D46 alongside D35 (stale decision label misleads maintainers)"
+  fail "en-build must cite D46 alongside D35 (a stale decision label misleads maintainers)"
 fi
 
 # --- --no-peer skips the branch-level review ---

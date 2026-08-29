@@ -1,6 +1,6 @@
 ---
 name: en-sweep
-description: "Scheduled doc-drift cleanup (default weekly; configurable via sweep.schedule). Runs file-shape lint + wiki-graph health + architecture/plan-lifecycle/pointer-map drift. Activity gate skips runs when no non-sweep commits have landed since the last sweep. Opens auto-merging doc-only PRs after /en-review (mode:report-only) clears them. Code-level findings file to tech-debt-tracker.md. Optional continuous monitoring (dead-code + dep-vuln) → TD or draft plan. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
+description: "Scheduled doc-drift cleanup. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'. Runs file-shape lint, wiki-graph health, and architecture, plan-lifecycle and pointer-map drift checks, then opens an auto-merging doc-only PR once review clears it. An activity gate skips runs with no new commits; code-level findings file as tech debt."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:

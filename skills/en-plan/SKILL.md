@@ -1,6 +1,6 @@
 ---
 name: en-plan
-description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs and plan_type (feature | improvement | bug). Reads foundation, runs research agents (repo-research + learnings-research; web-research conditional), breaks work into units with files / tests / execution notes; runs cross-agent peer review on the draft. Modes: --resume <plan> (promote a draft); --from-legacy <path> (migrate legacy plan). Outputs docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'."
+description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'. Reads the foundation, runs research agents, breaks work into units carrying files, tests and risk, then runs cross-agent peer review on the draft. Modes: --resume to promote a draft, --from-legacy to migrate one."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
