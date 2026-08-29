@@ -326,3 +326,29 @@ and describe the dimensions instead. If they are still meant to be spawned, the
 definitions have to come back. Either way the five carriers move together, and a
 test should assert that every `subagent_type` a skill names resolves to an agent
 the repo defines — the gap existed for a full release because nothing checked.
+
+### TD10. EN01 shipped with three units depending on a later-phase unit
+
+Found 2026-08-29 by TD8's phase-aware lint, on its first run against history.
+
+`EN01-improvement_skill-suite-optimization.md` declares U3 as `risk: medium`,
+`category: schema-evolution`, which `/en-build` classifies as **P3**. U7, U8 and
+U13 are `risk: medium`, `category: feature` — **P2** — and all three declare a
+dependency on U3.
+
+Three P2 units depending on a P3 unit is exactly the structural error the phase
+invariant exists to reject. The risk-only check in force at the time saw a flat
+plan of `medium` units and passed it.
+
+**Not being fixed.** EN01 shipped. Rewriting a completed plan's metadata to
+satisfy a rule added afterwards would be editing the record of what was actually
+built, and the plan did build — most likely because phasing never engaged, or the
+units happened to run in a workable order.
+
+Recorded because it is a real fact about how that plan was structured, and
+because it is the only empirical evidence so far that the risk-only check missed
+things in practice rather than only in principle. The lint now scopes the rule to
+`docs/plans/active/`, where it can still prevent a build-time rejection.
+
+- **Severity:** P3 — historical record, no action.
+- **Logged:** 2026-08-29.

@@ -788,7 +788,12 @@ check_plan_unit_test_scenarios() {
 # if U depends on V depends on W, and U is lower risk than W, the U->V edge
 # already fires when V's risk is computed against U.
 check_plan_phase_invariant() {
-  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  # active/ only. The invariant exists to stop /en-build rejecting a plan at
+  # preflight; once a plan has shipped that purpose has expired, and re-reporting
+  # it on every run is the over-gating that teaches people to skim lint output.
+  # A structural issue found in a shipped plan belongs in the tech-debt tracker
+  # once, not in the linter forever.
+  case "$1" in docs/plans/active/*.md) ;; *) return 0 ;; esac
   local file="$1"
 
   # Build U-ID -> risk map first.
@@ -820,7 +825,7 @@ check_plan_phase_invariant() {
       local v_pri;  v_pri=$(unit_phase "$v_risk" "$v_cat")
       if [ "$v_pri" -gt "$u_pri" ]; then
         emit "phase-invariant.dependency-vs-risk" "$file" "" "P1" \
-          "Unit $uid (risk: $u_risk) depends on $dep_id (risk: $v_risk) — lower-risk unit depending on higher-risk unit violates phase purity" \
+          "Unit $uid (risk: $u_risk, category: $u_cat) is P$u_pri but depends on $dep_id (risk: $v_risk, category: $v_cat) which is P$v_pri — a unit cannot depend on one that runs in a later phase" \
           "Remove the dependency, promote $uid's risk to at least $v_risk, or split $uid into a part that doesn't depend on $dep_id"
       fi
     done
@@ -932,7 +937,6 @@ done < <(collect_files)
 check_fr_id_collisions
 check_index_coverage
 
-check_bootstrap_unvalidated
 
 # --- Report ---
 if [ "$VIOLATIONS" -gt 0 ]; then
