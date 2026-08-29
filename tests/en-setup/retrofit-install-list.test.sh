@@ -113,6 +113,9 @@ table_rows=$(printf '%s' "$TABLE" | grep -c '^ *| ')
 [ "$table_rows" -ge 10 ] \
   && pass "the verification table was extracted ($table_rows rows)" \
   || fail "the verification table was extracted" "found $table_rows rows"
+# en-sweep.yml is no longer here: it moved from required to a recorded opt-in, so
+# declining it reports as declined rather than as a missing required artifact.
+# tests/lint/en-setup-scaffold.test.sh owns that classification.
 for required in \
   "docs/plans/{active,completed}/" \
   "docs/learnings/" \
@@ -122,7 +125,6 @@ for required in \
   "docs/generated/{plan-index.md,learning-index.md}" \
   "AGENTS.md" \
   "CLAUDE.md" \
-  ".github/workflows/en-sweep.yml" \
   "bin/en-sweep-ci" \
   "bin/ensemble-sweep-activity-check" \
   "bin/ensemble-doc-only-check" \

@@ -119,7 +119,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
-   - Plus `learnings-research` to query `docs/learnings/` for relevant prior bugs/patterns/decisions.
+   - Plus `learnings-research` to query `docs/learnings/` for relevant prior terms, decisions, and solutions.
 
    **7a. Lite roster (`--lite`).** When `--lite` is passed, classify the diff via `references/diff-signal-detection.md`. If `is_small_and_safe` is `true` (1–39 executable lines, zero uncounted files, no risk signals, **and** no conditional persona was triggered above), collapse the roster to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens** — skip `testing`, `maintainability`, `learnings`, and all conditionals. **Fail closed:** if `is_small_and_safe` is `false` for any reason (unknown line count, any uncounted non-code file, any risk signal, or any conditional persona fired), run the **full roster regardless of `--lite`** — the gate wins, the flag is advisory. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `references/persona-dispatch.md`).
 

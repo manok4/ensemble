@@ -954,4 +954,49 @@ else
   pass "a Resolves: field naming an existing TD is clean"
 fi
 
+# --- index-coverage must not ask the index to list itself --------------------
+# Found by actually running /en-setup: a freshly seeded store has index.md and
+# log.md at docs/learnings/, and index-coverage flagged both as learnings missing
+# from the generated index. The required-field check already excluded them; this
+# loop did not, and an edit that was reported as applying to both silently
+# matched only one.
+setup_tmp
+mkdir -p "$TMP/docs/learnings" "$TMP/docs/generated"
+cat > "$TMP/docs/learnings/index.md" <<'EOF'
+---
+type: learning-index
+generated: true
+generator: en-learn
+updated: 2026-08-28
+total_entries: 0
+---
+# Learnings — index
+EOF
+cat > "$TMP/docs/learnings/log.md" <<'EOF'
+---
+type: learning-log
+generated: true
+generator: en-learn
+updated: 2026-08-28
+---
+# Learnings — log
+EOF
+cat > "$TMP/docs/generated/learning-index.md" <<'EOF'
+---
+type: learning-index
+generated: true
+generator: en-learn
+updated: 2026-08-28
+total_entries: 0
+---
+# Learnings — generated index
+EOF
+output=$(cd "$TMP" && bash "$LINT" --scope docs/ 2>&1)
+if echo "$output" | grep -q 'index-coverage.learning-missing'; then
+  fail "index.md and log.md are not treated as learnings needing an index entry" \
+       "$(echo "$output" | grep 'index-coverage' | head -2 | tr '\n' ' ')"
+else
+  pass "index.md and log.md are not treated as learnings needing an index entry"
+fi
+
 report

@@ -338,7 +338,7 @@ For full process detail, mode flags, and reference files per skill, see each ski
 | Agent | Specialty |
 |---|---|
 | `repo-research` | Scan codebase for patterns, conventions, file paths, prior art |
-| `learnings-research` | Query `docs/learnings/` for relevant prior bugs/patterns/decisions |
+| `learnings-research` | Query `docs/learnings/` for relevant prior terms, decisions, and solutions |
 | `web-research` | External docs (Context7) and best-practice search (WebSearch) with Wayback fallback |
 
 ### Refiner (1) — modifies code, wrapped in two verification gates
