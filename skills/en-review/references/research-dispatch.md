@@ -7,7 +7,7 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | Agent | Purpose | Latency | When to dispatch |
 |---|---|---|---|
 | `repo-research` | Scan the codebase for patterns, conventions, file paths, existing implementations | Medium (file reads + grep) | Always for Standard/Deep `en-plan`; always for State-2 `en-foundation` retrofits |
-| `learnings-research` | Query `docs/learnings/` for relevant past bugs/patterns/decisions via `index.md` | Fast | Always for Standard/Deep `en-plan` and `en-foundation` |
+| `learnings-research` | Query `docs/learnings/` for relevant past terms, decisions, and solutions via `index.md` | Fast | Always for Standard/Deep `en-plan` and `en-foundation` |
 | `web-research` | External docs (Context7) and best-practice search (WebSearch); URL fetch for ingest | High (network) | Only when local context is thin and external prior art would change the recommendation |
 
 ## Dispatch matrix

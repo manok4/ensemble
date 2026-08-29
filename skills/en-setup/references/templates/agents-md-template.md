@@ -58,7 +58,9 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 | In-flight feature plans | [`docs/plans/active/`](./docs/plans/active/) |
 | Shipped feature plans (living documentation) | [`docs/plans/completed/`](./docs/plans/completed/) |
 | Tracked technical debt | [`docs/plans/tech-debt-tracker.md`](./docs/plans/tech-debt-tracker.md) |
-| Compounding learnings (bugs, patterns, decisions) | [`docs/learnings/`](./docs/learnings/) — start at [`index.md`](./docs/learnings/index.md) |
+| Domain vocabulary — what words mean here | [`docs/CONTEXT.md`](./docs/CONTEXT.md) |
+| Decisions and the rules they create | [`docs/decisions/`](./docs/decisions/) |
+| Solved problems whose lesson outlives the fix | [`docs/learnings/`](./docs/learnings/) — start at [`index.md`](./docs/learnings/index.md) |
 | Brainstorm / design exploration | [`docs/designs/`](./docs/designs/) |
 
 ## Conventions
