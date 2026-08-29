@@ -1,0 +1,13 @@
+name: Ensemble lint
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bin/ensemble-lint --scope docs/

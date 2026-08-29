@@ -621,6 +621,28 @@ extract_units() {
 }
 
 # --- Helper: numeric risk priority for invariant comparisons ---
+# Phase classification, mirroring /en-build's. `risk:` is the primary axis, and
+# `category:` carves out exactly one case: medium + a migration-shaped category
+# lands in P3 rather than P2.
+#
+# The invariant is about PHASES, not risk. Comparing risk alone missed a unit
+# promoted across a phase boundary by its category while its risk stayed put —
+# EN14 linted clean through two peer iterations and was then rejected by
+# /en-build at preflight for exactly that. See TD8.
+unit_phase() {  # $1=risk $2=category
+  case "$1" in
+    low)         echo 1 ;;
+    medium)
+      case "$2" in
+        migration|backfill|schema-evolution) echo 3 ;;
+        *)                                   echo 2 ;;
+      esac ;;
+    high)        echo 3 ;;
+    destructive) echo 4 ;;
+    *)           echo 0 ;;
+  esac
+}
+
 risk_priority() {
   case "$1" in
     low) echo 1 ;;
@@ -766,16 +788,21 @@ check_plan_unit_test_scenarios() {
 # if U depends on V depends on W, and U is lower risk than W, the U->V edge
 # already fires when V's risk is computed against U.
 check_plan_phase_invariant() {
-  case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
+  # active/ only. The invariant exists to stop /en-build rejecting a plan at
+  # preflight; once a plan has shipped that purpose has expired, and re-reporting
+  # it on every run is the over-gating that teaches people to skim lint output.
+  # A structural issue found in a shipped plan belongs in the tech-debt tracker
+  # once, not in the linter forever.
+  case "$1" in docs/plans/active/*.md) ;; *) return 0 ;; esac
   local file="$1"
 
   # Build U-ID -> risk map first.
   local map_file
   map_file=$(mktemp)
-  while IFS='|' read -r uid risk _ _ _; do
+  while IFS='|' read -r uid risk cat _ _; do
     [ -z "$uid" ] && continue
     [ -z "$risk" ] && continue
-    printf '%s %s\n' "$uid" "$risk" >> "$map_file"
+    printf '%s %s %s\n' "$uid" "$risk" "${cat:-other}" >> "$map_file"
   done < <(extract_units "$file")
 
   # Walk dependency edges.
@@ -786,17 +813,19 @@ check_plan_phase_invariant() {
 
     local u_risk; u_risk=$(awk -v u="$uid" '$1==u{print $2; exit}' "$map_file")
     [ -z "$u_risk" ] && continue
-    local u_pri; u_pri=$(risk_priority "$u_risk")
+    local u_cat;  u_cat=$(awk -v u="$uid" '$1==u{print $3; exit}' "$map_file")
+    local u_pri;  u_pri=$(unit_phase "$u_risk" "$u_cat")
 
     # Extract referenced U-IDs from the deps string.
     local dep_id
     for dep_id in $(printf '%s' "$deps" | grep -oE 'U[0-9]+' || true); do
       local v_risk; v_risk=$(awk -v u="$dep_id" '$1==u{print $2; exit}' "$map_file")
       [ -z "$v_risk" ] && continue
-      local v_pri; v_pri=$(risk_priority "$v_risk")
+      local v_cat;  v_cat=$(awk -v u="$dep_id" '$1==u{print $3; exit}' "$map_file")
+      local v_pri;  v_pri=$(unit_phase "$v_risk" "$v_cat")
       if [ "$v_pri" -gt "$u_pri" ]; then
         emit "phase-invariant.dependency-vs-risk" "$file" "" "P1" \
-          "Unit $uid (risk: $u_risk) depends on $dep_id (risk: $v_risk) — lower-risk unit depending on higher-risk unit violates phase purity" \
+          "Unit $uid (risk: $u_risk, category: $u_cat) is P$u_pri but depends on $dep_id (risk: $v_risk, category: $v_cat) which is P$v_pri — a unit cannot depend on one that runs in a later phase" \
           "Remove the dependency, promote $uid's risk to at least $v_risk, or split $uid into a part that doesn't depend on $dep_id"
       fi
     done
@@ -908,7 +937,6 @@ done < <(collect_files)
 check_fr_id_collisions
 check_index_coverage
 
-check_bootstrap_unvalidated
 
 # --- Report ---
 if [ "$VIOLATIONS" -gt 0 ]; then

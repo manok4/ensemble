@@ -15,6 +15,45 @@ updated: 2026-08-26
 
 ### TD1. Peer review blocks one tool call, so a killed or truncated call reads as success
 
+**Resolved 2026-08-29**, and narrower than it was written.
+
+Part of the premise was already handled: `timeout` bounds a peer that runs too
+long, exit 124 maps to `peer-failed:timeout`, and `auth` / `unknown` have their
+own reasons. A peer that overruns has never read as success.
+
+The real gap was the **host's** call dying — context exhaustion, Ctrl-C, a
+truncated call. The subprocess dies with it and nothing is written, so the next
+step cannot tell "the peer was never asked" from "the peer answered nothing".
+
+Closed with a run marker rather than a job runner. A marker is written before the
+call and cleared when a decision is emitted; a killed call leaves it behind, and
+`ensemble_peer_orphaned_run` reports it to the next invocation with the start
+time, peer command and mode. Roughly 40 lines.
+
+**Why not the detached runner.** Polling was considered and rejected on the
+evidence. `timeout N` is a ceiling, not a fixed wait — the call already returns
+the moment the peer finishes, so polling buys no latency. It does not remove the
+need for a deadline either; it moves where the deadline lives. The reference
+implementation is 2,250 lines across 61 functions, and it brings failure modes
+this path does not have today: orphaned processes, stale job directories, partial
+files read as complete. That is the wrong trade for a rare failure in a path that
+otherwise works. The marker is the foundation a full runner would need anyway, so
+it is not throwaway if the evidence later changes.
+
+**The 600s ceiling is left alone, deliberately.** It was never measured against
+anything. Four real calls in one session ran 141s, 166s, 231s and 242s, and
+prompt size did not predict duration — a 138KB prompt finished faster than a 29KB
+one. Four samples on one machine is not enough to tighten a safety ceiling, so
+every decision now reports `elapsed_s` and the next tuning can be made on data
+rather than on this note.
+
+The clear lives inside `_epi_decision` rather than at each exit path, because a
+path added later would otherwise leave a false orphan — and a false orphan is
+worse than none: it reports an interruption that never happened.
+
+Guarded by `tests/lint/peer-run-marker.test.sh`, 17 assertions, five controls
+verified.
+
 - **Source:** review of the Compound Engineering plugin's cross-agent design, during EN12 planning
 - **Severity:** P1
 - **Confidence:** 9/10
@@ -76,6 +115,21 @@ verified reads as evidence.
 - **Logged:** 2026-08-26. **Corrected:** 2026-08-29.
 
 ### TD3. `doc-lints.md` pointed at a CI template this repo never shipped
+
+**Resolved 2026-08-29.** The workflow existed only as YAML inline in the doc, so
+the recommendation could be read but not acted on. Extracted to
+`references/templates/github-workflow-ensemble-lint.yml` and offered by
+`/en-setup` as an opt-in, separate from the sweep: a PR check that reports is a
+narrower thing than a scheduled job that opens pull requests.
+
+The prose was also wrong in a second way. It said "this repo ships no lint CI
+template", but Ensemble's own CI has been running the lint from its test workflow
+all along — so the line understated what already worked while overstating what
+was missing.
+
+Reworded across all 7 carriers without naming a template path, because a relative
+path in a carried file resolves against whichever skill carries it, and only
+`en-setup` installs workflows. Naming it would have forced six pointless copies.
 
 - **Source:** EN12 U7, surfaced by the single-skill-install dangling check
 - **Severity:** P3
@@ -184,6 +238,20 @@ about the specification only.
 
 ### TD8. The phase-invariant lint compares risk only, so it cannot see a category-induced promotion
 
+**Resolved 2026-08-29.** The lint now classifies each unit into a phase with the
+same rule `/en-build` uses — risk as the primary axis, with `category:` carving
+out the one case where `medium` plus a migration-shaped category lands in P3 — and
+compares phases across dependency edges rather than risk.
+
+Golden fixture `plan-active/invalid-category-phase-promotion.md`: every unit
+`risk: medium`, so a risk-only comparison sees a flat plan, while U1 (P2) depends
+on U2 (P3, `category: migration`). Verified to pass under phase comparison and
+fail under the old risk-only one.
+
+This was not hypothetical. EN14 linted clean through two peer iterations with
+every unit at `medium`, then `/en-build` rejected it at preflight for exactly this
+edge; the workaround is still visible in the shipped plan as U13's category note.
+
 `ensemble-lint`'s `phase-invariant.dependency-vs-risk` rule builds a U-ID → risk
 map and compares risk across every dependency edge. `/en-build` classifies phases
 from **risk and category**: `risk: medium` plus `category: migration | backfill |
@@ -258,3 +326,29 @@ and describe the dimensions instead. If they are still meant to be spawned, the
 definitions have to come back. Either way the five carriers move together, and a
 test should assert that every `subagent_type` a skill names resolves to an agent
 the repo defines — the gap existed for a full release because nothing checked.
+
+### TD10. EN01 shipped with three units depending on a later-phase unit
+
+Found 2026-08-29 by TD8's phase-aware lint, on its first run against history.
+
+`EN01-improvement_skill-suite-optimization.md` declares U3 as `risk: medium`,
+`category: schema-evolution`, which `/en-build` classifies as **P3**. U7, U8 and
+U13 are `risk: medium`, `category: feature` — **P2** — and all three declare a
+dependency on U3.
+
+Three P2 units depending on a P3 unit is exactly the structural error the phase
+invariant exists to reject. The risk-only check in force at the time saw a flat
+plan of `medium` units and passed it.
+
+**Not being fixed.** EN01 shipped. Rewriting a completed plan's metadata to
+satisfy a rule added afterwards would be editing the record of what was actually
+built, and the plan did build — most likely because phasing never engaged, or the
+units happened to run in a workable order.
+
+Recorded because it is a real fact about how that plan was structured, and
+because it is the only empirical evidence so far that the risk-only check missed
+things in practice rather than only in principle. The lint now scopes the rule to
+`docs/plans/active/`, where it can still prevent a build-time rejection.
+
+- **Severity:** P3 — historical record, no action.
+- **Logged:** 2026-08-29.
