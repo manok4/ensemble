@@ -4,6 +4,8 @@ description: "Project-level Ensemble bootstrap and diagnostics. Trigger phrases:
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - agents/learnings-research.md
+  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/doc-lints.md
   - references/glossary-rules.md
@@ -13,6 +15,7 @@ requires:
   - references/learn-log-format.md
   - references/peer-contract.md
   - references/recursion-guard.md
+  - references/research-dispatch.md
   - references/script-invocation.md
   - references/setup-state-detection.md
   - references/stable-ids.md

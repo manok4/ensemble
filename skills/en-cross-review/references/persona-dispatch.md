@@ -2,43 +2,50 @@
 
 How `/en-review` decides which reviewer agents fire and how their findings are synthesized.
 
+**One agent, parameterized per dimension.** Every dimension is reviewed by a
+`dimension-reviewer` instance whose prompt carries that dimension's name, focus
+and any heuristics that matched. Seven separate agent definitions used to exist;
+only 18–19% of each was unique, and the shared remainder now lives in
+`references/peer-contract.md`. The dimensions below are what a reviewer is told
+to look at, not the name of an agent to spawn.
+
 ## Always-on (4)
 
 Fire on every `en-review` invocation regardless of diff content:
 
-| Agent | Focus |
+| Dimension | Focus |
 |---|---|
-| `correctness-reviewer` | Logic errors, edge cases, state bugs, error propagation, off-by-one |
-| `testing-reviewer` | Coverage gaps, weak assertions, brittle tests, missing categories |
-| `maintainability-reviewer` | Coupling, complexity, naming, dead code, abstraction debt |
-| `standards-reviewer` | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
+| `correctness` | Logic errors, edge cases, state bugs, error propagation, off-by-one |
+| `testing` | Coverage gaps, weak assertions, brittle tests, missing categories |
+| `maintainability` | Coupling, complexity, naming, dead code, abstraction debt |
+| `standards` | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
 
 ## Conditional (3) — fire when diff matches
 
 Decide via diff content scan before dispatching:
 
-| Agent | Fires when diff touches |
+| Dimension | Fires when diff touches |
 |---|---|
-| `security-reviewer` | Auth code, public endpoints, user-input handling, secret/token handling, permissions, CORS, CSP, cookie config |
-| `performance-reviewer` | DB queries (raw SQL, ORM call patterns), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms |
-| `migrations-reviewer` | Schema migration files, backfill scripts, data-isolation changes, multi-tenancy boundary changes |
+| `security` | Auth code, public endpoints, user-input handling, secret/token handling, permissions, CORS, CSP, cookie config |
+| `performance` | DB queries (raw SQL, ORM call patterns), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms |
+| `migrations` | Schema migration files, backfill scripts, data-isolation changes, multi-tenancy boundary changes |
 
 ## Detection heuristics
 
-`security-reviewer`:
+`security`:
 - File path matches `**/auth/**`, `**/permissions/**`, `**/oauth/**`, `**/session/**`
 - Diff content matches: `cookie`, `token`, `password`, `secret`, `bcrypt`, `jwt`, `csrf`, `cors`, `Authorization:`, `req.user`, `req.headers`, `process.env.[A-Z_]+_SECRET`
 - File path matches `**/api/**`, `**/routes/**`, `**/handlers/**` AND function signature suggests public endpoint
 - Migration touches a `roles`, `permissions`, `users.password*`, `sessions`, `api_keys` table
 
-`performance-reviewer`:
+`performance`:
 - File path matches `**/queries/**`, `**/db/**`, `**/repository/**`
 - Diff content matches: ORM patterns (`.findMany`, `.findFirst`, `.where`, `JOIN`, `eager`, `include`, raw `SELECT`)
 - Diff content suggests N+1 (loop with `await` calling a query)
 - File path matches `**/handlers/**` for known hot-path routes
 - Diff adds caching layer (Redis, in-memory, CDN config)
 
-`migrations-reviewer`:
+`migrations`:
 - File path matches `**/migrations/**`, `**/db/migrations/**`, `**/migration_*.sql`
 - Diff adds/removes columns, tables, indexes, constraints
 - File contains `ALTER TABLE`, `DROP COLUMN`, `ADD COLUMN`, `CREATE TABLE`, `CREATE INDEX`
@@ -57,11 +64,11 @@ All persona agents fire **in parallel** — single message, multiple `Agent` too
 In Claude Code:
 
 ```
-Agent({ subagent_type: "correctness-reviewer", ... })
-Agent({ subagent_type: "testing-reviewer", ... })
-Agent({ subagent_type: "maintainability-reviewer", ... })
-Agent({ subagent_type: "standards-reviewer", ... })
-Agent({ subagent_type: "security-reviewer", ... })  // if matched
+Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: correctness ..." })
+Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: testing ..." })
+Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: maintainability ..." })
+Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: standards ..." })
+Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: security ..." })  // if matched
 // Plus learnings-research in the same parallel batch
 Agent({ subagent_type: "learnings-research", ... })
 // Plus the cross-agent peer, concurrently — NOT serialized after the roster:
@@ -179,13 +186,13 @@ Any future change that feeds persona findings to the peer must also re-serialize
 
 | Agent | Approximate token cost |
 |---|---|
-| `correctness-reviewer` | 3K–10K |
-| `testing-reviewer` | 2K–8K |
-| `maintainability-reviewer` | 3K–10K |
-| `standards-reviewer` | 2K–6K |
-| `security-reviewer` | 3K–10K (only when fires) |
-| `performance-reviewer` | 3K–10K (only when fires) |
-| `migrations-reviewer` | 3K–8K (only when fires) |
+| `correctness` | 3K–10K |
+| `testing` | 2K–8K |
+| `maintainability` | 3K–10K |
+| `standards` | 2K–6K |
+| `security` | 3K–10K (only when fires) |
+| `performance` | 3K–10K (only when fires) |
+| `migrations` | 3K–8K (only when fires) |
 | `learnings-research` | 2K–8K |
 
 Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit is preferred to per-PR-of-15-units) so each round stays small.
@@ -194,7 +201,7 @@ Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit 
 
 When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, dispatch a reduced roster instead of the full panel:
 
-- **Roster:** `correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
+- **Roster:** `correctness` + `standards` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
 - **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides.
 - **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
 - **Outcome line (EN08):** the gate's decision is reported by the mandatory `lite_gate:` line in en-review's summary (`applied` / `overridden (<reasons>)` / `not-requested`) — never a silent override.

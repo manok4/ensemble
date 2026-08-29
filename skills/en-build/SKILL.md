@@ -5,6 +5,9 @@ description: "Execute an implementation plan unit by unit on a feature branch. T
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - agents/code-simplifier.md
+  - agents/dimension-reviewer.md
+  - agents/learnings-research.md
+  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/build-handoff.md
   - references/build-orchestration.md
@@ -20,6 +23,7 @@ requires:
   - references/peer-model-policy.md
   - references/persona-dispatch.md
   - references/recursion-guard.md
+  - references/research-dispatch.md
   - references/script-invocation.md
   - references/severity.md
   - references/single-agent-fallback.md

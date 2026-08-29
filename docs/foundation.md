@@ -752,7 +752,7 @@ Default-safe configuration:
 > EN13 retired seven reviewer agents (correctness, testing, maintainability,
 > standards, security, performance, migrations). Their scopes were absorbed into
 > the per-skill peer briefs; `references/peer-contract.md` owns the output format
-> and severity scale they used to restate. Four agents remain. **See TD9** — five
+> and severity scale they used to restate. Five agents: the four research and simplification agents, plus a single parameterized `dimension-reviewer` that replaced the seven (TD9). **See TD9** — five
 > skills still name the retired seven as `subagent_type`.
 
 Eleven agents total: 7 reviewers (read-only) + 3 researchers (read-only) + 1 refiner (read-write). Short specialist prompts (~40–120 lines each), not multi-thousand-line monsters. Skills dispatch them via the platform's task primitive (Claude Code Agent tool, Codex `spawn_agent`).
@@ -784,6 +784,7 @@ Distinct from reviewers (which return findings) and researchers (which return da
 | Agent | Purpose | Dispatched by | Source |
 |---|---|---|---|
 | `code-simplifier` | Refine recently modified code for clarity, consistency, and project-standards compliance while preserving exact functionality. Reduces nesting, eliminates redundancy, applies CLAUDE.md / AGENTS.md conventions, avoids over-simplification (no nested ternaries, no clever-at-cost-of-readable). Model: opus. | `en-build` (per unit, before peer review) | [Anthropic claude-plugins-official](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md) |
+| `dimension-reviewer` | Reviews a diff along ONE named dimension (correctness, testing, maintainability, standards, security, performance, migrations); the dimension, focus and scope arrive in the prompt. Read-only. | `en-review`, `en-build`, `en-plan`, `en-foundation`, `en-cross-review` |
 
 ### 6.4 Agent invariants
 

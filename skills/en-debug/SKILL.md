@@ -4,6 +4,7 @@ description: "Reproduce a bug from telemetry. Reads structured logs from the con
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - agents/learnings-research.md
   - agents/repo-research.md
   - references/agent-dispatch.md
   - references/debug-investigation.md
