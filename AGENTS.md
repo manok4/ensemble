@@ -39,7 +39,7 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 ## Conventions
 
 - **Repo-relative paths only** in artifacts. No absolute paths (`/Users/...`, `C:\...`).
-- **Stable IDs:** `R<N>` for foundation requirements, `U<N>` for plan units (never renumbered), `FR<NN>` for plan filenames, `TD<N>` for tracked debt.
+- **Stable IDs:** `R<N>` for foundation requirements, `U<N>` for plan units (never renumbered), `EN<NN>` for plan filenames, `TD<N>` for tracked debt.
 - **Conventional commits:** `<type>(<scope>): <subject>` — types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Subject ≤ 50 chars, imperative.
 - **Doc-as-source-of-truth:** if a decision isn't in `docs/`, the agent can't see it. Capture it via `/en-learn capture` before moving on.
 

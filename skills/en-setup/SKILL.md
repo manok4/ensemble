@@ -169,7 +169,10 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
    **Re-sync on update (drift caveat).** Because these are *copied* into the project, a consuming repo carries a frozen snapshot from install time — fixes to the plugin's `bin/` scripts do NOT propagate automatically. When the plugin updates a sweep script (e.g. the `en-sweep-ci` guard fix), re-run this step to re-copy (it's idempotent — it overwrites when content differs). The current workflow template mitigates this for `en-sweep-ci` specifically by preferring the freshly-cloned `$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci` at run time and only falling back to the project-local copy; `ensemble-sweep-activity-check` still runs project-local (its job doesn't clone), so re-sync it on update.
 
-11. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Depends on step 9 — the workflow won't function without those bin scripts.
+11. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`.
+
+    **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the workflow as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
+ Depends on step 9 — the workflow won't function without those bin scripts.
     1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
     2. **Map to cron.** Named values map to:
        - `daily` → `0 9 * * *`
@@ -239,7 +242,6 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | `AGENTS.md` | exists; contains the Ensemble pointer-map section marker |
     | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
-    | `.github/workflows/en-sweep.yml` | exists |
     | `./bin/en-sweep-ci` | exists, executable (`-x`) |
     | `./bin/ensemble-sweep-activity-check` | exists, executable |
     | `./bin/ensemble-doc-only-check` | exists, executable |
@@ -247,6 +249,8 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | `.ensemble/config.local.example.yaml` | exists |
 
     **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
+
+    - `.github/workflows/en-sweep.yml` (step 11 opt-in). **A decline is recorded, never silent.** Write `sweep.enabled: false` to `.ensemble/config.local.yaml` and report the workflow as *declined*, not *missing*. Re-offering an install the operator deliberately refused is how a verification report trains them to skim it — the same reason `--no-simplify` records `not_applicable` with a reason instead of leaving a hole.
 
     - `.github/workflows/claude-code-review.yml` (step 13 opt-in)
     - `REVIEW.md` (step 15 opt-in)

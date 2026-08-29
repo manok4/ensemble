@@ -71,4 +71,35 @@ flat "$SKILL" | grep -q 'docs/learnings/ both prese' \
   && pass "State-3 detection probes a directory the new layout still creates" \
   || fail "State-3 detection probes a directory the new layout still creates"
 
+# --- a declined install is recorded, not re-offered --------------------------
+# en-sweep.yml sat in the REQUIRED artifact table, so declining it left every
+# future run and every State-3 diagnostic reporting a missing required artifact
+# and re-offering the install. A gate that fires on a deliberate choice is how a
+# verification report becomes something you skim.
+
+REQ=$(sed -n '/\*\*Required artifacts\*\*/,/\*\*Optional artifacts\*\*/p' "$SKILL")
+OPT=$(sed -n '/\*\*Optional artifacts\*\*/,/\*\*Environment dependencies\*\*/p' "$SKILL")
+
+if printf '%s' "$REQ" | grep -q 'en-sweep.yml'; then
+  fail "en-sweep.yml is not a required artifact"
+else
+  pass "en-sweep.yml is not a required artifact"
+fi
+
+printf '%s' "$OPT" | grep -q 'en-sweep.yml' \
+  && pass "en-sweep.yml is listed as an opt-in" \
+  || fail "en-sweep.yml is listed as an opt-in"
+
+flat "$SKILL" | grep -qi 'decline is recorded, never silent' \
+  && pass "a declined install is recorded rather than left as a hole" \
+  || fail "a declined install is recorded rather than left as a hole"
+
+flat "$SKILL" | grep -qi 'sweep.enabled: false' \
+  && pass "the install step honours a recorded decline" \
+  || fail "the install step honours a recorded decline"
+
+flat "$SKILL" | grep -qi 'do not re-prompt\|Do not re-prompt' \
+  && pass "a recorded decline is not re-prompted" \
+  || fail "a recorded decline is not re-prompted"
+
 report
