@@ -4,7 +4,9 @@ description: "Multi-persona code review of the current branch, with a cross-agen
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - agents/dimension-reviewer.md
   - agents/learnings-research.md
+  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
   - references/build-handoff.md

@@ -212,6 +212,25 @@ Needs a negative control: a plan whose units are all `medium`, one of them
 
 ### TD9. Five skills dispatch seven reviewer agents the repo no longer defines
 
+**Resolved 2026-08-29.** One parameterized `dimension-reviewer` replaced the
+seven: the dimension, its focus, and any matched heuristics arrive in the prompt,
+so there is one definition rather than seven near-identical ones. This follows
+EN13's own measurement — only 18-19% of each retired agent was unique — rather
+than undoing it.
+
+The audit widened the fault. TD9 described five skills and seven agents; the real
+scope was **twelve** unbacked dispatches, including `en-brainstorm` naming
+`learnings-research` and eight skills naming `repo-research` without carrying
+either. A skill installs alone and cannot reach another skill's directory, so
+dispatching an agent means carrying it. Carrying the agents then pulled a
+transitive dependency (`references/research-dispatch.md`) into five more skills —
+declaration closure, applied.
+
+Guarded by `tests/lint/agent-dispatch-resolves.test.sh`: every dispatched
+`subagent_type` has a definition, every skill carries what it dispatches, every
+carried agent is declared, and the retired seven cannot return by name. Three
+controls verified.
+
 EN13 U11 deleted seven reviewer agent definitions (correctness, testing,
 maintainability, standards, security, performance, migrations), absorbing their
 scopes into the per-skill peer briefs. Its commit message says "en-review still

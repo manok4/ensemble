@@ -4,6 +4,7 @@ description: "Scheduled doc-drift cleanup. Trigger phrases: 'sweep', 'doc cleanu
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - agents/learnings-research.md
   - agents/repo-research.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md

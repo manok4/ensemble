@@ -19,6 +19,10 @@ TEST_NAME="learn reference parity"
 
 # Expected carrier counts. A drop here is a deletion nobody meant; a rise is a
 # new carrier that must be added deliberately, with its declaration.
+#
+# learnings-research went 4 -> 12 on 2026-08-29: every skill that DISPATCHES an
+# agent must carry it, since a skill installs alone and cannot reach another
+# skill's directory. Nine skills dispatch it. See TD9.
 while IFS='|' read -r rel expected; do
   [ -n "$rel" ] || continue
 
@@ -46,7 +50,7 @@ done <<'CARRIERS'
 references/learn-lint.md|3
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
-agents/learnings-research.md|4
+agents/learnings-research.md|12
 CARRIERS
 
 # The retired taxonomy must not creep back in through any carrier. Character

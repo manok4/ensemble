@@ -4,6 +4,7 @@ description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
+  - agents/dimension-reviewer.md
   - agents/learnings-research.md
   - agents/repo-research.md
   - agents/web-research.md
