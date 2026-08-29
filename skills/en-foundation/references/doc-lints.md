@@ -6,7 +6,7 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 
 - **`en-review`** — pre-flight check on the diff. Lint failures surface as P1 findings.
 - **`en-sweep`** — full repo scan on every PR-merge run; opens fix-up PRs.
-- **CI** - recommended, but this repo ships no lint CI template; see TD3.
+- **CI** — `/en-setup` offers a PR-check workflow that runs the lint on changes to `docs/`, `AGENTS.md` or `CLAUDE.md`. Ensemble's own repo runs the lint from its test workflow instead.
 - **Manually** — `bin/ensemble-lint [--scope docs/]`.
 
 ## Rule catalog
@@ -170,7 +170,7 @@ Non-mechanical findings (judgment-required, contradictions, length budget overru
 
 ## CI integration
 
-Recommended `.github/workflows/ensemble-lint.yml`:
+Installed by `/en-setup` to `.github/workflows/ensemble-lint.yml`:
 
 ```yaml
 name: Ensemble lint

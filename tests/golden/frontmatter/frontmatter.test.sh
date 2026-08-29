@@ -32,6 +32,7 @@ fixtures=(
   "plan-active/invalid-status-mismatch.md|docs/plans/active/FR42-test.md|status.location-mismatch"
   "plan-active/invalid-missing-risk.md|docs/plans/active/FR44-test.md|unit.risk-class"
   "plan-active/invalid-phase-invariant.md|docs/plans/active/FR45-test.md|phase-invariant.dependency-vs-risk"
+  "plan-active/invalid-category-phase-promotion.md|docs/plans/active/EN99-improvement_promo.md|phase-invariant.dependency-vs-risk"
   "plan-completed/valid.md|docs/plans/completed/FR42-test.md|"
   "learning/valid.md|docs/learnings/test-2026-04-29.md|"
 

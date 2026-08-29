@@ -27,6 +27,7 @@ requires:
   - references/templates/ensemble-lint
   - references/templates/github-workflow-claude-review.yml
   - references/templates/github-workflow-en-sweep.yml
+  - references/templates/github-workflow-ensemble-lint.yml
   - references/templates/review-md-template.md
   - scripts/en-sweep-ci
   - scripts/ensemble-classify-plans
@@ -253,6 +254,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
 
+    - `.github/workflows/ensemble-lint.yml` (opt-in). A PR check running `bin/ensemble-lint --scope docs/` on changes to `docs/`, `AGENTS.md` or `CLAUDE.md`. Template at `references/templates/github-workflow-ensemble-lint.yml`. Narrower than the sweep — it reports on a pull request rather than running on a schedule or opening one — so offer it separately. A decline records `lint_ci.enabled: false`.
     - `.github/workflows/en-sweep.yml` (step 11 opt-in). **A decline is recorded, never silent.** Write `sweep.enabled: false` to `.ensemble/config.local.yaml` and report the workflow as *declined*, not *missing*. Re-offering an install the operator deliberately refused is how a verification report trains them to skim it — the same reason `--no-simplify` records `not_applicable` with a reason instead of leaving a hole.
 
     - `.github/workflows/claude-code-review.yml` (step 13 opt-in)

@@ -621,6 +621,28 @@ extract_units() {
 }
 
 # --- Helper: numeric risk priority for invariant comparisons ---
+# Phase classification, mirroring /en-build's. `risk:` is the primary axis, and
+# `category:` carves out exactly one case: medium + a migration-shaped category
+# lands in P3 rather than P2.
+#
+# The invariant is about PHASES, not risk. Comparing risk alone missed a unit
+# promoted across a phase boundary by its category while its risk stayed put —
+# EN14 linted clean through two peer iterations and was then rejected by
+# /en-build at preflight for exactly that. See TD8.
+unit_phase() {  # $1=risk $2=category
+  case "$1" in
+    low)         echo 1 ;;
+    medium)
+      case "$2" in
+        migration|backfill|schema-evolution) echo 3 ;;
+        *)                                   echo 2 ;;
+      esac ;;
+    high)        echo 3 ;;
+    destructive) echo 4 ;;
+    *)           echo 0 ;;
+  esac
+}
+
 risk_priority() {
   case "$1" in
     low) echo 1 ;;
@@ -772,10 +794,10 @@ check_plan_phase_invariant() {
   # Build U-ID -> risk map first.
   local map_file
   map_file=$(mktemp)
-  while IFS='|' read -r uid risk _ _ _; do
+  while IFS='|' read -r uid risk cat _ _; do
     [ -z "$uid" ] && continue
     [ -z "$risk" ] && continue
-    printf '%s %s\n' "$uid" "$risk" >> "$map_file"
+    printf '%s %s %s\n' "$uid" "$risk" "${cat:-other}" >> "$map_file"
   done < <(extract_units "$file")
 
   # Walk dependency edges.
@@ -786,14 +808,16 @@ check_plan_phase_invariant() {
 
     local u_risk; u_risk=$(awk -v u="$uid" '$1==u{print $2; exit}' "$map_file")
     [ -z "$u_risk" ] && continue
-    local u_pri; u_pri=$(risk_priority "$u_risk")
+    local u_cat;  u_cat=$(awk -v u="$uid" '$1==u{print $3; exit}' "$map_file")
+    local u_pri;  u_pri=$(unit_phase "$u_risk" "$u_cat")
 
     # Extract referenced U-IDs from the deps string.
     local dep_id
     for dep_id in $(printf '%s' "$deps" | grep -oE 'U[0-9]+' || true); do
       local v_risk; v_risk=$(awk -v u="$dep_id" '$1==u{print $2; exit}' "$map_file")
       [ -z "$v_risk" ] && continue
-      local v_pri; v_pri=$(risk_priority "$v_risk")
+      local v_cat;  v_cat=$(awk -v u="$dep_id" '$1==u{print $3; exit}' "$map_file")
+      local v_pri;  v_pri=$(unit_phase "$v_risk" "$v_cat")
       if [ "$v_pri" -gt "$u_pri" ]; then
         emit "phase-invariant.dependency-vs-risk" "$file" "" "P1" \
           "Unit $uid (risk: $u_risk) depends on $dep_id (risk: $v_risk) — lower-risk unit depending on higher-risk unit violates phase purity" \

@@ -77,6 +77,21 @@ verified reads as evidence.
 
 ### TD3. `doc-lints.md` pointed at a CI template this repo never shipped
 
+**Resolved 2026-08-29.** The workflow existed only as YAML inline in the doc, so
+the recommendation could be read but not acted on. Extracted to
+`references/templates/github-workflow-ensemble-lint.yml` and offered by
+`/en-setup` as an opt-in, separate from the sweep: a PR check that reports is a
+narrower thing than a scheduled job that opens pull requests.
+
+The prose was also wrong in a second way. It said "this repo ships no lint CI
+template", but Ensemble's own CI has been running the lint from its test workflow
+all along — so the line understated what already worked while overstating what
+was missing.
+
+Reworded across all 7 carriers without naming a template path, because a relative
+path in a carried file resolves against whichever skill carries it, and only
+`en-setup` installs workflows. Naming it would have forced six pointless copies.
+
 - **Source:** EN12 U7, surfaced by the single-skill-install dangling check
 - **Severity:** P3
 - **Confidence:** 9/10
@@ -183,6 +198,20 @@ Until this lands, treat "the tests pass" on any model-behaviour unit as evidence
 about the specification only.
 
 ### TD8. The phase-invariant lint compares risk only, so it cannot see a category-induced promotion
+
+**Resolved 2026-08-29.** The lint now classifies each unit into a phase with the
+same rule `/en-build` uses — risk as the primary axis, with `category:` carving
+out the one case where `medium` plus a migration-shaped category lands in P3 — and
+compares phases across dependency edges rather than risk.
+
+Golden fixture `plan-active/invalid-category-phase-promotion.md`: every unit
+`risk: medium`, so a risk-only comparison sees a flat plan, while U1 (P2) depends
+on U2 (P3, `category: migration`). Verified to pass under phase comparison and
+fail under the old risk-only one.
+
+This was not hypothetical. EN14 linted clean through two peer iterations with
+every unit at `medium`, then `/en-build` rejected it at preflight for exactly this
+edge; the workaround is still visible in the shipped plan as U13's category note.
 
 `ensemble-lint`'s `phase-invariant.dependency-vs-risk` rule builds a U-ID → risk
 map and compares risk across every dependency edge. `/en-build` classifies phases
