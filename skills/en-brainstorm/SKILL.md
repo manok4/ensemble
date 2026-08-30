@@ -81,7 +81,34 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
     - Otherwise generate inline. When one approach is clearly best, skip the menu and say so.
 12. **Recommendation.** Pick one. State the rationale in one paragraph.
 13. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
-14. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
+14. **Show synthesis to the user.** They agreed to many things one at a time and have never seen the whole. This is their last chance to correct scope before the doc lands, so it is a **shape-confirmation checkpoint, not a preview of the document**.
+
+    **Draft internally, present selectively.** First list, for yourself, everything the dialogue settled: what the user stated, what you inferred to fill gaps, and what you deliberately excluded. That draft is for your completeness. Do not paste it. A comprehensive audit is too much for anyone to actually weigh in on, which is the failure this two-stage split exists to prevent.
+
+    **Present up to four sections. Omit any section with nothing to say; never pad one to fill it.**
+
+    1. **What we're building** (always) — 1–3 sentences, forward-looking, plain words. Not a transcript of "you said X".
+    2. **Key trade-offs** — only choices the user weighed alternatives on, or structural calls they would expect to see named. A mechanical or inevitable choice fails the test.
+    3. **Not in scope** — only deferrals a downstream reader would ask about. "No rate limiting, it wasn't in scope" fails.
+    4. **Call-outs** — residual forks the dialogue left open: a scope bet you made silently, or a consequence of combining their answers that they could not have tracked one question at a time. **The affirmability test: if the user would have to read code to judge it, it is doc-body content, not a call-out.**
+
+    **Bullet budget**, sections 2–4 combined:
+
+    | Depth | Typical | Ceiling |
+    |---|---|---|
+    | Lightweight | 0–1 | 2 |
+    | Standard | 2–4 | 5 |
+    | Deep | 3–6 | 8 |
+
+    Over the ceiling the synthesis is misshapen: **do not raise the cap, re-cut at a higher level.** Related bullets are usually sub-decisions of one decision the user actually weighs. Read them aloud; two that sound like "and also" extensions of each other are one bullet. A bullet is one line, two at most — meeting the count by writing paragraphs defeats the point of the count.
+
+    **Cut** anything that restates a Q&A turn, re-states the approach they already picked, or names a choice that had no real alternative.
+
+    **Lightweight with no blocking questions announces; everything else confirms.** On that one path, state what we're building and continue in the same turn. Otherwise ask for confirmation explicitly, even when no call-outs survived.
+
+    **A revision is not a confirmation.** When the user changes something, integrate it, re-present the revised synthesis, and wait again. Writing straight after a revision because the change felt small is how an unconfirmed synthesis reaches the file.
+
+    **Soft-cut on circularity, not on round count.** Revising different things across rounds is the mechanism working: keep going. When the **same decision** is revised twice, stop and ask whether to proceed and write or keep discussing. Track it by decision, not by wording or section — the same call often returns rephrased, merged, or moved.
 
     **Verify-before-claiming — dispatch it here, not at the write.** In the same turn the synthesis goes up, hand a sub-agent every claim the doc will make that something is **absent** in the codebase: a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support. It runs while the user reads, which is the only idle time in the flow. Give it the claim list one line each, a budget of ~15 targeted reads, and a per-claim verdict to return: **confirmed** with a `file:line`, **refuted** with the contradicting evidence, or **unverifiable**. Do not block the confirmation on it.
 
@@ -177,4 +204,6 @@ Gated — read only when their step's gate fires, never up front:
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
 | `docs/foundation.md` too large to scan cheaply | Section-index read only (the bounded existing-context scan); never fall back to reading it whole. |
 | `bin/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
+| User's response to the synthesis says they are in the wrong skill ("this is too small, just build it") | Stop. Name the skill they seem to want and offer the hand-off. Do not argue: the synthesis is an honest checkpoint, and discovering the wrong skill by reading it is the mechanism working. |
+| Same synthesis item revised a third time after the soft-cut | Treat the soft-cut's "keep discussing" as spent; surface that the scope is not converging and ask what is actually unresolved. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |
