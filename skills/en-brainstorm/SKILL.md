@@ -41,6 +41,8 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 3. **Resume or start fresh.** Glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
    On resume: read it, summarize its settled decisions and still-open questions, treat those decisions as **already answered** (they never re-enter the frontier), and **update that file** rather than minting a duplicate. Preserve its `created:` and `topic:`. On start-fresh, leave the old doc untouched — the user may want both.
+
+   **The candidate pool is self-pruning; don't work around it.** `/en-plan` closes a design out to `accepted` or `superseded` when a plan built from it opens, so designs already acted on drop out of this glob on their own. What stays `open` is what genuinely is: explorations no plan was ever built from. If this scan starts returning a large ambiguous set, the close-out has stopped running somewhere upstream — say so rather than narrowing the glob here.
 4. **Right-size depth.** Per the depth table below. Default **Standard**; when the framing is genuinely ambiguous, ask one question rather than guessing.
 5. **Existing-context scan (bounded).** Read each source's *shape* first, then only the parts that match the topic. Never read a large artifact whole:
    - `docs/foundation.md` (if present) — read the frontmatter, then `grep -n '^#' docs/foundation.md` for the section index, then `sed -n '<start>,<end>p'` on the 1–2 sections matching the topic. **Never `cat` it whole**; it routinely runs past 2,000 lines.

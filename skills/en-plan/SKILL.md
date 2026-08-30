@@ -187,6 +187,17 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     On promotion: compute `peer_review_plan_hash` by running `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>`, write its output to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. **Do not canonicalize the fields yourself.** The helper owns the covered-field list and the canonicalization, so producer and consumer cannot drift; deriving the hash from prose is not merely slower, it is unimplementable, since no model computes sha256 and each ad-hoc shell attempt canonicalizes differently. `/en-build` re-computes with the same helper at every phase boundary, so a mismatch means a real edit rather than a formatting difference (D41). The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
 
+    **Close out the design doc.** If this plan consumed a `docs/designs/*.md` (the path in `related_design:`), the design's question is now settled and it stops being an open exploration. In the same promotion, edit that file:
+
+    - Set its `status:` to **`accepted`** when the plan carries the design's recommendation, or **`superseded`** when planning committed to a different approach — in which case also note the plan in its `replaced_by:`. Only `/en-plan` can tell these apart: it is the one holding both the design's recommendation and what the plan actually commits to. Leave an already-`accepted` or already-`superseded` design alone; the first plan to open owns the flip.
+    - Write this plan's `plan_id` into the design's `related_plan:`.
+
+    This lives here, in the promotion block, rather than on the peer-approve path, because six conditions above reach `open` and a Lightweight plan commonly reaches it without a peer pass at all. Hooking the flip to peer-approve would silently skip those.
+
+    What this buys: `/en-brainstorm`'s resume scan globs `status: open` designs, so without the flip every design ever written stays a resume candidate forever and the disambiguation prompt grows with every brainstorm. A design that never produces a plan **does** stay `open`, correctly — an unplanned exploration is still open.
+
+    Not universal: `/en-foundation` mints the bootstrap `<PREFIX>01-feature_project-setup` plan directly, without passing through this skill, so a design consumed on that path is not flipped. That plan is repo-init scaffolding rather than a design's recommendation, so the case is documented rather than duplicated into a second skill.
+
     The plan stays in `status: draft` ONLY when:
     - Peer returned `verdict: reject` AND the user did NOT override.
     - Peer subprocess timed out or returned malformed JSON (after one retry) AND the user has not yet decided.

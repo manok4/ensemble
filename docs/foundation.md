@@ -2023,9 +2023,20 @@ type: design
 created: YYYY-MM-DD
 topic: <one-line topic>
 status: open | accepted | superseded
-related_plan: <FRXX or empty>
+related_plan: <plan_id, e.g. EN03 — or empty>
+replaced_by: <plan_id>          # optional; only when status is superseded
 ---
 ```
+
+`status` starts at `open` and is closed out by `/en-plan` when a plan built from
+this design reaches `status: open`: `accepted` when the plan carries the design's
+recommendation, `superseded` when planning committed to a different approach.
+`/en-plan` writes `related_plan` at the same moment, and the plan's own
+`related_design` points back, so the pair is navigable in both directions.
+
+A design that never produces a plan stays `open`. That is correct: an unplanned
+exploration is still an open question, and `/en-brainstorm`'s resume scan should
+still offer it.
 
 ### C.3 `docs/plans/{active,completed}/<PREFIX><NN>-<plan_type>_<slug>.md` frontmatter
 
