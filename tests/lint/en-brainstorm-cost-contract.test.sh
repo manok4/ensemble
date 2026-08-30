@@ -30,4 +30,22 @@ else
   fail "must lint the design doc before handoff and document the no-scout contract"
 fi
 
+# --- 3. every sub-agent dispatch names a read budget and a return contract ---
+# An unspecified dispatch returns whatever it decides to, at whatever cost it
+# picks, and approach quality is the whole output of this skill. Both dispatch
+# sites — the frontier rounds' fact lookup and the divergent approach
+# generators — must bound the reads and state what comes back.
+APPROACHES="$REPO_ROOT/skills/en-brainstorm/references/brainstorm-approaches.md"
+
+unspecified=""
+grep -qiE 'budget of \*\*~?[0-9]+ targeted reads' "$SKILL" || unspecified="$unspecified fact-lookup:budget"
+grep -qiE 'required return of' "$SKILL"                      || unspecified="$unspecified fact-lookup:return"
+grep -qiE '^\*\*Budget\.\*\* Roughly [0-9]+ reads' "$APPROACHES" || unspecified="$unspecified approaches:budget"
+grep -qiE 'Each agent returns' "$APPROACHES"                 || unspecified="$unspecified approaches:return"
+
+[ -z "$unspecified" ] \
+  && pass "both sub-agent dispatches name a read budget and a return contract" \
+  || fail "both sub-agent dispatches name a read budget and a return contract" \
+         "unspecified:$unspecified"
+
 report

@@ -26,7 +26,9 @@ Dispatch one read-only sub-agent **per constraint, in parallel**. Each gets the 
 | 3 | **Optimize the common case.** Make the frequent path trivial; accept real cost on the rare one. |
 | 4 *(Deep only)* | **Remove the binding constraint.** Assume the thing being treated as fixed is not. Say what it would take. |
 
-**Each agent returns:** the approach in one paragraph (mechanism or product shape, not architecture); pros; cons; the key risk or unknown; and when it is best suited.
+**Each agent returns, and nothing else:** the approach in one paragraph (mechanism or product shape, not architecture); pros; cons; the key risk or unknown; and when it is best suited.
+
+**Budget.** Roughly 8 reads, spent against the dossier and the files the brief names rather than re-scanning the repo, and about 200 words back. These agents are generating from a brief you already assembled; an agent that goes looking for its own grounding is doing the frontier rounds' job again, more expensively and with less context.
 
 ## Granularity bar
 
