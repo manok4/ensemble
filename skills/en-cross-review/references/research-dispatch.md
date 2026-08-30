@@ -22,7 +22,7 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | `en-plan` | Deep | **always** | **always** | conditional |
 | `en-foundation` | (any) | **always** for retrofits, optional for greenfield | **always** | optional |
 
-**`en-brainstorm` dispatches no scouts.** It reads `docs/learnings/index.md` and the foundation section-index inline (its step-4 bounded scan) rather than spawning `repo-research` or `learnings-research`. A scout would return a gist for less context, but it costs a dispatch round-trip in a skill whose entire cost profile is round-trips. Only `web-research` is ever dispatched here, and only on request.
+**`en-brainstorm` dispatches no scouts.** It reads `docs/learnings/index.md` and the foundation section-index inline (its bounded existing-context scan) rather than spawning `repo-research` or `learnings-research`. A scout would return a gist for less context, but it costs a dispatch round-trip in a skill whose entire cost profile is round-trips. Only `web-research` is ever dispatched here, and only on request.
 
 ## Parallelism
 

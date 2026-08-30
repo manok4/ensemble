@@ -1,6 +1,6 @@
 # Socratic questions — `en-brainstorm` Q&A library
 
-A pool of well-formed questions for the brainstorm skill to draw from. Asking cadence is owned by `skills/en-brainstorm/SKILL.md` step 5 — **frontier rounds** on Standard/Deep, one-per-turn on Lightweight and for rigor probes. This file supplies the questions, not the cadence.
+A pool of well-formed questions for the brainstorm skill to draw from. Asking cadence is owned by the frontier rounds in `skills/en-brainstorm/SKILL.md` — **frontier rounds** on Standard/Deep, one-per-turn on Lightweight and for rigor probes. This file supplies the questions, not the cadence.
 
 ## Scope and ambition
 
@@ -22,7 +22,7 @@ A pool of well-formed questions for the brainstorm skill to draw from. Asking ca
 
 ## Product rigor gaps
 
-Used by en-brainstorm's **Product pressure test** (step 5a), internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero.
+Used by en-brainstorm's **Product pressure test**, internal analysis, surfaced as **open-ended probes** (not a menu, never a checklist), one probe per gap that actually exists. A well-framed opening earns zero.
 
 | Gap | Fires when the opening… | Open-ended probe |
 |---|---|---|
@@ -67,7 +67,7 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 |---|---|
 | Should I research how others solved this? (yes/no) | Before invoking `web-research` |
 | Any specific tools or libraries to check? | When research would benefit from a starting point |
-| Is there a learning in our store relevant to this? | Always — brainstorm reads `docs/learnings/index.md` directly in its step-4 bounded scan |
+| Is there a learning in our store relevant to this? | Always — brainstorm reads `docs/learnings/index.md` directly in its bounded existing-context scan |
 
 ## Devil's advocate (devil's-advocate pass after recommendation)
 

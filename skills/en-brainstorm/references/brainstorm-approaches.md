@@ -1,6 +1,6 @@
-# Divergent approach generation — `en-brainstorm` step 12
+# Divergent approach generation — `en-brainstorm`, the approaches step
 
-Read this only when the gate in `en-brainstorm` step 12 fires. On the default path (one clearly-best direction, or a Lightweight run) generate approaches inline and skip this file.
+Read this only when the divergent-generation gate in `en-brainstorm`'s approaches step fires. On the default path (one clearly-best direction, or a Lightweight run) generate approaches inline and skip this file.
 
 Adapted from the "Design It Twice" pattern (Ousterhout, via `agent-skills/skills/engineering/codebase-design`): your first idea is unlikely to be the best, and approaches generated **serially in one context** converge — B and C become variations of A because the same context anchored all three.
 
@@ -15,7 +15,7 @@ Skip when one approach is clearly best. A menu padded with options you would not
 
 Dispatch one read-only sub-agent **per constraint, in parallel**. Each gets the same brief and a **different** constraint, so the divergence is structural rather than a matter of asking nicely for variety.
 
-**The brief** (identical for every agent): what the user is trying to do, the constraints and context gathered in the Q&A, the facts established during step 5's fact lookups (with `file:line` where they exist), and what has already been ruled out and why.
+**The brief** (identical for every agent): what the user is trying to do, the constraints and context gathered in the Q&A, the facts established by the frontier rounds' fact lookups (with `file:line` where they exist), and what has already been ruled out and why.
 
 **The constraints** (one per agent):
 

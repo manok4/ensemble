@@ -148,6 +148,6 @@ Gated — read only when their step's gate fires, never up front:
 | Two approach sub-agents converge on the same shape | Report one approach, and say they converged independently — that is evidence, not a wasted slot. |
 | Blindspot gate fires in a non-interactive run | Never offer; treat the territory as a declined offer (recommended defaults recorded as explicit assumptions). |
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
-| `docs/foundation.md` too large to scan cheaply | Section-index read only (step 4); never fall back to reading it whole. |
+| `docs/foundation.md` too large to scan cheaply | Section-index read only (the bounded existing-context scan); never fall back to reading it whole. |
 | `bin/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |

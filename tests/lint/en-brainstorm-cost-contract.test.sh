@@ -19,7 +19,7 @@ if grep -qiE "Existing-context scan \(bounded\)" "$SKILL" \
    && grep -qiE "index only" "$SKILL"; then
   pass "foundation/learnings scan is bounded (section index; never read whole)"
 else
-  fail "step 4 must stay bounded — section-index read, never a whole-file read"
+  fail "the existing-context scan must stay bounded — section-index read, never a whole-file read"
 fi
 
 # --- 2. the design doc is linted before handoff, and brainstorm dispatches no scouts ---
