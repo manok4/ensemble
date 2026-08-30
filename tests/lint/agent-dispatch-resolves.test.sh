@@ -1,15 +1,37 @@
 #!/usr/bin/env bash
 # tests/lint/agent-dispatch-resolves.test.sh
 #
-# A skill that spawns `subagent_type: "X"` needs X to exist wherever the skill
-# installs. EN13 deleted seven reviewer agent definitions and absorbed their
-# scopes into the peer briefs, but five skills kept naming them as subagent_type.
-# The dispatch resolved only on machines whose install predated the deletion; a
-# fresh install from main would have failed every one.
+# A skill that spawns an agent by name needs that agent to exist wherever the
+# skill installs. EN13 deleted seven reviewer agent definitions and absorbed
+# their scopes into the peer briefs, but five skills kept naming them as
+# subagent_type. The dispatch resolved only on machines whose install predated
+# the deletion; a fresh install from main would have failed every one.
 #
 # It survived a full release because nothing checked, and it was found by
-# reconciling foundation's agent catalog against the filesystem — a documentation
-# audit, not a test. See TD9.
+# reconciling foundation's agent catalog against the filesystem — a
+# documentation audit, not a test. See TD9.
+#
+# WHAT COUNTS AS A DISPATCH. Two forms, because skills use both:
+#   - `subagent_type: "X"` in a dispatch recipe.
+#   - prose in SKILL.md: "dispatch the `X` agent". This is how en-brainstorm,
+#     en-debug, en-foundation and en-sweep actually dispatch, and the original
+#     guard was blind to it.
+#
+# WHAT DOES NOT COUNT. `references/research-dispatch.md` is library text carried
+# byte-identically by twelve skills. Its code block illustrates *parallel-call
+# syntax* using two agent names; the file's own matrix is what states which
+# skill dispatches which agent, and for some carriers that matrix reads "never".
+# Reading carriage requirements out of a shared illustration made a carrier look
+# like a dispatcher of every agent the illustration happened to name — which is
+# how en-brainstorm's two never-dispatched scouts were certified as live.
+# `references/agent-dispatch.md` had the same problem and was fixed at the
+# source: its example now uses the `<name>` placeholder it already used
+# elsewhere, so no grep can mistake it for a dispatch.
+#
+# KNOWN GAP. The reverse direction — a carried agent that nothing reaches — is
+# NOT checked here. It is systemic (roughly fifteen skill/agent pairs today) and
+# belongs to the per-skill refinement pass, not to a guard that would go red on
+# main the day it landed.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -17,40 +39,62 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="agent dispatch resolves"
 
-# Every subagent_type named anywhere in skills/ must have a definition in skills/.
+SHARED_ILLUSTRATION="research-dispatch.md"
+
+# Names dispatched by a skill's own flow: subagent_type recipes outside the
+# shared illustration, plus SKILL.md prose dispatches.
+dispatched_by() {  # $1 = skill dir
+  {
+    grep -rhoE 'subagent_type: "[a-z][a-z-]*"' "$1" \
+         --exclude="$SHARED_ILLUSTRATION" 2>/dev/null \
+      | sed 's/.*"\(.*\)"/\1/'
+    grep -hoE '[Dd]ispatch(es|ing)? (the )?`[a-z][a-z-]+`' "$1/SKILL.md" 2>/dev/null \
+      | sed 's/.*`\(.*\)`/\1/'
+  } | sort -u
+}
+
+# --- 1. every name dispatched anywhere resolves to a definition somewhere ---
 unresolved=""
-named=$(grep -rhoE 'subagent_type: "[a-z][a-z-]*"' "$REPO_ROOT/skills" 2>/dev/null \
-        | sed 's/.*"\(.*\)"/\1/' | sort -u)
 count=0
-for a in $named; do
-  count=$((count + 1))
-  ls "$REPO_ROOT"/skills/*/agents/"$a".md >/dev/null 2>&1 || unresolved="$unresolved $a"
+for skill in "$REPO_ROOT"/skills/*/; do
+  for a in $(dispatched_by "$skill"); do
+    count=$((count + 1))
+    ls "$REPO_ROOT"/skills/*/agents/"$a".md >/dev/null 2>&1 || unresolved="$unresolved $a"
+  done
 done
 
 [ "$count" -ge 3 ] \
-  && pass "found subagent_type references to check ($count distinct)" \
-  || fail "found subagent_type references to check" "only $count — the scan is probably broken"
+  && pass "found agent dispatches to check ($count sites)" \
+  || fail "found agent dispatches to check" "only $count — the scan is probably broken"
 
 if [ -z "$unresolved" ]; then
-  pass "every dispatched subagent_type has a definition in this repo"
+  pass "every dispatched agent has a definition in this repo"
 else
-  fail "every dispatched subagent_type has a definition in this repo" \
-       "undefined:$unresolved"
+  fail "every dispatched agent has a definition in this repo" \
+       "undefined:$(echo $unresolved | tr ' ' '\n' | sort -u | tr '\n' ' ')"
 fi
 
-# The reverse: a skill that dispatches an agent must also CARRY it, since a skill
-# installs alone and cannot reach another skill's directory.
+# --- 2. a skill that dispatches an agent must CARRY it, since a skill installs
+#        alone and cannot reach another skill's directory ---
 missing=""
 for skill in "$REPO_ROOT"/skills/*/; do
   name=$(basename "$skill")
-  for a in $(grep -rhoE 'subagent_type: "[a-z][a-z-]*"' "$skill" 2>/dev/null | sed 's/.*"\(.*\)"/\1/' | sort -u); do
+  for a in $(dispatched_by "$skill"); do
     [ -f "$skill/agents/$a.md" ] || missing="$missing $name->$a"
   done
 done
 [ -z "$missing" ] && pass "every skill carries the agents it dispatches" \
                   || fail "every skill carries the agents it dispatches" "$missing"
 
-# And declares them, so skill-payload stays consistent in both directions.
+# --- 3. the shared illustration must stay an illustration ---
+if grep -q 'subagent_type: "<name>"' "$REPO_ROOT/skills/en-brainstorm/references/agent-dispatch.md" 2>/dev/null; then
+  pass "agent-dispatch.md teaches the mechanism with a placeholder, not a live agent name"
+else
+  fail "agent-dispatch.md must use the <name> placeholder" \
+       "a real agent name there reads as a dispatch to every grep that looks"
+fi
+
+# --- 4. every carried agent is declared, so skill-payload stays consistent ---
 undeclared=""
 for skill in "$REPO_ROOT"/skills/*/; do
   name=$(basename "$skill")
@@ -63,7 +107,7 @@ done
 [ -z "$undeclared" ] && pass "every carried agent is declared in requires:" \
                      || fail "every carried agent is declared in requires:" "$undeclared"
 
-# The retired seven must not come back by name.
+# --- 5. the retired seven must not come back by name ---
 if grep -rqE 'subagent_type: "(correctness|testing|maintainability|standards|security|performance|migrations)-reviewer"' "$REPO_ROOT/skills" 2>/dev/null; then
   fail "no skill dispatches the retired per-dimension reviewers"
 else
