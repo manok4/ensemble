@@ -58,4 +58,20 @@ else
        "offer=$offer_line flow=$proc_line-$end_line — a gate no step reaches never fires"
 fi
 
+# --- 5. verification is dispatched at the synthesis, not at the write ---
+# It used to run inline immediately before the write, with the user idle. The
+# confirmation wait is the only think-time in the flow, so that is where it
+# belongs. If it drifts back below the write step, this goes red.
+syn_line=$(grep -n 'Show synthesis to the user' "$SKILL" | head -1 | cut -d: -f1)
+disp_line=$(grep -n 'dispatch it here, not at the write' "$SKILL" | head -1 | cut -d: -f1)
+write_line=$(grep -n 'Write the design doc' "$SKILL" | head -1 | cut -d: -f1)
+
+if [ -n "$syn_line" ] && [ -n "$disp_line" ] && [ -n "$write_line" ] \
+   && [ "$syn_line" -lt "$disp_line" ] && [ "$disp_line" -lt "$write_line" ]; then
+  pass "claim verification is dispatched during the confirmation wait, before the write"
+else
+  fail "claim verification must be dispatched at the synthesis, not at the write" \
+       "synthesis=$syn_line dispatch=$disp_line write=$write_line"
+fi
+
 report

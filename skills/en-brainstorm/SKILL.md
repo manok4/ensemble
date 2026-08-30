@@ -80,6 +80,10 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 12. **Recommendation.** Pick one. State the rationale in one paragraph.
 13. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
 14. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
+
+    **Verify-before-claiming — dispatch it here, not at the write.** In the same turn the synthesis goes up, hand a sub-agent every claim the doc will make that something is **absent** in the codebase: a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support. It runs while the user reads, which is the only idle time in the flow. Give it the claim list one line each, a budget of ~15 targeted reads, and a per-claim verdict to return: **confirmed** with a `file:line`, **refuted** with the contradicting evidence, or **unverifiable**. Do not block the confirmation on it.
+
+    Skip the dispatch when the doc will make no absence-claims, or when no sub-agent is available — in that case verify inline before the write instead. The rule holds either way; only where it runs changes.
 15. **Write the design doc.** Two preconditions run first. The first can end the step; the second constrains what goes in the file.
 
     **Is a doc warranted?** For a very small exploration where the user is iterating on a code-level question ("should this be a hook or a util?"), a design doc is overkill. Surface a soft offer:
@@ -88,7 +92,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 
     If they pick "talk it through", answer in chat and stop here: no file, and the validate step below does not apply. The capture reflex still fires if a learning emerges.
 
-    **Verify-before-claiming.** Any claim that something is **absent** in the codebase, a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support, must be **verified against the repo** (read the relevant source) or **explicitly labeled an unverified assumption** in the doc. Applies to any checkable infrastructure claim. It is not a full research pass; just don't assert absence you haven't checked.
+    **Consume the verification verdicts.** Every absence-claim in the doc must be **verified against the repo** or **explicitly labeled an unverified assumption**. Correct refuted claims before writing; label unverifiable ones as assumptions. A claim that never reached the verifier is unverified, not true. This applies to any checkable infrastructure claim. It is not a full research pass; just don't assert absence you haven't checked.
 
     Then write to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
 16. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.

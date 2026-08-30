@@ -40,12 +40,13 @@ APPROACHES="$REPO_ROOT/skills/en-brainstorm/references/brainstorm-approaches.md"
 unspecified=""
 grep -qiE 'budget of \*\*~?[0-9]+ targeted reads' "$SKILL" || unspecified="$unspecified fact-lookup:budget"
 grep -qiE 'required return of' "$SKILL"                      || unspecified="$unspecified fact-lookup:return"
+grep -qiE 'budget of ~?[0-9]+ targeted reads, and a per-claim verdict' "$SKILL" || unspecified="$unspecified verifier:budget+return"
 grep -qiE '^\*\*Budget\.\*\* Roughly [0-9]+ reads' "$APPROACHES" || unspecified="$unspecified approaches:budget"
 grep -qiE 'Each agent returns' "$APPROACHES"                 || unspecified="$unspecified approaches:return"
 
 [ -z "$unspecified" ] \
-  && pass "both sub-agent dispatches name a read budget and a return contract" \
-  || fail "both sub-agent dispatches name a read budget and a return contract" \
+  && pass "all three sub-agent dispatches name a read budget and a return contract" \
+  || fail "all three sub-agent dispatches name a read budget and a return contract" \
          "unspecified:$unspecified"
 
 report
