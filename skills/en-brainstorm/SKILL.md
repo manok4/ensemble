@@ -97,6 +97,22 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
     - Feature in existing project → `/en-plan`
     - Just exploration, no immediate next step → wrap
 
+## Red flags
+
+Every gate below is one an agent talks itself out of, and the talking-out is
+predictable enough to name. If you catch yourself thinking the left column, the
+right column is what is actually true.
+
+| Thought | Reality |
+|---|---|
+| "One approach is clearly best, I'll skip the menu" | Allowed, but only when you would defend having no alternative. Reaching for the shortcut because generating three is work is the tell that you have not found the second one yet. |
+| "This is Deep, but I can already see the approaches" | Seeing them in one context is exactly what the divergent gate distrusts. B and C thought up after A come back as variants of A. |
+| "I'm fairly sure that table doesn't exist" | Fairly sure *is* the unverified assumption. Read the source, or label it as one in the doc. Absence is the claim that propagates into `/en-plan` as fact. |
+| "They said 'you decide', that's the blindspot signal" | Once is undecided. The gate needs two consecutive can't-evaluate answers on questions needing domain judgment. Firing on an undecided user turns the interview into a lecture. |
+| "They're busy, I'll ask the whole list this round" | Batching the *frontier* is cheap; batching dependents is what dilutes answers. A question whose answer depends on another still open this round belongs to the next one. |
+| "It's a small choice, writing the doc is easier than asking" | The offer costs one line; the file costs a review and joins the resume pool. Make the offer. |
+| "The design doc is nearly right, lint can wait" | `/en-plan` consumes this file. A malformed one propagates into the plan, and the person who finds it is downstream of everyone who could have fixed it cheaply. |
+
 ## What never happens here
 
 - No implementation.

@@ -81,4 +81,26 @@ else
   fail "must hold approaches to an anti-genericness bar and collapse convergent ones"
 fi
 
+# --- 7. RED FLAGS: every row defends a gate that still exists in the flow ---
+# A rationalization table is only worth its lines if each row is coupled to a
+# real gate. Checking the rows alone would let the table outlive the mechanism
+# it defends; checking the gates alone is what the clauses above already do.
+# Each pair below must hold on BOTH sides, so deleting either half goes red.
+rf_missing=""
+check_pair() {  # $1=label $2=red-flag phrase $3=flow phrase $4=flow file
+  grep -qiE "$2" "$SKILL" || rf_missing="$rf_missing $1:flag"
+  grep -qiE "$3" "$4"     || rf_missing="$rf_missing $1:gate"
+}
+grep -qE '^## Red flags' "$SKILL" || rf_missing="$rf_missing section"
+check_pair menu      "skip the menu"           "skip the menu"                  "$SKILL"
+check_pair divergent "divergent gate"          "Divergent generation gate"      "$SKILL"
+check_pair verify    "unverified assumption"   "Verify-before-claiming"         "$SKILL"
+check_pair blindspot "blindspot signal"        "Blindspot gate"                 "$SKILL"
+check_pair frontier  "belongs to the next one" "frontier"                       "$SKILL"
+check_pair docskip   "small choice"            "Is a doc warranted"             "$SKILL"
+
+[ -z "$rf_missing" ] \
+  && pass "each red-flag row is paired with a gate that still exists" \
+  || fail "each red-flag row is paired with a gate that still exists" "broken:$rf_missing"
+
 report
