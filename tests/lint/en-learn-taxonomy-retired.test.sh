@@ -21,6 +21,16 @@ TEST_NAME="retired taxonomy"
 # guard in this repo matched its own pattern string and could never go red.
 PAT='learnings/[b]ugs|learnings/[p]atterns|learnings/[d]ecisions|learnings/<[c]ategory>'
 
+# The prefixed form above was the whole pattern until 2026-08-30, and it missed
+# the bare one: a retired directory named WITHOUT `learnings/` in front of it,
+# identified as a learning by the word that follows. Two files carried
+# "files it as a `decisions/` or `patterns/` learning" and "move to `decisions/`
+# learnings" through sixteen copies, telling agents to file into directories the
+# EN14 sweep had removed. Requiring the trailing "learning" keeps this off the
+# legitimate mentions, which are migration and detection code describing the old
+# layout as a layout.
+BARE_PAT='`([b]ugs|[p]atterns|[d]ecisions)/`[^|]{0,40}learning'
+
 # Repo-wide since U9. Scoped to en-learn during U8, when only its own nine files
 # had been swept; widening this line is what proved U9 finished.
 SCOPE="${TAXONOMY_SCOPE:-$REPO_ROOT/skills}"
@@ -56,6 +66,16 @@ if [ -z "$hits" ]; then
 else
   fail "no file under $(basename "$SCOPE") references a retired category directory" \
        "$(echo "$hits" | sed "s|$REPO_ROOT/||" | tr '\n' ' ')"
+fi
+
+# The bare form takes no exemptions: the legitimate mentions describe the old
+# layout as a layout and never call one of its directories a learning.
+bare=$(grep -rlE "$BARE_PAT" "$SCOPE" 2>/dev/null || true)
+if [ -z "$bare" ]; then
+  pass "no file files a capture into a retired category directory"
+else
+  fail "no file files a capture into a retired category directory" \
+       "$(echo "$bare" | sed "s|$REPO_ROOT/||" | tr '\n' ' ')"
 fi
 
 # --- the index groups by artifact type ---------------------------------------

@@ -140,4 +140,4 @@ When `en-brainstorm`, `en-plan`, or `en-foundation` learns something *new* via `
 
 > "I picked up [insight] from [source]. Capture as a learning?"
 
-User accepts → `/en-learn capture --from-conversation` files it as a `decisions/` or `patterns/` learning, with the source URL recorded for future reference.
+User accepts → `/en-learn capture --from-conversation` files it. Where it lands is `/en-learn`'s routing call — a term, a decision, or a solution — and the source URL is recorded with it.
