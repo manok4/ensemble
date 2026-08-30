@@ -68,21 +68,31 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 7. **Blindspot gate** (fires rarely; territory-scoped). If the user signals they **cannot evaluate** part of the territory — either flagged up front ("I know nothing about X") or shown by two consecutive can't-evaluate answers ("I don't know", "you decide") on questions needing domain judgment — the Q&A is extracting guesses, not requirements. Before the first substantive question *into that territory*, offer to map its decision surface first. **Read `references/brainstorm-blindspot.md` when this fires**; it owns the trigger test, the offer, the map, and re-entry. Guard against over-firing: a user who understands the options but hasn't picked one is *undecided*, not blindsided — keep interviewing. Never fire in a non-interactive run.
 8. **Product pressure test** (self-gating). Before generating approaches, pressure-test whether the idea is real and well-framed. This is **internal analysis**: scan the opening and the dialogue so far for the rigor gaps catalogued in `references/socratic-questions.md` → "Product rigor gaps", and raise **only those that actually exist**, as **open-ended probes** folded into the conversation — never a menu, never a pre-flight checklist. A well-framed opening earns **zero** probes; one probe satisfies one gap. The gaps: **evidence**, **specificity**, **counterfactual**, **attachment**, and **durability** (Deep / strategic scope only). If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than skipping it.
 9. **Integration check.** Still before approaches: **combine** what the user has said with your own defaults and surface any non-obvious downstream consequence the one-question-at-a-time dialogue hasn't probed (*"if mute lives on the rule AND we don't warn on delete, then rule-delete silently loses pause state"*). Fire **one open-ended probe per genuine combination effect**, not a blanket audit.
-10. **Probe budget.** The pressure test, the integration check, and any blindspot walk-through **count toward the depth question budget** — they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe (the single highest-signal gap) and skip the rest; a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
-11. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
-12. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
+
+   **Probe budget** (governs all three probe steps: the blindspot walk-through, the pressure test, and this one). They **count toward the depth question budget**; they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe, the single highest-signal gap, and skip the rest: a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
+10. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
+11. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
     - **Divergent generation gate.** On **Deep**, or on **Standard with 3+ genuinely live directions**, generate the approaches through parallel constraint-diverged sub-agents rather than serially in this context — serial generation anchors, and B and C come back as variants of A. **Read `references/brainstorm-approaches.md` when this fires**; it owns the constraint table, the acceptance bar, and the no-sub-agent fallback.
     - Otherwise generate inline. When one approach is clearly best, skip the menu and say so.
-13. **Recommendation.** Pick one. State the rationale in one paragraph.
-14. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
-15. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
-16. **Verify-before-claiming.** Before writing the doc, any claim that something is **absent** in the codebase — a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support — must be **verified against the repo** first (read the relevant source), or **explicitly labeled an unverified assumption** in the doc. Applies to any checkable infrastructure claim; it is not a full research pass — just don't assert absence you haven't checked.
-17. **Write the design doc** to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
-18. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
-19. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
+12. **Recommendation.** Pick one. State the rationale in one paragraph.
+13. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
+14. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
+15. **Write the design doc.** Two preconditions run first. The first can end the step; the second constrains what goes in the file.
+
+    **Is a doc warranted?** For a very small exploration where the user is iterating on a code-level question ("should this be a hook or a util?"), a design doc is overkill. Surface a soft offer:
+
+    > "This is a fairly small choice. Want a design doc, or just talk it through and proceed?"
+
+    If they pick "talk it through", answer in chat and stop here: no file, and the validate step below does not apply. The capture reflex still fires if a learning emerges.
+
+    **Verify-before-claiming.** Any claim that something is **absent** in the codebase, a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support, must be **verified against the repo** (read the relevant source) or **explicitly labeled an unverified assumption** in the doc. Applies to any checkable infrastructure claim. It is not a full research pass; just don't assert absence you haven't checked.
+
+    Then write to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
+16. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
+17. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
     > "This conversation produced [X]. Capture as a learning?"
     User accepts → invoke `/en-learn capture --from-conversation` with the design doc as input.
-20. **Hand off.**
+18. **Hand off.**
     - New product → `/en-foundation`
     - Feature in existing project → `/en-plan`
     - Just exploration, no immediate next step → wrap
@@ -117,14 +127,6 @@ Devil's advocate flagged: same-model bias in fallback mode; cost on large artifa
 
 Next: /en-foundation if this is a new product, /en-plan for a feature in an existing project.
 ```
-
-## When to skip the design doc
-
-For very small explorations where the user is iterating on a code-level question ("should this be a hook or a util?"), a design doc is overkill. Surface a soft offer:
-
-> "This is a fairly small choice. Want a design doc, or just talk it through and proceed?"
-
-If user picks "talk it through" → answer in chat; no file written, and the write/validate steps don't apply. The capture-from-synthesis reflex still fires if a learning emerges.
 
 ## Reference files
 
