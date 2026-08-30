@@ -46,4 +46,20 @@ else
   fail "must exit on empty frontier or spent budget, recording leftover decisions as assumptions"
 fi
 
+# --- 4. boundaries are probed with a concrete case, not an abstract question ---
+# From domain-modeling: asking how two concepts relate in the abstract returns an
+# abstract answer, and the boundary is exactly where a design leaks. A scenario
+# lets the user answer from how they think about the product rather than from a
+# vocabulary they may not have yet. Guarded with its own restraint clause: fired
+# on every relationship it becomes an interrogation, which is the same failure the
+# blindspot gate's over-fire guard exists to prevent.
+if grep -qiE 'Stress-test boundaries with an invented scenario' "$SKILL" \
+   && grep -qiE 'abstract answer' "$SKILL" \
+   && grep -qiE 'not on every relationship' "$SKILL"; then
+  pass "boundary questions are probed with a concrete scenario, and the probe is restrained"
+else
+  fail "boundary probing needs a concrete scenario AND a restraint clause" \
+       "an unrestrained scenario probe turns the interview into an interrogation"
+fi
+
 report
