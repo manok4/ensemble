@@ -5,8 +5,6 @@ argument-hint: "[idea or question to explore]"
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
-  - agents/learnings-research.md
-  - agents/repo-research.md
   - agents/web-research.md
   - references/agent-dispatch.md
   - references/brainstorm-approaches.md
@@ -43,10 +41,13 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 3. **Resume or start fresh.** Glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
    On resume: read it, summarize its settled decisions and still-open questions, treat those decisions as **already answered** (they never re-enter the frontier), and **update that file** rather than minting a duplicate. Preserve its `created:` and `topic:`. On start-fresh, leave the old doc untouched — the user may want both.
+
+   **The candidate pool is self-pruning; don't work around it.** `/en-plan` closes a design out to `accepted` or `superseded` when a plan built from it opens, so designs already acted on drop out of this glob on their own. What stays `open` is what genuinely is: explorations no plan was ever built from. If this scan starts returning a large ambiguous set, the close-out has stopped running somewhere upstream — say so rather than narrowing the glob here.
 4. **Right-size depth.** Per the depth table below. Default **Standard**; when the framing is genuinely ambiguous, ask one question rather than guessing.
 5. **Existing-context scan (bounded).** Read each source's *shape* first, then only the parts that match the topic. Never read a large artifact whole:
    - `docs/foundation.md` (if present) — read the frontmatter, then `grep -n '^#' docs/foundation.md` for the section index, then `sed -n '<start>,<end>p'` on the 1–2 sections matching the topic. **Never `cat` it whole**; it routinely runs past 2,000 lines.
    - `docs/learnings/index.md` — read the index only, then drill into at most 3 matching pages.
+   - `docs/CONTEXT.md` (if present) — the project glossary. Read the term headings, then the entries that touch the topic. This is what the conflict gate below checks against.
    - `docs/plans/active/` and `docs/plans/completed/` — filenames only, unless one matches the topic.
    - Recent commits — `git log --oneline -30`.
    - Any code paths the user named.
@@ -60,7 +61,11 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
        ```
    - **Lightweight — one question per turn.** A 2–4 question budget doesn't need a tree.
    - **Rigor probes stay one per turn** (the pressure test and integration check), on every depth. They are deliberately open-ended; folding them into a numbered round with a recommended answer flattens exactly what they exist to elicit.
-   - **Facts are yours to find, never the user's to supply.** A question whose answer sits in the environment — the repo, git history, a config file, a lockfile — is not put to the user. Look it up. When a frontier question needs a fact you don't have, dispatch a sub-agent to find it and **don't block on it**: a running lookup is an unsettled prerequisite, so only the questions *downstream of that fact* wait for it — ask the rest of the frontier now. Decisions stay with the user.
+   - **Facts are yours to find, never the user's to supply.** A question whose answer sits in the environment, the repo, git history, a config file, a lockfile, is not put to the user. Look it up. Decisions stay with the user.
+   - **Specify the fact lookup you dispatch.** An unspecified dispatch returns whatever it decides to, at whatever cost it picks. Give the sub-agent all four: the **specific question**, a budget of **~10 targeted reads** (ranges, not whole files), the scope line **"quote what the repo says; do not interpret, propose, or design"**, and a required return of **the answer with a `file:line` pointer, or `absent` when the thing genuinely is not there**. A return longer than a few lines goes to the evidence dossier per `references/research-dispatch.md` and comes back as a gist plus its path, so the dialogue carries the gist and the evidence stays on disk.
+   - **Don't block on it.** A running lookup is an unsettled prerequisite, so only the questions *downstream of that fact* wait for it. Ask the rest of the frontier now, and read the answer when it lands.
+   - **Conflict gate: challenge terms against the glossary.** If the user uses a term that conflicts with an entry in `docs/CONTEXT.md`, or uses one of its terms to mean something else, put the conflict to them before treating their wording as settled: *"CONTEXT.md defines <term> as A; you seem to mean B. Which is it?"* Then use the canonical name in the dialogue, the approaches, and the design doc, so `/en-plan` inherits one vocabulary rather than two.
+   - **Never write the glossary here.** `/en-learn` owns `docs/CONTEXT.md`. Capturing a term mid-dialogue captures the wrong name often enough to matter: the canonical term is frequently the thing the recommendation renames. Surface the conflict, settle it in conversation, and let the capture reflex file it after the doc is written.
    - **Default to the host's blocking question tool** — `$QUESTION_TOOL` from host-detect (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), with its built-in free-text fallback — for narrowing / single-select questions; well-chosen options scaffold the answer without confining it.
    - **Open-vs-closed discipline:** use an **open-ended** question only when the answer is inherently narrative, OR when you genuinely cannot write 3–4 distinct, plausibly-correct options without padding. The test: *if you'd be straining to fill the option slots, the question is open — ask it open-ended.*
    - **Harness fallback:** when no blocking question tool exists in the harness, fall back to numbered options in chat; never silently skip the question.
@@ -68,24 +73,54 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 7. **Blindspot gate** (fires rarely; territory-scoped). If the user signals they **cannot evaluate** part of the territory — either flagged up front ("I know nothing about X") or shown by two consecutive can't-evaluate answers ("I don't know", "you decide") on questions needing domain judgment — the Q&A is extracting guesses, not requirements. Before the first substantive question *into that territory*, offer to map its decision surface first. **Read `references/brainstorm-blindspot.md` when this fires**; it owns the trigger test, the offer, the map, and re-entry. Guard against over-firing: a user who understands the options but hasn't picked one is *undecided*, not blindsided — keep interviewing. Never fire in a non-interactive run.
 8. **Product pressure test** (self-gating). Before generating approaches, pressure-test whether the idea is real and well-framed. This is **internal analysis**: scan the opening and the dialogue so far for the rigor gaps catalogued in `references/socratic-questions.md` → "Product rigor gaps", and raise **only those that actually exist**, as **open-ended probes** folded into the conversation — never a menu, never a pre-flight checklist. A well-framed opening earns **zero** probes; one probe satisfies one gap. The gaps: **evidence**, **specificity**, **counterfactual**, **attachment**, and **durability** (Deep / strategic scope only). If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than skipping it.
 9. **Integration check.** Still before approaches: **combine** what the user has said with your own defaults and surface any non-obvious downstream consequence the one-question-at-a-time dialogue hasn't probed (*"if mute lives on the rule AND we don't warn on delete, then rule-delete silently loses pause state"*). Fire **one open-ended probe per genuine combination effect**, not a blanket audit.
-10. **Probe budget.** The pressure test, the integration check, and any blindspot walk-through **count toward the depth question budget** — they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe (the single highest-signal gap) and skip the rest; a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
-11. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
-12. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
+
+   **Probe budget** (governs all three probe steps: the blindspot walk-through, the pressure test, and this one). They **count toward the depth question budget**; they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe, the single highest-signal gap, and skip the rest: a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
+10. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
+11. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
     - **Divergent generation gate.** On **Deep**, or on **Standard with 3+ genuinely live directions**, generate the approaches through parallel constraint-diverged sub-agents rather than serially in this context — serial generation anchors, and B and C come back as variants of A. **Read `references/brainstorm-approaches.md` when this fires**; it owns the constraint table, the acceptance bar, and the no-sub-agent fallback.
     - Otherwise generate inline. When one approach is clearly best, skip the menu and say so.
-13. **Recommendation.** Pick one. State the rationale in one paragraph.
-14. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
-15. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
-16. **Verify-before-claiming.** Before writing the doc, any claim that something is **absent** in the codebase — a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support — must be **verified against the repo** first (read the relevant source), or **explicitly labeled an unverified assumption** in the doc. Applies to any checkable infrastructure claim; it is not a full research pass — just don't assert absence you haven't checked.
-17. **Write the design doc** to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
-18. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
-19. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
+12. **Recommendation.** Pick one. State the rationale in one paragraph.
+13. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
+14. **Show synthesis to the user.** Confirm or iterate. One round usually suffices.
+
+    **Verify-before-claiming — dispatch it here, not at the write.** In the same turn the synthesis goes up, hand a sub-agent every claim the doc will make that something is **absent** in the codebase: a missing table, an endpoint that doesn't exist, a dependency not installed, a config option with no current support. It runs while the user reads, which is the only idle time in the flow. Give it the claim list one line each, a budget of ~15 targeted reads, and a per-claim verdict to return: **confirmed** with a `file:line`, **refuted** with the contradicting evidence, or **unverifiable**. Do not block the confirmation on it.
+
+    Skip the dispatch when the doc will make no absence-claims, or when no sub-agent is available — in that case verify inline before the write instead. The rule holds either way; only where it runs changes.
+15. **Write the design doc.** Two preconditions run first. The first can end the step; the second constrains what goes in the file.
+
+    **Is a doc warranted?** For a very small exploration where the user is iterating on a code-level question ("should this be a hook or a util?"), a design doc is overkill. Surface a soft offer:
+
+    > "This is a fairly small choice. Want a design doc, or just talk it through and proceed?"
+
+    If they pick "talk it through", answer in chat and stop here: no file, and the validate step below does not apply. The capture reflex still fires if a learning emerges.
+
+    **Consume the verification verdicts.** Every absence-claim in the doc must be **verified against the repo** or **explicitly labeled an unverified assumption**. Correct refuted claims before writing; label unverifiable ones as assumptions. A claim that never reached the verifier is unverified, not true. This applies to any checkable infrastructure claim. It is not a full research pass; just don't assert absence you haven't checked.
+
+    Then write to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
+16. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
+17. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
     > "This conversation produced [X]. Capture as a learning?"
     User accepts → invoke `/en-learn capture --from-conversation` with the design doc as input.
-20. **Hand off.**
+18. **Hand off.**
     - New product → `/en-foundation`
     - Feature in existing project → `/en-plan`
     - Just exploration, no immediate next step → wrap
+
+## Red flags
+
+Every gate below is one an agent talks itself out of, and the talking-out is
+predictable enough to name. If you catch yourself thinking the left column, the
+right column is what is actually true.
+
+| Thought | Reality |
+|---|---|
+| "One approach is clearly best, I'll skip the menu" | Allowed, but only when you would defend having no alternative. Reaching for the shortcut because generating three is work is the tell that you have not found the second one yet. |
+| "This is Deep, but I can already see the approaches" | Seeing them in one context is exactly what the divergent gate distrusts. B and C thought up after A come back as variants of A. |
+| "I'm fairly sure that table doesn't exist" | Fairly sure *is* the unverified assumption. Read the source, or label it as one in the doc. Absence is the claim that propagates into `/en-plan` as fact. |
+| "They said 'you decide', that's the blindspot signal" | Once is undecided. The gate needs two consecutive can't-evaluate answers on questions needing domain judgment. Firing on an undecided user turns the interview into a lecture. |
+| "They're busy, I'll ask the whole list this round" | Batching the *frontier* is cheap; batching dependents is what dilutes answers. A question whose answer depends on another still open this round belongs to the next one. |
+| "It's a small choice, writing the doc is easier than asking" | The offer costs one line; the file costs a review and joins the resume pool. Make the offer. |
+| "The design doc is nearly right, lint can wait" | `/en-plan` consumes this file. A malformed one propagates into the plan, and the person who finds it is downstream of everyone who could have fixed it cheaply. |
 
 ## What never happens here
 
@@ -118,14 +153,6 @@ Devil's advocate flagged: same-model bias in fallback mode; cost on large artifa
 Next: /en-foundation if this is a new product, /en-plan for a feature in an existing project.
 ```
 
-## When to skip the design doc
-
-For very small explorations where the user is iterating on a code-level question ("should this be a hook or a util?"), a design doc is overkill. Surface a soft offer:
-
-> "This is a fairly small choice. Want a design doc, or just talk it through and proceed?"
-
-If user picks "talk it through" → answer in chat; no file written, and the write/validate steps don't apply. The capture-from-synthesis reflex still fires if a learning emerges.
-
 ## Reference files
 
 - `references/socratic-questions.md` — Q&A pool and the Product rigor gaps catalogue
@@ -148,6 +175,6 @@ Gated — read only when their step's gate fires, never up front:
 | Two approach sub-agents converge on the same shape | Report one approach, and say they converged independently — that is evidence, not a wasted slot. |
 | Blindspot gate fires in a non-interactive run | Never offer; treat the territory as a declined offer (recommended defaults recorded as explicit assumptions). |
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
-| `docs/foundation.md` too large to scan cheaply | Section-index read only (step 4); never fall back to reading it whole. |
+| `docs/foundation.md` too large to scan cheaply | Section-index read only (the bounded existing-context scan); never fall back to reading it whole. |
 | `bin/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |

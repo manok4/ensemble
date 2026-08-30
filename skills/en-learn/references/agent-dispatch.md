@@ -7,7 +7,7 @@ How a skill dispatches one of the agents in its own `agents/` directory.
 Dispatch by name, the way you always have:
 
 ```
-Agent(subagent_type: "repo-research", prompt: "…")
+Agent(subagent_type: "<name>", prompt: "…")
 ```
 
 The host resolves that name from its flat agent registry, which `./setup`
@@ -19,7 +19,7 @@ carries is registered, and this is the only path you need.
 A skill directory can arrive on its own: someone copies one skill into a host's
 skills folder, or a converter ships a single skill as an isolated unit. There is
 no host hook that registers an agent in that case, so `subagent_type:
-"repo-research"` resolves to nothing.
+"<name>"` resolves to nothing.
 
 The skill carries the definition, so resolve it yourself:
 

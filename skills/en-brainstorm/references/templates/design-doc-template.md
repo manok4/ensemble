@@ -97,7 +97,7 @@ What's wrong with the recommendation? Honest stress-test:
 
 > "This conversation produced [a non-obvious connection / a comparison across approaches / an extracted lesson]. Capture as a learning?"
 
-If the user accepts → invoke `/en-learn capture --from-conversation` with the design doc as input. The learning lands in `docs/learnings/` or `patterns/` depending on the synthesis type.
+If the user accepts → invoke `/en-learn capture --from-conversation` with the design doc as input. Where it lands is `/en-learn`'s call, not this skill's: it routes each capture to a term (`docs/CONTEXT.md`), a decision (`docs/decisions/`), or a solution (`docs/learnings/`), and applies its own capture gate — which may decide the synthesis earns no entry at all.
 
 If the user declines → no-op. The design doc stays.
 
@@ -107,11 +107,30 @@ If the user declines → no-op. The design doc stays.
 
 - Frontmatter schema (Appendix C.2) — `type: design`, `created`, `topic`, `status`, `related_plan` all present.
 - `status:` value in `{open, accepted, superseded}`.
-- `related_plan:` resolves to a plan if non-empty.
+- `related_plan:` resolves to a plan if non-empty (`cross-link.broken-fr`, P1).
+- `status: accepted` or `superseded` requires a non-empty `related_plan:` (P2) — `/en-plan` writes both together, so one without the other is a half-applied close-out.
 - No-absolute-paths.
 
-## When the design moves to `superseded`
+## Close-out: how the design stops being `open`
 
-When a plan ships that addresses the design's question, `en-learn` may flip the design's `status:` to `accepted` (the recommended approach was implemented) or `superseded` (a different approach was chosen — note in `replaced_by:` which plan).
+`/en-plan` closes it, in the same promotion that flips a plan built from this
+design to `status: open`. It sets:
 
-`/en-learn` does this as part of its post-ship sweep when it sees `related_plan:` populated and the plan moved to `completed/`.
+- `status: accepted` when the plan carries this design's recommendation, or
+  `status: superseded` when planning committed to a different approach, noting
+  that plan in `replaced_by:`.
+- `related_plan:` to that plan's `plan_id`.
+
+`/en-plan` is the only skill that can tell the two apart, because it is the one
+holding both this design's recommendation and what the plan actually commits to.
+Close-out happens at plan-open, not at ship: the design's job is to feed
+planning, and it is discharged once a plan exists.
+
+**A design that never produces a plan stays `open`, and should.** An unplanned
+exploration is still an open question, and `/en-brainstorm`'s resume scan should
+keep offering it.
+
+One path does not close a design out: `/en-foundation` mints the bootstrap
+`<PREFIX>01-feature_project-setup` plan directly rather than through `/en-plan`.
+That plan is repo-init scaffolding, not a design's recommendation, so the gap is
+documented rather than papered over.

@@ -1,6 +1,6 @@
-# Blindspot pass — `en-brainstorm` step 7
+# Blindspot pass — `en-brainstorm`, the blindspot gate
 
-Read this only when the gate in `en-brainstorm` step 7 fires. Most brainstorms never reach it.
+Read this only when the blindspot gate in `en-brainstorm` fires. Most brainstorms never reach it.
 
 The Q&A assumes the user can evaluate what it asks. On territory the user doesn't know, that assumption fails and the interview extracts **guesses instead of requirements** — which then harden into a design doc and propagate into `/en-plan`. This pass converts unknown unknowns into known unknowns: it maps the decision surface of the flagged territory so the user chooses among options they can now evaluate.
 
@@ -57,7 +57,7 @@ After the map, ask **one** multi-select blocking question: *"Which of these do y
 
 Then:
 
-- **Selected decisions** — walk through one per turn as informed single-select menus. Post-pass, menus over mapped options are the right form **even where step 5's open-vs-closed discipline would normally prefer open-ended**: the options no longer steer, they recall what was just mapped.
+- **Selected decisions** — walk through one per turn as informed single-select menus. Post-pass, menus over mapped options are the right form **even where the frontier rounds' open-vs-closed discipline would normally prefer open-ended**: the options no longer steer, they recall what was just mapped.
 - **Unselected decisions and hazards** — record the recommended default (or the hazard's constraint) as an explicit assumption in the design doc.
 
 ## Budget

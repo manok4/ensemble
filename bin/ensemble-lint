@@ -386,6 +386,16 @@ check_frontmatter_enums_and_dates() {
       case "$s" in ""|open|accepted|superseded) ;; *)
         emit "frontmatter.invalid-enum" "$file" "" "P1" "design status: $s" "Use one of: open, accepted, superseded" ;;
       esac
+      # /en-plan sets status and related_plan together when a plan built from
+      # this design reaches status: open. One without the other is a
+      # half-applied close-out. Whether the named plan EXISTS is already
+      # covered by cross-link.broken-fr, so this checks only the pairing.
+      local rp; rp=$(get_field "$file" related_plan)
+      case "$s" in
+        accepted|superseded)
+          [ -n "$rp" ] || emit "frontmatter.required-field-missing" "$file" "" "P2" \
+            "status: $s with no related_plan" "/en-plan sets both together; one without the other is a half-applied close-out" ;;
+      esac
       ;;
   esac
 }

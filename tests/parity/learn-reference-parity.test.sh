@@ -22,7 +22,13 @@ TEST_NAME="learn reference parity"
 #
 # learnings-research went 4 -> 12 on 2026-08-29: every skill that DISPATCHES an
 # agent must carry it, since a skill installs alone and cannot reach another
-# skill's directory. Nine skills dispatch it. See TD9.
+# skill's directory. See TD9.
+#
+# 12 -> 11 on 2026-08-30: en-brainstorm never dispatched it. That skill's own
+# research-dispatch.md says so outright ("en-brainstorm dispatches no scouts",
+# matrix reading "never" at all three depths), so the copy was 150 lines of
+# payload that nothing could reach. The sweep that set 12 counted carriers that
+# COULD dispatch rather than ones that do.
 while IFS='|' read -r rel expected; do
   [ -n "$rel" ] || continue
 
@@ -50,7 +56,7 @@ done <<'CARRIERS'
 references/learn-lint.md|3
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
-agents/learnings-research.md|12
+agents/learnings-research.md|11
 CARRIERS
 
 # The retired taxonomy must not creep back in through any carrier. Character

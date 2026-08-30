@@ -53,7 +53,7 @@ Per `references/templates/architecture-template.md`:
 | **Infrastructure** | `en-learn` per change | Datastores, queues, caches, workers; production topology summary |
 | **Database entity overview** | `en-learn` per material schema change | Entity-level (not field-level) overview with relationships |
 | **Auth and trust boundaries** | `en-learn` per auth change | Roles, tokens, permission boundaries |
-| **Open architectural questions** | `en-foundation` (seed), `en-learn` per resolution | Things still being decided; resolved questions move to `decisions/` learnings |
+| **Open architectural questions** | `en-foundation` (seed), `en-learn` per resolution | Things still being decided; resolved questions become ADRs under `docs/decisions/` |
 
 ## Status field
 

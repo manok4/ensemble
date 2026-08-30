@@ -41,4 +41,37 @@ else
   fail "verify-before-claiming needs both arms AND the template's assumptions section"
 fi
 
+# --- 4. the doc-skip gate is reachable from the numbered flow ---
+# It used to live in a trailing "When to skip the design doc" section that no
+# step pointed at, so an agent walking the flow wrote a doc every time. A gate
+# outside the flow is not a gate. It now sits inside the write step; this checks
+# it stays inside the numbered list rather than drifting back out to a section.
+proc_line=$(grep -n '^## Process' "$SKILL" | head -1 | cut -d: -f1)
+end_line=$(awk -v p="$proc_line" 'NR>p && /^## / {print NR; exit}' "$SKILL")
+offer_line=$(grep -n 'Want a design doc, or just talk it through' "$SKILL" | head -1 | cut -d: -f1)
+
+if [ -n "$proc_line" ] && [ -n "$end_line" ] && [ -n "$offer_line" ] \
+   && [ "$offer_line" -gt "$proc_line" ] && [ "$offer_line" -lt "$end_line" ]; then
+  pass "the doc-skip offer sits inside the numbered flow (line $offer_line, flow $proc_line-$end_line)"
+else
+  fail "the doc-skip offer must sit inside the numbered flow" \
+       "offer=$offer_line flow=$proc_line-$end_line — a gate no step reaches never fires"
+fi
+
+# --- 5. verification is dispatched at the synthesis, not at the write ---
+# It used to run inline immediately before the write, with the user idle. The
+# confirmation wait is the only think-time in the flow, so that is where it
+# belongs. If it drifts back below the write step, this goes red.
+syn_line=$(grep -n 'Show synthesis to the user' "$SKILL" | head -1 | cut -d: -f1)
+disp_line=$(grep -n 'dispatch it here, not at the write' "$SKILL" | head -1 | cut -d: -f1)
+write_line=$(grep -n 'Write the design doc' "$SKILL" | head -1 | cut -d: -f1)
+
+if [ -n "$syn_line" ] && [ -n "$disp_line" ] && [ -n "$write_line" ] \
+   && [ "$syn_line" -lt "$disp_line" ] && [ "$disp_line" -lt "$write_line" ]; then
+  pass "claim verification is dispatched during the confirmation wait, before the write"
+else
+  fail "claim verification must be dispatched at the synthesis, not at the write" \
+       "synthesis=$syn_line dispatch=$disp_line write=$write_line"
+fi
+
 report

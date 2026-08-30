@@ -1,6 +1,6 @@
-# Divergent approach generation — `en-brainstorm` step 12
+# Divergent approach generation — `en-brainstorm`, the approaches step
 
-Read this only when the gate in `en-brainstorm` step 12 fires. On the default path (one clearly-best direction, or a Lightweight run) generate approaches inline and skip this file.
+Read this only when the divergent-generation gate in `en-brainstorm`'s approaches step fires. On the default path (one clearly-best direction, or a Lightweight run) generate approaches inline and skip this file.
 
 Adapted from the "Design It Twice" pattern (Ousterhout, via `agent-skills/skills/engineering/codebase-design`): your first idea is unlikely to be the best, and approaches generated **serially in one context** converge — B and C become variations of A because the same context anchored all three.
 
@@ -15,7 +15,7 @@ Skip when one approach is clearly best. A menu padded with options you would not
 
 Dispatch one read-only sub-agent **per constraint, in parallel**. Each gets the same brief and a **different** constraint, so the divergence is structural rather than a matter of asking nicely for variety.
 
-**The brief** (identical for every agent): what the user is trying to do, the constraints and context gathered in the Q&A, the facts established during step 5's fact lookups (with `file:line` where they exist), and what has already been ruled out and why.
+**The brief** (identical for every agent): what the user is trying to do, the constraints and context gathered in the Q&A, the facts established by the frontier rounds' fact lookups (with `file:line` where they exist), and what has already been ruled out and why.
 
 **The constraints** (one per agent):
 
@@ -26,7 +26,9 @@ Dispatch one read-only sub-agent **per constraint, in parallel**. Each gets the 
 | 3 | **Optimize the common case.** Make the frequent path trivial; accept real cost on the rare one. |
 | 4 *(Deep only)* | **Remove the binding constraint.** Assume the thing being treated as fixed is not. Say what it would take. |
 
-**Each agent returns:** the approach in one paragraph (mechanism or product shape, not architecture); pros; cons; the key risk or unknown; and when it is best suited.
+**Each agent returns, and nothing else:** the approach in one paragraph (mechanism or product shape, not architecture); pros; cons; the key risk or unknown; and when it is best suited.
+
+**Budget.** Roughly 8 reads, spent against the dossier and the files the brief names rather than re-scanning the repo, and about 200 words back. These agents are generating from a brief you already assembled; an agent that goes looking for its own grounding is doing the frontier rounds' job again, more expensively and with less context.
 
 ## Granularity bar
 
