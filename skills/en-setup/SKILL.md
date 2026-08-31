@@ -189,14 +189,14 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
 
 12. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
-13. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt:
+13. **Guardrail check.** The guardrail installer belongs to `/en-guardrail`, which installs as its own skill and may not be present. **Resolve it before use:** look for `install-guardrail` in a sibling `en-guardrail` skill directory alongside this one. If it is not there, say so and point the user at `/en-guardrail` rather than guessing a path — then skip to the next step. When it resolves, run it with `status`. If neither scope is installed, prompt:
     > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`). Choose:
     >   `p` — install project-scoped now (writes to `<repo>/.claude/settings.json`).
     >   `g` — print the global one-liner for me to run from my terminal (active everywhere; agents can't write `~/.claude/` themselves).
     >   `s` — skip for now."
 
-    On `p` → run `skills/en-guardrail/bin/install-guardrail install-project` (installs **both** the Bash matcher and the MCP DB-tool matcher — EN09).
-    On `g` → run `skills/en-guardrail/bin/install-guardrail install-global` (no `--apply`) and surface its output verbatim.
+    On `p` → run the resolved installer with `install-project` (installs **both** the Bash matcher and the MCP DB-tool matcher — EN09).
+    On `g` → run the resolved installer with `install-global` (no `--apply`) and surface its output verbatim.
     On `s` → record in the report; don't ask again this session.
 
     Idempotent — if the status check reports any scope active, skip the prompt and note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
@@ -329,7 +329,7 @@ Invoke `scripts/check-health` (in the plugin's `scripts/` directory). It prints 
 In addition to file-shape and lint checks, the diagnostic includes:
 
 - **Required-artifact verification** - same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
-- **Guardrail status** — run `skills/en-guardrail/bin/install-guardrail status`. 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
+- **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
 - **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by `/en-build`'s peer-review subprocess hang protection. Advisory-only because `/en-build` already fails fast with the install instruction on the first peer call — never silently degraded.
@@ -418,5 +418,5 @@ Next step:
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
 - `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
 - `scripts/check-health` — diagnostic runner (State 3)
-- `skills/en-guardrail/bin/install-guardrail` — installs/uninstalls the destructive-command guardrail hook
+- `install-guardrail`, carried by `/en-guardrail` — installs/uninstalls the destructive-command guardrail hook
 - `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)

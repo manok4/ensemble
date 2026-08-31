@@ -108,16 +108,16 @@ Each sweep PR runs `/en-review` in `mode:report-only`:
 
 ## Continuous monitoring (opt-in, per `sweep.continuous_monitoring.*`)
 
-When enabled in `.ensemble/config.local.yaml`, sweep runs `skills/en-sweep/scripts/continuous-monitor` after the file-shape and wiki-graph checks. The monitor scans for:
+When enabled in `.ensemble/config.local.yaml`, sweep runs its `continuous-monitor` helper after the file-shape and wiki-graph checks. The monitor scans for:
 
 - **Dead code** — uses project tools when available (`ts-prune` for TS/JS, `vulture` for Python, `golang.org/x/tools/cmd/deadcode` for Go).
 - **Dependency vulnerabilities** — wraps `npm audit` / `pip-audit` / `cargo audit`.
 
-Output is JSON-lines normalized to a common shape (per the head of `skills/en-sweep/scripts/continuous-monitor`).
+Output is JSON-lines normalized to a common shape (per the head of that helper).
 
 ### Triage by size
 
-`skills/en-sweep/scripts/triage-findings` partitions monitor output into three buckets:
+Sweep's `triage-findings` helper partitions monitor output into three buckets:
 
 | Bucket | Criteria | Artifact created |
 |---|---|---|
@@ -170,5 +170,5 @@ The `generator` field is informational; lint is lenient on `covers_requirements:
 - `references/sweep-security-model.md` — auto-merge safety
 - `references/tech-debt-tracker-format.md` — TD entry schema
 - `bin/ensemble-doc-only-check` — runtime allowlist enforcement
-- `skills/en-sweep/scripts/continuous-monitor` — dead-code + dep-audit scanner
-- `skills/en-sweep/scripts/triage-findings` — partitions findings into TD vs draft plan
+- `continuous-monitor` (carried by `/en-sweep`) — dead-code + dep-audit scanner
+- `triage-findings` (carried by `/en-sweep`) — partitions findings into TD vs draft plan
