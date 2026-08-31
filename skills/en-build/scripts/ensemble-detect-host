@@ -191,19 +191,19 @@ fi
 
 if [ "$SMOKE_TEST" = "true" ]; then
   echo "" >&2
-  echo "Smoke testing CLI flags (ensures references/cli-wrappers.md matches reality)..." >&2
+  echo "Smoke testing CLI flags (ensures the cli-wrappers tables match reality)..." >&2
   if command -v claude >/dev/null 2>&1; then
     if echo "ping" | claude -p --output-format json --max-turns 1 >/dev/null 2>&1; then
       echo "  Claude CLI: ✓ flags accepted" >&2
     else
-      echo "  Claude CLI: ⚠ flag mismatch — check references/cli-wrappers.md" >&2
+      echo "  Claude CLI: ⚠ flag mismatch — check the cli-wrappers tables" >&2
     fi
   fi
   if command -v codex >/dev/null 2>&1; then
     if echo "ping" | codex exec --json --max-turns 1 >/dev/null 2>&1; then
       echo "  Codex CLI: ✓ flags accepted" >&2
     else
-      echo "  Codex CLI: ⚠ flag mismatch — check references/cli-wrappers.md" >&2
+      echo "  Codex CLI: ⚠ flag mismatch — check the cli-wrappers tables" >&2
     fi
   fi
 fi
