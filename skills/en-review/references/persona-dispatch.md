@@ -95,7 +95,7 @@ After all personas return:
 
 ## Two-source reconciliation (EN11)
 
-When the peer runs (the default — see `skills/en-review/SKILL.md` step 2a), the host set and the peer set are reconciled into **reconciliation records** rather than flattened into one pool. A single `source` field cannot express a corroborated pair, so the record carries provenance for both sides:
+When the peer runs (the default — see the peer-decision step in `/en-review`), the host set and the peer set are reconciled into **reconciliation records** rather than flattened into one pool. A single `source` field cannot express a corroborated pair, so the record carries provenance for both sides:
 
 ```json
 {"bucket": "corroborated | peer-only | host-only | conflicting",
@@ -165,7 +165,7 @@ Aggregate `verdict` is the most-severe of the personas:
 
 ## Outside Voice: on by default, and BLIND (EN11)
 
-The cross-agent peer runs **by default** (see `skills/en-review/SKILL.md` step 2a for the mode and availability scoping). It produces a second finding set, tagged `source: "peer"`, which reconciles with the host set per Two-source reconciliation above.
+The cross-agent peer runs **by default** (see the peer-decision step in `/en-review` for the mode and availability scoping). It produces a second finding set, tagged `source: "peer"`, which reconciles with the host set per Two-source reconciliation above.
 
 **Blind-peer invariant.** The peer reads:
 
@@ -176,7 +176,7 @@ The cross-agent peer runs **by default** (see `skills/en-review/SKILL.md` step 2
 It does **NOT** read the host persona findings. This is a deliberate, load-bearing invariant, not an omission:
 
 - **Independence is what makes overlap mean anything.** Anchoring the peer on host findings turns independent discovery into confirmation, and the `corroborated` bucket would then measure suggestibility rather than agreement.
-- **It licenses concurrent dispatch.** Because the peer needs nothing from the persona batch, `/en-review` fires it in the *same* parallel batch (step 8) instead of serializing after it.
+- **It licenses concurrent dispatch.** Because the peer needs nothing from the persona batch, `/en-review` fires it in the *same* parallel batch as the personas instead of serializing after it.
 
 An earlier version of this file described the peer as receiving the host roster's output for confirmation. That behavior was never implemented: `bin/ensemble-build-peer-prompt` has no flag for it and `/en-review` never passed them. The **implementation was right and the prose was wrong**, so the prose was corrected rather than the feature built.
 
