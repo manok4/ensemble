@@ -149,6 +149,34 @@ path in a carried file resolves against whichever skill carries it, and only
 - **Suggested fix:** Decide the question the file cannot answer on its own. Either wire it up — `/en-foundation` offers `docs/core-beliefs.md` from this starter at Standard/Deep depth, the way it already seeds other optional artifacts — or drop both the starter and the foundation line, so the docs stop promising something nothing delivers. `scripts/sync-shared --check` now lists ungranted shared files as a note, so this stays visible until it is settled.
 - **Logged:** 2026-08-26
 
+### TD11. Four skills name their own files by repo-rooted path
+
+- **Source:** the cross-skill guard fix, 2026-08-31
+- **Severity:** P2
+- **Confidence:** 9/10 — the paths are literal and the install layout is known
+- **Location:** `en-sweep` (2), `en-guardrail` (2), `en-brainstorm` (1), `en-build` (1)
+
+- **What:** these skills instruct an agent to run a helper at
+  `skills/<self>/scripts/<name>` — a path rooted at the Ensemble repo, not at the
+  skill directory. `/en-sweep` says to run `skills/en-sweep/scripts/continuous-monitor`.
+
+- **Why it matters:** the same failure the `$ENSEMBLE_ROOT` migration removed, in
+  a new spelling. A skill installs alone, at `~/.claude/skills/<name>/`, where no
+  `skills/` directory exists above it. The path resolves in this repo and nowhere
+  a user actually runs the skill, so it is invisible here by construction.
+
+- **Why the guards miss it:** the cross-skill clause excludes a skill's own name
+  so it cannot flag self-references, and the anchored-invocation clause matches
+  `bash scripts/x` rather than a repo-rooted path. Neither is wrong; the case
+  falls between them.
+
+- **Suggested fix:** the `$SKILL_DIR` anchor these skills already document for
+  other calls — `SKILL_DIR="<dir of this SKILL.md>"; bash "$SKILL_DIR/scripts/x"`.
+  Then extend the anchored-invocation clause to reject a repo-rooted self-path,
+  with a negative control.
+
+- **Logged:** 2026-08-31
+
 ## Resolved
 
 <!-- none yet -->
