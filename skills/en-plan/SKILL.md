@@ -162,8 +162,6 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     | Condition | Action |
     |---|---|
-    | `--commit-branch <name>` passed | Check out `<name>` (create if needed); skip the checkpoint. |
-    | `--no-commit` passed | Stay on the current branch; skip the checkpoint. The auto-commit step is skipped later. |
     | Current branch **is** the detected default branch | **Checkpoint fires.** Read `references/plan-default-branch-checkpoint.md` and follow it — it owns default-branch detection, the prompt, the four response handlers, and the non-interactive `--branch-on-default` flag. |
     | Anything else (already on a feature branch, detection failed, detached HEAD) | Stay on the current branch; skip the checkpoint. |
 
@@ -171,7 +169,9 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 14. **Write the plan.** One precondition first, and it can end the step.
 
-    **Is a plan file warranted?** Not every planning request earns one. Offer to skip when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, and the user did not ask for a plan file in so many words.
+    **Is a plan file warranted?** Not every planning request earns one. Offer to skip when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, **no design doc was consumed**, and the user did not ask for a plan file in so many words.
+
+    The design-doc condition is not about size. `/en-plan` closes a consumed design out to `accepted` or `superseded` during the promotion below, and the no-file path never reaches it — so skipping the file on a design-backed request would leave that design `status: open` forever and back in `/en-brainstorm`'s resume pool, which is the compounding defect the close-out exists to prevent. A request someone thought worth a design doc has already earned the cheaper artifact.
 
     > "This is one low-risk change. I can write it up as a plan, or just tell you the change and you make it. A plan file buys peer review and a `/en-build` run; for a change this size that may cost more than it returns."
 
@@ -180,7 +180,13 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     **Never offer the skip** when the work touches a risk surface — authentication, payments, migrations, external contracts — regardless of how small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.
 
     Then write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
-15. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
+15. **Outside Voice review with finalize loop.**
+
+    **The host authors; the peer only reviews.** Whoever `/en-plan` was invoked in is the host, and the host writes every plan — the units, the metadata, the applied findings. The peer returns structured findings and nothing else: it does not draft units, edit the plan file, run commands, or commit. This is D30, stated in full in `references/outside-voice.md`, and it is why the peer runs as a subprocess with its own prompt rather than as a collaborator on the file.
+
+    Do not confuse a peer with a **worker**. `/en-build` dispatches the other agent as a worker that implements and edits files; that is a different role with a different prompt. `/en-plan` has no worker and never delegates authorship.
+
+    If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
     - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
@@ -232,7 +238,6 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       Verdict: approve. Generated by /en-plan.
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
-    - Flags: `--no-commit` (skip), `--commit-branch <name>` (create/switch to `<name>` first).
 18. **Confidence check.** Identify low-confidence sections (typically integrations or unfamiliar libraries); offer to deepen with a research dispatch or to leave as-is and resolve during build.
 19. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
 20. **Hand off to `/en-build`.** Suggest the build command:
@@ -268,8 +273,6 @@ When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` compute
 | `--no-peer` | Skip peer review entirely. Plan is left at `status: open` with `peer_review_verdict: null` (legacy/no-peer mode). |
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
 | `--max-iterations <N>` | Override the depth-aware iteration cap. |
-| `--no-commit` | Finalize (`status: open`) but do not auto-commit the plan file. |
-| `--commit-branch <name>` | Create/switch to `<name>` before committing the plan file. |
 | `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
 | `--resume <plan-path>` | See the resume-or-create step. |
 | `--from-legacy <path>` | See the resume-or-create step. |

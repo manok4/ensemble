@@ -47,9 +47,21 @@ else
 fi
 
 # --- 3. every skip condition is present; losing one widens the hole ---
+# Scoped to the gate's own block below. A whole-file grep for 'design doc was
+# consumed' was satisfied by an unrelated sentence in the context-sufficiency
+# check, so deleting the condition from the gate left this clause green.
+gate_start=$(grep -n 'Is a plan file warranted' "$SKILL" | head -1 | cut -d: -f1)
+gate_end=$(grep -n 'Then write to' "$SKILL" | head -1 | cut -d: -f1)
+gate_block=$(awk -v a="$gate_start" -v b="$gate_end" 'NR>=a && NR<=b' "$SKILL")
+
 missing=""
-for c in 'Lightweight' 'one unit' 'risk:' 'gated: true' 'resume' 'did not ask'; do
-  grep -qiF "$c" "$SKILL" || missing="$missing '$c'"
+# 'design doc' is the one condition that is not about size: the close-out that
+# retires a consumed design lives in the promotion block, which the no-file path
+# never reaches, so skipping the file would strand that design at status: open
+# and back in /en-brainstorm's resume pool — reopening the exact defect the
+# close-out was added to fix.
+for c in 'Lightweight' 'one unit' 'risk:' 'gated: true' 'resume' 'design doc was consumed' 'did not ask'; do
+  printf '%s' "$gate_block" | grep -qiF "$c" || missing="$missing '$c'"
 done
 [ -z "$missing" ] \
   && pass "the skip requires every condition (depth, size, risk, gating, resume, user intent)" \
@@ -70,6 +82,19 @@ if grep -qiE '/en-build. is not available|no file, no U-IDs' "$SKILL" \
 else
   fail "the no-file path must state that /en-build cannot run" \
        "implying a handoff that cannot happen is worse than writing the file"
+fi
+
+# --- 6. the gate and the design close-out do not contradict each other ---
+# The close-out is downstream of the gate. If the gate could fire on a
+# design-backed request, the design would never be retired.
+gate=$(grep -n 'Is a plan file warranted' "$SKILL" | head -1 | cut -d: -f1)
+closeout=$(grep -n 'Close out the design doc' "$SKILL" | head -1 | cut -d: -f1)
+if [ -n "$gate" ] && [ -n "$closeout" ] && [ "$gate" -lt "$closeout" ] \
+   && printf '%s' "$gate_block" | grep -qiE 'design doc was consumed'; then
+  pass "the gate excludes design-backed requests, which the close-out is downstream of"
+else
+  fail "the gate must exclude design-backed requests" \
+       "gate=$gate closeout=$closeout — skipping the file strands the design at status: open"
 fi
 
 report
