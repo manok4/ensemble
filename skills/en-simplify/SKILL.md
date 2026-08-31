@@ -5,13 +5,10 @@ description: "Simplify recently changed code for clarity, reuse, quality, and ef
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - agents/code-simplifier.md
-  - agents/learnings-research.md
-  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/code-simplifier-dispatch.md
   - references/host-detect.md
   - references/recursion-guard.md
-  - references/research-dispatch.md
   - scripts/ensemble-detect-host
 
 ---

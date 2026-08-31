@@ -1,6 +1,6 @@
 # Template — `REVIEW.md`
 
-Used by `/en-setup` (step 12a) to seed a project-root `REVIEW.md` that tunes how PR review behaves on your repo.
+Used by `/en-setup`'s `REVIEW.md` offer to seed a project-root `REVIEW.md` that tunes how PR review behaves on your repo.
 
 ## Where this file is consumed
 

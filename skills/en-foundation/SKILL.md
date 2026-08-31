@@ -4,17 +4,13 @@ description: "Produce or retrofit the foundational artifact set: docs/foundation
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
-  - agents/dimension-reviewer.md
   - agents/learnings-research.md
   - agents/repo-research.md
   - agents/web-research.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
-  - references/build-handoff.md
-  - references/build-orchestration.md
   - references/cli-wrappers.md
   - references/diff-signal-detection.md
-  - references/doc-lints.md
   - references/finding-schema.md
   - references/foundation-questions.md
   - references/host-detect.md
@@ -22,7 +18,6 @@ requires:
   - references/peer-brief.md
   - references/peer-contract.md
   - references/peer-model-policy.md
-  - references/persona-dispatch.md
   - references/recursion-guard.md
   - references/research-dispatch.md
   - references/script-invocation.md
@@ -43,7 +38,6 @@ requires:
   - scripts/ensemble-extract-json
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
-  - scripts/ensemble-verify-peer-evidence
 
 ---
 

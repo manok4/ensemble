@@ -1,6 +1,6 @@
 # `/en-debug` — hypothesis output format
 
-How `/en-debug` step 10 renders its conclusion to the user. Format is deterministic so users can scan quickly and so other skills can parse.
+How `/en-debug`'s surface-a-hypothesis step renders its conclusion to the user. Format is deterministic so users can scan quickly and so other skills can parse.
 
 ## Structure
 

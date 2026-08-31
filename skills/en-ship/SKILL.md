@@ -4,11 +4,8 @@ description: "Push clean changes to the remote with a meaningful commit and PR. 
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
-  - agents/learnings-research.md
-  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/conventional-commits.md
-  - references/research-dispatch.md
   - references/script-invocation.md
   - references/secret-patterns.md
   - scripts/ensemble-verify-peer-evidence

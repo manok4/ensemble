@@ -9,8 +9,6 @@ requires:
   - agents/repo-research.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
-  - references/build-handoff.md
-  - references/build-orchestration.md
   - references/cli-wrappers.md
   - references/diff-signal-detection.md
   - references/doc-lints.md
@@ -36,7 +34,6 @@ requires:
   - references/sweep-security-model.md
   - references/tech-debt-tracker-format.md
   - references/templates/architecture-template.md
-  - references/templates/plan-template.md
   - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
   - scripts/ensemble-cli-smoke
@@ -46,7 +43,6 @@ requires:
   - scripts/ensemble-extract-json
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
-  - scripts/ensemble-verify-peer-evidence
 
 ---
 

@@ -10,7 +10,11 @@ TEST_NAME="en-plan test-scenarios gate"
 TEMPLATE="$REPO_ROOT/skills/en-build/references/templates/plan-template.md"
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
 LINT="$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint"
-DOCLINTS="$REPO_ROOT/skills/en-build/references/doc-lints.md"
+# doc-lints.md is carried by the skills that enforce the lint catalogue.
+# en-sweep is the canonical one: it names the reference in its own flow.
+# This previously read en-build's copy, which was payload en-build never
+# reached, so the assertion broke the moment that copy was dropped.
+DOCLINTS="$REPO_ROOT/skills/en-sweep/references/doc-lints.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- plan-template documents the categories + escape ---

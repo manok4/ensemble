@@ -34,7 +34,11 @@ in scope to inflate one.
 
 A **scoped run** (a capture, or a refresh narrowed to an area) seeds only that
 area's nouns. A **repo-wide bootstrap** — an explicit request to create the file
-— seeds the whole project's declared domain model. Only the bootstrap can produce
+— seeds the whole project's declared domain model, and starts it from
+`references/templates/context-template.md` so a file created here has the same
+shape as one `/en-setup` seeds. That template is the bootstrap path's only
+dependency, and naming it here is what makes the dependency visible: a closure
+sweep that cannot see it reads the template as dead payload and removes it. Only the bootstrap can produce
 a coherent "what is this project" glossary; a scoped run should not pretend to.
 
 ## Be opinionated

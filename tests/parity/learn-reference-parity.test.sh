@@ -24,7 +24,9 @@ TEST_NAME="learn reference parity"
 # agent must carry it, since a skill installs alone and cannot reach another
 # skill's directory. See TD9.
 #
-# 12 -> 11 on 2026-08-30: en-brainstorm never dispatched it. That skill's own
+# 12 -> 11 on 2026-08-30, 11 -> 8 on 2026-08-31: en-brainstorm never
+# dispatched it, and neither do en-cross-review, en-ship or en-simplify —
+# none of the three mentions research anywhere in its own flow. That skill's own
 # research-dispatch.md says so outright ("en-brainstorm dispatches no scouts",
 # matrix reading "never" at all three depths), so the copy was 150 lines of
 # payload that nothing could reach. The sweep that set 12 counted carriers that
@@ -56,7 +58,7 @@ done <<'CARRIERS'
 references/learn-lint.md|3
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
-agents/learnings-research.md|11
+agents/learnings-research.md|8
 CARRIERS
 
 # The retired taxonomy must not creep back in through any carrier. Character

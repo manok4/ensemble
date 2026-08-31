@@ -1,6 +1,6 @@
 # Observability — debug mapping (span / event → source)
 
-How `/en-debug` step 9 maps a log line to a specific source-code location. Heuristics in priority order.
+How `/en-debug`'s map-span-to-source step maps a log line to a specific source-code location. Heuristics in priority order.
 
 ## The signals
 

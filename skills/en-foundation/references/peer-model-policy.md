@@ -52,7 +52,7 @@ Both are unset by default, so the ladder governs. `setup` writes and merges them
 
 ## (d) Fail-soft, and its owner
 
-**Degradation is handled at the invocation layer** (`bin/ensemble-peer-invoke`, called from `/en-review` step 9), never in the translator.
+**Degradation is handled at the invocation layer** (`bin/ensemble-peer-invoke`, called from `/en-review`'s Outside Voice peer step), never in the translator.
 
 When a peer invocation fails, classify it with `ensemble_smoke_classify` from `bin/ensemble-cli-smoke` (reused from D44, not duplicated):
 

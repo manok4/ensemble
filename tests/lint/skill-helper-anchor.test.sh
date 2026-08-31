@@ -32,13 +32,28 @@ for skill in $SKILLS; do
   fi
 done
 
-# --- 2. no skill reaches into a sibling skill ---
+# --- 2. no skill reaches into a sibling skill's helpers ---
+#
+# This clause could not fail until 2026-08-31. It grepped for 'skills/en-' and
+# filtered with `grep -v "skills/$skill"` — but grep -rn prefixes every hit with
+# its own filename, and inside skills/en-qa every filename starts with
+# skills/en-qa/. The exclusion therefore matched the PREFIX on every line and
+# discarded all of them, so the guard reported "no cross-skill paths" for a file
+# that named one on the very next line.
+#
+# It hid a real violation: en-setup invoked en-guardrail's installer by path.
+#
+# Two changes. Match only the path text (grep -oh, no filename prefix), and scope
+# the rule to what actually breaks a lone install: a path into a sibling's helper
+# directories. Naming another skill's SKILL.md is a documentation cross-reference
+# and stays allowed — the hazard is reaching for a FILE that will not be there.
 for skill in $SKILLS; do
-  hits=$(grep -rn 'skills/en-' "skills/$skill" 2>/dev/null | grep -v "skills/$skill" | head -3 || true)
+  hits=$(grep -rhoE "skills/en-[a-z-]+/(references|scripts|bin|agents|templates)/[A-Za-z0-9._/-]+" \
+           "skills/$skill" 2>/dev/null | grep -v "^skills/$skill/" | sort -u | head -3 || true)
   if [ -n "$hits" ]; then
-    fail "[$skill] names a path inside another skill" "$hits"
+    fail "[$skill] reaches into a sibling skill's helpers" "$(echo $hits)"
   else
-    pass "[$skill] no cross-skill paths"
+    pass "[$skill] no cross-skill helper paths"
   fi
 done
 

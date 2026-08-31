@@ -14,7 +14,6 @@ requires:
   - references/cli-wrappers.md
   - references/code-simplifier-dispatch.md
   - references/diff-signal-detection.md
-  - references/doc-lints.md
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
