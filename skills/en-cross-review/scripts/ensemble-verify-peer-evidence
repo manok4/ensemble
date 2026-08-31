@@ -54,8 +54,8 @@
 #
 #   peer-resolution: <single-line JSON>
 #       Per-finding record (one trailer per finding). Required keys:
-#       finding_id, u_id, iteration, severity, status, title. See
-#       references/build-handoff.md for the full schema.
+#       finding_id, u_id, iteration, severity, status, title. The full
+#       schema lives with the skills that emit per-unit peer evidence.
 #
 #   peer-skipped: <reason>
 #       Recorded when peer review was deliberately not invoked for this unit.

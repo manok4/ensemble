@@ -51,6 +51,9 @@ dedicated per-unit peer pass, capped by `--max-per-unit-iterations` (default 1).
 
 ## Recursion
 
-Under `ENSEMBLE_PEER_REVIEW=true` all peer subprocess calls are skipped and each
-unit commit records `peer-skipped: recursion-guard-active` so the evidence gate
-still passes. It never invokes itself.
+Under `ENSEMBLE_PEER_REVIEW=true` the branch-level review at step 10.3 is
+skipped, and the branch records a `review-verdict:` whose `reviewer` is
+`recursion-guard-active`, so the evidence audit reads a reason rather than an
+absence. Unit commits are unaffected: the host implements and commits every
+unit either way, and no unit commit carries peer evidence under D52. It never
+invokes itself.

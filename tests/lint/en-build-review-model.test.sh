@@ -123,19 +123,35 @@ else
   fail "end-of-build audit must use --branch-coverage"
 fi
 
-# --- ordinary per-unit loop does NOT do per-unit simplify/peer ---
-# 9d should be a single verification gate (not gate 1 / gate 2 simplifier sandwich)
-if grep -qE "9e\. Conditional per-unit peer review \(destructive / gated units ONLY\)" "$SKILL"; then
-  pass "per-unit peer review restricted to destructive/gated units"
+# --- D52: there is no per-unit peer pass at all ---
+# D35 gave ordinary units a branch-level review and kept a per-unit pass for
+# destructive/gated ones; D52 removes that exception. Peer involvement is
+# exactly once per build, at step 10.3, after /en-simplify. Guarded as an
+# ABSENCE because the failure mode is reintroduction: a per-unit pass would
+# put the peer back in the inner loop without anything noticing.
+if grep -qE "^     - \*\*9e\." "$SKILL"; then
+  fail "there must be no per-unit peer step (9e)" \
+       "D52 removed it; the branch-level review at 10.3 covers every unit"
 else
-  fail "per-unit peer review must be restricted to destructive/gated units"
+  pass "no per-unit peer step remains in the unit loop"
 fi
 
-# --- destructive/gated still require a dedicated per-unit peer pass ---
-if grep -qiE "destructive.*MUST get a dedicated per-unit|dedicated per-unit Outside Voice peer pass" "$SKILL"; then
-  pass "destructive/gated units keep a mandatory per-unit peer pass"
+if grep -qiE "dedicated per-unit (Outside Voice )?peer pass" "$SKILL"; then
+  fail "no unit class may claim a dedicated per-unit peer pass" \
+       "destructive and gated units are covered by the branch-level review like every other unit"
 else
-  fail "destructive/gated units must keep a mandatory per-unit peer pass"
+  pass "no unit class claims a dedicated per-unit peer pass"
+fi
+
+# --- the user-facing safety gates are NOT peer review and must survive ---
+# This is the pair that makes the removal safe to read: peer review left the
+# inner loop, the typed confirmations did not.
+if grep -qF 'run unit U<N>' "$SKILL" && grep -qiE 'y/skip/abort' "$SKILL" \
+   && grep -qiE 'No flag disables' "$SKILL"; then
+  pass "destructive and gated units keep their typed and y/skip/abort confirmations"
+else
+  fail "the universal safety gates must survive the per-unit peer removal" \
+       "those are user confirmations, not peer review, and D52 does not touch them"
 fi
 
 # --- foundation records D35 (supersedes D29) ---
@@ -155,10 +171,21 @@ fi
 # provenance with no triggering value, and every character of a description
 # competes with all 16 other skills for Codex's 8,000-char initial-list budget
 # (see TD2). The body is read in full once the skill is selected.
-if grep -qF "D35, amended by D46" "$SKILL"; then
-  pass "en-build cites the amending decision, not just D35"
+if grep -qF "D52" "$SKILL"; then
+  pass "en-build cites the decision currently in force"
 else
-  fail "en-build must cite D46 alongside D35 (a stale decision label misleads maintainers)"
+  fail "en-build must cite D52 (a stale decision label misleads maintainers)"
+fi
+
+# --- D52 is recorded, and says what it costs ---
+# A decision that removes a safety pass without naming the trade is one nobody
+# can re-litigate later on the evidence.
+if grep -qE "^- \*\*D52\." "$FOUNDATION" \
+   && grep -qiE "D52.*(supersedes D35|amends D46)" "$FOUNDATION" \
+   && grep -qiE "What this costs" "$FOUNDATION"; then
+  pass "foundation records D52, its supersession, and its cost"
+else
+  fail "foundation must record D52 with what it supersedes and what it costs"
 fi
 
 # --- --no-peer skips the branch-level review ---

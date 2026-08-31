@@ -16,8 +16,11 @@ TEST_NAME="en-codex flag drift"
 DETECT="$REPO_ROOT/skills/en-brainstorm/scripts/ensemble-detect-host"
 HOSTDOC="$REPO_ROOT/skills/en-brainstorm/references/host-detect.md"
 OUTVOICE="$REPO_ROOT/skills/en-build/references/outside-voice.md"
-HANDOFF="$REPO_ROOT/skills/en-build/references/build-handoff.md"
-ORCH="$REPO_ROOT/skills/en-build/references/build-orchestration.md"
+# D52 removed en-build's two flavors, so build-handoff.md and
+# build-orchestration.md now live only with /en-cross-review, which names
+# them in its own flow. This checks the surviving carrier.
+HANDOFF="$REPO_ROOT/skills/en-cross-review/references/build-handoff.md"
+ORCH="$REPO_ROOT/skills/en-cross-review/references/build-orchestration.md"
 SETUP="$REPO_ROOT/setup"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 SMOKE="$REPO_ROOT/skills/en-build/scripts/ensemble-cli-smoke"
