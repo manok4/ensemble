@@ -4,23 +4,17 @@ description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
-  - agents/dimension-reviewer.md
   - agents/learnings-research.md
   - agents/repo-research.md
   - agents/web-research.md
   - references/agent-dispatch.md
-  - references/build-handoff.md
-  - references/build-orchestration.md
-  - references/cli-wrappers.md
   - references/diff-signal-detection.md
-  - references/doc-lints.md
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
   - references/peer-brief.md
   - references/peer-contract.md
   - references/peer-model-policy.md
-  - references/persona-dispatch.md
   - references/plan-default-branch-checkpoint.md
   - references/recursion-guard.md
   - references/research-dispatch.md
@@ -29,7 +23,6 @@ requires:
   - references/single-agent-fallback.md
   - references/stable-ids.md
   - references/templates/plan-template.md
-  - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
   - scripts/ensemble-cli-smoke
   - scripts/ensemble-config-get
@@ -38,7 +31,6 @@ requires:
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
   - scripts/ensemble-plan-hash
-  - scripts/ensemble-verify-peer-evidence
 
 ---
 
@@ -116,18 +108,32 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    The natural shape here is two rounds, because file boundaries and test strategy both partly depend on the architecture answer:
 
    - **Round 1:** which architecture do we land on (if multiple were on the table)?
-   - **Round 2:** file boundaries — new files vs extending existing? · test strategy — unit / integration / end-to-end, and test-first / characterization-first / pragmatic? · dependencies — any new packages? (**bias toward boring tech**: prefer the dependency the project already has, or none, over a new one that is marginally nicer) · migrations — schema, data, config?
+   - **Round 2:** file boundaries — new files vs extending existing? · test strategy — which **seams** do we test at, and unit / integration / end-to-end, test-first / characterization-first / pragmatic? · dependencies — any new packages? (**bias toward boring tech**: prefer the dependency the project already has, or none, over a new one that is marginally nicer) · migrations — schema, data, config?
+
+   **Seams are a plan-level decision, made once.** A seam is where a test observes the system: an HTTP boundary, a module's public function, a queue, a DB row. Decide the set here and let the units inherit it. Three rules, in order: **prefer a seam that already exists** over introducing one; **take the highest seam that can still observe the behaviour**, since a test at the top survives refactors underneath it; and **keep the set small**, because each seam is a place the test suite is coupled to the design. One is the ideal, and a plan needing four should say why.
+
+   Deciding this once is what stops each unit inventing its own mock boundary, which is how a suite ends up with three ways to fake the same dependency and no way to run the feature end to end.
 
    On **Lightweight**, ask one question per turn instead; a 1–3 unit plan does not need a tree. Stop when the frontier is empty or the questions are answered by the design doc and research.
 8. **Break into units (U-IDs).**
-   - Each unit: one logical change, peer-reviewable, atomically committable.
+   - Each unit: one logical change, peer-reviewable, atomically committable. **The test for a boundary: could a reviewer reject this unit while approving its neighbour?** If not, they are one unit. Fold setup, config, scaffolding and doc steps into the unit whose deliverable needs them rather than giving them their own U-ID.
+   - Prefer a unit that cuts a **narrow but complete path** through the layers it touches, so it is verifiable on its own, over one that does a horizontal slice of a single layer and leaves nothing demonstrable.
    - Tightly-coupled changes batch into one unit; independent concerns become separate units.
    - Auth/payments/migrations always get their own unit even if small.
    - **Never renumber after assignment** (per `references/stable-ids.md`).
+
+   **Wide refactors are the exception to all of the above.** A wide refactor is one mechanical change — rename a column, retype a shared symbol — whose blast radius fans across the codebase, so a single edit breaks hundreds of call sites at once and no self-contained unit can land green. Do not force it into one. Sequence it **expand → migrate → contract**:
+
+   - **Expand:** add the new form beside the old so nothing breaks. Its own unit.
+   - **Migrate:** move call sites over in batches sized by blast radius (per package, per directory), each batch its own unit depending on the expand. The old form still exists, so every batch lands green.
+   - **Contract:** delete the old form once no caller remains, in a unit depending on every migrate batch.
+
+   Only the contract unit is destructive: give it `category: removal` and the `risk:` its blast radius earns, while the batches stay additive at their own lower risk. The phase invariant then holds for free — every batch is lower-risk than the contract unit that depends on it — and `/en-build` phases the sequence correctly with no special-casing. When even a single batch cannot stay green alone, keep the sequence and say so in the plan: the batches share a branch and only the final unit promises green.
 9. **Per-unit metadata.** For each U-ID:
    - **Goal:** one line.
    - **Requirements covered:** R-IDs and AE-IDs from foundation. (For State-2 retrofit projects without a foundation yet, leave `covers_requirements: []` and set `requirements_pending: true`.)
    - **Dependencies:** other U-IDs that must complete first.
+   - **Interfaces:** *(only when a later unit calls something this one creates)* **Produces** the exact names and signatures later units rely on; **Consumes** the ones it calls from earlier units. `/en-build` dispatches a worker per unit with that unit's block and nothing else, so the U7 worker never sees U3 — this block is how it learns what to call. Omit it entirely when no unit depends on another's surface; most units have no interface with a neighbour and inventing one is noise.
    - **Files:** repo-relative paths.
    - **Approach:** how the unit will be implemented.
    - **Risk:** `low | medium | high | destructive`. Drives `/en-build` phase placement and safety gates. Ask if unclear; default `medium` only when the unit is genuinely additive and reversible. Mark `destructive` for any DROP TABLE / DROP SCHEMA / mass DELETE / TRUNCATE / recursive removal of persistent data.
@@ -148,6 +154,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     - **Test-scenario completeness.** For every **feature-bearing** unit, confirm the `Test scenarios:` enumerate real scenarios across the applicable categories (happy path / edge cases / error-failure paths / integration) with concrete inputs/actions/outcomes. A feature unit with blank or fewer-than-two scenarios is **incomplete** — strengthen it before finalizing (or, if genuinely non-feature, switch it to `**Test expectation:** none — <reason>`). This mirrors the `unit.test-scenarios` lint (P2 advisory) so plans arrive at peer review already clean.
     - **Decisions / assumptions / risks capture.** If research (repo/learnings/web) or the planning discussion surfaced a **non-obvious decision, a rejected alternative, an inferred assumption the plan bets on, or a genuine risk**, capture it in the optional `## Decisions, assumptions & risks` section (per `references/templates/plan-template.md`) rather than burying it in unit `Approach:` fields. **Omit the section entirely** when nothing substantive surfaced — do not add it as empty boilerplate on trivial plans.
+    - **Name and signature consistency.** Walk the `Interfaces:` blocks and every name one unit's `Approach:` gives another. A function called `clearLayers()` in U3 and `clearFullLayers()` in U7 is a defect the plan hands straight to the worker, which implements what the plan says and produces a call to something that does not exist. Same for parameter order, return shapes, and field names. Fix in place; this costs one read of the plan and catches the whole class.
+    - **No placeholders.** These are plan failures, not shorthand, because a worker cannot resolve them: "TBD", "handle edge cases", "add appropriate error handling", "similar to U3" (the worker sees only its own unit and cannot look at U3), "write tests for the above" with no scenarios, or a reference to a type or function no unit defines.
     - **Technical-design load-bearing audit (self-gating).** Count the **architecture-complexity triggers** the plan fires: **≥3 new/changed components**, a **≥3-step protocol/handshake**, a **state machine**, **≥3 data-flow stages**, or **DSL / public-API design**. If **any** trigger fires (typically Deep / high-risk plans), the plan MUST carry a plan-level `## Technical design` section — a **directional** high-level sketch of the cross-cutting architecture (component boundaries, data flow, key interfaces), not a spec. Verify the section is present when a trigger fired; a missing section with a fired trigger is **incomplete** — add it before finalizing. **Self-gating:** if no trigger fires (simple plans), the section is not required and must not be added as boilerplate.
 
 13. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`).
@@ -161,7 +169,17 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     Record the outcome as `default_branch_checkpoint: <auto_branched | no_commit_requested | committed_to_default_branch>` in the `/en-plan` report.
 
-14. **Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`** using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
+14. **Write the plan.** One precondition first, and it can end the step.
+
+    **Is a plan file warranted?** Not every planning request earns one. Offer to skip when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, and the user did not ask for a plan file in so many words.
+
+    > "This is one low-risk change. I can write it up as a plan, or just tell you the change and you make it. A plan file buys peer review and a `/en-build` run; for a change this size that may cost more than it returns."
+
+    If they take the no-file path, state the change concretely and stop: **no file, no U-IDs, no peer review, and `/en-build` is not available** for it, since `/en-build` consumes a plan file and there will not be one. Say that plainly rather than implying a handoff that cannot happen.
+
+    **Never offer the skip** when the work touches a risk surface — authentication, payments, migrations, external contracts — regardless of how small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.
+
+    Then write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
 15. **Outside Voice review with finalize loop.** If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
@@ -320,6 +338,7 @@ Gated — read only when its step's gate fires, never up front:
 
 | Failure | Behavior |
 |---|---|
+| User declines the plan file, then asks to `/en-build` it | There is no file to build. Offer to write the plan now; do not synthesize one silently from the conversation, because it would carry no peer verdict and no hash. |
 | Plan touches > 30 files | Surface size warning; offer to split into multiple FRs |
 | `docs/foundation.md` too large to scan cheaply | Section-index read only (source-the-request step); never fall back to reading it whole. |
 | Design doc matching the topic is `superseded` | Do not carry its decisions; treat the request as unexplored and apply the brainstorm soft-nudge. |

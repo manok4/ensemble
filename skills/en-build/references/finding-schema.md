@@ -78,7 +78,7 @@ When `en-review` runs multiple persona agents and aggregates their findings:
 
 ## Two-source reconciliation (EN11)
 
-When the cross-agent peer runs alongside the host personas (the `/en-review` default), every raw finding carries a `source`, and the two sets reconcile into **reconciliation records**. The full algorithm, including the conflict-before-corroboration ordering and the partition invariant, lives in `references/persona-dispatch.md`; this file defines the shapes.
+When the cross-agent peer runs alongside the host personas (the `/en-review` default), every raw finding carries a `source`, and the two sets reconcile into **reconciliation records**. The full algorithm, including the conflict-before-corroboration ordering and the partition invariant, lives in the persona-dispatch reference that `/en-review` carries; this file defines the shapes.
 
 | Field | Required | Meaning |
 |---|---|---|

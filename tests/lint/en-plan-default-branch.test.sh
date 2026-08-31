@@ -35,11 +35,14 @@ fi
 
 # --- Checkpoint runs BEFORE the plan-file write step (so resume can checkout cleanly) ---
 checkpoint_line=$(grep -n "Default-branch checkpoint" "$EN_PLAN" | head -1 | cut -d: -f1)
-write_step_line=$(grep -nE "^[0-9]+\. \*\*Write to" "$EN_PLAN" | head -1 | cut -d: -f1)
+# Anchored on the write step's name rather than its opening words: the step
+# gained a warranted-gate precondition and its first line stopped being the
+# path, which silently broke this ordering check.
+write_step_line=$(grep -nE "^[0-9]+\. \*\*Write the plan\.\*\*" "$EN_PLAN" | head -1 | cut -d: -f1)
 if [ -n "$checkpoint_line" ] && [ -n "$write_step_line" ] && [ "$checkpoint_line" -lt "$write_step_line" ]; then
   pass "checkpoint runs BEFORE plan-file write (per resume safety)"
 else
-  fail "checkpoint must run BEFORE 'Write to docs/plans/...' step" "checkpoint=$checkpoint_line write=$write_step_line"
+  fail "checkpoint must run BEFORE the write step" "checkpoint=$checkpoint_line write=$write_step_line"
 fi
 
 # --- All four response options documented ---

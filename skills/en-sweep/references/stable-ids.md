@@ -81,7 +81,7 @@ Format: `TD1`, `TD2`, … in `docs/plans/tech-debt-tracker.md`. Append-only.
 - `id-stability.fr-format` (P2)
 - `id-stability.td-renumbered` (P1)
 
-Cross-link integrity (`cross-link.broken-r`, `broken-u`, `broken-fr`, `broken-td`) is enforced separately — see `references/doc-lints.md`.
+Cross-link integrity (`cross-link.broken-r`, `broken-u`, `broken-fr`, `broken-td`) is enforced separately by the doc lints.
 
 ## Practical tips
 

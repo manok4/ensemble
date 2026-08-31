@@ -2,7 +2,7 @@
 
 Which model and how much reasoning effort the cross-agent peer runs with, and who decides.
 
-> **Three layers, deliberately separated.** **Policy** (this file) owns the stable risk ladder. **Binding** (`bin/ensemble-peer-flags`) owns the volatile per-CLI syntax. **Call sites** read `$PEER_MODEL` / `$PEER_EFFORT` and never a literal. This is the `references/cli-wrappers.md` pattern: when a CLI literal was scattered across nine files, one upstream flag removal cost a whole plan to repair (D44). Model IDs are the same hazard, so **no concrete model ID may appear anywhere in Ensemble**.
+> **Three layers, deliberately separated.** **Policy** (this file) owns the stable risk ladder. **Binding** (the `ensemble-peer-flags` helper) owns the volatile per-CLI syntax. **Call sites** read `$PEER_MODEL` / `$PEER_EFFORT` and never a literal. This is the cli-wrappers pattern: when a CLI literal was scattered across nine files, one upstream flag removal cost a whole plan to repair (D44). Model IDs are the same hazard, so **no concrete model ID may appear anywhere in Ensemble**.
 
 ## (a) The effort ladder
 
@@ -87,11 +87,11 @@ Published here once, and consumed verbatim by `/en-review` and the drift tests, 
 | `off` | `no-peer-flag` , `single-agent-fallback` , `report-only-mode` , `recursion-guard` , `peer-unavailable` , `auto-skip:diff-below-threshold` , `auto-skip:lightweight-depth` , `peer-failed:auth` , `peer-failed:timeout` , `peer-failed:unknown` , `peer-failed:retry-exhausted` |
 | `degraded` | `dropped-model-fragment` , `dropped-effort-fragment` |
 
-Anything outside this enum is a contract violation, the same standard `references/build-handoff.md` applies to `peer-skipped:`.
+Anything outside this enum is a contract violation, the same standard the build flavors apply to `peer-skipped:`.
 
 ## Related
 
-- `references/cli-wrappers.md` — the per-CLI flag tables this policy binds against
-- `references/diff-signal-detection.md` — defines `is_small_and_safe`
+- cli-wrappers — the per-CLI flag tables this policy binds against (carried by the skills that bind them)
+- diff-signal-detection — defines `is_small_and_safe` (carried by the skills that review a diff)
 - `references/host-detect.md` — emits `PEER_CMD` / `PEER_FORMAT` / `PEER_TURNS`
-- `references/persona-dispatch.md` — how the peer's findings reconcile with the host personas
+- persona-dispatch — how the peer's findings reconcile with the host personas (carried by `/en-review`)
