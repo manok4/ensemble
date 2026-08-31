@@ -89,6 +89,9 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Goal:** <one-line outcome>
 - **Requirements covered:** R<N>, AE<N>
 - **Dependencies:** <U-IDs that must complete first, or `none`>
+- **Interfaces:** *(omit unless a later unit calls something this one creates)*
+  - *Produces:* <exact names, signatures, return shapes later units call>
+  - *Consumes:* <exact names this unit calls from earlier units>
 - **Files:** <repo-relative paths the unit will touch>
 - **Approach:** <how this unit will be implemented>
 - **Risk:** low | medium | high | destructive
