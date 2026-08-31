@@ -112,10 +112,19 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
    On **Lightweight**, ask one question per turn instead; a 1–3 unit plan does not need a tree. Stop when the frontier is empty or the questions are answered by the design doc and research.
 8. **Break into units (U-IDs).**
-   - Each unit: one logical change, peer-reviewable, atomically committable.
+   - Each unit: one logical change, peer-reviewable, atomically committable. **The test for a boundary: could a reviewer reject this unit while approving its neighbour?** If not, they are one unit. Fold setup, config, scaffolding and doc steps into the unit whose deliverable needs them rather than giving them their own U-ID.
+   - Prefer a unit that cuts a **narrow but complete path** through the layers it touches, so it is verifiable on its own, over one that does a horizontal slice of a single layer and leaves nothing demonstrable.
    - Tightly-coupled changes batch into one unit; independent concerns become separate units.
    - Auth/payments/migrations always get their own unit even if small.
    - **Never renumber after assignment** (per `references/stable-ids.md`).
+
+   **Wide refactors are the exception to all of the above.** A wide refactor is one mechanical change — rename a column, retype a shared symbol — whose blast radius fans across the codebase, so a single edit breaks hundreds of call sites at once and no self-contained unit can land green. Do not force it into one. Sequence it **expand → migrate → contract**:
+
+   - **Expand:** add the new form beside the old so nothing breaks. Its own unit.
+   - **Migrate:** move call sites over in batches sized by blast radius (per package, per directory), each batch its own unit depending on the expand. The old form still exists, so every batch lands green.
+   - **Contract:** delete the old form once no caller remains, in a unit depending on every migrate batch.
+
+   Only the contract unit is destructive: give it `category: removal` and the `risk:` its blast radius earns, while the batches stay additive at their own lower risk. The phase invariant then holds for free — every batch is lower-risk than the contract unit that depends on it — and `/en-build` phases the sequence correctly with no special-casing. When even a single batch cannot stay green alone, keep the sequence and say so in the plan: the batches share a branch and only the final unit promises green.
 9. **Per-unit metadata.** For each U-ID:
    - **Goal:** one line.
    - **Requirements covered:** R-IDs and AE-IDs from foundation. (For State-2 retrofit projects without a foundation yet, leave `covers_requirements: []` and set `requirements_pending: true`.)
