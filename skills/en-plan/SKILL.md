@@ -171,7 +171,9 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 14. **Write the plan.** One precondition first, and it can end the step.
 
-    **Is a plan file warranted?** Not every planning request earns one. Offer to skip when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, and the user did not ask for a plan file in so many words.
+    **Is a plan file warranted?** Not every planning request earns one. Offer to skip when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, **no design doc was consumed**, and the user did not ask for a plan file in so many words.
+
+    The design-doc condition is not about size. `/en-plan` closes a consumed design out to `accepted` or `superseded` during the promotion below, and the no-file path never reaches it — so skipping the file on a design-backed request would leave that design `status: open` forever and back in `/en-brainstorm`'s resume pool, which is the compounding defect the close-out exists to prevent. A request someone thought worth a design doc has already earned the cheaper artifact.
 
     > "This is one low-risk change. I can write it up as a plan, or just tell you the change and you make it. A plan file buys peer review and a `/en-build` run; for a change this size that may cost more than it returns."
 
