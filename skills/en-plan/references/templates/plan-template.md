@@ -74,6 +74,10 @@ data_scale: {{DATA_SCALE}}
 
 <one to three paragraphs: the architectural shape of the solution. Decisions live here at the macro level; per-unit tactics live in U-ID sections.>
 
+## Test seams
+
+<Where tests observe this work, decided once and inherited by every unit. Name each seam and say whether it already exists or is new. Prefer existing, prefer the highest seam that can still observe the behaviour, prefer few. Omit this section when the plan adds no tests.>
+
 ## Technical design
 
 **Present ONLY when an architecture-complexity trigger fires** (≥3 new/changed components, a ≥3-step protocol/handshake, a state machine, ≥3 data-flow stages, or DSL/public-API design). A **directional** high-level sketch of the cross-cutting architecture — component boundaries, data flow between them, and key interfaces/contracts. Directional, not a spec (the units carry the tactics). **Omit this section entirely on simpler plans** that fire no trigger.

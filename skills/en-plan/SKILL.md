@@ -108,7 +108,11 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    The natural shape here is two rounds, because file boundaries and test strategy both partly depend on the architecture answer:
 
    - **Round 1:** which architecture do we land on (if multiple were on the table)?
-   - **Round 2:** file boundaries — new files vs extending existing? · test strategy — unit / integration / end-to-end, and test-first / characterization-first / pragmatic? · dependencies — any new packages? (**bias toward boring tech**: prefer the dependency the project already has, or none, over a new one that is marginally nicer) · migrations — schema, data, config?
+   - **Round 2:** file boundaries — new files vs extending existing? · test strategy — which **seams** do we test at, and unit / integration / end-to-end, test-first / characterization-first / pragmatic? · dependencies — any new packages? (**bias toward boring tech**: prefer the dependency the project already has, or none, over a new one that is marginally nicer) · migrations — schema, data, config?
+
+   **Seams are a plan-level decision, made once.** A seam is where a test observes the system: an HTTP boundary, a module's public function, a queue, a DB row. Decide the set here and let the units inherit it. Three rules, in order: **prefer a seam that already exists** over introducing one; **take the highest seam that can still observe the behaviour**, since a test at the top survives refactors underneath it; and **keep the set small**, because each seam is a place the test suite is coupled to the design. One is the ideal, and a plan needing four should say why.
+
+   Deciding this once is what stops each unit inventing its own mock boundary, which is how a suite ends up with three ways to fake the same dependency and no way to run the feature end to end.
 
    On **Lightweight**, ask one question per turn instead; a 1–3 unit plan does not need a tree. Stop when the frontier is empty or the questions are answered by the design doc and research.
 8. **Break into units (U-IDs).**
