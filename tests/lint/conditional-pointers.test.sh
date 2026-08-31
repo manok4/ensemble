@@ -79,4 +79,29 @@ OWNERS
   && pass "every real consumer names and carries its own dependency" \
   || fail "every real consumer names and carries its own dependency" "$orphaned"
 
+# --- 3. the cut actually reduced carriage, and stays reduced ---
+# Pinned counts. A rise means a re-link (or a hand-added declaration) put the
+# file back into a skill that does not use it; a drop means a real consumer lost
+# its dependency. Either direction is worth a look, so this is an equality
+# check rather than a ceiling.
+drift=""
+while IFS='|' read -r rel expected; do
+  [ -n "$rel" ] || continue
+  n=$(ls -1 skills/*/"$rel" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$n" = "$expected" ] || drift="$drift $rel($n!=$expected)"
+done <<'COUNTS'
+references/build-handoff.md|4
+references/build-orchestration.md|4
+references/persona-dispatch.md|4
+references/cli-wrappers.md|4
+agents/dimension-reviewer.md|4
+scripts/ensemble-verify-peer-evidence|5
+references/doc-lints.md|6
+scripts/en-sweep-ci|6
+COUNTS
+
+[ -z "$drift" ] \
+  && pass "carrier counts hold at their post-cut values" \
+  || fail "carrier counts hold at their post-cut values" "$drift"
+
 report
