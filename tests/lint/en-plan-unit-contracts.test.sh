@@ -46,7 +46,7 @@ fi
 # --- 3. the consistency check runs before the plan is written ---
 # After the write it would be a review comment; before it, it is a fix.
 cons=$(grep -n 'Name and signature consistency' "$SKILL" | head -1 | cut -d: -f1)
-write=$(grep -n '^14\. \*\*Write to' "$SKILL" | head -1 | cut -d: -f1)
+write=$(grep -nE '^[0-9]+\. \*\*Write the plan\.\*\*' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$cons" ] && [ -n "$write" ] && [ "$cons" -lt "$write" ]; then
   pass "the consistency check runs before the write (check=$cons write=$write)"
 else
