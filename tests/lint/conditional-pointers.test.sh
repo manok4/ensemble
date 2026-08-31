@@ -90,13 +90,13 @@ while IFS='|' read -r rel expected; do
   n=$(ls -1 skills/*/"$rel" 2>/dev/null | wc -l | tr -d ' ')
   [ "$n" = "$expected" ] || drift="$drift $rel($n!=$expected)"
 done <<'COUNTS'
-references/build-handoff.md|4
-references/build-orchestration.md|4
-references/persona-dispatch.md|4
+references/build-handoff.md|2
+references/build-orchestration.md|2
+references/persona-dispatch.md|2
 references/cli-wrappers.md|4
-agents/dimension-reviewer.md|4
-scripts/ensemble-verify-peer-evidence|5
-references/doc-lints.md|6
+agents/dimension-reviewer.md|2
+scripts/ensemble-verify-peer-evidence|3
+references/doc-lints.md|3
 scripts/en-sweep-ci|6
 COUNTS
 

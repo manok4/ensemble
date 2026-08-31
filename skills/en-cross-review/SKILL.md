@@ -4,24 +4,18 @@ description: "Ad-hoc Outside Voice peer review of any artifact (file, git diff, 
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
-  - agents/dimension-reviewer.md
-  - agents/learnings-research.md
-  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/build-handoff.md
   - references/build-orchestration.md
   - references/cli-wrappers.md
   - references/diff-signal-detection.md
-  - references/doc-lints.md
   - references/finding-schema.md
   - references/host-detect.md
   - references/outside-voice.md
   - references/peer-brief.md
   - references/peer-contract.md
   - references/peer-model-policy.md
-  - references/persona-dispatch.md
   - references/recursion-guard.md
-  - references/research-dispatch.md
   - references/script-invocation.md
   - references/severity.md
   - references/single-agent-fallback.md
