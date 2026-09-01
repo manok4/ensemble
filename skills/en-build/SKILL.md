@@ -237,8 +237,22 @@ If the agent has a real concern that's outside the seven cases AND not caught by
        This entire sequence runs identically on every code path — phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase`, manual resume. **No flag suppresses it.** The phase-level prompts above (P4 `"run phase 4"`, P3 under `--strict-destructive`) only group-confirm the *destructive* and *high-risk* gates inside their phase; they never cover `gated: true`, and they never apply on phasing-off paths.
      - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
      - **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent.
+
+       **First, check whether the unit is already done.** If its `Files` exist with the expected capability, or its `Verification` criteria already pass against the current code, the work landed on a prior branch or an earlier run of this build. Confirm it matches the unit's intent, record it as already-satisfied in the progress report, and move on. **Do not silently reimplement.** `--from U<N>` and `--from-phase P<N>` both resume into work that may already exist, and reimplementing churns a diff the branch-level review then has to read.
      - **9d. Verification gate.** Run unit tests + project lint. Failures → fix before committing (don't commit a broken unit).
-     - **9f. Commit.** Conventional subject + U-ID + `phase: P<N>` trailer. **Stage only the unit's own files**, never `git add .`: a bare stage absorbs whatever was already in the index, which on a build that started from a dirty tree silently commits work the user never offered. If the unit needed a file that was already dirty, ask once whether to include or exclude it, and record the answer in the progress report.
+
+       **System-wide check, before calling a feature-bearing unit done.** Unit tests prove the unit's logic; these five questions are about what the unit sits inside. **Skip it entirely for a leaf change** — no callbacks, no persisted state, no parallel interfaces — where the honest answer to all five is "nothing".
+
+       | Ask | What to actually do |
+       |---|---|
+       | **What fires when this runs?** | Trace two levels out. Read the code, not the docs, for callbacks, middleware, observers, hooks on anything the unit touches. |
+       | **Do the tests exercise the real chain?** | If every dependency is mocked, the test proves the logic in isolation and says nothing about the interaction. At least one test should run real objects through the chain. |
+       | **Can failure leave orphaned state?** | If state is persisted before a risky call, trace the failure path: does it clean up, and is retry idempotent? |
+       | **What other interfaces expose this?** | Grep for the behaviour in sibling classes and alternate entry points. If parity is needed, it belongs in this unit, not a follow-up. |
+       | **Do error strategies agree across layers?** | List the error classes each layer raises and rescues. Retry middleware plus an application fallback can double-execute. |
+
+       A "yes" that the unit's tests do not cover is a gap to close here, not a finding to leave for step 10.
+     - **9e. Commit.** Conventional subject + U-ID + `phase: P<N>` trailer. **Stage only the unit's own files**, never `git add .`: a bare stage absorbs whatever was already in the index, which on a build that started from a dirty tree silently commits work the user never offered. If the unit needed a file that was already dirty, ask once whether to include or exclude it, and record the answer in the progress report.
 
        No peer trailers here. Every unit — ordinary, destructive or gated alike — is covered by the branch-level `review-verdict:` written at step 10, so there is no per-unit peer evidence to record and none is required.
    - **After-phase verification.** Run project default test suite (e.g. `npm test` / `pytest`), lint, typecheck. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
@@ -247,7 +261,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
    - Surface phase summary (units, commits, any gate confirmations the phase required).
    - If `--pause` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
 
-   **Phasing-off path** (phasing disabled by triggers, `--no-phasing`, `--unit U<N>`, `--from U<N>`): same per-unit loop (9a–9f), no phase grouping, no phase-level prompts. Critically, **step 9a runs verbatim** on every selected unit — `--unit U8` against a destructive unit still requires `"run unit U8"` typed literally; `--from U3` against a plan that contains a gated unit still pauses for y/skip/abort on that unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent across phasing-on and phasing-off runs). **Note:** when phasing is off and `--unit`/`--from` builds a subset, the post-build branch-level review (step 10) still runs over the resulting branch diff so ordinary units get their `review-verdict:` coverage.
+   **Phasing-off path** (phasing disabled by triggers, `--no-phasing`, `--unit U<N>`, `--from U<N>`): same per-unit loop (9a–9e), no phase grouping, no phase-level prompts. Critically, **step 9a runs verbatim** on every selected unit — `--unit U8` against a destructive unit still requires `"run unit U8"` typed literally; `--from U3` against a plan that contains a gated unit still pauses for y/skip/abort on that unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent across phasing-on and phasing-off runs). **Note:** when phasing is off and `--unit`/`--from` builds a subset, the post-build branch-level review (step 10) still runs over the resulting branch diff so ordinary units get their `review-verdict:` coverage.
 
 10. **Post-build phase (branch-level simplify → review → audit → learn).** Runs ONCE after all units commit. This is where ordinary units get their code-simplifier and Outside Voice review — at the branch level, not per-unit (D29).
 

@@ -129,11 +129,14 @@ fi
 # exactly once per build, at step 10.3, after /en-simplify. Guarded as an
 # ABSENCE because the failure mode is reintroduction: a per-unit pass would
 # put the peer back in the inner loop without anything noticing.
-if grep -qE "^     - \*\*9e\." "$SKILL"; then
-  fail "there must be no per-unit peer step (9e)" \
-       "D52 removed it; the branch-level review at 10.3 covers every unit"
+# Keyed on CONTENT, not the letter. The loop was renumbered when 9e's removal
+# left a gap, and a letter-keyed check would have gone red on the renumber while
+# staying green if a per-unit peer came back under a different letter.
+if grep -qiE "^     - \*\*9[a-z]\..*per-unit peer|^     - \*\*9[a-z]\..*Outside Voice" "$SKILL"; then
+  fail "no step in the unit loop may run a peer pass" \
+       "D52 moved peer review to 10.3; the branch-level review covers every unit"
 else
-  pass "no per-unit peer step remains in the unit loop"
+  pass "no step in the unit loop runs a peer pass"
 fi
 
 if grep -qiE "dedicated per-unit (Outside Voice )?peer pass" "$SKILL"; then
