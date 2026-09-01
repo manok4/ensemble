@@ -62,7 +62,7 @@ done <<'CARRIERS'
 references/learn-lint.md|2
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
-agents/learnings-research.md|7
+agents/learnings-research.md|6
 CARRIERS
 
 # The retired taxonomy must not creep back in through any carrier. Character

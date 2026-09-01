@@ -76,6 +76,24 @@ The Q&A library `/en-foundation` draws from. **One question per turn; multiple-c
 | Layer rules — what can call what? | §9.2 |
 | External integrations on day 1? | §9.3 |
 
+
+### Before accepting the answer
+
+**Design it twice.** Sketch a second architecture that is *structurally* different from the first — not a variant of the same shape with a component renamed — and compare them before recording either. The first shape a project reaches for is the one its author already had in mind; the comparison is what makes §9 a decision instead of a transcription. Record the rejected alternative and why it lost, as a D-ID.
+
+**Screen both against these red flags.** Any that fires is discussed with the user before §9 is written, not silently accepted:
+
+| Red flag | What it looks like |
+|---|---|
+| Shallow module | The interface is nearly as complex as the implementation it hides |
+| Information leakage | A design decision that shows up in more than one component, so both change together |
+| Temporal decomposition | Components split by *when* they run rather than by what they know |
+| Pass-through | A component whose methods mostly forward to the next layer down |
+
+**Prefer the deeper interface.** Between two workable shapes, take the one hiding more complexity behind a smaller public surface. Concentrating capability keeps call chains short; scattering it across thin layers is what produces the pass-through flag above.
+
+This is a **sketch, not a specification** — component boundaries, what each one knows, and how data crosses between them. Depth of design belongs in `/en-plan`, per unit.
+
 ## §10 API Surface
 
 | Q | Notes |
@@ -120,5 +138,7 @@ Before writing the foundation:
 | Lightweight | 8–12 |
 | Standard | 18–28 |
 | Deep | 30–45 |
+
+These bands count **questions actually asked**, after the orient ledger has been subtracted in the discovery loop. A Deep retrofit whose codebase answers §7, §8, §9 and §10 should land well under the Deep band; if it does not, the ledger was not applied.
 
 If question count is exceeding the band, surface it: "We're at 25 questions; want to wrap and write a draft, or keep going?"
