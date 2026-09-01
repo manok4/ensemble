@@ -95,9 +95,9 @@ while IFS='|' read -r rel expected; do
 done <<'COUNTS'
 references/build-handoff.md|1
 references/build-orchestration.md|1
-references/persona-dispatch.md|2
+references/persona-dispatch.md|1
 references/cli-wrappers.md|4
-agents/dimension-reviewer.md|2
+agents/dimension-reviewer.md|1
 scripts/ensemble-verify-peer-evidence|3
 references/doc-lints.md|3
 scripts/en-sweep-ci|6

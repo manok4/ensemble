@@ -708,7 +708,9 @@ done
 # which the planning LLM read too liberally. New bar: gated is for
 # production-state-changing units only.
 
-PLAN_TEMPLATE="${REPO_ROOT}/skills/en-build/references/templates/plan-template.md"
+# Reads /en-plan's copy: it owns the plan template, and D52's payload cut
+# removed en-build's, which it carried for one see-also cross-reference.
+PLAN_TEMPLATE="${REPO_ROOT}/skills/en-plan/references/templates/plan-template.md"
 
 # A. The vague "any non-destructive unit" catch-all is GONE.
 if grep -qE "any non-destructive unit that needs explicit confirmation" "$PLAN_TEMPLATE"; then

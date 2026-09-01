@@ -5,9 +5,6 @@ description: "Execute an implementation plan unit by unit on a feature branch. T
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
   - agents/code-simplifier.md
-  - agents/dimension-reviewer.md
-  - agents/learnings-research.md
-  - agents/repo-research.md
   - references/agent-dispatch.md
   - references/cli-wrappers.md
   - references/code-simplifier-dispatch.md
@@ -18,14 +15,11 @@ requires:
   - references/peer-brief.md
   - references/peer-contract.md
   - references/peer-model-policy.md
-  - references/persona-dispatch.md
   - references/recursion-guard.md
-  - references/research-dispatch.md
   - references/script-invocation.md
   - references/severity.md
   - references/single-agent-fallback.md
   - references/stable-ids.md
-  - references/templates/plan-template.md
   - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
   - scripts/ensemble-cli-smoke
@@ -164,7 +158,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 
     These are the primary safety boundary — and they are deliberately **two narrow categories, nothing more**:
     - **`risk: destructive`** — its own literal-string category, for irreversible data loss.
-    - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated — they're covered by the per-unit verification gate (9d) + the post-build review (step 10), not user prompts. (Plan authors and peer review enforce this bar; see `references/templates/plan-template.md`.)
+    - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated — they're covered by the per-unit verification gate (9d) + the post-build review (step 10), not user prompts. (Plan authors and peer review enforce this bar at plan time; `/en-plan`'s template carries the same criteria.)
 
     Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `--pause`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
 

@@ -8,7 +8,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-review --lite"
 
 EN_REVIEW="$REPO_ROOT/skills/en-review/SKILL.md"
-PERSONA="$REPO_ROOT/skills/en-build/references/persona-dispatch.md"
+# Reads /en-review's copy: it owns persona dispatch. D52 removed en-build's,
+# which arrived through a peer-brief citation rather than anything en-build ran.
+PERSONA="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
 
 # --- flag documented ---
 if grep -qF -- "--lite" "$EN_REVIEW"; then

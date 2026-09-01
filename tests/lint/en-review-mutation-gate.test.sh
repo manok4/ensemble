@@ -14,7 +14,9 @@ TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
 DIFFSIG="$REPO_ROOT/skills/en-build/references/diff-signal-detection.md"
-DISPATCH="$REPO_ROOT/skills/en-build/references/persona-dispatch.md"
+# Reads /en-review's copy: it owns persona dispatch. D52 removed en-build's,
+# which arrived through a peer-brief citation rather than anything en-build ran.
+DISPATCH="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
 
 # === U1: lite-gate transparency ===
 

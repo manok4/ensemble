@@ -68,7 +68,7 @@ skip one, so a silent omission is never mistaken for a clean pass.
 | **Status correctness** | `docs/plans/active/*.md` has `status: draft \| open \| in_progress \| abandoned`; `docs/plans/completed/*.md` has `status: completed`. `plan_type` is one of `feature`, `improvement`, `bug`. |
 | **Test placement** | Tests live where the project's existing tests live (`tests/`, `__tests__/`, alongside source) — match the existing convention |
 
-### security — fires when: The dispatching skill (`en-review` per `references/persona-dispatch.md`) detects security-relevant changes and dispatches you. Detection heuristics: - Path: `**/auth/**`, `**/permissions/**`, `**/oaut
+### security — fires when: The dispatching skill (`/en-review`, per its persona-dispatch rules) detects security-relevant changes and dispatches you. Detection heuristics: - Path: `**/auth/**`, `**/permissions/**`, `**/oaut
 
 | Category | Examples |
 |---|---|
@@ -81,7 +81,7 @@ skip one, so a silent omission is never mistaken for a clean pass.
 | **Trust boundaries** | Client-side validation only (no server check); trust of `req.headers` without verification; trust of `req.user` after only one auth step |
 | **Rate limiting** | Public endpoints without rate limit; missing exponential backoff on retries that hit external APIs |
 
-### performance — fires when: Per `references/persona-dispatch.md`. Detection heuristics: - Path: `**/queries/**`, `**/db/**`, `**/repository/**` - Diff content: ORM patterns (`.findMany`, `.findFirst`, `.where`, `JOIN`, `eager`, 
+### performance — fires when: Per `/en-review`'s persona-dispatch rules. Detection heuristics: - Path: `**/queries/**`, `**/db/**`, `**/repository/**` - Diff content: ORM patterns (`.findMany`, `.findFirst`, `.where`, `JOIN`, `eager`, 
 
 | Category | Examples |
 |---|---|
@@ -95,7 +95,7 @@ skip one, so a silent omission is never mistaken for a clean pass.
 | **Render performance** | (Frontend) re-render storms; missing memoization where the component re-renders on every parent update; large lists without virtualization |
 | **Cold-path doing hot-path work** | Initialization that happens lazily but should be eager (pre-warm); or vice versa |
 
-### migrations — fires when: Per `references/persona-dispatch.md`. Detection heuristics: - Path: `**/migrations/**`, `**/db/migrations/**`, `**/migration_*.sql` - Diff adds/removes columns, tables, indexes, constraints - File con
+### migrations — fires when: Per `/en-review`'s persona-dispatch rules. Detection heuristics: - Path: `**/migrations/**`, `**/db/migrations/**`, `**/migration_*.sql` - Diff adds/removes columns, tables, indexes, constraints - File con
 
 | Category | Examples |
 |---|---|
