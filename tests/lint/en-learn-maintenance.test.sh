@@ -104,7 +104,9 @@ done
 
 # --- all three carriers stay identical ---------------------------------------
 n=$(ls "$REPO_ROOT"/skills/*/references/learn-lint.md 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "$n" "3" "learn-lint is carried by three skills"
+# 3 -> 2 on 2026-09-01: en-review carried learn-lint while naming it nowhere.
+# It reviews a branch diff; wiki-graph health is /en-learn's and /en-sweep's.
+assert_eq "$n" "2" "learn-lint is carried by two skills"
 d=$(for f in "$REPO_ROOT"/skills/*/references/learn-lint.md; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
 assert_eq "$d" "1" "every carried copy of learn-lint is byte-identical"
 

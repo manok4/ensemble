@@ -6,15 +6,12 @@ description: "Multi-persona code review of the current branch, with a cross-agen
 requires:
   - agents/dimension-reviewer.md
   - agents/learnings-research.md
-  - agents/repo-research.md
   - references/agent-dispatch.md
-  - references/architecture-update-rules.md
   - references/cli-wrappers.md
   - references/diff-signal-detection.md
-  - references/doc-lints.md
   - references/finding-schema.md
   - references/host-detect.md
-  - references/learn-lint.md
+  - references/stable-ids.md
   - references/learning-frontmatter-schema.md
   - references/outside-voice.md
   - references/peer-brief.md
@@ -28,18 +25,11 @@ requires:
   - references/severity-and-routing.md
   - references/severity.md
   - references/single-agent-fallback.md
-  - references/stable-ids.md
-  - references/sweep-checks.md
-  - references/sweep-loop-guards.md
-  - references/sweep-security-model.md
   - references/tech-debt-tracker-format.md
-  - references/templates/architecture-template.md
-  - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
   - scripts/ensemble-cli-smoke
   - scripts/ensemble-config-get
   - scripts/ensemble-detect-host
-  - scripts/ensemble-doc-only-check
   - scripts/ensemble-extract-json
   - scripts/ensemble-peer-flags
   - scripts/ensemble-peer-invoke
@@ -199,7 +189,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | `headless` | Yes (silent) | No (returns JSON) | N/A | No |
 | `report-only` | **No** | No | N/A | No |
 
-`report-only` is the **mandatory** mode when `en-sweep` invokes `en-review` in CI — see `references/sweep-checks.md`.
+`report-only` is the **mandatory** mode when `/en-sweep` invokes `/en-review` in CI. Why that is mandatory, and what sweep does with the findings, belongs to `/en-sweep`; from this side the mode is simply read-only.
 
 **Auditable boundary (EN08).** Every application is recorded in `applied_fixes[]` (each entry `{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` outcome line (see step 12). Tier definitions live in `references/severity.md` — referenced, not duplicated.
 

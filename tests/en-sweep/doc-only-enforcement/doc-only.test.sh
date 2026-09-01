@@ -11,7 +11,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-sweep doc-only enforcement"
 
-CHECK="$REPO_ROOT/skills/en-review/scripts/ensemble-doc-only-check"
+# An en-sweep test reading en-review's copy. en-review does not gate doc-only
+# PRs — /en-sweep does — so it stopped carrying the check.
+CHECK="$REPO_ROOT/skills/en-sweep/scripts/ensemble-doc-only-check"
 
 setup_temp_repo() {
   local tmp="$1"

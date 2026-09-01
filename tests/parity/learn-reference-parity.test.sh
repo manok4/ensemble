@@ -57,7 +57,7 @@ while IFS='|' read -r rel expected; do
   done
   assert_eq "$skew" "0" "$rel: all carried copies are byte-identical"
 done <<'CARRIERS'
-references/learn-lint.md|3
+references/learn-lint.md|2
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
 agents/learnings-research.md|7

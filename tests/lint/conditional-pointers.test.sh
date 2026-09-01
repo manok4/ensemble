@@ -99,8 +99,8 @@ references/persona-dispatch.md|1
 references/cli-wrappers.md|3
 agents/dimension-reviewer.md|1
 scripts/ensemble-verify-peer-evidence|3
-references/doc-lints.md|3
-scripts/en-sweep-ci|5
+references/doc-lints.md|2
+scripts/en-sweep-ci|4
 COUNTS
 
 [ -z "$drift" ] \
