@@ -94,18 +94,23 @@ else
        "a real agent name there reads as a dispatch to every grep that looks"
 fi
 
-# --- 4. every carried agent is declared, so skill-payload stays consistent ---
-undeclared=""
+# --- 4. every carried agent is actually dispatched by its skill ---
+# This asked whether the agent appeared in the requires: manifest. That question
+# died with the manifest, and the better one was always available: an agent a
+# skill ships but never dispatches is payload nobody invokes.
+undispatched=""
+reached=$( cd "$REPO_ROOT" && python3 tests/lib/skill-payload.py derive 2>/dev/null )
 for skill in "$REPO_ROOT"/skills/*/; do
   name=$(basename "$skill")
   for f in "$skill"agents/*.md; do
     [ -f "$f" ] || continue
     a=$(basename "$f" .md)
-    grep -q "^  - agents/$a.md\$" "$skill/SKILL.md" || undeclared="$undeclared $name->$a"
+    printf '%s\n' "$reached" | grep -qxF "$name	agents/$a.md" \
+      || undispatched="$undispatched $name->$a"
   done
 done
-[ -z "$undeclared" ] && pass "every carried agent is declared in requires:" \
-                     || fail "every carried agent is declared in requires:" "$undeclared"
+[ -z "$undispatched" ] && pass "every carried agent is dispatched by its own skill" \
+                       || fail "every carried agent is dispatched by its own skill" "$undispatched"
 
 # --- 5. the retired seven must not come back by name ---
 if grep -rqE 'subagent_type: "(correctness|testing|maintainability|standards|security|performance|migrations)-reviewer"' "$REPO_ROOT/skills" 2>/dev/null; then

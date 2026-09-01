@@ -71,12 +71,13 @@ This is what a word means here. Nothing about it is a choice or a fix. It goes t
 
 ### Routes to a decision
 
-> "We chose explicit `requires:` declarations over inferring a skill's file set
-> by walking references. Walkers produced five distinct classes of false edge,
-> each found only by deleting something and seeing what broke."
+> "We chose to derive a skill's file set from its own body over maintaining a
+> declaration of it. A declaration can say a file was listed; it can never say
+> anything reads it. Counting only backticked paths is what makes the walk
+> trustworthy, and is the distinction the first walker lacked."
 
-A choice between alternatives, with a rule that now holds: every file a skill
-reads is declared. It goes to `docs/decisions/` as a numbered ADR whose title
+A choice between alternatives, with a rule that now holds: a path counts as
+payload when it is backticked, linked, or fenced, and not when it is bare prose. It goes to `docs/decisions/` as a numbered ADR whose title
 states the claim and whose invariants section names the rule.
 
 Note the tie-break in action: this candidate also *defines* "declaration

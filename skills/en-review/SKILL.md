@@ -1,39 +1,6 @@
 ---
 name: en-review
 description: "Multi-persona code review of the current branch, with a cross-agent peer on by default. Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'. Always-on dimensions are correctness, testing, maintainability and standards; security, performance and migrations fire when the diff matches. Host and peer findings reconcile, and low-confidence ones file as tech debt rather than cluttering the output."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - agents/dimension-reviewer.md
-  - agents/learnings-research.md
-  - references/agent-dispatch.md
-  - references/cli-wrappers.md
-  - references/diff-signal-detection.md
-  - references/finding-schema.md
-  - references/host-detect.md
-  - references/stable-ids.md
-  - references/learning-frontmatter-schema.md
-  - references/outside-voice.md
-  - references/peer-brief.md
-  - references/peer-contract.md
-  - references/peer-model-policy.md
-  - references/persona-dispatch.md
-  - references/recursion-guard.md
-  - references/research-dispatch.md
-  - references/review-confidence-gating.md
-  - references/script-invocation.md
-  - references/severity-and-routing.md
-  - references/severity.md
-  - references/single-agent-fallback.md
-  - references/tech-debt-tracker-format.md
-  - scripts/ensemble-build-peer-prompt
-  - scripts/ensemble-cli-smoke
-  - scripts/ensemble-config-get
-  - scripts/ensemble-detect-host
-  - scripts/ensemble-extract-json
-  - scripts/ensemble-peer-flags
-  - scripts/ensemble-peer-invoke
-
 ---
 
 

@@ -1,13 +1,6 @@
 ---
 name: en-guardrail
 description: "Always-on safety guardrail against destructive commands. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'. PreToolUse hooks inspect Bash commands and DB-writing MCP tools for destructive patterns (recursive rm, DROP TABLE, TRUNCATE, force-push, terraform destroy, and similar) and force a permission prompt. Build artifacts and local test databases pass without prompting."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - bin/check-guardrail.sh
-  - bin/guardrail_analyze.py
-  - bin/install-guardrail
-
 ---
 
 
@@ -92,7 +85,17 @@ To turn the guard back on, `unset ENSEMBLE_GUARDRAIL_BYPASS` (or start a new she
 
 ## Installation
 
-The hook is registered in `~/.claude/settings.json` under `hooks.PreToolUse`. The canonical entry:
+Use the installer this skill carries rather than editing settings by hand — it registers **both** matchers (Bash and the MCP DB-tool path, EN09), which the snippet below does not:
+
+```
+bash "$SKILL_DIR/bin/install-guardrail" status           # what is currently active
+bash "$SKILL_DIR/bin/install-guardrail" install-project  # writes <repo>/.claude/settings.json
+bash "$SKILL_DIR/bin/install-guardrail" install-global   # prints the one-liner to run yourself
+```
+
+Global scope is print-only on purpose: an agent must not write `~/.claude/`, so the installer hands you the command and you run it.
+
+For reference, the hook is registered in `~/.claude/settings.json` under `hooks.PreToolUse`. The canonical Bash entry:
 
 ```json
 {

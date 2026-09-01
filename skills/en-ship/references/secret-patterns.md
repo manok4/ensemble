@@ -91,6 +91,6 @@ The `/en-ship` scan is a last-mile guard, not the primary defense.
 When a new credential format emerges (a vendor changes their token shape):
 
 1. Add the regex to this file.
-2. Update `bin/en-ship-secret-scan` (when implemented as a separate binary).
+2. Update the secret-scan helper, if and when it is split out as a separate binary.
 3. Add a test fixture under `tests/secret-scan/` with one match and one non-match.
 4. Bump version in `package.json`; note in `CHANGELOG.md`.

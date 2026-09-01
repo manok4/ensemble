@@ -1,37 +1,6 @@
 ---
 name: en-plan
 description: "Turn a feature, refactor, or bug fix into a plan with stable U-IDs. Trigger phrases: 'plan this', 'plan a feature', 'before I build', 'plan <id>'. Reads the foundation, runs research agents, breaks work into units carrying files, tests and risk, then runs cross-agent peer review on the draft. Modes: --resume to promote a draft, --from-legacy to migrate one."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - agents/learnings-research.md
-  - agents/repo-research.md
-  - agents/web-research.md
-  - references/agent-dispatch.md
-  - references/diff-signal-detection.md
-  - references/finding-schema.md
-  - references/host-detect.md
-  - references/outside-voice.md
-  - references/peer-brief.md
-  - references/peer-contract.md
-  - references/peer-model-policy.md
-  - references/plan-default-branch-checkpoint.md
-  - references/recursion-guard.md
-  - references/research-dispatch.md
-  - references/script-invocation.md
-  - references/severity.md
-  - references/single-agent-fallback.md
-  - references/stable-ids.md
-  - references/templates/plan-template.md
-  - scripts/ensemble-build-peer-prompt
-  - scripts/ensemble-cli-smoke
-  - scripts/ensemble-config-get
-  - scripts/ensemble-detect-host
-  - scripts/ensemble-extract-json
-  - scripts/ensemble-peer-flags
-  - scripts/ensemble-peer-invoke
-  - scripts/ensemble-plan-hash
-
 ---
 
 

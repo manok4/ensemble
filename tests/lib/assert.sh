@@ -117,12 +117,25 @@ hash_file() {
 # Assert a path appears in a SKILL.md's `requires:` BLOCK, not merely somewhere in
 # the file. Several suites grepped the whole SKILL.md, so runtime prose naming the
 # same path satisfied them after the declaration itself was deleted.
-assert_declared() {  # $1=SKILL.md  $2=relative path  $3=label
-  if awk '/^requires:/{f=1;next} f&&/^  - /{print $2} f&&!/^  - /&&!/^#/{exit}' "$1" \
-       | grep -qx -- "$2"; then
+# Successor to assert_declared, which asked whether a hand-written requires:
+# block listed a path. That question was answerable without the file being
+# reachable, or even useful — the manifest was a second copy of the truth, kept
+# in sync by hand. This asks the load-bearing question instead: does the skill's
+# own flow reach the file? The answer is derived from the body, so it cannot
+# drift from it.
+_ENS_DERIVED="${TMPDIR:-/tmp}/ens-derived-$$"
+_ens_derive() {
+  [ -s "$_ENS_DERIVED" ] && return 0
+  ( cd "${REPO_ROOT:-.}" && python3 tests/lib/skill-payload.py derive ) > "$_ENS_DERIVED" 2>/dev/null
+}
+
+assert_reached() {  # $1=SKILL.md  $2=relative path  $3=label
+  _ens_derive
+  local skill; skill="$(basename "$(dirname "$1")")"
+  if grep -qxF -- "$skill	$2" "$_ENS_DERIVED"; then
     pass "$3"
   else
-    fail "$3" "not in the requires: block of $(basename "$(dirname "$1")")"
+    fail "$3" "$skill carries no path $2 that its own flow reaches"
   fi
 }
 

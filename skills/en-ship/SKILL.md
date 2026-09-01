@@ -1,16 +1,6 @@
 ---
 name: en-ship
 description: "Push clean changes to the remote with a meaningful commit and PR. Pre-flight (lint + typecheck + targeted tests + secret scan + merge-conflict check), conventional-commit message, push, gh pr create. Optional --auto-merge enables gh pr merge --auto --squash. Trigger phrases: 'ship it', 'push and PR', 'open a PR', 'commit and push', 'send for review'."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - references/agent-dispatch.md
-  - references/conventional-commits.md
-  - references/script-invocation.md
-  - references/secret-patterns.md
-  - scripts/ensemble-verify-peer-evidence
-  - scripts/get-pr-comments
-
 ---
 
 

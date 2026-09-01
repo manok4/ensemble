@@ -2,14 +2,6 @@
 name: en-loop
 description: "Run a bounded, objective-driven autonomous loop until an evidence-based stop condition. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'. One committed, test-gated slice per iteration, with cross-agent review at checkpoints. Wraps the gnhf CLI. Manual-invoke only; bounded by --stop-when, --max-iterations, --max-tokens and --max-runtime."
 disable-model-invocation: true
-argument-hint: "--objective \"<X>\" --stop-when \"<evidence-based condition>\" [--mode hands-off|companion] [caps]"
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - references/host-detect.md
-  - references/recursion-guard.md
-  - scripts/ensemble-detect-host
-
 ---
 
 

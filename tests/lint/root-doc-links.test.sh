@@ -46,8 +46,8 @@ for stale in '](./references' '](./bin' '](./agents/' '](./shared'; do
 done
 
 # And it must say where shared material is edited.
-grep -q 'requires:' README.md \
-  && pass "README tells contributors how to declare a skill's files" \
-  || fail "README must document the requires: declaration"
+grep -q 'backticked, a markdown link, or inside a fence' README.md \
+  && pass "README tells contributors what makes a path count as payload" \
+  || fail "README must document the backtick rule that decides payload"
 
 report

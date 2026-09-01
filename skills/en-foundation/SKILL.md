@@ -1,44 +1,6 @@
 ---
 name: en-foundation
 description: "Produce or retrofit the foundational artifact set: docs/foundation.md (PRD + tech direction + architecture intent), docs/architecture.md (seed), AGENTS.md, CLAUDE.md. Walks depth-scaled discovery (product, users, R-IDs, stack, data, architecture, deployment, risks), asks for plan_id_prefix (2-3 uppercase letters; default FR), runs cross-agent peer review on the draft. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'PRD and architecture'."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - agents/learnings-research.md
-  - agents/repo-research.md
-  - agents/web-research.md
-  - references/agent-dispatch.md
-  - references/architecture-update-rules.md
-  - references/cli-wrappers.md
-  - references/diff-signal-detection.md
-  - references/finding-schema.md
-  - references/foundation-questions.md
-  - references/host-detect.md
-  - references/outside-voice.md
-  - references/peer-brief.md
-  - references/peer-contract.md
-  - references/peer-model-policy.md
-  - references/recursion-guard.md
-  - references/research-dispatch.md
-  - references/script-invocation.md
-  - references/severity.md
-  - references/single-agent-fallback.md
-  - references/stable-ids.md
-  - references/templates/agents-md-merge-rules.md
-  - references/templates/agents-md-template.md
-  - references/templates/architecture-template.md
-  - references/templates/claude-md-template.md
-  - references/templates/foundation-template.md
-  - references/templates/plan-template.md
-  - scripts/en-sweep-ci
-  - scripts/ensemble-build-peer-prompt
-  - scripts/ensemble-cli-smoke
-  - scripts/ensemble-config-get
-  - scripts/ensemble-detect-host
-  - scripts/ensemble-extract-json
-  - scripts/ensemble-peer-flags
-  - scripts/ensemble-peer-invoke
-
 ---
 
 

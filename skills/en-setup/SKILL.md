@@ -1,40 +1,7 @@
 ---
 name: en-setup
 description: "Project-level Ensemble bootstrap and diagnostics. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'. Detects greenfield, existing-without-Ensemble, or already-integrated, then creates the docs skeleton, seeds docs/CONTEXT.md from the declared domain model, generates AGENTS.md and CLAUDE.md, and offers the optional integrations. Runs health checks on an integrated project."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - agents/learnings-research.md
-  - agents/repo-research.md
-  - references/agent-dispatch.md
-  - references/doc-lints.md
-  - references/glossary-rules.md
-  - references/host-detect.md
-  - references/layout-migration.md
-  - references/learn-index-format.md
-  - references/learn-log-format.md
-  - references/peer-contract.md
-  - references/recursion-guard.md
-  - references/research-dispatch.md
-  - references/script-invocation.md
-  - references/setup-state-detection.md
-  - references/stable-ids.md
-  - references/templates/agents-md-merge-rules.md
-  - references/templates/agents-md-template.md
-  - references/templates/claude-md-template.md
-  - references/templates/config-local-example.yaml
-  - references/templates/context-template.md
-  - references/templates/ensemble-lint
-  - references/templates/github-workflow-claude-review.yml
-  - references/templates/github-workflow-en-sweep.yml
-  - references/templates/github-workflow-ensemble-lint.yml
-  - references/templates/review-md-template.md
-  - scripts/en-sweep-ci
-  - scripts/ensemble-classify-plans
-  - scripts/ensemble-detect-host
-  - scripts/ensemble-doc-only-check
-  - scripts/ensemble-sweep-activity-check
-
+disable-model-invocation: true
 ---
 
 
@@ -324,7 +291,7 @@ For `{{LANG}}`: detect from `package.json` (TypeScript if `"typescript"` in deps
 
 ## State 3 — Diagnostic mode
 
-Invoke `scripts/check-health` (in the plugin's `scripts/` directory). It prints 🟢/🟡/🔴 per check. Pipe through and surface the result to the user.
+Invoke `bash "$SKILL_DIR/scripts/check-health"` — this skill carries it, anchored per `references/script-invocation.md`. It prints 🟢/🟡/🔴 per check. Pipe through and surface the result to the user.
 
 In addition to file-shape and lint checks, the diagnostic includes:
 

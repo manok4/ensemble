@@ -75,6 +75,6 @@ flat "$REF" | grep -qi 'TD7\|not.*mechanically verif\|specification, not.*behavi
 # --- declared in requires: ---------------------------------------------------
 # A skill is self-contained: every file it reads is listed. An undeclared
 # reference is invisible to the payload test and can be pruned silently.
-assert_declared "$SKILL" "references/artifact-types.md" "artifact-types.md is declared in en-learn's requires:"
+assert_reached "$SKILL" "references/artifact-types.md" "artifact-types.md is reached from en-learn's flow"
 
 report

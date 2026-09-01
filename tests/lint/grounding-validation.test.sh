@@ -121,8 +121,8 @@ flat "$REF" | grep -qE 'exit(ed)? 2|exit code 2' \
   && pass "the reference documents exit 2 as could-not-run" \
   || fail "the reference documents exit 2 as could-not-run"
 
-assert_declared "$SKILL" "scripts/ensemble-validate-claims" "the script is declared in en-learn's requires:"
-assert_declared "$SKILL" "references/grounding-validation.md" "the reference is declared in en-learn's requires:"
+assert_reached "$SKILL" "scripts/ensemble-validate-claims" "the script is reached from en-learn's flow"
+assert_reached "$SKILL" "references/grounding-validation.md" "the reference is reached from en-learn's flow"
 
 # --- only CONCRETE FILE claims are checked -----------------------------------
 # Dogfooding against this repo's own references showed the first cut flagged
