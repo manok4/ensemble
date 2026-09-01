@@ -4,18 +4,6 @@ description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-awa
 argument-hint: "[idea or question to explore]"
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - agents/web-research.md
-  - references/agent-dispatch.md
-  - references/brainstorm-approaches.md
-  - references/brainstorm-blindspot.md
-  - references/host-detect.md
-  - references/recursion-guard.md
-  - references/research-dispatch.md
-  - references/script-invocation.md
-  - references/socratic-questions.md
-  - references/templates/design-doc-template.md
-  - scripts/ensemble-detect-host
 
 ---
 

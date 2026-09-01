@@ -365,7 +365,7 @@ ensemble/
 ├── .codex-plugin/                 # Codex plugin manifest
 ├── skills/                        # 17 skills (en-*)
 │   └── en-plan/                   # every skill has the same shape:
-│       ├── SKILL.md               #   including a `requires:` list of what it needs
+│       ├── SKILL.md               #   its flow; what it names is what it carries
 │       ├── CONTRACT.md            #   what other skills may rely on (callable skills only)
 │       ├── references/            #   its own references, briefs and templates
 │       ├── agents/                #   its own copies of the agents it dispatches
@@ -395,18 +395,25 @@ one consumer.
 
 ### Adding a file to a skill
 
-Put it in the skill, then declare it:
+Put it in the skill, then name it from the flow that uses it, in backticks:
 
-```yaml
-requires:
-  - references/my-new-reference.md
+```markdown
+Read `references/my-new-reference.md` before classifying.
 ```
 
-`tests/lint/skill-payload.test.sh` fails if a skill carries a file it does not
-declare, declares one it does not carry, or declares a file that names another
-undeclared file. It replaced a scheme that inferred dependencies by scanning
-text, which was wrong in five distinct ways — a mention is not a dependency, and
-no pattern reliably tells them apart. So the skill states its own.
+There is no manifest. `tests/lint/skill-payload.test.sh` derives each skill's
+payload from its own body and fails if a skill carries a file nothing reaches,
+or names a path that does not resolve inside it.
+
+A path counts when it is **backticked, a markdown link, or inside a fence**.
+Bare prose does not, and that is the whole distinction: an earlier scheme
+counted every mention and inflated the tree to 422 files where 193 were needed,
+because one sentence contrasting a skill's linter against a *different* tool
+read as a dependency on it. The manifest that replaced the walker then drifted
+the other way — it could say a file was listed, but never that anything read it,
+so it carried a reference that called itself the source of truth for CLI flags
+while nothing consulted it. Deriving from the body answers both questions from
+the one place that cannot go stale.
 
 ### The one thing that must stay identical
 

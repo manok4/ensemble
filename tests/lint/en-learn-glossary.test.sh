@@ -83,11 +83,12 @@ else
   pass "the template has no unrendered placeholders"
 fi
 
-# --- declared ----------------------------------------------------------------
+# --- reached ------------------------------------------------------------------
+# This grepped the whole of SKILL.md for the path and called that "declared in
+# requires:", which the body satisfied on its own for one of the two files. The
+# manifest is gone and the loose grep with it: reachedness is the real question.
 for f in references/glossary-rules.md references/templates/context-template.md; do
-  grep -q "$f" "$SKILL" \
-    && pass "$f is declared in en-learn's requires:" \
-    || fail "$f is declared in en-learn's requires:"
+  assert_reached "$SKILL" "$f" "$f is reached from en-learn's flow"
 done
 
 # --- U6: accretion and seeding are wired into their skills -------------------
@@ -131,9 +132,7 @@ flat "$SETUP" | grep -qi 'accretion alone cannot reach\|rarely appear in a learn
   || fail "setup states why accretion alone is insufficient"
 
 for f in references/glossary-rules.md references/templates/context-template.md; do
-  grep -q "$f" "$SETUP" \
-    && pass "$f is declared in en-setup's requires:" \
-    || fail "$f is declared in en-setup's requires:"
+  assert_reached "$SETUP" "$f" "$f is reached from en-setup's flow"
 done
 
 report

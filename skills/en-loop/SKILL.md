@@ -5,10 +5,6 @@ disable-model-invocation: true
 argument-hint: "--objective \"<X>\" --stop-when \"<evidence-based condition>\" [--mode hands-off|companion] [caps]"
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - references/host-detect.md
-  - references/recursion-guard.md
-  - scripts/ensemble-detect-host
 
 ---
 

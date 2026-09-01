@@ -6,7 +6,13 @@
 # applied to one carrier leaves the others describing a system that no longer
 # exists, and the skill reading the stale copy believes it.
 #
-# Carriership is derived from the requires: DECLARATION, not from the file being
+# Carriership is the file being on disk. It was read from the requires: block
+# until 2026-09-01, when the manifest was deleted in favour of deriving payload
+# from each skill's body; the pinned counts below are what keeps a new carrier
+# deliberate, and they do that job wherever the count is read from.
+#
+# Superseded note, kept because it explains the counts: carriership was read
+# from the DECLARATION, not from the file being
 # on disk. EN13's guard discovered carriers by looking for the file, so deleting
 # a file and its declaration together left it with nothing to check and nothing
 # to say — a guard that stops having an opinion rather than going red.
@@ -36,17 +42,13 @@ TEST_NAME="learn reference parity"
 while IFS='|' read -r rel expected; do
   [ -n "$rel" ] || continue
 
-  declared=""; present=""
+  present=""
   for skill in "$REPO_ROOT"/skills/*/; do
-    name=$(basename "$skill")
-    grep -q "^  - $rel\$" "$skill/SKILL.md" 2>/dev/null && declared="$declared $name"
-    [ -f "$skill/$rel" ] && present="$present $name"
+    [ -f "$skill/$rel" ] && present="$present $(basename "$skill")"
   done
-  dn=$(echo $declared | wc -w | tr -d ' ')
-  pn=$(echo $present  | wc -w | tr -d ' ')
+  pn=$(echo $present | wc -w | tr -d ' ')
 
-  assert_eq "$dn" "$expected" "$rel is declared by $expected skill(s)"
-  assert_eq "$pn" "$dn"       "$rel: every declaring skill carries the file"
+  assert_eq "$pn" "$expected" "$rel is carried by $expected skill(s)"
 
   # Byte-identity across the carriers that exist.
   ref=""; skew=0

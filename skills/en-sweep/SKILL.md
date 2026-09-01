@@ -3,32 +3,6 @@ name: en-sweep
 description: "Scheduled doc-drift cleanup. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'. Runs file-shape lint, wiki-graph health, and architecture, plan-lifecycle and pointer-map drift checks, then opens an auto-merging doc-only PR once review clears it. An activity gate skips runs with no new commits; code-level findings file as tech debt."
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - agents/learnings-research.md
-  - agents/repo-research.md
-  - references/agent-dispatch.md
-  - references/architecture-update-rules.md
-  - references/doc-lints.md
-  - references/host-detect.md
-  - references/learn-lint.md
-  - references/peer-contract.md
-  - references/recursion-guard.md
-  - references/research-dispatch.md
-  - references/script-invocation.md
-  - references/severity.md
-  - references/stable-ids.md
-  - references/sweep-checks.md
-  - references/sweep-loop-guards.md
-  - references/sweep-security-model.md
-  - references/tech-debt-tracker-format.md
-  - references/templates/architecture-template.md
-  - references/templates/github-workflow-en-sweep.yml
-  - scripts/continuous-monitor
-  - scripts/en-sweep-ci
-  - scripts/ensemble-detect-host
-  - scripts/ensemble-doc-only-check
-  - scripts/ensemble-sweep-activity-check
-  - scripts/triage-findings
 
 ---
 

@@ -160,7 +160,7 @@ done
 # do NOT show that a candidate routes correctly — no shell assertion reaches it.
 
 
-assert_declared "$SKILL" "references/artifact-types.md" "capture reads the artifact-types reference"
+assert_reached "$SKILL" "references/artifact-types.md" "capture reads the artifact-types reference"
 
 # The retired taxonomy must be gone from the capture flow, not merely unused.
 if flat "$SKILL" | grep -qE 'Identify category|bugs/ \(|patterns/ \(|decisions/ \('; then

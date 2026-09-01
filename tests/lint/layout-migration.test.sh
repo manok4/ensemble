@@ -110,7 +110,7 @@ flat "$REF" | grep -qi 'non-interactive\|refuses.*without.*flag' \
   && pass "a non-interactive run refuses rather than guessing" \
   || fail "a non-interactive run refuses rather than guessing"
 
-assert_declared "$SKILL" "references/layout-migration.md" "the migration reference is declared in en-learn's requires:"
+assert_reached "$SKILL" "references/layout-migration.md" "the migration reference is reached from en-learn's flow"
 
 # --- the migration is reachable from capture ---------------------------------
 # A procedure nothing invokes is documentation. The check must fire before
@@ -172,16 +172,13 @@ flat "$SETUP" | grep -qi 'does not run the migration itself' \
   || fail "en-setup hands off rather than running the migration itself"
 
 # --- the reference is carried by both, byte-identical -------------------------
-declared=""; present=""
+present=""
 for skill in "$REPO_ROOT"/skills/*/; do
-  name=$(basename "$skill")
-  grep -q '^  - references/layout-migration.md$' "$skill/SKILL.md" 2>/dev/null && declared="$declared $name"
-  [ -f "$skill/references/layout-migration.md" ] && present="$present $name"
+  [ -f "$skill/references/layout-migration.md" ] && present="$present $(basename "$skill")"
 done
-dn=$(echo $declared | wc -w | tr -d ' '); pn=$(echo $present | wc -w | tr -d ' ')
+pn=$(echo $present | wc -w | tr -d ' ')
 
-assert_eq "$dn" "2" "two skills declare the migration reference"
-assert_eq "$pn" "$dn" "every declaring skill carries the migration reference"
+assert_eq "$pn" "2" "two skills carry the migration reference"
 
 ref=""; skew=0
 for skill in $present; do

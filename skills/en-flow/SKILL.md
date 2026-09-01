@@ -5,8 +5,6 @@ disable-model-invocation: true
 argument-hint: "[feature description, or --plan <path>]"
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
-requires:
-  - references/en-flow-pipeline.md
 
 ---
 

@@ -68,15 +68,11 @@ for s in "${carriers[@]}"; do
 done
 assert_eq "" "$(echo $drifted)" "every copy of the contract is byte-identical"
 
-# --- a skill that declares it must carry it, and vice versa ---
-mismatch=""
-for d in "$REPO_ROOT"/skills/*/; do
-  s="$(basename "${d%/}")"
-  declares=$(grep -cF "  - $CONTRACT" "$d/SKILL.md" 2>/dev/null || true)
-  carries=$([ -f "$d$CONTRACT" ] && echo 1 || echo 0)
-  [ "$declares" = "$carries" ] || mismatch="$mismatch $s(declares=$declares,carries=$carries)"
-done
-assert_eq "" "$(echo $mismatch)" "declaring the contract and carrying it agree, both ways"
+# The clause that stood here compared each skill's requires: entry against the
+# file on disk. With the manifest deleted there is only the file, so the question
+# it asked cannot be asked and does not need to be: a carried copy nothing
+# reaches now fails skill-payload, and a named copy nothing carries fails it too.
+# Deleted rather than rewritten into a tautology against itself.
 
 # --- the values callers branch on are present in every copy ---
 # Absence is the failure mode that matters: a copy missing a reason value still
