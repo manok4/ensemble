@@ -22,11 +22,14 @@ OUTVOICE="$REPO_ROOT/skills/en-review/references/outside-voice.md"
 # D52 removed en-build's two flavors, so build-handoff.md and
 # build-orchestration.md now live only with /en-cross-review, which names
 # them in its own flow. This checks the surviving carrier.
-HANDOFF="$REPO_ROOT/skills/en-cross-review/references/build-handoff.md"
-ORCH="$REPO_ROOT/skills/en-cross-review/references/build-orchestration.md"
+# build-handoff.md and build-orchestration.md were deleted with en-cross-review
+# on 2026-09-01. They documented /en-build's two execution flavors, which D52
+# removed; en-build dropped them then, and en-cross-review was the last carrier.
+# The clauses that asserted on them have no subject, so they are gone rather
+# than repointed at a file that does not exist.
 SETUP="$REPO_ROOT/setup"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
-SMOKE="$REPO_ROOT/skills/en-cross-review/scripts/ensemble-cli-smoke"
+SMOKE="$REPO_ROOT/skills/en-review/scripts/ensemble-cli-smoke"
 
 # ============================================================
 # U1: detect-host emits PEER_TURNS, resolved per peer agent (hermetic)
@@ -108,7 +111,8 @@ if [ -z "$hardcoded" ]; then
 else
   fail "a hardcoded --max-turns peer invocation survived" "$hardcoded"
 fi
-for f in "$OUTVOICE" "$HANDOFF"; do
+# $HANDOFF dropped: build-handoff.md no longer exists (see the note above).
+for f in "$OUTVOICE"; do
   if grep -qF 'PEER_TURNS' "$f"; then
     pass "$(basename "$f") references \$PEER_TURNS"
   else
@@ -131,11 +135,9 @@ if ! grep -qE 'codex exec.*--max-turns' "$SETUP"; then
 else
   fail "setup Codex probe must not pass --max-turns"
 fi
-if ! grep -qE 'max-turns.*(aggressively|30)' "$ORCH"; then
-  pass "build-orchestration drops the invalid codex worker --max-turns guidance"
-else
-  fail "build-orchestration must drop the codex --max-turns worker guidance"
-fi
+# The build-orchestration clause is gone with the file. Its subject was the codex
+# WORKER's --max-turns guidance, and D52 removed worker dispatch entirely, so
+# there is no worker invocation left to carry a stale flag.
 # setup sources the shared classifier (so this test exercises the real one).
 if grep -qF "ensemble-cli-smoke" "$SETUP" && [ -f "$SMOKE" ]; then
   pass "setup sources the shared ensemble-cli-smoke classifier"

@@ -334,7 +334,7 @@ names every persona" — which was the intent: the personas survive as **review
 dimensions** in the briefs, not as spawnable agents.
 
 But `references/persona-dispatch.md`, carried by **five** skills — `en-review`,
-`en-cross-review`, `en-build`, `en-plan`, `en-foundation` — still instructs:
+`en-build`, `en-plan`, `en-foundation` — still instructs:
 
 ```
 Agent({ subagent_type: "correctness-reviewer", ... })

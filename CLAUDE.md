@@ -17,7 +17,7 @@ This file is **Claude-Code-specific only**. Anything readable by Codex (project 
 ## Slash command preferences
 
 - Prefer `/en-plan` before `/en-build` for any feature touching > 3 files.
-- Use `/en-cross-review <path>` for ad-hoc peer review without going through the full review skill.
+- Use `/en-review --peer <path>` for ad-hoc peer review; it takes a file, a ref, a branch, or nothing.
 - For routine refactors that fall under sweep's purview, let `/en-sweep` run on the next merge — don't open a bespoke PR.
 
 ## Skill invocation priority

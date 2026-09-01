@@ -1,6 +1,6 @@
 # Outside Voice — cross-agent peer review
 
-Single source of truth for invoking the peer agent. Loaded by every skill that runs a peer pass: `en-foundation`, `en-plan`, `en-build` (per unit), `en-cross-review`, optional `--peer` on `en-review` and others.
+Single source of truth for invoking the peer agent. Loaded by every skill that runs a peer pass: `en-foundation`, `en-plan`, `en-build` (per unit), optional `--peer` on `en-review` and others.
 
 ## The contract (D30)
 
@@ -15,7 +15,6 @@ This is non-negotiable. If a peer process starts editing files, it races with th
 | `en-foundation` | After draft is synthesized | On by default; `--no-peer` disables |
 | `en-plan` | After plan is fully drafted with U-IDs | On by default |
 | `en-build` | Per unit, after `code-simplifier` and verification gates | On per unit; `--no-peer-per-unit` disables |
-| `en-cross-review` | The whole skill is the peer call | Always |
 | `en-review` | Optional, on top of personas | Off by default; `--peer` enables |
 
 ## Single-agent fallback (D31)

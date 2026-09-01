@@ -32,7 +32,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 ### Stage 2 — Build
 
 - Invoke `/en-build <plan-path>`. Per the branch-level review model (D35), en-build internally runs its post-build phase (`/en-simplify` → cross-agent Outside Voice review on the peer → apply → review-verdict) before handing off — en-flow does **not** re-run simplify/review at the top level.
-- **GATE:** build completed and the end-of-build evidence audit passed (`verdict: ok`). If the audit failed, **stop** and surface the failing units (suggest `/en-cross-review` per en-build's failure path); do not proceed to ship.
+- **GATE:** build completed and the end-of-build evidence audit passed (`verdict: ok`). If the audit failed, **stop** and surface the failing units (suggest `/en-review --peer <sha>` on the failing commits per en-build's failure path); do not proceed to ship.
 
 ### Stage 3 — Learn (model-decided)
 
@@ -74,7 +74,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 | Failure | Behavior |
 |---|---|
 | Plan stage produces no plan / plan stuck in `draft` | Stop; surface; suggest `/en-plan --resume`. |
-| Build evidence audit fails | Stop before ship; surface failing units; suggest `/en-cross-review`. |
+| Build evidence audit fails | Stop before ship; surface failing units; suggest `/en-review --peer <sha>` on the failing commits. |
 | Non-software or not-implementation-ready request | Stop after Stage 1 with a clear message. |
 | No git remote | Local-only: commit locally through build; skip push/PR/watch; surface summary. |
 | A sub-skill name doesn't resolve | Stop; surface the unresolved name; tell the user to check the plugin install. |

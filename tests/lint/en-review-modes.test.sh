@@ -46,10 +46,14 @@ grep -qiE '`--host`.*personas only' "$SKILL" || missing="$missing host-only"
 # Both directions. A presence-only check passed while the actual invocation had
 # been switched back to --peer, because en-build names --cross elsewhere in prose
 # — the precise failure this clause was written to catch, reproduced inside it.
-if grep -qF -- "/en-review --cross " "$BUILD" && ! grep -qE -- "/en-review --peer( |\`|$)" "$BUILD"; then
-  pass "/en-build calls --cross and makes no peer-sole call (D46)"
+# The post-build INVOCATION specifically. en-build also suggests an ad-hoc
+# `/en-review --peer <sha>` on failing commits, a legitimate peer-sole use and
+# not the review step this guards; a blanket ban on the string forbade it too.
+if grep -qF -- "/en-review --cross --mode headless" "$BUILD" \
+   && ! grep -qF -- "/en-review --peer --mode headless" "$BUILD"; then
+  pass "/en-build's post-build review calls --cross, not the peer-sole mode (D46)"
 else
-  fail "/en-build must call --cross and never --peer" \
+  fail "/en-build's post-build review must call --cross" \
        "--peer is now peer-sole, the mode D46 removed for discarding host-only findings"
 fi
 if grep -qF -- "/en-review --peer --mode headless" "$LOOP" && ! grep -qF -- "/en-review --cross" "$LOOP"; then

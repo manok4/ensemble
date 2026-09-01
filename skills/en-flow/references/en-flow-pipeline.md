@@ -35,7 +35,7 @@ The `/en-flow` orchestrator (`disable-model-invocation: true`) chains the lifecy
 ## Why each gate
 
 - **Plan gate** — building without a finalized, peer-reviewed plan is the failure mode the pipeline exists to prevent. No plan → no build.
-- **Build gate** — an audit failure means a unit lacks review evidence; shipping it would merge unreviewed work. Stop and route to `/en-cross-review`.
+- **Build gate** — an audit failure means a unit lacks review evidence; shipping it would merge unreviewed work. Stop and route to `/en-review --peer <sha>`.
 - **Learn** — never blocks; it's a judgment backstop. The model captures only durable insight and never double-files when en-build's hand-off already captured.
 - **Ship** — no-auto-merge and the bounded watch loop are inherited from `/en-ship`; en-flow adds no merge authority of its own.
 

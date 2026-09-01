@@ -84,18 +84,25 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    The repo-then-global cascade inside each lookup belongs to `$SKILL_DIR/scripts/ensemble-config-get`, and translating the resolved tier into CLI syntax belongs to `$SKILL_DIR/scripts/ensemble-peer-flags`. Neither re-derives policy, so precedence exists in exactly one place.
 3. **Determine mode** (per `references/persona-dispatch.md` and the §5.2.5 contract):
    - **`interactive`** — direct user invocation. Auto-applies `safe_auto` fixes; surfaces `gated_auto` / `manual` to user. May write to working tree.
-   - **`headless`** — invoked by another skill (`en-build` per-unit, `en-cross-review`). Auto-applies `safe_auto` silently; returns structured JSON. May write to working tree.
+   - **`headless`** — invoked by another skill (`/en-build`'s post-build review). Auto-applies `safe_auto` silently; returns structured JSON. May write to working tree.
    - **`report-only`** — invoked from CI (`en-sweep`). **Strictly read-only.** No edits, no commits. Returns findings JSON only.
 
    The mode is selected by the caller (or the skill picks based on context). Mandatory rules:
    - `en-build` → `headless`.
    - `en-sweep` → `report-only` (never configurable).
    - User direct → `interactive`.
-   - `en-cross-review` → `headless`.
-4. **Determine diff base.**
-   - PR target if running on a PR branch.
-   - Default branch (`main` per config) otherwise.
-   - User can override with `--base <ref>`.
+4. **Resolve the review target.** Most runs review a branch diff, but the target is whatever the invocation names:
+
+   | Invocation | Target |
+   |---|---|
+   | no target | the branch diff — PR target if on a PR branch, else the default branch (`main` per config) |
+   | `--base <ref>` | diff against `<ref>`; `--base HEAD` reviews uncommitted work (`git diff` + `git diff --cached`) |
+   | `<git-ref>` or `<ref>..<ref>` | diff between those refs |
+   | `<branch-name>` | diff between that branch and the default branch |
+   | **`<path>` to a file** | **the file's contents, reviewed as they stand** — not a diff |
+   | `--scope <path>` | narrows any of the above to that path |
+
+   **The file case is not a diff, and the difference matters.** A diff review asks "is this change sound"; a file review asks "is this code sound". Findings from a file target carry no base ref, the spec axis (step 7c) does not apply because there is no plan unit to check against, and Coverage says which target shape produced the findings so nobody reads a file review as a branch review.
 5. **Read context.**
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
@@ -199,7 +206,8 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | `--effort low\|medium\|high` | Pin the peer's reasoning-effort tier for this run, the highest-precedence layer in `references/peer-model-policy.md` (b). Omit to let repo config, then user config, then the ladder decide. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
-| `--scope <path>` | Limit review to a path (default: full diff) |
+| `--scope <path>` | Limit review to a path (default: full target) |
+| `--focus security\|performance\|tests\|correctness\|maintainability\|all` | Bias the reviewer's attention toward one concern. It **narrows emphasis, never coverage**: a P0 outside the focus is still reported, because a reviewer that suppresses a security finding while focused on tests is worse than one that was never focused. In `--cross` it biases the peer only; the persona roster is already dimension-split. |
 | `--lite` | Fast path for tiny, low-risk diffs: collapse to `correctness` + `standards` (+ `fast-pass`) when `references/diff-signal-detection.md` classifies the diff `is_small_and_safe`. **Fail-closed** — any uncounted file, unknown line count, risk signal, or triggered conditional persona forces the full roster regardless of the flag. |
 
 ## Mutation rules per mode

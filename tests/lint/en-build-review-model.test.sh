@@ -43,7 +43,10 @@ else
        "D46 needs both sources; --peer alone is now the peer-sole mode it removed"
 fi
 # Guard the regression directly: the post-build step must NOT go peer-sole.
-if grep -qE -- "/en-review --peer( |\`)" "$SKILL"; then
+# Scoped to the post-build INVOCATION. en-build legitimately suggests an ad-hoc
+# `/en-review --peer <sha>` when the evidence audit fails; a blanket ban on the
+# string forbade that too, which an over-broad first draft did.
+if grep -qF -- "/en-review --peer --mode headless" "$SKILL"; then
   fail "post-build review reverted to a peer-sole call (drops host-only findings; see D46)"
 else
   pass "post-build review is not peer-sole"
@@ -55,11 +58,13 @@ else
   fail "post-build review must state the cross-agent peer is mandatory"
 fi
 
-# --peer-only itself must SURVIVE in en-review: /en-loop still depends on it.
-if grep -qF -- "--peer-only" "$EN_REVIEW"; then
-  pass "en-review still documents --peer-only (used by /en-loop)"
+# The peer-sole MODE must survive in en-review: /en-loop depends on it. It is
+# spelled --peer since the 2026-09-01 rename, so checking the old --peer-only
+# string would have passed on nothing at all.
+if grep -qE -- '^\| `--peer` \| \*\*Default' "$EN_REVIEW"; then
+  pass "en-review still offers a peer-sole mode (used by /en-loop)"
 else
-  fail "en-review must keep --peer-only; /en-loop depends on it"
+  fail "en-review must keep a peer-sole mode; /en-loop depends on it"
 fi
 # ...and /en-loop must ACTUALLY still use it. Asserting only that the string
 # survives somewhere in en-review would pass even if en-loop silently flipped to

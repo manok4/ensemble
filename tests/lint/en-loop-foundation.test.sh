@@ -72,14 +72,17 @@ else
   fail "§5.2.x must add an en-loop details subsection"
 fi
 
-# --- Catalog header count updated (Fifteen) + en-loop in the orthogonal list ---
-if grep -qiE "Fifteen skills total" "$FOUNDATION"; then
-  pass "§5 header updated to fifteen skills"
+# --- Catalog header count + en-loop in the orthogonal list ------------------
+# Fifteen -> Fourteen on 2026-09-01: en-cross-review merged into /en-review as
+# its --peer mode (D54). The count is asserted rather than ignored because it is
+# the cheapest way to notice a skill added or removed without the catalog moving.--
+if grep -qiE "Fourteen skills total" "$FOUNDATION"; then
+  pass "§5 header states fourteen skills"
 else
-  fail "§5 header must update the skill count to fifteen"
+  fail "§5 header must state fourteen skills"
 fi
 # en-loop listed among the orthogonal skills in the §5 intro line
-if grep -E "Fifteen skills total" "$FOUNDATION" | grep -qF "en-loop"; then
+if grep -E "Fourteen skills total" "$FOUNDATION" | grep -qF "en-loop"; then
   pass "§5 intro lists en-loop among the orthogonal skills"
 else
   fail "§5 intro must list en-loop among the orthogonal skills"

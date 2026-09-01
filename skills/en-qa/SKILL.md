@@ -68,7 +68,7 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 
 ## Cross-review
 
-**Off.** Bug fixes from QA are mechanical; over-reviewing them costs more than it surfaces. The user can run `/en-cross-review` ad-hoc on a QA branch if they want a peer pass before shipping.
+**Off.** Bug fixes from QA are mechanical; over-reviewing them costs more than it surfaces. The user can run `/en-review --peer` ad-hoc on a QA branch if they want a peer pass before shipping.
 
 ## Agent autonomy contract (mirrors `/en-build`)
 

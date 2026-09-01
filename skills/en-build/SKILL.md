@@ -301,11 +301,11 @@ If the agent has a real concern that's outside the seven cases AND not caught by
       The branch-level review didn't cover these units, a gated unit's
       dedicated peer pass didn't run, OR the simplify/review gate failed
       (simplify_pass / branch_review_pass is missing or failed). Do NOT merge
-      until resolved (run /en-cross-review, or re-run /en-build's post-build
+      until resolved (run `/en-review --peer <sha>` on them, or re-run /en-build's post-build
       simplify + review / --from <U-ID>).
       ```
 
-      The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails **for any reason** (uncovered unit, or a `missing`/`failed` `simplify_pass` / `branch_review_pass`), the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-cross-review on the failing units, then re-audit` - the success path is **blocked** until the audit passes.
+      The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails **for any reason** (uncovered unit, or a `missing`/`failed` `simplify_pass` / `branch_review_pass`), the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-review --peer <sha>` on the failing units, then re-audit - the success path is **blocked** until the audit passes.
 
     - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict, any per-unit (destructive/gated) peer verdicts. Per-phase summary if phasing was on.
     - **Learning checkpoint** (structured, non-droppable - A3, D26). **The SOLE learning-capture point in the lifecycle** — it fires here, at the very end of the post-build phase (after the branch-level simplify + Outside Voice review + evidence audit above), so capture reflects the *fully reviewed* build. `/en-qa` and `/en-ship` no longer prompt for learnings (removed by the EN04 follow-up); if you don't run `/en-build`, there is no learning checkpoint. It emits a visible `learning_checkpoint:` outcome line in the build summary, so the capture decision can never be silently dropped under context pressure.
@@ -327,7 +327,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
       7. **Policy override.** `build.learning_checkpoint: false` skips the whole step (records `learning_checkpoint: intentionally_skipped (--no-learning-checkpoint flag)`).
 
       The four canonical outcome values are `captured (N learnings)` / `intentionally_skipped` / `up_to_date` / `ci_environment` (never the bare word `skipped`). This step fires at the `/en-learn` hand-off - after step 10's audit, **outside** the inter-unit autonomy-contract window - so it is a legitimate terminal checkpoint, not an inserted inter-unit pause.
-    - Suggest next: `/en-review` → `/en-qa` → `/en-ship` — but only if the audit passed. Otherwise: `/en-cross-review` on the failing commits.
+    - Suggest next: `/en-review` → `/en-qa` → `/en-ship` — but only if the audit passed. Otherwise: `/en-review --peer <sha>` on the failing commits.
 
 ## Flags
 
@@ -442,4 +442,4 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
 - **Never lets another agent write the code.** The host implements every unit, on every host. There is no worker dispatch and no flavor that hands authoring away. The peer enters once, at step 10.3, after `/en-simplify`, through `/en-review --cross`.
 - **Never commits outside the unit's files.** Staging is path-limited to the unit's own paths; `git add .` is forbidden, because a bare stage absorbs whatever the user already had in the index.
-- **Never declares a build "complete" with missing review evidence.** The end-of-build audit (step 10.5) confirms every plan U-ID is covered by the branch-level `review-verdict:`, and that `simplify_pass` and `branch_review_pass` both recorded. It refuses the success path (`/en-review` → `/en-qa` → `/en-ship`) if any is missing, and suggests `/en-cross-review` instead.
+- **Never declares a build "complete" with missing review evidence.** The end-of-build audit (step 10.5) confirms every plan U-ID is covered by the branch-level `review-verdict:`, and that `simplify_pass` and `branch_review_pass` both recorded. It refuses the success path (`/en-review` → `/en-qa` → `/en-ship`) if any is missing, and suggests `/en-review --peer <sha>` on the failing commits instead.

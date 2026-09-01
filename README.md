@@ -106,12 +106,14 @@ The lifecycle pipeline with four orthogonal skills:
 
    Orthogonal skills, available at any point in the flow:
 
-         ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
-         │/en-cross-review│  │   /en-debug    │  │  /en-guardrail │
-         │  Ad-hoc peer   │  │  Trace-driven  │  │  Always-on     │
-         │  review of any │  │  bug repro;    │  │  PreToolUse    │
-         │  artifact      │  │  read-only     │  │  hook on Bash  │
-         └────────────────┘  └────────────────┘  └────────────────┘
+         ┌────────────────┐  ┌────────────────┐
+         │   /en-debug    │  │  /en-guardrail │
+         │  Trace-driven  │  │  Always-on     │
+         │  bug repro;    │  │  PreToolUse    │
+         │  read-only     │  │  hook on Bash  │
+         └────────────────┘  └────────────────┘
+
+   Ad-hoc peer review of any artifact is `/en-review --peer <path|ref|branch>`.
 ```
 
 ## Quick start
@@ -303,7 +305,6 @@ You can run both simultaneously for two AI perspectives.
 | # | Skill | Purpose |
 |---|---|---|
 | 10 | `/en-debug` | Telemetry-driven debugging. Reads structured logs (per `references/observability-conventions.md`), correlates by `trace_id` / `request_id` / event field, surfaces hypothesis with `file:line` and confidence 1–10. **Read-only** — never writes code. |
-| 11 | `/en-cross-review` | Ad-hoc Outside Voice peer review of any artifact (file, diff, branch, current uncommitted work). `--focus security \| performance \| tests \| correctness \| maintainability \| all`. |
 | 12 | `/en-guardrail` | Always-on `PreToolUse` hook that prompts before destructive Bash commands (recursive `rm`, `DROP TABLE`, force-push, `terraform destroy`, `aws s3 rm --recursive`, etc.). Localhost+test/dev DB exemption. Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. Installed globally or project-scoped. |
 | 13 | `/en-sweep` | Event-driven doc-drift cleanup. Auto-fires on `push` to `main`. Opens auto-merging doc-only PRs. **Continuous monitoring** (opt-in): dead-code (`ts-prune` / `vulture` / Go `deadcode`) + dep-vuln (`npm audit` / `pip-audit` / `cargo audit`) with size-based triage — trivial → TD entry; pattern → draft plan. |
 | 14 | `/en-setup` | Project-level bootstrap and diagnostics. Detects state 1/2/3; for retrofits: archives non-conforming plans, creates skeleton, generates AGENTS.md/CLAUDE.md, installs en-sweep workflow + guardrail + Claude Code Review action, checks `allow_auto_merge`, surfaces bootstrap-patterns offer. |
