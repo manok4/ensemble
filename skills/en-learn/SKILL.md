@@ -1,9 +1,6 @@
 ---
 name: en-learn
 description: "Capture durable learnings into the repo's knowledge store. Trigger phrases: 'capture this', 'learn from', 'audit learnings', 'wiki health', 'migrate learnings'. Gated: the default is to write nothing, and an entry must be unrecoverable from the code, change a future decision, and outlive its occasion. Routes each capture to a term (docs/CONTEXT.md), a decision (docs/decisions/), or a solution (docs/learnings/), then grounds its claims against the tree. Captures only what this repository taught. Modes: capture (default), --refresh, --lint, --migrate."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-
 ---
 
 

@@ -1,9 +1,7 @@
 ---
 name: en-resolve-pr
 description: "Address review comments on the current PR. Fetches inline review threads + top-level PR comments + review-submission bodies; triages new vs already-handled, silent-drops bot wrappers; per comment applies a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes, replies, resolves threads (except needs-human). Up to 2 cycles. --enable-auto-merge flag. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-
+disable-model-invocation: true
 ---
 
 

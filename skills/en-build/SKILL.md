@@ -1,9 +1,6 @@
 ---
 name: en-build
 description: "Execute an implementation plan unit by unit on a feature branch. Trigger phrases: 'build this plan', 'implement <plan_id>', 'start building', 'execute the plan'. Each unit is implement, test, lint, commit; simplification and cross-agent Outside Voice review run once over the branch diff at the end. The host implements every unit; the peer reviews once, at the end. A learning checkpoint fires last."
-# What this skill needs. Every path is skill-relative and must exist here.
-# A skill is self-contained: nothing outside this directory is listed.
-
 ---
 
 
