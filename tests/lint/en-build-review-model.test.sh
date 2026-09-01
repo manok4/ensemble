@@ -205,16 +205,21 @@ else
   fail "foundation must record D52 with what it supersedes and what it costs"
 fi
 
-# --- --no-review skips the branch-level review, and says it skips ALL of it ---
-# It was called --no-peer, which named the wrong half: it skips the personas
-# too, and the name collided with /en-review's own --no-peer, which means the
-# opposite (run the personas, skip the cross-agent peer). Renamed, and the flag
-# text has to say "entirely" so nobody reads it as the peer-only skip again.
-if grep -qE '`--no-review`.*post-build branch-level' "$SKILL" \
-   && grep -qiE 'peer and host personas both' "$SKILL"; then
-  pass "--no-review is documented as skipping the whole review, personas included"
+# --- `--review none` skips the branch-level review, and says it skips ALL of it ---
+# It was --no-review until 2026-09-01, and before that --no-peer, which named
+# the wrong half. Folding it into --review as a third value removed the case
+# where --review peer --no-review had no defined meaning: the review decision
+# has three answers, so it is one flag with three values.
+if grep -qE '`--review cross\\\|peer\\\|none`' "$SKILL" \
+   && grep -qiE 'skips 10.3 \*\*entirely\*\*, peer and personas both' "$SKILL"; then
+  pass "--review none is documented as skipping the whole review, personas included"
 else
-  fail "--no-review must be documented as skipping the entire step 10.3"
+  fail "--review must carry a none value that skips the entire step 10.3"
+fi
+if grep -qE '^\| `--no-review`' "$SKILL"; then
+  fail "--no-review is back alongside --review" "two flags for one question"
+else
+  pass "there is no separate --no-review flag"
 fi
 
 if grep -qE '`--no-peer`' "$SKILL" | grep -qv 'en-plan'; then

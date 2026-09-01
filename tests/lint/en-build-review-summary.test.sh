@@ -58,8 +58,9 @@ grep -qiE 'Code-simplifier: [0-9]+ of [0-9]+ units' "$SKILL" && stale="$stale pe
 # --- 5. the review-mode passthrough defaults to cross ---
 # A build may ask for the cheaper peer-only pass; it must not get it by default,
 # because D46's reasoning is about what a build's review is FOR.
-if grep -qE '\| `--review peer\\\|cross` \|' "$SKILL" \
-   && grep -qiE 'Default `cross`' "$SKILL" \
+# Three values since --no-review folded in: cross (default), peer, none.
+if grep -qE '`--review cross\\\|peer\\\|none`' "$SKILL" \
+   && grep -qiE '\*\*Default `cross`\*\*' "$SKILL" \
    && grep -qiE 'peer is mandatory either way' "$SKILL"; then
   pass "--review lets a build pick the cheaper pass, defaulting to cross"
 else
