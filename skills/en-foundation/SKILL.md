@@ -9,7 +9,6 @@ requires:
   - agents/web-research.md
   - references/agent-dispatch.md
   - references/architecture-update-rules.md
-  - references/cli-wrappers.md
   - references/diff-signal-detection.md
   - references/finding-schema.md
   - references/foundation-questions.md
@@ -30,7 +29,6 @@ requires:
   - references/templates/claude-md-template.md
   - references/templates/foundation-template.md
   - references/templates/plan-template.md
-  - scripts/en-sweep-ci
   - scripts/ensemble-build-peer-prompt
   - scripts/ensemble-cli-smoke
   - scripts/ensemble-config-get

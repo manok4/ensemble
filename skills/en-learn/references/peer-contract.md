@@ -82,7 +82,7 @@ When a host records what it did with a finding, exactly one of:
 
 ## Where degradation is handled
 
-**At the invocation layer** (`scripts/ensemble-peer-invoke`), never at the call
+**At the invocation layer** (the ensemble-peer-invoke helper, carried by the skills that invoke a peer), never at the call
 site and never in the flag translator. A failed invocation is classified, and the
 classification decides whether a retry happens:
 

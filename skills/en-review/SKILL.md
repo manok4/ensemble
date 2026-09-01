@@ -7,7 +7,6 @@ requires:
   - agents/dimension-reviewer.md
   - agents/learnings-research.md
   - references/agent-dispatch.md
-  - references/cli-wrappers.md
   - references/diff-signal-detection.md
   - references/finding-schema.md
   - references/host-detect.md

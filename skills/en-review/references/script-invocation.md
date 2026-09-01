@@ -5,13 +5,13 @@ each call to that directory:
 
 ```
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-bash "$SKILL_DIR/scripts/ensemble-lint" --scope docs/
+bash "$SKILL_DIR/scripts/<script-name>" --scope docs/
 ```
 
 ## Why the anchor, and not a bare relative path
 
 The Bash tool's working directory is the **user's project**, not the skill
-directory, on Claude Code and Codex alike. A bare `bash scripts/ensemble-lint`
+directory, on Claude Code and Codex alike. A bare `bash scripts/<script-name>`
 therefore resolves against the project and exits 127. A capable agent often
 translates the path anyway, but the failure mode is a fenced block copied
 verbatim into a Bash call, and recovering from that costs a wasted round trip.

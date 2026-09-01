@@ -37,7 +37,11 @@ check() {  # $1=file glob  $2=forbidden backticked path  $3=label
   done
 }
 check 'skills/*/references/peer-model-policy.md' 'references/build-handoff.md'        pmp-build
-check 'skills/*/references/peer-model-policy.md' 'references/cli-wrappers.md'         pmp-cli
+# NOT checked: cli-wrappers.md was deleted on 2026-09-01. It called itself the
+# single source of truth for CLI flags, but nothing read it — the flags live in
+# the ensemble-peer-invoke helper, which is D44's binding layer. Its last two
+# carriers reached it from no flow. A forbidden-relink check on a file that no
+# longer exists asserts nothing; a re-link would fail as a dangling path instead.
 # NOT checked: peer-model-policy's risk-ladder rung 2 links diff-signal-detection
 # to define `is_small_and_safe`. That is a real dependency of the ladder, not an
 # aside, so it stays linked and the 70-line target rides along with the policy.
@@ -92,11 +96,10 @@ while IFS='|' read -r rel expected; do
   [ "$n" = "$expected" ] || drift="$drift $rel($n!=$expected)"
 done <<'COUNTS'
 references/persona-dispatch.md|1
-references/cli-wrappers.md|2
 agents/dimension-reviewer.md|1
 scripts/ensemble-verify-peer-evidence|2
-references/doc-lints.md|2
-scripts/en-sweep-ci|3
+references/doc-lints.md|1
+scripts/en-sweep-ci|2
 COUNTS
 
 [ -z "$drift" ] \

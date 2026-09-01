@@ -7,7 +7,6 @@ requires:
   - agents/learnings-research.md
   - agents/repo-research.md
   - references/agent-dispatch.md
-  - references/doc-lints.md
   - references/glossary-rules.md
   - references/host-detect.md
   - references/layout-migration.md
@@ -29,6 +28,7 @@ requires:
   - references/templates/github-workflow-en-sweep.yml
   - references/templates/github-workflow-ensemble-lint.yml
   - references/templates/review-md-template.md
+  - scripts/check-health
   - scripts/en-sweep-ci
   - scripts/ensemble-classify-plans
   - scripts/ensemble-detect-host
@@ -324,7 +324,7 @@ For `{{LANG}}`: detect from `package.json` (TypeScript if `"typescript"` in deps
 
 ## State 3 — Diagnostic mode
 
-Invoke `scripts/check-health` (in the plugin's `scripts/` directory). It prints 🟢/🟡/🔴 per check. Pipe through and surface the result to the user.
+Invoke `bash "$SKILL_DIR/scripts/check-health"` — this skill carries it, anchored per `references/script-invocation.md`. It prints 🟢/🟡/🔴 per check. Pipe through and surface the result to the user.
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
