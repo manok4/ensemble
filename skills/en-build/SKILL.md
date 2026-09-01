@@ -4,30 +4,14 @@ description: "Execute an implementation plan unit by unit on a feature branch. T
 # What this skill needs. Every path is skill-relative and must exist here.
 # A skill is self-contained: nothing outside this directory is listed.
 requires:
-  - agents/code-simplifier.md
-  - references/agent-dispatch.md
-  - references/cli-wrappers.md
-  - references/code-simplifier-dispatch.md
-  - references/diff-signal-detection.md
   - references/finding-schema.md
   - references/host-detect.md
-  - references/outside-voice.md
-  - references/peer-brief.md
   - references/peer-contract.md
-  - references/peer-model-policy.md
   - references/recursion-guard.md
   - references/script-invocation.md
   - references/severity.md
-  - references/single-agent-fallback.md
   - references/stable-ids.md
-  - scripts/en-sweep-ci
-  - scripts/ensemble-build-peer-prompt
-  - scripts/ensemble-cli-smoke
-  - scripts/ensemble-config-get
   - scripts/ensemble-detect-host
-  - scripts/ensemble-extract-json
-  - scripts/ensemble-peer-flags
-  - scripts/ensemble-peer-invoke
   - scripts/ensemble-plan-hash
   - scripts/ensemble-verify-peer-evidence
 
@@ -39,8 +23,6 @@ requires:
 > **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
 
 
-> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
-
 
 Execute a plan, unit by unit. **The host implements every unit** — whichever agent `/en-build` was invoked in writes the code, runs the tests, and makes the commits. The peer agent is never a worker here; it enters once, at the branch-level review in step 10, after `/en-simplify` has run. That is what keeps implementer ≠ reviewer: the review is cross-agent even though the implementation never leaves the host (D52, superseding D35's two flavors and amending D46).
 
@@ -49,30 +31,22 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 > **Universal safety gates** (apply on EVERY code path — phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See "Universal safety gates" section below.
 
 > **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
-> object and its reason enum are defined once in `references/peer-contract.md`
-> and are byte-identical across every skill that exchanges findings. What this
-> skill *does* with a finding is its own policy, not part of that contract.
 
-> **Peer brief.** What the peer is asked, and what this skill does with the
-> answer, is in `references/peer-brief.md`. The wire format it shares with every
-> other skill is `references/peer-contract.md`.
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `HOST`, `PEER`, `PEER_MODE`, `PEER_CMD`, `PEER_FORMAT`.
+1. **Detect host.** Source `references/host-detect.md`. en-build needs exactly one thing from it: `$QUESTION_TOOL`, for the confirmation prompts at 9a. It resolves no peer variables — since D52 it dispatches no peer, and `/en-review` resolves its own at step 10.3.
 
    **Plugin-install preflight (fail-fast).** Verify the skill's referenced files are accessible — observed failure mode: a partial plugin install that has only `SKILL.md` leaves the agent without the dispatch recipe, and peer review silently degrades to "skipped without recording why." For each of these reference paths, confirm the file exists:
 
    - `references/host-detect.md`
-   - `references/outside-voice.md`
    - `references/severity.md`
    - `references/finding-schema.md`
-   - `$SKILL_DIR/scripts/ensemble-build-peer-prompt`
    - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence`
 
    If any are missing, **fail at start with a clear error** — do not proceed with a degraded build. Surface the exact paths missing and tell the user to re-run `/en-setup` or sync the plugin.
 
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip all peer-review subprocess calls (host implements + reviews inline). The host still implements and commits every unit; only step 10.3's branch-level review is skipped, and the branch records `review-verdict: {"verdict":"skipped","reviewer":"recursion-guard-active",...}` so the step 10.5 audit reads a reason rather than an absence.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip step 10.3's review. The host still implements and commits every unit; only step 10.3's branch-level review is skipped, and the branch records `review-verdict: {"verdict":"skipped","reviewer":"recursion-guard-active",...}` so the step 10.5 audit reads a reason rather than an absence.
 3. **Confirm the implementer.** The host implements. There is no flavor choice and no worker dispatch: `/en-build` never hands authoring to another agent, on any host. `PEER_AVAILABLE` from step 1 decides only whether step 10's branch-level review is cross-agent, single-agent fallback, or skipped — it never changes who writes the code.
 4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios, **Risk, Gated** (or fall back to inference for legacy plans without `risk:`).
 
@@ -271,7 +245,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
        The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
 
-       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.5 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `references/severity.md` (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. Skip entirely with `--no-review` (records the branch as review-skipped). The flag is named for what it does: it skips this step, personas included. It is **not** "run the review without the peer" — that case needs no flag, because when `PEER_AVAILABLE=false` en-review runs its host personas anyway and records `reviewer: single-agent-fallback` or `en-review-host-fallback`, which the audit accepts as `branch_review_pass: fallback_completed`. The peer machinery lives in en-review (one implementation), not duplicated here.
+       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.5 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `references/severity.md` (the P0-P3 grades and the wire shape they arrive in are the shared contract in `references/peer-contract.md`) (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. Skip entirely with `--no-review` (records the branch as review-skipped). The flag is named for what it does: it skips this step, personas included. It is **not** "run the review without the peer" — that case needs no flag, because when `PEER_AVAILABLE=false` en-review runs its host personas anyway and records `reviewer: single-agent-fallback` or `en-review-host-fallback`, which the audit accepts as `branch_review_pass: fallback_completed`. The peer machinery lives in en-review (one implementation), not duplicated here.
     4. **Commit the simplify + review changes** (if any) with **both** a `review-verdict:` trailer AND a `simplify-verdict:` trailer (EN07 - the simplify pass is now auditable evidence, not prose). If steps 2–3 produced no working-tree changes, create an empty commit (`--allow-empty`) carrying **both** trailers so the branch records both passes.
 
        **Trailer schemas.** These two are the branch's whole evidence record, so they live here rather than in a reference:
@@ -372,19 +346,13 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
 Skipped only by `--no-review`, which records the branch as review-skipped and makes the step 10.5 audit report `branch_review_pass: missing`. There is no per-unit skip enum any more, because there is no per-unit pass to skip.
 
-When peer is available:
-- Cross-agent → peer is the *other* agent (D23).
-- Single-agent fallback → fresh subprocess of host's CLI (D31). Prompt augmented per `references/single-agent-fallback.md`.
+Which reviewer ran is `/en-review`'s resolution, not en-build's; it comes back in the envelope's `reviewer` field and lands in the `review-verdict:` trailer.
 
 ## Code simplification
 
-**On per unit by default.** Skipped on:
+**Once per build, at step 10.2, over the branch diff** — not per unit. `/en-build` invokes `/en-simplify`; it owns the dimensions, the revert protocol, and its own agent. en-build owns only the outcome: a `simplify-verdict:` trailer on the post-build commit.
 
-- Trivial units (renames, single-line config tweaks, pure deletions).
-- `--no-simplify` flag.
-- Units where the diff exceeds `simplifier.max_lines_to_run` (default 2000).
-
-Two verification gates protect against simplifier breakage. On Gate-2 failure, revert the simplifier's edits and continue with the original implementation (per `references/code-simplifier-dispatch.md`).
+Skipped on a docs-only or trivial branch, or by `--no-simplify`. Either way the skip is recorded as `outcome: not_applicable` with a reason, so the audit reads a decision rather than an absence.
 
 ## Per-unit progress report
 
@@ -426,15 +394,11 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 
 ## Reference files
 
-- `references/host-detect.md` — host detection
-- `references/code-simplifier-dispatch.md` — when/how to run simplifier; revert protocol
-- `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/single-agent-fallback.md` — fallback when only one CLI installed
-- `references/finding-schema.md` — peer JSON shape
+- `references/host-detect.md` — `$QUESTION_TOOL` for the confirmation prompts
+- `references/finding-schema.md` — shape of the findings envelope `/en-review` returns
 - `references/severity.md` — apply / defer / disagree routing
 - `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
 - `references/stable-ids.md` — U-ID stability rules
-- `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for peer dispatch
 - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 10.5's audit. Run with `--branch-coverage <range> --require-simplify`: it enumerates the U-IDs covered by the branch's `review-verdict:` trailers and derives `simplify_pass` / `branch_review_pass`. Its `--require-peer-resolution` mode is for skills that run per-unit peer passes; `/en-build` does not (D52).
 
 ## Failure protocol

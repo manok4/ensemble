@@ -11,11 +11,14 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="en-codex flag drift"
 
 DETECT="$REPO_ROOT/skills/en-brainstorm/scripts/ensemble-detect-host"
 HOSTDOC="$REPO_ROOT/skills/en-brainstorm/references/host-detect.md"
-OUTVOICE="$REPO_ROOT/skills/en-build/references/outside-voice.md"
+OUTVOICE="$REPO_ROOT/skills/en-review/references/outside-voice.md"
 # D52 removed en-build's two flavors, so build-handoff.md and
 # build-orchestration.md now live only with /en-cross-review, which names
 # them in its own flow. This checks the surviving carrier.
@@ -23,7 +26,7 @@ HANDOFF="$REPO_ROOT/skills/en-cross-review/references/build-handoff.md"
 ORCH="$REPO_ROOT/skills/en-cross-review/references/build-orchestration.md"
 SETUP="$REPO_ROOT/setup"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
-SMOKE="$REPO_ROOT/skills/en-build/scripts/ensemble-cli-smoke"
+SMOKE="$REPO_ROOT/skills/en-cross-review/scripts/ensemble-cli-smoke"
 
 # ============================================================
 # U1: detect-host emits PEER_TURNS, resolved per peer agent (hermetic)

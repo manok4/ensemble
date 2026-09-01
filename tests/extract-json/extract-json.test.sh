@@ -7,9 +7,12 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="ensemble-extract-json"
 
-. "$REPO_ROOT/skills/en-build/scripts/ensemble-extract-json"
+. "$REPO_ROOT/skills/en-cross-review/scripts/ensemble-extract-json"
 
 ok_case() { # $1=label $2=input $3=expected
   local got; got=$(printf '%s' "$2" | ensemble_extract_json 2>/dev/null) || got="<exit-1>"
@@ -57,7 +60,7 @@ cat >/dev/null
 printf 'Sure:\n```json\n{"verdict":"approve","findings":[],"summary":"a { b"}\n```\ndone\n'
 EOF
 chmod +x "$FAKE"; printf 'p' > "$PF"
-( . "$REPO_ROOT/skills/en-build/scripts/ensemble-peer-invoke"
+( . "$REPO_ROOT/skills/en-review/scripts/ensemble-peer-invoke"
   ensemble_peer_invoke --peer-cmd "$FAKE" --peer-format "" \
     --prompt-file "$PF" --out-file "$OUT" --peer-mode cross-agent >/dev/null 2>&1 )
 if [ "$(cat "$OUT")" = '{"verdict":"approve","findings":[],"summary":"a { b"}' ]; then
@@ -73,7 +76,7 @@ cat >/dev/null
 printf 'total garbage, no object here\n'
 EOF
 chmod +x "$FAKE"
-( . "$REPO_ROOT/skills/en-build/scripts/ensemble-peer-invoke"
+( . "$REPO_ROOT/skills/en-review/scripts/ensemble-peer-invoke"
   ensemble_peer_invoke --peer-cmd "$FAKE" --peer-format "" \
     --prompt-file "$PF" --out-file "$OUT" --peer-mode cross-agent >/dev/null 2>&1 )
 if [ "$(cat "$OUT")" = "total garbage, no object here" ]; then

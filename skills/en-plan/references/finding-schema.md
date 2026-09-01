@@ -108,7 +108,7 @@ When the cross-agent peer runs alongside the host personas (the `/en-review` def
 }
 ```
 
-`peer_decision` is defined once in `references/peer-model-policy.md` section (e); the envelope echoes it verbatim so callers never re-derive it.
+`peer_decision` is defined once in the peer-model-policy reference, section (e), carried by the skills that dispatch a peer; the envelope echoes it verbatim so callers never re-derive it.
 
 ## Examples
 

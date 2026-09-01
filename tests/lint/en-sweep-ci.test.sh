@@ -5,9 +5,12 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="en-sweep CI fix"
 
-CI="$REPO_ROOT/skills/en-build/scripts/en-sweep-ci"
+CI="$REPO_ROOT/skills/en-sweep/scripts/en-sweep-ci"
 WF="$REPO_ROOT/skills/en-setup/references/templates/github-workflow-en-sweep.yml"
 SETUP="$REPO_ROOT/skills/en-setup/SKILL.md"
 
