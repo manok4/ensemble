@@ -243,7 +243,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
     1. **Cheap gate: lint + typecheck only.** Seconds, not minutes. It catches syntax and type breakage before simplify and review spend time on code that cannot compile. **The full suite does not run here** — it runs once, at 10.5, after review findings have been applied. Running it first is how a build pays for the full suite three times: once now, once after simplify, once after remediation, on an implementation that was still changing (D53).
     2. **Code-simplification pass** — invoke `/en-simplify` on the branch diff (`git diff <merge-base>..HEAD`). Skip on docs-only or trivial (<~10 changed lines) branches, or with `--no-simplify`. It leaves changes in the working tree (does not commit). Skipped for the rare branch composed entirely of destructive/gated units already reviewed per-unit.
-    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`** over the branch diff.
+    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`** over the branch diff — or `--peer` in place of `--cross` when `--review peer` was passed. `--cross` is the default and the reason is D46: the personas are where project context and plan alignment show up, and a review whose subject is "did this branch implement this plan" is a strange place to drop them.
 
        The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
 
@@ -334,6 +334,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 | Flag | Effect |
 |---|---|
 | `--no-simplify` | Skip the post-build code-simplification pass (step 10.2). Records `simplify-verdict: {"outcome":"not_applicable","reason":"--no-simplify",...}` - a visible, recorded opt-out that passes the audit, never a silent skip. |
+| `--review peer\|cross` | Which review `/en-review` runs at 10.3. Default `cross` — peer plus host personas, per D46, because the standards / testing / maintainability findings depend on project context this build has. `peer` runs the peer alone: cheaper and faster, and the right call when you want an independent read without the roster. It does not weaken the audit — the peer is mandatory either way, and `review-verdict.reviewer` still records whether the cross-agent property held. |
 | `--no-review` | Skip the post-build branch-level review (step 10.3) **entirely** — peer and host personas both. The branch records as review-skipped; the audit reports `branch_review_pass: missing` and FAILS. Since D52 this is the build's only review, so it leaves every unit unreviewed, destructive ones included. Formerly `--no-peer`, which named the wrong half and collided with `/en-review`'s own `--no-peer`. |
 | `--unit U<N>` | Build only the named unit; don't auto-advance. Universal safety gates still apply. |
 | `--no-phasing` | Force phasing off for this run (universal safety gates still fire per unit). No `--phasing` counterpart: phasing turns on from six triggers, and when none fired the plan is small enough not to need it. |
@@ -383,20 +384,22 @@ Build summary — FR07-auth-rotation (5 units)
 
 ✓ U1: Add singleFlight helper (feat: 12 files, 4 tests)
 ✓ U2: Wire Redis connection (feat: 3 files)
-✓ U3: Wrap rotateRefreshToken (feat: 2 files, 3 tests, peer applied 1)
-✓ U4: Migration for refresh_token_rotated_at (feat: 1 file, manual review surfaced)
+✓ U3: Wrap rotateRefreshToken (feat: 2 files, 3 tests)
+✓ U4: Migration for refresh_token_rotated_at (feat: 1 file) [gated]
 ✓ U5: Update test coverage (test: 6 files, 12 tests)
 
 Full suite: 247 passing, 0 failing.
 Lint: clean.
 Typecheck: clean.
 
-Code-simplifier: 4 of 5 units; 7 file changes total.
-Peer review: cross-agent (codex). 4 findings applied, 2 deferred to tech-debt-tracker (TD11, TD12).
+Code-simplifier: branch diff; 7 file changes.
+Review: --cross, cross-agent (codex). Found 11 — P0:1 P1:3 P2:5 P3:2. Addressed 6 (1 P0, 3 P1, 2 P2), deferred 4 to tech-debt-tracker (TD11-TD14), disagreed 1.
 simplify_pass: completed
 branch_review_pass: completed
 learning_checkpoint: captured (2 learnings)
 ```
+
+**The `Review:` line is mandatory and carries both halves.** *Found*, broken down by severity, and *addressed*, broken down the same way — a review that found eleven things and addressed six is a different outcome from one that found six and addressed six, and a line reporting only the second is unreadable as either. Deferred findings name their TD IDs so the paper trail is followable from the summary; disagreed ones are counted so a silent drop is visible as a number. Where the review was skipped or fell back, this line says which and why, in place of the counts.
 
 The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - they echo the durable `simplify-verdict:` / `review-verdict:` trailers so a skipped simplify or an unrecorded review can never read as a clean finish. A `missing`/`failed` value on either blocks the learning checkpoint and the ship hand-off.
 
