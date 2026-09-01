@@ -3,7 +3,7 @@
 #
 # The bin/ helpers that export functions must be sourceable from zsh as well as
 # bash. macOS defaults to zsh, and several skills source these directly, e.g.
-# skills/en-cross-review/SKILL.md's `. "$ENSEMBLE_ROOT/bin/ensemble-peer-invoke"`.
+# skills/en-review/SKILL.md's `. "$ENSEMBLE_ROOT/bin/ensemble-peer-invoke"`.
 #
 # The bug this guards: BASH_SOURCE is bash-only, so under zsh + `set -u` the
 # sibling loads in ensemble-peer-invoke aborted, ensemble_smoke_classify was
@@ -83,7 +83,7 @@ for shell in bash zsh; do
   command -v "$shell" >/dev/null 2>&1 || continue
   cat > "$WORK/nofilter-$shell.sh" <<INNER
 set -u
-. "$REPO_ROOT/skills/en-cross-review/scripts/ensemble-extract-json"
+. "$REPO_ROOT/skills/en-review/scripts/ensemble-extract-json"
 echo SOURCED_ONLY
 INNER
   out=$(printf 'stdin must not be consumed\n' | "$shell" "$WORK/nofilter-$shell.sh" 2>/dev/null)
@@ -93,7 +93,7 @@ done
 # ...but direct execution still must.
 for shell in bash zsh; do
   command -v "$shell" >/dev/null 2>&1 || continue
-  out=$(printf 'prefix {"a":1} suffix\n' | "$shell" "$REPO_ROOT/skills/en-cross-review/scripts/ensemble-extract-json" 2>/dev/null)
+  out=$(printf 'prefix {"a":1} suffix\n' | "$shell" "$REPO_ROOT/skills/en-review/scripts/ensemble-extract-json" 2>/dev/null)
   assert_contains "$out" '"a"' "[$shell] executing ensemble-extract-json still filters"
 done
 

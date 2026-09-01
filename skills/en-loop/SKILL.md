@@ -28,7 +28,7 @@ en-loop is a thin Ensemble layer over **gnhf** (`npm i -g gnhf`), a mature, agen
 Ensemble's value-add is exactly two things, not the loop plumbing:
 
 1. **The worker prompt** — Ensemble's per-iteration test-gate contract (implement one slice, run test + lint, commit only on green, no fake success).
-2. **The review layer** — a branch-level cross-agent `/en-review --peer-only` at checkpoints (every `--review-every N` iterations and at loop end), whose findings become the next iterations' acceptance criteria.
+2. **The review layer** — a branch-level cross-agent `/en-review --peer` at checkpoints (every `--review-every N` iterations and at loop end), whose findings become the next iterations' acceptance criteria.
 
 ## When to use which (positioning)
 
@@ -106,7 +106,7 @@ Ordinary iterations are test-gated but not peer-reviewed (a full Outside Voice p
 **How the cadence is driven (this is en-loop's mechanic, not a gnhf feature).** gnhf runs to its own stop condition and has **no mid-run callback** to invoke a reviewer, so en-loop drives the checkpoint cadence itself by running gnhf in **bounded chunks**. Do NOT assume gnhf calls `/en-review` mid-run — it does not. Each chunk:
 
 1. **Launch gnhf capped at `--review-every N` iterations** (via gnhf's own `--max-iterations`, so the process stops at the chunk boundary), with the worker prompt and `--stop-when`.
-2. When the chunk stops (cap reached or `--stop-when` self-reported), **run `/en-review --peer-only --mode headless`** over the branch diff (`git diff <merge-base>..HEAD`). This dispatches the cross-agent Outside Voice peer as the sole reviewer (Claude host → Codex reviews; Codex host → Claude reviews).
+2. When the chunk stops (cap reached or `--stop-when` self-reported), **run `/en-review --peer --mode headless`** over the branch diff (`git diff <merge-base>..HEAD`). This dispatches the cross-agent Outside Voice peer as the sole reviewer (Claude host → Codex reviews; Codex host → Claude reviews).
 3. **Record the outcome as a `review-verdict:` trailer** on a checkpoint commit.
 4. If the real `--stop-when` condition is not yet met, **relaunch gnhf on the same branch** for the next chunk with the review findings folded into the worker prompt as the bounded corrections to make (the gnhf Companion-review / relaunch pattern). **Findings become the next chunk's acceptance criteria.**
 
@@ -153,7 +153,7 @@ Forward only the caps `gnhf --help` advertises; if gnhf has no `--model` flag, p
 | `--worktree` | Run the loop in an isolated git worktree. |
 | `--push` | Allow the loop to push the feature branch (still never auto-merges). |
 | `--agent <claude\|codex>` | Override the host-detected worker agent. |
-| `--review-every <N>` | Run the checkpoint `/en-review --peer-only` every N iterations (default 5; a review always runs at loop end). Drives the per-chunk `--max-iterations` cap passed to gnhf. |
+| `--review-every <N>` | Run the checkpoint `/en-review --peer` every N iterations (default 5; a review always runs at loop end). Drives the per-chunk `--max-iterations` cap passed to gnhf. |
 | `--mode <hands-off\|companion>` | Select the run mode (default `hands-off`). |
 
 **Flag ownership.** `--objective`, `--stop-when`, `--review-every`, `--mode`, and `--max-runtime` are **en-loop's own** (en-loop interprets them; it does not forward them to gnhf verbatim). The pass-through caps (`--max-iterations`, `--max-tokens`, `--worktree`, `--push`) are forwarded to gnhf **only if `gnhf --help` advertises them** — gnhf's flag surface is version-dependent, so never forward a flag gnhf does not list. `--max-runtime` is enforced by en-loop itself via `command -v timeout || command -v gtimeout` (macOS: `brew install coreutils`), stopping the current chunk gracefully at the cap rather than relying on a gnhf runtime flag that may not exist.

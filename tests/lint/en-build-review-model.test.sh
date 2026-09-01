@@ -31,16 +31,25 @@ fi
 # the host personas (D46, superseding the former --peer-only). The peer carries
 # implementer != reviewer; the personas are fresh-context sub-agents that add the
 # host-only standards/testing/maintainability findings --peer-only discarded.
-if grep -qF -- "/en-review --peer " "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
-  pass "post-build review calls /en-review --peer (cross-agent peer + host personas)"
+# The flags were renamed on 2026-09-01: --peer now means peer-SOLE and --cross
+# means peer-plus-personas. D46's requirement is unchanged — en-build needs both
+# sources — so the call it must make is now spelled --cross. The rename is
+# exactly the hazard this clause exists for: en-build's old --peer call would
+# have kept its spelling and silently become the peer-only pass D46 removed.
+if grep -qF -- "/en-review --cross " "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
+  pass "post-build review calls /en-review --cross (peer + host personas)"
 else
-  fail "post-build review must call /en-review --peer"
+  fail "post-build review must call /en-review --cross" \
+       "D46 needs both sources; --peer alone is now the peer-sole mode it removed"
 fi
-# Guard the regression directly: the post-build step must NOT go back to peer-only.
-if grep -qF -- "/en-review --peer-only --mode headless --base" "$SKILL"; then
-  fail "post-build review reverted to --peer-only (drops host-only findings; see D46)"
+# Guard the regression directly: the post-build step must NOT go peer-sole.
+# Scoped to the post-build INVOCATION. en-build legitimately suggests an ad-hoc
+# `/en-review --peer <sha>` when the evidence audit fails; a blanket ban on the
+# string forbade that too, which an over-broad first draft did.
+if grep -qF -- "/en-review --peer --mode headless" "$SKILL"; then
+  fail "post-build review reverted to a peer-sole call (drops host-only findings; see D46)"
 else
-  pass "post-build review does not use --peer-only"
+  pass "post-build review is not peer-sole"
 fi
 # The cross-agent property is still mandatory, not merely nice to have.
 if grep -qiE 'peer is \*\*mandatory\*\*|cross-agent peer is \*\*mandatory\*\*' "$SKILL"; then
@@ -49,26 +58,31 @@ else
   fail "post-build review must state the cross-agent peer is mandatory"
 fi
 
-# --peer-only itself must SURVIVE in en-review: /en-loop still depends on it.
-if grep -qF -- "--peer-only" "$EN_REVIEW"; then
-  pass "en-review still documents --peer-only (used by /en-loop)"
+# The peer-sole MODE must survive in en-review: /en-loop depends on it. It is
+# spelled --peer since the 2026-09-01 rename, so checking the old --peer-only
+# string would have passed on nothing at all.
+if grep -qE -- '^\| `--peer` \| \*\*Default' "$EN_REVIEW"; then
+  pass "en-review still offers a peer-sole mode (used by /en-loop)"
 else
-  fail "en-review must keep --peer-only; /en-loop depends on it"
+  fail "en-review must keep a peer-sole mode; /en-loop depends on it"
 fi
 # ...and /en-loop must ACTUALLY still use it. Asserting only that the string
 # survives somewhere in en-review would pass even if en-loop silently flipped to
 # --peer, which is precisely the scope D46 excludes (checkpoints fire every N
 # iterations in an unattended loop, where a persona roster per checkpoint
 # multiplies cost). Assert the real invocation, not the flag's existence.
-if grep -qF -- "/en-review --peer-only --mode headless" "$EN_LOOP"; then
-  pass "/en-loop checkpoint still invokes /en-review --peer-only (D46 scope)"
+# Same rename, opposite direction: /en-loop wants the peer-SOLE pass, which is
+# now spelled --peer. D46's scoping is unchanged — a full persona roster at every
+# checkpoint of an unattended loop multiplies cost where cost compounds.
+if grep -qF -- "/en-review --peer --mode headless" "$EN_LOOP"; then
+  pass "/en-loop checkpoint invokes the peer-sole pass (D46 scope)"
 else
-  fail "/en-loop must keep --peer-only at checkpoints" "D46 scopes the --peer change to /en-build only"
+  fail "/en-loop must keep the peer-sole pass at checkpoints" "D46 scopes the persona roster to /en-build only"
 fi
-if grep -qF -- "/en-review --peer " "$EN_LOOP"; then
-  fail "/en-loop switched to --peer" "D46 deliberately excludes /en-loop; cost compounds in an unattended loop"
+if grep -qF -- "/en-review --cross" "$EN_LOOP"; then
+  fail "/en-loop adopted --cross" "D46 deliberately excludes it; cost compounds in an unattended loop"
 else
-  pass "/en-loop has not adopted --peer"
+  pass "/en-loop has not adopted --cross"
 fi
 
 # The claim that reviewer semantics and the step 10.5 audit gate are UNCHANGED
@@ -191,16 +205,21 @@ else
   fail "foundation must record D52 with what it supersedes and what it costs"
 fi
 
-# --- --no-review skips the branch-level review, and says it skips ALL of it ---
-# It was called --no-peer, which named the wrong half: it skips the personas
-# too, and the name collided with /en-review's own --no-peer, which means the
-# opposite (run the personas, skip the cross-agent peer). Renamed, and the flag
-# text has to say "entirely" so nobody reads it as the peer-only skip again.
-if grep -qE '`--no-review`.*post-build branch-level' "$SKILL" \
-   && grep -qiE 'peer and host personas both' "$SKILL"; then
-  pass "--no-review is documented as skipping the whole review, personas included"
+# --- `--review none` skips the branch-level review, and says it skips ALL of it ---
+# It was --no-review until 2026-09-01, and before that --no-peer, which named
+# the wrong half. Folding it into --review as a third value removed the case
+# where --review peer --no-review had no defined meaning: the review decision
+# has three answers, so it is one flag with three values.
+if grep -qE '`--review cross\\\|peer\\\|none`' "$SKILL" \
+   && grep -qiE 'skips 10.3 \*\*entirely\*\*, peer and personas both' "$SKILL"; then
+  pass "--review none is documented as skipping the whole review, personas included"
 else
-  fail "--no-review must be documented as skipping the entire step 10.3"
+  fail "--review must carry a none value that skips the entire step 10.3"
+fi
+if grep -qE '^\| `--no-review`' "$SKILL"; then
+  fail "--no-review is back alongside --review" "two flags for one question"
+else
+  pass "there is no separate --no-review flag"
 fi
 
 if grep -qE '`--no-peer`' "$SKILL" | grep -qv 'en-plan'; then

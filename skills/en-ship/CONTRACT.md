@@ -2,11 +2,10 @@
 
 Owned by `en-ship`. Callers depend on this page, not on `SKILL.md`.
 
-> Reached this page from EN12's plan? Its U10 file list named `en-cross-review`
+> Reached this page from EN12's plan? Its U10 file list named a different skill
 > here. The call-graph check that unit introduced showed otherwise: nothing
-> invokes `en-cross-review` programmatically, while `en-flow` does invoke this
-> skill. The derived set is the source of truth, which is the point of deriving
-> it.
+> invoked that skill programmatically, while `en-flow` does invoke this one.
+> The derived set is the source of truth, which is the point of deriving it.
 
 ## Accepted invocations
 

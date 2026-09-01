@@ -39,6 +39,7 @@ skip one, so a silent omission is never mistaken for a clean pass.
 | **Weak assertions** | `expect(x).toBeTruthy()` when `expect(x).toEqual(specific)` is meaningful; tests that pass without exercising the change |
 | **Brittle tests** | Snapshot of an entire object when only one field matters; tests coupled to internal implementation |
 | **Missing categories** | Happy path covered, error path missed; happy path covered, edge cases missed |
+| **Tests that read source instead of running it** | A test whose only evidence is that it opens, greps, parses or snapshots implementation source and finds particular strings, tokens, function names or regex matches. It proves nothing: matched text can be dead or commented out, and a behaviour-preserving refactor breaks it while the behaviour holds. Flag it and say what to execute instead — a public interface, asserting observable output, state, side effects or failure modes. **Two carve-outs:** a file that is itself generated output, a serialized protocol, persisted state or a deliberate snapshot is a real contract and may be read — name the contract. And a declarative artifact consumed by a machine (workflow YAML, JSON policy, generated config) may be parsed into a typed model and asserted on meaning; a raw substring match over it is still the anti-pattern. |
 | **Regression test missing** | Bug fix without a test that fails on the old code |
 | **Test scoping** | Unit test calling out to a real network or DB; integration test with too-narrow scope |
 | **Test isolation** | Shared mutable state across tests; ordering-dependent suite |
@@ -57,6 +58,10 @@ skip one, so a silent omission is never mistaken for a clean pass.
 | **Layer violations** | UI code reading directly from DB; service layer importing route helpers |
 | **Long functions / long files** | Functions > 50 lines or with > 4 levels of indentation; files > 500 lines |
 | **Comment debt** | Comments that describe WHAT the code does (delete); stale comments that contradict the code (fix or delete) |
+
+**Floor when the repo documents nothing.** The categories above are this skill's own list. Where a project has no written conventions, fall back to these named smells so the finding is reproducible rather than taste: *mysterious name* (rename it; if no honest name comes, the design is murky), *duplicated code* (extract the shape, call it from both), *feature envy* (move the method onto the data it envies), *data clumps* (the fields that travel together want a type), *primitive obsession* (a string standing in for a domain concept), *repeated switches* (the same cascade on the same type, twice), *shotgun surgery* (one logical change, scattered edits), *divergent change* (one file edited for unrelated reasons), *speculative generality* (abstraction for a need the plan does not have), *message chains*, *middle man*, *refused bequest*.
+
+Two rules bind the floor. **A documented repo standard always wins** — where the project endorses something a smell would flag, the smell is suppressed, not reported. And **every smell is a judgement call**, named as one ("possible feature envy"), never a hard violation. Skip anything the project's tooling already enforces.
 
 ### standards
 

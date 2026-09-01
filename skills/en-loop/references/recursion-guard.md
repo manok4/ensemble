@@ -4,7 +4,7 @@ How Ensemble prevents peer-review subprocesses from recursively spawning peer re
 
 ## The problem
 
-`en-build` per unit invokes the peer agent. The peer agent, if it loaded the same skills, could itself trigger an `en-review` or `en-cross-review` that fires another peer subprocess. Without a guard, this nests indefinitely.
+`en-build` per unit invokes the peer agent. The peer agent, if it loaded the same skills, could itself trigger an `en-review` that fires another peer subprocess. Without a guard, this nests indefinitely.
 
 ## The mechanism
 
@@ -27,7 +27,6 @@ fi
 
 Specifically:
 
-- `en-cross-review` — exits early with `verdict: skipped`.
 - `en-foundation` — proceeds without the Outside Voice pass.
 - `en-plan` — proceeds without the Outside Voice pass.
 - `en-build` — proceeds without the branch-level Outside Voice review.

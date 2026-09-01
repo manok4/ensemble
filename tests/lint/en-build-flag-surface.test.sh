@@ -29,7 +29,7 @@ CFG="$REPO_ROOT/skills/en-setup/references/templates/config-local-example.yaml"
 
 # --- 1. the removed flags stay removed ---
 back=""
-for f in -- --no-peer --phasing --pause --strict-destructive --no-finalize --no-learning-checkpoint; do
+for f in -- --no-peer --no-review --phasing --pause --strict-destructive --no-finalize --no-learning-checkpoint; do
   [ "$f" = "--" ] && continue
   grep -qE "^\| \`$f\`" "$SKILL" && back="$back $f"
 done
@@ -62,8 +62,8 @@ fi
 # Not a hard cap: a count that drifts up is the signal to re-ask which of them
 # is standing policy.
 n=$(sed -n '/^## Flags/,/^\*\*Standing/p' "$SKILL" | grep -c '^| `--')
-[ "$n" -le 11 ] \
-  && pass "the flag surface is $n, within the post-cut budget of 11" \
-  || fail "the flag surface has grown back" "$n flags; ask which are standing policy"
+[ "$n" -le 10 ] \
+  && pass "the flag surface is $n, within the post-cut budget of 10" \
+  || fail "the flag surface has grown back" "$n flags; ask which is standing policy, or which existing flag the new one should absorb"
 
 report

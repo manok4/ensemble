@@ -99,7 +99,9 @@ fi
 # 5 -> 4 on 2026-08-31: D52 left en-build dispatching no peer of its own, so it
 # stopped carrying the invoker. The four that remain all invoke it by name.
 n=$(ls "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "$n" "4" "four skills carry the peer invoker"
+# 4 -> 3 on 2026-09-01: en-cross-review merged into /en-review as its --peer
+# mode, so its copy of the invoker went with it.
+assert_eq "$n" "3" "three skills carry the peer invoker"
 d=$(for f in "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
 assert_eq "$d" "1" "every carried copy is byte-identical"
 

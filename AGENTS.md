@@ -50,7 +50,7 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 - **Review code** → `/en-review`
 - **End-to-end test in browser** → `/en-qa`
 - **Capture a learning after a fix** → `/en-learn capture`
-- **Ad-hoc cross-review** → `/en-cross-review <path-or-ref>`
+- **Ad-hoc peer review** → `/en-review --peer <path-or-ref>`
 - **Diagnose project setup** → `/en-setup`
 
 ## Notes for Claude Code users

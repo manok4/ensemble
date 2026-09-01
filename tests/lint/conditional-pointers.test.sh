@@ -69,11 +69,9 @@ while IFS='|' read -r target owners; do
 done <<'OWNERS'
 persona-dispatch|en-review
 doc-lints|en-sweep
-build-handoff|en-cross-review
-# build-orchestration is NOT listed: after D52 removed en-build's flavors, no
-# skill body names it. It survives only because en-cross-review's build-handoff
-# cross-references it, which makes it a candidate for that skill's own pass —
-# recorded rather than removed here, since this branch is en-build's.
+# build-handoff and build-orchestration are NOT listed: both were deleted with
+# en-cross-review on 2026-09-01. They documented /en-build's two execution
+# flavors, which D52 removed; en-cross-review was their last carrier.
 diff-signal-detection|en-review
 ensemble-verify-peer-evidence|en-build en-ship
 OWNERS
@@ -93,14 +91,12 @@ while IFS='|' read -r rel expected; do
   n=$(ls -1 skills/*/"$rel" 2>/dev/null | wc -l | tr -d ' ')
   [ "$n" = "$expected" ] || drift="$drift $rel($n!=$expected)"
 done <<'COUNTS'
-references/build-handoff.md|1
-references/build-orchestration.md|1
 references/persona-dispatch.md|1
-references/cli-wrappers.md|3
+references/cli-wrappers.md|2
 agents/dimension-reviewer.md|1
-scripts/ensemble-verify-peer-evidence|3
-references/doc-lints.md|3
-scripts/en-sweep-ci|5
+scripts/ensemble-verify-peer-evidence|2
+references/doc-lints.md|2
+scripts/en-sweep-ci|3
 COUNTS
 
 [ -z "$drift" ] \

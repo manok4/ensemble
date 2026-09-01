@@ -14,12 +14,13 @@ TEST_NAME="shared peer invocation"
 
 # --- 1. every peer-invoking skill routes through the helper ---
 missing=""
-for skill in en-plan en-foundation en-cross-review en-review; do
+# en-cross-review dropped 2026-09-01: merged into /en-review as its --peer mode.
+for skill in en-plan en-foundation en-review; do
   f="$REPO_ROOT/skills/$skill/SKILL.md"
   grep -qF "ensemble-peer-invoke" "$f" || missing="$missing $skill"
 done
 if [ -z "$missing" ]; then
-  pass "en-plan, en-foundation, en-cross-review and en-review all route through ensemble-peer-invoke"
+  pass "en-plan, en-foundation and en-review all route through ensemble-peer-invoke"
 else
   fail "these skills bypass ensemble-peer-invoke:$missing"
 fi

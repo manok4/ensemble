@@ -81,7 +81,7 @@ In all these cases, run Phase 1 only and surface a note: "Browser QA skipped bec
 
 ## Cross-review
 
-`en-qa` is **off** for cross-review (per foundation §5.2.6). Bug fixes are mechanical; over-reviewing them costs more than it surfaces. The user can run `/en-cross-review` ad-hoc on a QA branch if they want a peer pass.
+`en-qa` is **off** for cross-review (per foundation §5.2.6). Bug fixes are mechanical; over-reviewing them costs more than it surfaces. The user can run `/en-review --peer` ad-hoc on a QA branch if they want a peer pass.
 
 ## Time budgets
 

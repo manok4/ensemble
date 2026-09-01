@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # path now names the skill that owns it.
 TEST_NAME="ensemble-extract-json"
 
-. "$REPO_ROOT/skills/en-cross-review/scripts/ensemble-extract-json"
+. "$REPO_ROOT/skills/en-review/scripts/ensemble-extract-json"
 
 ok_case() { # $1=label $2=input $3=expected
   local got; got=$(printf '%s' "$2" | ensemble_extract_json 2>/dev/null) || got="<exit-1>"
