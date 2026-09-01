@@ -7,7 +7,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-plan test-scenarios gate"
 
-TEMPLATE="$REPO_ROOT/skills/en-build/references/templates/plan-template.md"
+# Reads /en-plan's copy: it owns the plan template, and D52's payload cut
+# removed en-build's, which it carried for one see-also cross-reference.
+TEMPLATE="$REPO_ROOT/skills/en-plan/references/templates/plan-template.md"
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
 LINT="$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint"
 # doc-lints.md is carried by the skills that enforce the lint catalogue.

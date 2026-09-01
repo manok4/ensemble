@@ -41,6 +41,16 @@ default_branch_fallback: main
 #   skip_on_trivial: true
 #   max_lines_to_run: 2000
 
+# --- en-build standing policy ---
+# These are project preferences rather than per-run choices, so they live here
+# instead of as flags. Anything that changes run to run — which units to build,
+# where to resume, whether to skip a gate this once — stays a flag.
+# build:
+#   worktree: false              # run every build in ../<repo>-<plan_id>/
+#   strict_destructive: false    # extend the typed confirmation to risk: high and P3
+#   pause_between_phases: false  # prompt between phases instead of auto-rolling
+#   learning_checkpoint: true    # run the structured learning checkpoint at step 10.6
+
 # --- Learnings ---
 
 # Whether to share learnings across projects (default: false; per-project store).

@@ -10,11 +10,16 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
-DIFFSIG="$REPO_ROOT/skills/en-build/references/diff-signal-detection.md"
-DISPATCH="$REPO_ROOT/skills/en-build/references/persona-dispatch.md"
+DIFFSIG="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
+# Reads /en-review's copy: it owns persona dispatch. D52 removed en-build's,
+# which arrived through a peer-brief citation rather than anything en-build ran.
+DISPATCH="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
 
 # === U1: lite-gate transparency ===
 

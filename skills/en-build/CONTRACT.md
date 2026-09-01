@@ -46,11 +46,15 @@ auto-stashes on abort or Ctrl-C.
 ## Cost bounds
 
 The branch-level model runs `en-simplify` and the Outside Voice review **once**
-over the branch diff, not per unit. Only destructive and gated units get a
-dedicated per-unit peer pass, capped by `--max-per-unit-iterations` (default 1).
+over the branch diff, not per unit. No unit class is an exception: destructive
+and gated units are covered by the same branch-level review as every other unit
+(D52). What they keep is the user confirmation at step 9a, which is not review.
 
 ## Recursion
 
-Under `ENSEMBLE_PEER_REVIEW=true` all peer subprocess calls are skipped and each
-unit commit records `peer-skipped: recursion-guard-active` so the evidence gate
-still passes. It never invokes itself.
+Under `ENSEMBLE_PEER_REVIEW=true` the branch-level review at step 10.3 is
+skipped, and the branch records a `review-verdict:` whose `reviewer` is
+`recursion-guard-active`, so the evidence audit reads a reason rather than an
+absence. Unit commits are unaffected: the host implements and commits every
+unit either way, and no unit commit carries peer evidence under D52. It never
+invokes itself.

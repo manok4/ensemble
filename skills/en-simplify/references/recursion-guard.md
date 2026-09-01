@@ -30,7 +30,7 @@ Specifically:
 - `en-cross-review` — exits early with `verdict: skipped`.
 - `en-foundation` — proceeds without the Outside Voice pass.
 - `en-plan` — proceeds without the Outside Voice pass.
-- `en-build` — proceeds without per-unit peer review.
+- `en-build` — proceeds without the branch-level Outside Voice review.
 - `en-review` — proceeds without `--peer` (even if requested).
 
 ## What stays enabled inside the peer subprocess

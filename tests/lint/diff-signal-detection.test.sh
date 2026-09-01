@@ -5,9 +5,12 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="diff-signal detection"
 
-REF="$REPO_ROOT/skills/en-build/references/diff-signal-detection.md"
+REF="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
 
 if [ -f "$REF" ]; then
   pass "diff-signal-detection.md exists"

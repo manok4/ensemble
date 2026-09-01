@@ -19,6 +19,9 @@ set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="helper sourcing under bash and zsh"
 
 WORK="$(mktemp -d)"
@@ -80,7 +83,7 @@ for shell in bash zsh; do
   command -v "$shell" >/dev/null 2>&1 || continue
   cat > "$WORK/nofilter-$shell.sh" <<INNER
 set -u
-. "$REPO_ROOT/skills/en-build/scripts/ensemble-extract-json"
+. "$REPO_ROOT/skills/en-cross-review/scripts/ensemble-extract-json"
 echo SOURCED_ONLY
 INNER
   out=$(printf 'stdin must not be consumed\n' | "$shell" "$WORK/nofilter-$shell.sh" 2>/dev/null)
@@ -90,7 +93,7 @@ done
 # ...but direct execution still must.
 for shell in bash zsh; do
   command -v "$shell" >/dev/null 2>&1 || continue
-  out=$(printf 'prefix {"a":1} suffix\n' | "$shell" "$REPO_ROOT/skills/en-build/scripts/ensemble-extract-json" 2>/dev/null)
+  out=$(printf 'prefix {"a":1} suffix\n' | "$shell" "$REPO_ROOT/skills/en-cross-review/scripts/ensemble-extract-json" 2>/dev/null)
   assert_contains "$out" '"a"' "[$shell] executing ensemble-extract-json still filters"
 done
 

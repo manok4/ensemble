@@ -10,6 +10,9 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="peer-resolution trailer"
 
 # --- Build a sample commit message with the documented trailer format ---
@@ -160,8 +163,11 @@ else
 fi
 
 # --- Both reference docs include the trailer format example (no drift) ---
-HANDOFF_DOC="$REPO_ROOT/skills/en-build/references/build-handoff.md"
-ORCH_DOC="$REPO_ROOT/skills/en-build/references/build-orchestration.md"
+# D52 removed en-build's two flavors, so build-handoff.md and
+# build-orchestration.md now live only with /en-cross-review, which names
+# them in its own flow. This checks the surviving carrier.
+HANDOFF_DOC="$REPO_ROOT/skills/en-cross-review/references/build-handoff.md"
+ORCH_DOC="$REPO_ROOT/skills/en-cross-review/references/build-orchestration.md"
 
 if grep -q "^peer-resolution: " "$HANDOFF_DOC"; then
   pass "build-handoff.md includes peer-resolution: trailer example"
@@ -192,22 +198,42 @@ for doc in "$HANDOFF_DOC" "$ORCH_DOC"; do
   done
 done
 
-# --- en-build SKILL.md mentions the new flag and the per-unit loop ---
+# --- D52: en-build has no per-unit peer machinery ---
+# These clauses asserted en-build implemented the per-unit finalize loop
+# (--max-per-unit-iterations, re_review_count, the cap-hit warning, the
+# auto-skip enum, per-unit peer-verdict trailers). D52 removed all of it: the
+# host implements every unit and the peer reviews once, at step 10.3, after
+# /en-simplify. Rewritten as ABSENCE checks, because the failure mode is
+# reintroduction — the trailer protocol itself is still covered by the
+# ~160 assertions above, exercised through the skills that still emit it.
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
-if grep -q -- "--max-per-unit-iterations" "$SKILL"; then
-  pass "en-build SKILL.md documents --max-per-unit-iterations flag"
+absent=""
+for gone in "--max-per-unit-iterations" "Per-unit finalize loop" "re_review_count" \
+            "--no-peer-per-unit" "auto-skip:diff-below-threshold" "peer-verdict:"; do
+  grep -qF -- "$gone" "$SKILL" && absent="$absent '$gone'"
+done
+[ -z "$absent" ] \
+  && pass "en-build carries no per-unit peer machinery (D52)" \
+  || fail "en-build carries no per-unit peer machinery (D52)" "still present:$absent"
+
+# The branch-level evidence it DOES emit must still be documented here.
+if grep -qF "review-verdict:" "$SKILL" && grep -qF "simplify-verdict:" "$SKILL" \
+   && grep -qF -- "--branch-coverage" "$SKILL"; then
+  pass "en-build documents the branch-level trailers that replaced them"
 else
-  fail "en-build SKILL.md missing --max-per-unit-iterations"
+  fail "en-build must document review-verdict:, simplify-verdict: and --branch-coverage"
 fi
-if grep -q "Per-unit finalize loop" "$SKILL"; then
-  pass "en-build SKILL.md mentions Per-unit finalize loop"
+
+# Inverted by D52: en-build emits no peer-resolution: trailer, because it runs
+# no per-unit peer pass. A mention here would mean the old model crept back.
+# Matches the TRAILER form specifically. A bare "peer-resolution" substring also
+# hits `--require-peer-resolution`, which en-build legitimately names once to say
+# it does not use that mode.
+if grep -qE "peer-resolution:" "$SKILL"; then
+  fail "en-build must not emit the peer-resolution: trailer" \
+       "D52 removed the per-unit peer pass that produced it"
 else
-  fail "en-build SKILL.md missing per-unit finalize loop reference"
-fi
-if grep -q "peer-resolution" "$SKILL"; then
-  pass "en-build SKILL.md references peer-resolution trailer"
-else
-  fail "en-build SKILL.md missing peer-resolution trailer reference"
+  pass "en-build references no peer-resolution trailer (D52)"
 fi
 
 # --- build-handoff.md uses ensemble-build-peer-prompt helper ---
@@ -235,16 +261,8 @@ for doc in "$HANDOFF_DOC" "$ORCH_DOC"; do
   fi
 done
 
-if grep -q "re_review_count" "$SKILL"; then
-  pass "en-build SKILL.md uses explicit re_review_count counter"
-else
-  fail "en-build SKILL.md missing re_review_count semantics"
-fi
-if grep -q "starts at 0" "$SKILL"; then
-  pass "en-build SKILL.md documents re_review_count starting at 0"
-else
-  fail "en-build SKILL.md should document counter starting value"
-fi
+# Removed by D52 — no re_review_count: the per-unit finalize loop is gone.
+# Removed by D52 — no counter to start.
 
 # --- Both flow charts mention phase: P<N> trailer alongside peer-resolution ---
 # Codex flagged the flow charts only mentioning peer-resolution: trailers,
@@ -284,11 +302,7 @@ if grep -q -E "(P1 warning|cap.exhaust|cap-hit|cap exhaust)" "$HANDOFF_DOC"; the
 else
   fail "build-handoff.md missing cap-hit / cap-exhaustion language"
 fi
-if grep -q -E "(P1 warning|cap.exhaust|cap-hit|cap exhaust)" "$SKILL"; then
-  pass "en-build SKILL.md mentions cap-hit handling"
-else
-  fail "en-build SKILL.md should mention cap-hit warning behavior"
-fi
+# Removed by D52 — no cap-hit warning: there is no per-unit finalize loop to cap.
 
 # --- Peer invocation hardening (silent-hang failure mode) ---
 # Field-observed silent hang: capturing helper stdout into a shell variable
@@ -300,8 +314,8 @@ fi
 # "Not logged in · Please run /login" on subscription-only hosts. So we
 # CANNOT use --bare; we use weaker isolation flags that are auth-compatible.
 
-OUTSIDE_VOICE="${REPO_ROOT}/skills/en-build/references/outside-voice.md"
-HELPER="${REPO_ROOT}/skills/en-build/scripts/ensemble-build-peer-prompt"
+OUTSIDE_VOICE="${REPO_ROOT}/skills/en-review/references/outside-voice.md"
+HELPER="${REPO_ROOT}/skills/en-review/scripts/ensemble-build-peer-prompt"
 
 # 1. Both build-handoff and outside-voice document piping helper-stdout
 #    directly into the peer command (no `prompt=$(...)` capture).
@@ -520,11 +534,7 @@ else
 fi
 
 # 17. The skill's "What this skill never does" lists the new fail-closed contracts.
-if grep -qE "[Nn]ever commits a unit without peer evidence|[Nn]ever declares a build.*complete.*missing peer" "$SKILL"; then
-  pass "en-build SKILL.md 'never does' lists peer-evidence enforcement"
-else
-  fail "en-build SKILL.md 'never does' should list the peer-evidence enforcement"
-fi
+# Removed by D52 — the never-does claim now covers review evidence, checked by en-build-review-model.
 
 # 18. Reference list mentions the verify helper.
 if grep -qF "ensemble-verify-peer-evidence" "$SKILL"; then
@@ -540,7 +550,9 @@ fi
 # per-finding peer-resolution: trailers.
 
 # 19. peer-verdict: trailer documented in both reference docs and SKILL.md.
-for doc in "$HANDOFF_DOC" "${REPO_ROOT}/skills/en-build/references/build-orchestration.md" "$SKILL"; do
+# $SKILL dropped from this loop: D52 stopped en-build emitting peer-verdict:,
+# so only the skills that still run a per-unit peer pass carry the schema.
+for doc in "$HANDOFF_DOC" "${REPO_ROOT}/skills/en-cross-review/references/build-orchestration.md"; do
   doc_name=$(basename "$doc")
   if grep -qF "peer-verdict:" "$doc"; then
     pass "[$doc_name] documents peer-verdict: trailer"
@@ -600,28 +612,13 @@ for reason in "auto-skip:diff-below-threshold" "auto-skip:lightweight-depth"; do
   fi
 done
 
-# 25. en-build SKILL.md's auto-skip section now maps each auto-skip case to
-#     a documented peer-skipped enum value (no orphan auto-skip rules).
-for reason in \
-  "PEER_AVAILABLE=false" \
-  "recursion-guard-active" \
-  "--no-peer-per-unit-flag" \
-  "auto-skip:diff-below-threshold" \
-  "auto-skip:lightweight-depth"; do
-  if grep -qF -- "$reason" "$SKILL"; then
-    pass "en-build SKILL.md auto-skip section maps to peer-skipped: $reason"
-  else
-    fail "en-build SKILL.md auto-skip section should reference peer-skipped value: $reason"
-  fi
-done
+# Removed by D52 — en-build has no per-unit auto-skip enum: the branch-level
+# review is skipped only by --no-peer or the recursion guard, and both record a
+# reason on the review-verdict: trailer rather than a per-unit peer-skipped:.
 
 # 26. Auto-skip is explicitly forbidden on destructive/gated units (so they
 #     can't ship without an actual peer pass via the auto-skip loophole).
-if grep -qiE "auto-skip.*not permitted|auto-skip.*not allowed" "$SKILL"; then
-  pass "en-build SKILL.md forbids auto-skip on destructive/gated units"
-else
-  fail "en-build SKILL.md should forbid auto-skip on destructive/gated units"
-fi
+# Removed by D52 — auto-skip enum is gone: no per-unit peer means no per-unit skip.
 
 # === Portable timeout resolution (PR #N — macOS doesn't ship GNU timeout) ===
 # Field-observed: bare `timeout 600 claude ...` failed on macOS-without-coreutils
@@ -714,7 +711,9 @@ done
 # which the planning LLM read too liberally. New bar: gated is for
 # production-state-changing units only.
 
-PLAN_TEMPLATE="${REPO_ROOT}/skills/en-build/references/templates/plan-template.md"
+# Reads /en-plan's copy: it owns the plan template, and D52's payload cut
+# removed en-build's, which it carried for one see-also cross-reference.
+PLAN_TEMPLATE="${REPO_ROOT}/skills/en-plan/references/templates/plan-template.md"
 
 # A. The vague "any non-destructive unit" catch-all is GONE.
 if grep -qE "any non-destructive unit that needs explicit confirmation" "$PLAN_TEMPLATE"; then

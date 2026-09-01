@@ -7,6 +7,9 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="shared peer invocation"
 
 # --- 1. every peer-invoking skill routes through the helper ---
@@ -36,13 +39,13 @@ else
 fi
 
 # --- 3. the helper still owns what the skills stopped restating ---
-INVOKE="$REPO_ROOT/skills/en-build/scripts/ensemble-peer-invoke"
+INVOKE="$REPO_ROOT/skills/en-review/scripts/ensemble-peer-invoke"
 if grep -qF "peer-failed:timeout" "$INVOKE" \
    && grep -qF "peer-failed:auth" "$INVOKE" \
    && grep -qF "_epi_timeout_bin" "$INVOKE"; then
   pass "helper owns timeout, auth and unknown classification"
 else
-  fail "skills/en-build/scripts/ensemble-peer-invoke must own the timeout wrapper and failure classification"
+  fail "skills/en-review/scripts/ensemble-peer-invoke must own the timeout wrapper and failure classification"
 fi
 
 report

@@ -12,8 +12,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build simplify gate"
 
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
-BUILD_ORCH="$REPO_ROOT/skills/en-build/references/build-orchestration.md"
-BUILD_HANDOFF="$REPO_ROOT/skills/en-build/references/build-handoff.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- step 10.4: emits the simplify-verdict trailer with the outcome enum ---
@@ -96,16 +94,16 @@ else
   fail "must document the fallback-review mapping (single-agent path is a recorded fallback for /en-review)"
 fi
 
-# --- reference docs carry the canonical simplify-verdict schema (U3) ---
-if grep -qF "simplify-verdict:" "$BUILD_ORCH" && grep -qF -- "--require-simplify" "$BUILD_ORCH"; then
-  pass "build-orchestration.md documents the simplify-verdict trailer + --require-simplify"
+# --- the canonical simplify-verdict schema (U3) ---
+# D52 deleted en-build's two flavor references, so the schema moved into
+# SKILL.md step 10.4 — the branch's whole evidence record now lives with the
+# step that writes it, not in a file describing a dispatch flavor.
+if grep -qF "simplify-verdict:" "$EN_BUILD" && grep -qF -- "--require-simplify" "$EN_BUILD" \
+   && grep -qiE "simplify_pass|branch_review_pass" "$EN_BUILD"; then
+  pass "SKILL.md carries the simplify-verdict schema, --require-simplify and the derived fields"
 else
-  fail "build-orchestration.md must document the simplify-verdict trailer schema"
-fi
-if grep -qF "simplify-verdict:" "$BUILD_HANDOFF" && grep -qiE "simplify_pass|branch_review_pass" "$BUILD_HANDOFF"; then
-  pass "build-handoff.md documents the simplify-verdict trailer + derived fields"
-else
-  fail "build-handoff.md must document the simplify-verdict trailer"
+  fail "SKILL.md must carry the simplify-verdict trailer schema and its derived fields" \
+       "the schema lost its home when the flavor references were deleted"
 fi
 
 # --- foundation D41 records the auditable simplify+review gate (U4) ---

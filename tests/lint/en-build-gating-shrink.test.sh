@@ -8,7 +8,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-build gating shrink"
 
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
-TEMPLATE="$REPO_ROOT/skills/en-build/references/templates/plan-template.md"
+# Reads /en-plan's copy: it owns the plan template, and D52's payload cut
+# removed en-build's, which it carried for one see-also cross-reference.
+TEMPLATE="$REPO_ROOT/skills/en-plan/references/templates/plan-template.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- preflight gate summary ---

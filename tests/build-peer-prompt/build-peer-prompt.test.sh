@@ -7,6 +7,9 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# Repointed from en-build: D52 left it dispatching no peer and delegating
+# simplification to /en-simplify, so it carries none of this machinery. The
+# path now names the skill that owns it.
 TEST_NAME="ensemble-build-peer-prompt"
 
 BIN="$REPO_ROOT/skills/en-plan/scripts/ensemble-build-peer-prompt"
@@ -230,7 +233,7 @@ fi
 # the artifact. Fix: the template now uses shell-style $VAR placeholders so
 # both `bin/ensemble-build-peer-prompt` (HEREDOC) and raw envsubst work.
 # This test guards against drift back to the {VAR} form.
-TEMPLATE_DOC="$REPO_ROOT/skills/en-build/references/outside-voice.md"
+TEMPLATE_DOC="$REPO_ROOT/skills/en-review/references/outside-voice.md"
 
 # Extract just the prompt template block (the first ```text ... ``` fence).
 template=$(awk '
