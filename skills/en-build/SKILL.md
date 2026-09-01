@@ -203,7 +203,7 @@ If the agent feels uncertain about advancing, the correct action is to **continu
 - Tests fail → step 9d / 9j catches it.
 - Lint fails → step 9d catches it.
 - The branch-level review fails → step 10's review and audit handle it.
-- Implementation goes wrong → verification gate 1 or 2 catches it.
+- Implementation goes wrong → 9d's verification gate catches it.
 - After-phase regression → after-phase verification catches it.
 
 Agent-self-paused checkpoints add no protection on top of these mechanisms — they just add friction that the autonomous-execution design exists to avoid.
@@ -212,7 +212,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
 ```
 ✓ U3 — feat(api): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
-  Implementer: codex (worker) | Simplifier: 2 changes | Peer: applied 1, deferred 1
+  Implementer: host | Simplifier: 2 changes | Peer: applied 1, deferred 1
   Tests: 7 added, 7 passing | Commit: a3f1b9c
   Note: U4 touches more files than U3 (12 vs 3). No pause; advancing.
 ```
@@ -394,7 +394,7 @@ After each unit commits, surface a one-line summary:
 
 ```
 ✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
-  Implementer: codex (worker) | Simplifier: 2 changes | Peer: 2 iterations, applied 1, deferred 1
+  Implementer: host | Simplifier: 2 changes | Peer: 2 iterations, applied 1, deferred 1
   Tests: 7 added, 7 passing | Commit: a3f1b9c (trailer: phase: P2)
 ```
 
@@ -444,17 +444,17 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 | Failure | Behavior |
 |---|---|
 | Plan has unmet dependency (`Depends: U7` but U7 not present) | Stop; surface; suggest plan revision |
+| Unit needs files outside its `Files` list | **Stop before making the change.** Name what the unit needs and why the listed scope cannot deliver it, then ask: widen this unit, split the work into a new one, or abort. Do not quietly widen — the `Files` list is what the plan was reviewed against, and silent sprawl is invisible until step 10 reads a diff nobody scoped. |
+| Unit's `Approach` is too thin to implement | Stop and ask. Pre-flight checks the field is present, not that it is sufficient, and a guessed interpretation of a thin unit is the expensive kind of wrong: it passes tests written to match the guess. |
 | Plan structure violates phase invariant (low-risk depends on higher-risk) | Reject the plan with three remediation options: remove the dependency, promote the unit's `risk:`, or split the unit. Never silently bury units across phases. |
 | Plan in `status: draft` with unresolved `peer_review_resolutions:` | Refuse build; list unresolved findings; suggest `/en-plan --resume`. |
 | Plan in `status: draft + revise` with all resolutions cleared | Offer finalize-and-build single prompt (recovery flow). On y, run `/en-plan` finalize loop, flip to `open`, commit, then proceed. |
 | Plan untracked in git but `status: open` and verdict cleared | Offer auto-commit single prompt; on y, commit and proceed. |
 | Plan-hash mismatch at phase boundary | Refuse to advance; surface that immutable plan-input fields changed during build; ask user to re-baseline (`--re-baseline`) or abort. |
-| Verification gate 1 fails on a unit | Pause; show test output; ask user: retry, skip, abort |
-| Verification gate 2 fails | Revert simplifier edits automatically; proceed with original; surface regression |
+| Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the test output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
 | After-phase verification fails (full suite / lint / typecheck) | Stop. Do not advance to next phase. Surface failing tests; offer investigate / `--commit-wip` / abort. |
 | Peer review verdict = `reject` | Pause and surface to user before commit |
 | Peer subprocess attempts to modify files (D30 violation) | Detect via git status; revert; do not trust this round of findings; log violation |
-| Worker dispatch returns malformed diff | Retry once; on second failure, surface and ask user to take over the unit |
 | `git restore` fails on a revert | Surface; abort the build; do not leave the working tree corrupted |
 | User Ctrl-C mid-phase / mid-unit | **Stop cleanly. No signal-time git operations.** Surface: current branch, current unit (with completion state), dirty files, last successful commit. Provide explicit resume instructions (`/en-build --from U<N>` or `--from-phase P<M>`). User invokes `/en-build --commit-wip` separately if a WIP commit is desired. |
 | User asks to abort mid-unit | **Stop cleanly. Surface state and resume instructions.** Do NOT auto-commit, auto-stash, or auto-create a WIP branch — `abort` is a request to stop, not to preserve partial progress. WIP capture is opt-in via a separate `/en-build --commit-wip` invocation; the user must explicitly request it. |
