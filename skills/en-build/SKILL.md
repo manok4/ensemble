@@ -243,7 +243,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
     1. **Cheap gate: lint + typecheck only.** Seconds, not minutes. It catches syntax and type breakage before simplify and review spend time on code that cannot compile. **The full suite does not run here** — it runs once, at 10.5, after review findings have been applied. Running it first is how a build pays for the full suite three times: once now, once after simplify, once after remediation, on an implementation that was still changing (D53).
     2. **Code-simplification pass** — invoke `/en-simplify` on the branch diff (`git diff <merge-base>..HEAD`). Skip on docs-only or trivial (<~10 changed lines) branches, or with `--no-simplify`. It leaves changes in the working tree (does not commit). Skipped for the rare branch composed entirely of destructive/gated units already reviewed per-unit.
-    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --peer --mode headless --base <merge-base>`** over the branch diff.
+    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`** over the branch diff.
 
        The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
 
@@ -350,7 +350,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
 ## Cross-review
 
-**Once per build, at step 10.3, after `/en-simplify`.** The peer never reviews a unit in flight and never implements one. `/en-build` invokes `/en-review --peer --mode headless` over the branch diff; the resulting `review-verdict:` trailer is the evidence for every unit on the branch.
+**Once per build, at step 10.3, after `/en-simplify`.** The peer never reviews a unit in flight and never implements one. `/en-build` invokes `/en-review --cross --mode headless` over the branch diff; the resulting `review-verdict:` trailer is the evidence for every unit on the branch.
 
 Skipped only by `--no-review`, which records the branch as review-skipped and makes the step 10.5 audit report `branch_review_pass: missing`. There is no per-unit skip enum any more, because there is no per-unit pass to skip.
 
@@ -440,6 +440,6 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - **Never silently buries low-risk units in higher-risk phases.** Phase-invariant violations reject the plan structurally.
 - **Never auto-commits or auto-stashes on Ctrl-C / abort / signal.** No signal-time git operations. WIP commits are user-initiated only via `--commit-wip`.
 - **Never invokes `/en-build` recursively.** Recursion guard ensures this.
-- **Never lets another agent write the code.** The host implements every unit, on every host. There is no worker dispatch and no flavor that hands authoring away. The peer enters once, at step 10.3, after `/en-simplify`, through `/en-review --peer`.
+- **Never lets another agent write the code.** The host implements every unit, on every host. There is no worker dispatch and no flavor that hands authoring away. The peer enters once, at step 10.3, after `/en-simplify`, through `/en-review --cross`.
 - **Never commits outside the unit's files.** Staging is path-limited to the unit's own paths; `git add .` is forbidden, because a bare stage absorbs whatever the user already had in the index.
 - **Never declares a build "complete" with missing review evidence.** The end-of-build audit (step 10.5) confirms every plan U-ID is covered by the branch-level `review-verdict:`, and that `simplify_pass` and `branch_review_pass` both recorded. It refuses the success path (`/en-review` → `/en-qa` → `/en-ship`) if any is missing, and suggests `/en-cross-review` instead.

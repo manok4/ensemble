@@ -67,14 +67,14 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    |---|---|---|
    | `PEER_MODE=cross-agent` AND mode is `interactive`/`headless` | `on` | `default-on` (or `explicit-flag` if `--peer` was passed) |
    | `--no-peer` passed | `off` | `no-peer-flag` |
-   | `PEER_MODE=single-agent-fallback` (unless `--peer`) | `off` | `single-agent-fallback` |
+   | `--host` passed | `off` | `host-only-mode` |
    | mode is `report-only` | `off` | `report-only-mode` |
    | `ENSEMBLE_PEER_REVIEW=true` | `off` | `recursion-guard` |
    | `PEER_AVAILABLE=false` | `off` | `peer-unavailable` |
    | Diff below `skip_peer_below_lines` | `off` | `auto-skip:diff-below-threshold` |
    | Lightweight depth AND `skip_peer_on_lightweight` | `off` | `auto-skip:lightweight-depth` |
 
-   Two carve-outs are deliberate, not oversights. **`report-only` never runs a peer**: `/en-sweep` invokes `/en-review` in that mode inside CI, and D38 deliberately keeps API secrets and repo-write off CI, so defaulting a peer on there would silently require peer CLI credentials. **`single-agent-fallback` defaults off** because en-review's personas are already fresh-context instances of the host stack, so a same-model subprocess adds cost without an independent perspective; `--peer` still opts in. (The calculus differs in `/en-build`, where the alternative is the host reviewing its own inline work.)
+   Two carve-outs are deliberate, not oversights. **`report-only` never runs a peer**: `/en-sweep` invokes `/en-review` in that mode inside CI, and D38 deliberately keeps API secrets and repo-write off CI, so defaulting a peer on there would silently require peer CLI credentials. **`single-agent-fallback` is ON.** With `--peer` as the default, the peer is the sole reviewer, so "no peer CLI" cannot mean "no review" — the peer role runs on the host model in a fresh subprocess instead, and `peer_decision.peer_mode` records `single-agent-fallback` so the report never reads as a cross-agent pass. It is a weaker review than a genuinely different architecture, and the recorded mode is what says so. `--host` is the way to decline the fallback and take the persona roster instead.
 
 2b. **Read the effort/alias config overrides** (the two high-precedence layers only). This skill is the **SOLE resolver** (`peer-model-policy.md` (b)), but resolution is deliberately **split across two points** because the ladder's inputs do not exist yet at step 2:
 
@@ -134,8 +134,10 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
     Cite the unit's U-ID on every finding, so the plan and the review reconcile by ID rather than by prose. **Do not rerank these against persona findings** — a diff can be flawless code that solves the wrong problem, and merging the two axes is what lets one mask the other. Skip the axis entirely when step 5 found no plan, and say so in Coverage rather than silently omitting it.
 
-8. **Parallel dispatch — personas AND the peer in ONE batch.** Single message, multiple `Agent` tool calls, **plus the peer subprocess from step 9 launched in the same batch**. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the persona roster, so serializing it would add its latency to every review for no benefit (`peer_timeout_seconds` defaults to 600). Wait for all to return.
-9. **Outside Voice peer (on by default per step 2a; `--peer-only` makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
+8. **Dispatch, per review mode.** `--peer` (default) dispatches the peer alone — no persona roster, so steps 7/7b/7c produced routing that this mode does not consume, and the conditional-persona work is skipped rather than computed and discarded. `--host` dispatches the persona roster alone. Only `--cross` dispatches both, and only `--cross` reaches the reconciliation in step 10.
+
+    **`--cross`: personas AND the peer in ONE batch.** Single message, multiple `Agent` tool calls, **plus the peer subprocess from step 9 launched in the same batch**. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the persona roster, so serializing it would add its latency to every review for no benefit (`peer_timeout_seconds` defaults to 600). Wait for all to return.
+9. **Outside Voice peer (runs in `--peer` and `--cross`; `--peer` is the default and makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
    - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid. Any change that feeds persona findings to the peer must also re-serialize step 8 and invalidate the corroboration weighting in step 10.
    - Build the prompt: `$SKILL_DIR/scripts/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`.
    - Translate the tier resolved in step 2b: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
@@ -145,7 +147,9 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
 9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
-10. **Synthesize, then reconcile the two sources.** Per `references/persona-dispatch.md`:
+10. **Synthesize.** With one source — `--peer` or `--host` — there is nothing to reconcile: validate, collect, and report. Say which single source produced the findings so nobody reads a one-source pass as a corroborated one.
+
+    **Under `--cross`, reconcile the two sources** and **report the `corroborated` bucket first**: two independent reads agreeing is the strongest signal available, so it leads. The other three buckets are still reported below it, never dropped — `peer-only` is what the host missed and is usually the reason to run a peer at all, and `host-only` is where project context lives. Per `references/persona-dispatch.md`:
     - Validate each response (drop malformed).
     - Collect findings; preserve persona attribution and tag `source: host | peer`.
     - Dedup **within** the host set by location + title-similarity ≥ 0.7 (merge personas; same-source overlap boosts confidence +1).
@@ -184,10 +188,15 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | Flag | Effect |
 |---|---|
 | `--mode interactive\|headless\|report-only` | Override default mode |
-| `--no-peer` | Skip the cross-agent peer entirely; host personas only. Resolves `peer_decision: off (no-peer-flag)`. (Same spelling as `/en-plan`'s flag.) |
+
+**`--peer`, `--cross` and `--host` are mutually exclusive review modes**; passing two is an error, not a merge. `--peer` is the default, so a bare `/en-review` is a peer-only pass.
+
+| Flag | Effect |
+|---|---|
+| `--peer` | **Default.** The peer is the sole reviewer; host personas do not run. Fastest and cheapest of the three. Where no peer CLI exists, the peer role runs on the host model in a **fresh subprocess** rather than being skipped — see the fallback note in step 2a. |
+| `--cross` | Host personas **and** the peer, reconciled into the four buckets, **corroborated findings reported first**. The thorough mode: it is the only one that produces standards / testing / maintainability findings with project context alongside an independent read. Used by `/en-build` (D46). |
+| `--host` | Host personas only, in fresh-context sub-agents. No peer subprocess. Use when no peer is wanted or reachable and you do not want the same-model fallback. |
 | `--effort low\|medium\|high` | Pin the peer's reasoning-effort tier for this run, the highest-precedence layer in `references/peer-model-policy.md` (b). Omit to let repo config, then user config, then the ladder decide. |
-| `--peer` | **Back-compat no-op when the peer is already on by default** (EN11). Still meaningful where the default is off: it opts a `single-agent-fallback` run into a fresh same-model subprocess. Resolves `reason: explicit-flag`. |
-| `--peer-only` | Cross-agent peer is the **sole** reviewer; skip host personas entirely (implementer ≠ reviewer). Used by `/en-build`'s post-build phase. Falls back to host roster only when no peer CLI exists. Mutually exclusive with `--lite`. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full diff) |

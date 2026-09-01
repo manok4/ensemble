@@ -54,7 +54,9 @@ fi
 
 # --- 3. it runs before dispatch, and degrades honestly with no plan ---
 axis=$(grep -n 'Requirements coverage (the spec axis)' "$SKILL" | head -1 | cut -d: -f1)
-disp=$(grep -n 'Parallel dispatch — personas AND the peer' "$SKILL" | head -1 | cut -d: -f1)
+# The dispatch step was renamed when the three review modes landed; anchor on
+# the step's number-and-name rather than its old prose.
+disp=$(grep -n '^8\. \*\*Dispatch, per review mode' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$axis" ] && [ -n "$disp" ] && [ "$axis" -lt "$disp" ] \
    && grep -qiE 'say so in Coverage rather than silently omitting' "$SKILL"; then
   pass "the spec axis precedes dispatch and discloses its own absence"

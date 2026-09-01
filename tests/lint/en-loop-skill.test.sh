@@ -80,10 +80,13 @@ if grep -qiE "test-gate" "$SKILL" && grep -qiE "commit ONLY on green|commit only
 else
   fail "must document the per-iteration test-gate (commit only on green)"
 fi
-if grep -qF "/en-review --peer-only --mode headless" "$SKILL" && grep -qF -- "--review-every" "$SKILL"; then
-  pass "checkpoint review invokes /en-review --peer-only every --review-every N"
+# 2026-09-01 rename: the peer-sole pass /en-loop wants is now spelled --peer.
+# What it must NOT be is --cross — a full persona roster at every checkpoint
+# multiplies cost in an unattended loop, which is why D46 scoped that to en-build.
+if grep -qF "/en-review --peer --mode headless" "$SKILL" && grep -qF -- "--review-every" "$SKILL"; then
+  pass "checkpoint review invokes the peer-sole pass every --review-every N"
 else
-  fail "must invoke /en-review --peer-only at checkpoints with --review-every"
+  fail "must invoke the peer-sole /en-review at checkpoints with --review-every"
 fi
 if grep -qiE "at loop end" "$SKILL" && grep -qiE "acceptance criteria" "$SKILL"; then
   pass "reviews at loop end; findings become next-iteration acceptance criteria"

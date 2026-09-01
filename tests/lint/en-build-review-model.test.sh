@@ -31,16 +31,22 @@ fi
 # the host personas (D46, superseding the former --peer-only). The peer carries
 # implementer != reviewer; the personas are fresh-context sub-agents that add the
 # host-only standards/testing/maintainability findings --peer-only discarded.
-if grep -qF -- "/en-review --peer " "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
-  pass "post-build review calls /en-review --peer (cross-agent peer + host personas)"
+# The flags were renamed on 2026-09-01: --peer now means peer-SOLE and --cross
+# means peer-plus-personas. D46's requirement is unchanged — en-build needs both
+# sources — so the call it must make is now spelled --cross. The rename is
+# exactly the hazard this clause exists for: en-build's old --peer call would
+# have kept its spelling and silently become the peer-only pass D46 removed.
+if grep -qF -- "/en-review --cross " "$SKILL" && grep -qiE "cross-agent" "$SKILL"; then
+  pass "post-build review calls /en-review --cross (peer + host personas)"
 else
-  fail "post-build review must call /en-review --peer"
+  fail "post-build review must call /en-review --cross" \
+       "D46 needs both sources; --peer alone is now the peer-sole mode it removed"
 fi
-# Guard the regression directly: the post-build step must NOT go back to peer-only.
-if grep -qF -- "/en-review --peer-only --mode headless --base" "$SKILL"; then
-  fail "post-build review reverted to --peer-only (drops host-only findings; see D46)"
+# Guard the regression directly: the post-build step must NOT go peer-sole.
+if grep -qE -- "/en-review --peer( |\`)" "$SKILL"; then
+  fail "post-build review reverted to a peer-sole call (drops host-only findings; see D46)"
 else
-  pass "post-build review does not use --peer-only"
+  pass "post-build review is not peer-sole"
 fi
 # The cross-agent property is still mandatory, not merely nice to have.
 if grep -qiE 'peer is \*\*mandatory\*\*|cross-agent peer is \*\*mandatory\*\*' "$SKILL"; then
@@ -60,15 +66,18 @@ fi
 # --peer, which is precisely the scope D46 excludes (checkpoints fire every N
 # iterations in an unattended loop, where a persona roster per checkpoint
 # multiplies cost). Assert the real invocation, not the flag's existence.
-if grep -qF -- "/en-review --peer-only --mode headless" "$EN_LOOP"; then
-  pass "/en-loop checkpoint still invokes /en-review --peer-only (D46 scope)"
+# Same rename, opposite direction: /en-loop wants the peer-SOLE pass, which is
+# now spelled --peer. D46's scoping is unchanged — a full persona roster at every
+# checkpoint of an unattended loop multiplies cost where cost compounds.
+if grep -qF -- "/en-review --peer --mode headless" "$EN_LOOP"; then
+  pass "/en-loop checkpoint invokes the peer-sole pass (D46 scope)"
 else
-  fail "/en-loop must keep --peer-only at checkpoints" "D46 scopes the --peer change to /en-build only"
+  fail "/en-loop must keep the peer-sole pass at checkpoints" "D46 scopes the persona roster to /en-build only"
 fi
-if grep -qF -- "/en-review --peer " "$EN_LOOP"; then
-  fail "/en-loop switched to --peer" "D46 deliberately excludes /en-loop; cost compounds in an unattended loop"
+if grep -qF -- "/en-review --cross" "$EN_LOOP"; then
+  fail "/en-loop adopted --cross" "D46 deliberately excludes it; cost compounds in an unattended loop"
 else
-  pass "/en-loop has not adopted --peer"
+  pass "/en-loop has not adopted --cross"
 fi
 
 # The claim that reviewer semantics and the step 10.5 audit gate are UNCHANGED

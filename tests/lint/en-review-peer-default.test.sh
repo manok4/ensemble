@@ -410,9 +410,30 @@ FLAGS_TBL=$(awk '/^## Flags/,/^## Mutation rules/' "$SKILL")
 flagrow() {  # flagrow <flag> <label>
   if printf '%s\n' "$FLAGS_TBL" | grep -qF -- "| \`$1" ; then pass "$2"; else fail "$2" "no Flags-table row for $1"; fi
 }
-flagrow "--no-peer" "Flags table has a --no-peer row"
+# 2026-09-01: --no-peer and --peer-only were replaced by three mutually exclusive
+# review modes. --peer is now peer-SOLE (and the default), --cross is peer plus
+# personas, --host is personas alone. EN11's substance — the peer runs unless a
+# recorded reason says otherwise — is unchanged; only the spelling moved.
+flagrow "--peer" "Flags table has a --peer row (peer-sole, the default)"
+flagrow "--cross" "Flags table has a --cross row (peer + personas)"
+flagrow "--host" "Flags table has a --host row (personas only)"
 flagrow "--effort" "Flags table has an --effort row"
-flagrow "--peer-only" "Flags table still has --peer-only (unchanged by EN11)"
+
+# The three are a choice, not a merge; two at once is an error.
+if printf '%s\n' "$FLAGS_TBL" | grep -qiE 'mutually exclusive review modes'; then
+  pass "the three review modes are declared mutually exclusive"
+else
+  fail "the three review modes must be declared mutually exclusive"
+fi
+
+# The removed spellings must not come back alongside the new ones.
+for gone in "--no-peer" "--peer-only"; do
+  if printf '%s\n' "$FLAGS_TBL" | grep -qF -- "| \`$gone"; then
+    fail "Flags table still lists $gone" "replaced by the --peer/--cross/--host trio"
+  else
+    pass "Flags table no longer lists $gone"
+  fi
+done
 has "$SKILL" "peer_decision:" "mandatory peer_decision outcome line"
 has "$SKILL" "default-on" "default-on reason is documented"
 has "$SKILL" "report-only-mode" "report-only carve-out has a recorded reason"
