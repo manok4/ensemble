@@ -84,7 +84,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
     | `open` | `approve` | 0 | **no** | Offer auto-commit (one prompt), then proceed |
     | `draft` | `revise` | 0 | yes or no | **Offer finalize-and-build:** one prompt to re-run the peer pass via `/en-plan`'s finalize loop, on `approve` flip to `open`, auto-commit, then proceed |
     | `draft` | `revise` | > 0 | any | Refuse; list the unresolved findings; ask the user to apply/defer/disagree first via `/en-plan --resume` |
-    | `open` | `null` | n/a | yes | Proceed (`--no-peer` was used; no peer expected) |
+    | `open` | `null` | n/a | yes | Proceed (the plan was made with `/en-plan --no-peer`; no peer verdict expected) |
     | `open` | `null` | n/a | **no** | Offer auto-commit, then proceed |
     | `draft` | `null` | n/a | any | Refuse; peer review never ran. Suggest `/en-plan --resume <plan-path>`. |
     | `draft` | `reject` | any | any | Refuse; user must take over. Surface `peer_review_resolutions:` for context. |
@@ -96,7 +96,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
     |---|---|
     | `status: draft` AND a parseable iteration log shows applied/deferred/disagreed entries | Treat as `peer_review_verdict: revise` + reconstructed `peer_review_resolutions` (best-effort, flagged `inferred: true`); offer finalize-and-build with a legacy notice |
     | `status: draft` AND no iteration log | Treat as `peer_review_verdict: null`; refuse |
-    | `status: open` AND no peer-review fields | Treat as `peer_review_verdict: null` AND `--no-peer` was the path; accept |
+    | `status: open` AND no peer-review fields | Treat as `peer_review_verdict: null` AND `/en-plan --no-peer` was the path; accept |
     | `status: open` AND iteration log shows final `verdict: approve` | Treat as `peer_review_verdict: approve`; accept |
     | Any other ambiguous combination | Refuse with a clear instruction to re-run `/en-plan --resume <plan-path>` |
 
@@ -104,7 +104,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 
     > Plan is in draft. Findings from the last peer review (verdict: revise) appear to be applied (resolutions: 8 applied, 0 deferred, 0 disagreed). I can finalize now: re-run the peer pass, flip to `open` on approve, and commit the plan. Then proceed with `/en-build`. (y / n / details)
 
-    `--no-finalize` disables the recovery offer; `--finalize-only` runs finalize and stops without building.
+    Declining the offer at the prompt is how you skip it; `--finalize-only` runs finalize and stops without building.
 
    **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.
 
@@ -129,7 +129,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
     - `>= 2` units with `category: migration | migration-additive`.
     - `data_scale: large` in plan frontmatter.
 
-    User overrides: `--no-phasing` forces off, `--phasing` forces on, `--unit U<N>` and `--from U<N>` bypass phasing entirely (universal safety gates still apply per unit — see below).
+    User overrides: `--no-phasing` forces off, `--unit U<N>` and `--from U<N>` bypass phasing entirely (universal safety gates still apply per unit — see below).
 
     **Phase classification** (when phasing is on): each unit maps to one of P1 (Measurement, `risk: low`), P2 (Additive, `risk: medium` except migration/backfill/schema-evolution categories), P3 (Migration / Backfill, `risk: high` OR `risk: medium` + migration/backfill/schema-evolution category), P4 (Destructive, `risk: destructive`). `risk:` is the single source of truth for phase placement; `category:` only carves out the `medium → P3` case for migrations. **Empty phases are collapsed silently.**
 
@@ -153,14 +153,14 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
     |---|---|
     | `risk: destructive` | Literal-string confirmation `"run unit U<N>"` typed verbatim, with goal/files/approach surfaced first. (When the unit is part of an active P4 phase already group-confirmed via `"run phase 4"`, this per-unit gate is skipped — see step 9.) |
     | `gated: true` | y/skip/abort confirmation, with goal and approach surfaced first. (Always per-unit; never group-confirmed.) |
-    | `risk: high` AND `--strict-destructive` | Literal-string confirmation `"run unit U<N>"`. (Skipped when the unit is part of an active P3 phase already group-confirmed via `"run phase 3"`.) |
+    | `risk: high` AND `build.strict_destructive` | Literal-string confirmation `"run unit U<N>"`. (Skipped when the unit is part of an active P3 phase already group-confirmed via `"run phase 3"`.) |
     | Anything else | No mandatory gate at the unit level. |
 
     These are the primary safety boundary — and they are deliberately **two narrow categories, nothing more**:
     - **`risk: destructive`** — its own literal-string category, for irreversible data loss.
     - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated — they're covered by the per-unit verification gate (9d) + the post-build review (step 10), not user prompts. (Plan authors and peer review enforce this bar at plan time; `/en-plan`'s template carries the same criteria.)
 
-    Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `--pause`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
+    Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `build.pause_between_phases`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
 
     **Preflight gate summary.** Before entering the unit loop (step 9), surface a one-line count so gates are never a surprise mid-build: *"Plan has N gated/destructive units that will pause: U<a> (gated), U<b> (destructive). The remaining M units run autonomously."* If N is 0, say so: *"No gated or destructive units — this plan runs fully autonomously."*
 
@@ -183,7 +183,7 @@ Why scope this way: the field-observed bug ("Working tree is clean. I stopped at
 3. **`risk: destructive` unit at step 9a** — typed `"run unit U<N>"` literal-string gate.
 4. **`gated: true` unit at step 9a** — y/skip/abort prompt.
 5. **P4 phase-level confirmation** (step 9, phasing-on path) — typed `"run phase 4"` literal-string.
-6. **`--pause` flag set** (step 9, opt-in) — between-phase y/pause/n prompt.
+6. **`build.pause_between_phases` set** (step 9, opt-in) — between-phase y/pause/n prompt.
 7. **Failure protocol fires** (failure-protocol table) — gate failure, peer reject, malformed evidence, hash mismatch, after-phase verification failure, plan-hash drift, worker malformed diff, etc. Each has its own documented handler.
 
 Cases 3–7 are inside the contract window (steps 9 and 10). Cases 1 and 2 are listed for completeness so the reader sees the full pause-emitting universe of /en-build; they're already in their own documented handlers and are not subject to this contract.
@@ -224,17 +224,17 @@ If the agent has a real concern that's outside the seven cases AND not caught by
    - Surface phase plan to user (units, files, risk summary).
    - **Phase-level mandatory gates** (cannot be bypassed by any flag):
      - If phase == P4: require literal-string `"run phase 4"`. Accepting covers all destructive units in the phase; per-unit destructive gates are NOT re-prompted within P4.
-     - If `--strict-destructive` AND phase == P3: require literal-string `"run phase 3"`. Same group-cover semantics.
-   - **Opt-in per-phase pause** (`--pause` flag, default off): ask y/pause/n. Default behavior is auto-roll into the next phase.
+     - If `build.strict_destructive` AND phase == P3: require literal-string `"run phase 3"`. Same group-cover semantics.
+   - **Opt-in per-phase pause** (`build.pause_between_phases`, default off): ask y/pause/n. Default behavior is auto-roll into the next phase.
    - For each unit in the phase (dependency order):
      - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Before doing ANY work on this unit:
        1. **Classify the unit.** Read its `risk:` field; if absent, run the ordered classifier from step 8a's inference fallback to assign one. Read its `gated:` field (default `false`).
        2. **If `risk: destructive`** AND the active phase has not already been group-confirmed (no `"run phase 4"` accepted for this phase): surface the unit's goal, files, and approach; require typed `"run unit U<N>"` (literal string, verbatim). Any other input → record the unit as `skipped` and advance to the next unit; if the user types `abort`, stop the build per the abort protocol.
        3. **If `gated: true`** (regardless of risk class): surface the unit's goal and approach; require y/skip/abort. **This gate fires even when a phase-level `"run phase 4"` or `"run phase 3"` has been accepted** — gating is per-unit-only and never group-covered. On `skip`: record as `skipped` and continue. On `abort`: stop per the abort protocol.
-       4. **If `--strict-destructive` is set AND `risk: high`** AND the active phase has not been group-confirmed (no `"run phase 3"` accepted): same as step 2 with `"run unit U<N>"`.
+       4. **If `build.strict_destructive` is set AND `risk: high`** AND the active phase has not been group-confirmed (no `"run phase 3"` accepted): same as step 2 with `"run unit U<N>"`.
        5. Otherwise: proceed to 9b.
        
-       This entire sequence runs identically on every code path — phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase`, manual resume. **No flag suppresses it.** The phase-level prompts above (P4 `"run phase 4"`, P3 under `--strict-destructive`) only group-confirm the *destructive* and *high-risk* gates inside their phase; they never cover `gated: true`, and they never apply on phasing-off paths.
+       This entire sequence runs identically on every code path — phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase`, manual resume. **No flag suppresses it.** The phase-level prompts above (P4 `"run phase 4"`, P3 under `build.strict_destructive`) only group-confirm the *destructive* and *high-risk* gates inside their phase; they never cover `gated: true`, and they never apply on phasing-off paths.
      - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
      - **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent.
 
@@ -259,7 +259,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
    - **Plan-hash check.** Re-compute via `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
    - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
    - Surface phase summary (units, commits, any gate confirmations the phase required).
-   - If `--pause` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
+   - If `build.pause_between_phases` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
 
    **Phasing-off path** (phasing disabled by triggers, `--no-phasing`, `--unit U<N>`, `--from U<N>`): same per-unit loop (9a–9e), no phase grouping, no phase-level prompts. Critically, **step 9a runs verbatim** on every selected unit — `--unit U8` against a destructive unit still requires `"run unit U8"` typed literally; `--from U3` against a plan that contains a gated unit still pauses for y/skip/abort on that unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent across phasing-on and phasing-off runs). **Note:** when phasing is off and `--unit`/`--from` builds a subset, the post-build branch-level review (step 10) still runs over the resulting branch diff so ordinary units get their `review-verdict:` coverage.
 
@@ -271,7 +271,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
        The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
 
-       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.5 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `references/severity.md` (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. Skip entirely with `--no-peer` (records the branch as review-skipped). The peer machinery lives in en-review (one implementation), not duplicated here.
+       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.5 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `references/severity.md` (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. Skip entirely with `--no-review` (records the branch as review-skipped). The flag is named for what it does: it skips this step, personas included. It is **not** "run the review without the peer" — that case needs no flag, because when `PEER_AVAILABLE=false` en-review runs its host personas anyway and records `reviewer: single-agent-fallback` or `en-review-host-fallback`, which the audit accepts as `branch_review_pass: fallback_completed`. The peer machinery lives in en-review (one implementation), not duplicated here.
     4. **Commit the simplify + review changes** (if any) with **both** a `review-verdict:` trailer AND a `simplify-verdict:` trailer (EN07 - the simplify pass is now auditable evidence, not prose). If steps 2–3 produced no working-tree changes, create an empty commit (`--allow-empty`) carrying **both** trailers so the branch records both passes.
 
        **Trailer schemas.** These two are the branch's whole evidence record, so they live here rather than in a reference:
@@ -286,7 +286,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
        `ensemble-verify-peer-evidence --branch-coverage <range> --require-simplify` derives `simplify_pass` and `branch_review_pass` from these and fails when either is `missing`/`failed`. Trailers rather than sidecar files because `git interpret-trailers --parse` and `git log --grep` are stable and scriptable.
        - **`review-verdict:`** carries `{verdict, reviewer, mode, units_covered, findings_count}`. **`reviewer` records who reviewed:** `cross-agent` (peer ran — the normal case), `single-agent-fallback`, or `en-review-host-fallback` (peer unavailable). The `reviewer` value IS the recorded reason a fallback was used - the single-agent peer path is ONLY a fallback for `/en-review` when the cross-agent peer is unavailable, and it must record which fallback it was. `mode` is the peer mode / review mode. `units_covered` lists **every ordinary U-ID built this run** (destructive/gated units already carry their own per-unit evidence and don't need branch-level coverage).
-       - **`simplify-verdict:`** carries `{outcome, reason, findings_count, units_covered}`. `outcome` is `completed` (the `/en-simplify` pass ran), `not_applicable` (legitimately skipped - `reason` REQUIRED: `docs-only`, `trivial:<10-lines`, `--no-simplify`, or `all-destructive-gated`), or `failed` (`reason` REQUIRED - e.g. a gate-2 regression reverted it). **`--no-simplify` records `{"outcome":"not_applicable","reason":"--no-simplify",...}` explicitly - a visible, recorded opt-out, never silence.** A **missing** `simplify-verdict:` trailer is NOT a legitimate skip; the audit treats it as `missing` and fails. **`--no-peer`** likewise records the branch review as a loud, recorded skip (the audit reports `branch_review_pass: missing` and, under `--require-simplify`, fails) - never a silent pass.
+       - **`simplify-verdict:`** carries `{outcome, reason, findings_count, units_covered}`. `outcome` is `completed` (the `/en-simplify` pass ran), `not_applicable` (legitimately skipped - `reason` REQUIRED: `docs-only`, `trivial:<10-lines`, `--no-simplify`, or `all-destructive-gated`), or `failed` (`reason` REQUIRED - e.g. a gate-2 regression reverted it). **`--no-simplify` records `{"outcome":"not_applicable","reason":"--no-simplify",...}` explicitly - a visible, recorded opt-out, never silence.** A **missing** `simplify-verdict:` trailer is NOT a legitimate skip; the audit treats it as `missing` and fails. **`--no-review`** likewise records the branch review as a loud, recorded skip (the audit reports `branch_review_pass: missing` and, under `--require-simplify`, fails) - never a silent pass.
     5. **End-of-build evidence audit (mandatory, mechanical).** Compute branch-level coverage once, **with the simplify+review gate**: `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify --json` → `covered_units`, plus the two derived outcome fields **`simplify_pass`** (`completed | not_applicable | failed | missing`) and **`branch_review_pass`** (`completed | fallback_completed | failed | missing`). The `--require-simplify` flag makes the command **exit non-zero** when `simplify_pass` is `missing`/`failed` or `branch_review_pass` is `missing`/`failed` - so a skipped `/en-simplify` (with no recorded `not_applicable`) or an unrun/unrecorded branch review fails the audit here, not silently. Then confirm every plan U-ID appears in `covered_units`. There is no per-unit evidence path any more: the host implements every unit and one branch-level review covers all of them, so a U-ID missing from `covered_units` is a genuine gap rather than a unit that took the other route. **Surface a per-unit table plus the two gate lines in the summary**:
 
       ```
@@ -301,6 +301,8 @@ If the agent has a real concern that's outside the seven cases AND not caught by
       branch_review_pass: completed
       Audit verdict: ok (5/5 units covered by the branch-level review; simplify + review gated)
       ```
+
+      **Each gate line carries its reason when it is anything but `completed`** — `simplify_pass: not_applicable (build config: simplifier off)` reads as loudly as `(--no-simplify)`. A policy set once in `.ensemble/config.local.yaml` and forgotten must be as visible here as a flag typed this morning; that is the whole reason it is safe to move standing policy out of the flag surface.
 
       **The two gate lines are mandatory in every build summary** (the human-visible echo of the durable `simplify-verdict:` / `review-verdict:` trailers). A `simplify_pass`/`branch_review_pass` of `missing` or `failed` makes the audit verdict `failed` even when every U-ID is covered - a skipped simplify or an unrecorded review is a build defect, not a clean finish.
 
@@ -340,7 +342,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
          Worth filing learnings from this build? (yes / skip / details)
          ```
       6. **Handle response.** `yes` → invoke `/en-learn capture`; record `learning_checkpoint: captured (<N> learnings)`. `skip` → record `learning_checkpoint: intentionally_skipped` (auditable). `details` → print the commit list + per-area summary; re-prompt.
-      7. **Flag override.** `--no-learning-checkpoint` skips the whole step (records `learning_checkpoint: intentionally_skipped (--no-learning-checkpoint flag)`).
+      7. **Policy override.** `build.learning_checkpoint: false` skips the whole step (records `learning_checkpoint: intentionally_skipped (--no-learning-checkpoint flag)`).
 
       The four canonical outcome values are `captured (N learnings)` / `intentionally_skipped` / `up_to_date` / `ci_environment` (never the bare word `skipped`). This step fires at the `/en-learn` hand-off - after step 10's audit, **outside** the inter-unit autonomy-contract window - so it is a legitimate terminal checkpoint, not an inserted inter-unit pause.
     - Suggest next: `/en-review` → `/en-qa` → `/en-ship` — but only if the audit passed. Otherwise: `/en-cross-review` on the failing commits.
@@ -350,21 +352,17 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 | Flag | Effect |
 |---|---|
 | `--no-simplify` | Skip the post-build code-simplification pass (step 10.2). Records `simplify-verdict: {"outcome":"not_applicable","reason":"--no-simplify",...}` - a visible, recorded opt-out that passes the audit, never a silent skip. |
-| `--no-peer` | Skip the post-build branch-level Outside Voice review (step 10.3). The branch records as review-skipped; the audit reports `branch_review_pass: missing` and (under `--require-simplify`, step 10.5) FAILS - use only when you intend an un-reviewed branch. Since D52 this is the build's only peer pass, so `--no-peer` leaves every unit unreviewed, destructive ones included. |
-| `--worktree` | Run in a worktree (`../<repo>-<fr-id>/`) |
+| `--no-review` | Skip the post-build branch-level review (step 10.3) **entirely** — peer and host personas both. The branch records as review-skipped; the audit reports `branch_review_pass: missing` and FAILS. Since D52 this is the build's only review, so it leaves every unit unreviewed, destructive ones included. Formerly `--no-peer`, which named the wrong half and collided with `/en-review`'s own `--no-peer`. |
 | `--unit U<N>` | Build only the named unit; don't auto-advance. Universal safety gates still apply. |
+| `--no-phasing` | Force phasing off for this run (universal safety gates still fire per unit). No `--phasing` counterpart: phasing turns on from six triggers, and when none fired the plan is small enough not to need it. |
 | `--dry-run` | Show what would happen; don't write or commit |
 | `--from U<N>` | Resume from a specific unit (skip earlier ones). Universal safety gates still apply per unit. |
-| `--no-phasing` | Force phasing off (universal safety gates still fire per unit) |
-| `--phasing` | Force phasing on even if no trigger fired |
 | `--from-phase P<N>` | Resume at phase N. Verifies prior phases' commits and a clean working tree before starting. |
-| `--pause` | Pause and prompt between phases (default is auto-roll). Mandatory destructive / gated-unit confirmations always fire regardless. |
-| `--strict-destructive` | Add literal-string confirmation for `risk: high` and Phase 3 in addition to P4 / `risk: destructive` (which always require it). |
-| `--no-finalize` | Disable the recovery offer for `draft + revise` plans; refuse on draft as today. |
 | `--finalize-only` | Run finalize loop and stop without building. |
-| `--no-learning-checkpoint` | Skip the structured learning checkpoint; record `learning_checkpoint: intentionally_skipped (--no-learning-checkpoint flag)`. |
 | `--commit-wip` | After a stopped run (Ctrl-C, gate-failure, etc.), create a `wip/<plan_id>-phase<N>` branch and commit current state. Explicit user invocation only — never automatic. |
 | `--re-baseline` | After reviewing an external plan-file diff, accept the new state as the build's baseline `peer_review_plan_hash`. |
+
+**Standing policy lives in `.ensemble/config.local.yaml`, not here** — `build.worktree`, `build.strict_destructive`, `build.pause_between_phases`, `build.learning_checkpoint`. A flag is for what changes run to run; a project either works in worktrees or it doesn't. Config-set skips are surfaced in the step 10.5 audit exactly like flag-set ones, so a policy set once and forgotten is as visible in the build summary as a flag typed today.
 
 **No flag disables universal safety gates.** Every flag changes phasing, pacing, or selection; none turn off destructive / gated confirmations.
 
@@ -372,7 +370,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
 **Once per build, at step 10.3, after `/en-simplify`.** The peer never reviews a unit in flight and never implements one. `/en-build` invokes `/en-review --peer --mode headless` over the branch diff; the resulting `review-verdict:` trailer is the evidence for every unit on the branch.
 
-Skipped only by `--no-peer`, which records the branch as review-skipped and makes the step 10.5 audit report `branch_review_pass: missing`. There is no per-unit skip enum any more, because there is no per-unit pass to skip.
+Skipped only by `--no-review`, which records the branch as review-skipped and makes the step 10.5 audit report `branch_review_pass: missing`. There is no per-unit skip enum any more, because there is no per-unit pass to skip.
 
 When peer is available:
 - Cross-agent → peer is the *other* agent (D23).

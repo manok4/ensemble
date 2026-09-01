@@ -191,11 +191,23 @@ else
   fail "foundation must record D52 with what it supersedes and what it costs"
 fi
 
-# --- --no-peer skips the branch-level review ---
-if grep -qE "\`--no-peer\`.*post-build branch-level" "$SKILL"; then
-  pass "--no-peer documented for post-build branch-level review"
+# --- --no-review skips the branch-level review, and says it skips ALL of it ---
+# It was called --no-peer, which named the wrong half: it skips the personas
+# too, and the name collided with /en-review's own --no-peer, which means the
+# opposite (run the personas, skip the cross-agent peer). Renamed, and the flag
+# text has to say "entirely" so nobody reads it as the peer-only skip again.
+if grep -qE '`--no-review`.*post-build branch-level' "$SKILL" \
+   && grep -qiE 'peer and host personas both' "$SKILL"; then
+  pass "--no-review is documented as skipping the whole review, personas included"
 else
-  fail "--no-peer must be documented for the post-build review"
+  fail "--no-review must be documented as skipping the entire step 10.3"
+fi
+
+if grep -qE '`--no-peer`' "$SKILL" | grep -qv 'en-plan'; then
+  fail "en-build must not define a --no-peer flag" \
+       "it collides with /en-review's, which means something else"
+else
+  pass "no --no-peer flag on en-build"
 fi
 
 # --- D52 residue sweep across every file en-build carries ---
