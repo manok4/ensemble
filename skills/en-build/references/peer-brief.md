@@ -158,5 +158,5 @@ not how many personas contributed.
 ## Effort
 
 Destructive or `gated: true` units get `high` regardless of diff size: those are
-the units where a missed finding is expensive and the per-unit peer pass is the
-only review they get.
+the units where a missed finding is expensive, and since D52 the branch-level
+pass is the only review they get.

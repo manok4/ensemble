@@ -198,4 +198,21 @@ else
   fail "--no-peer must be documented for the post-build review"
 fi
 
+# --- D52 residue sweep across every file en-build carries ---
+# The clauses above check SKILL.md's flow. This catches the same claim surviving
+# somewhere the flow does not read: the flag table said "--no-peer ... Destructive/
+# gated units still get their mandatory per-unit peer pass", CONTRACT.md promised
+# the pass to callers, peer-brief.md told the peer it was "the only review they
+# get", and recursion-guard.md said en-build proceeds without a per-unit pass it
+# no longer has. Four files, none of them the flow, all read by somebody.
+residue=""
+for pat in "mandatory per-unit peer" "dedicated per-unit peer" "max-per-unit-iterations" \
+           "still get their" "per-unit peer pass is the"; do
+  hits=$(grep -rilF "$pat" "$REPO_ROOT/skills/en-build" 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')
+  [ -n "$hits" ] && residue="$residue [$pat: $hits]"
+done
+[ -z "$residue" ] \
+  && pass "no file en-build carries still promises a per-unit peer pass" \
+  || fail "no file en-build carries still promises a per-unit peer pass" "$residue"
+
 report

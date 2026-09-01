@@ -350,7 +350,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 | Flag | Effect |
 |---|---|
 | `--no-simplify` | Skip the post-build code-simplification pass (step 10.2). Records `simplify-verdict: {"outcome":"not_applicable","reason":"--no-simplify",...}` - a visible, recorded opt-out that passes the audit, never a silent skip. |
-| `--no-peer` | Skip the post-build branch-level Outside Voice review (step 10.3). The branch records as review-skipped; the audit reports `branch_review_pass: missing` and (under `--require-simplify`, step 10.5) FAILS - use only when you intend an un-reviewed branch. Destructive/gated units still get their mandatory per-unit peer pass. |
+| `--no-peer` | Skip the post-build branch-level Outside Voice review (step 10.3). The branch records as review-skipped; the audit reports `branch_review_pass: missing` and (under `--require-simplify`, step 10.5) FAILS - use only when you intend an un-reviewed branch. Since D52 this is the build's only peer pass, so `--no-peer` leaves every unit unreviewed, destructive ones included. |
 | `--worktree` | Run in a worktree (`../<repo>-<fr-id>/`) |
 | `--unit U<N>` | Build only the named unit; don't auto-advance. Universal safety gates still apply. |
 | `--dry-run` | Show what would happen; don't write or commit |

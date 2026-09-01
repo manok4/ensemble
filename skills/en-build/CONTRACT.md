@@ -46,8 +46,9 @@ auto-stashes on abort or Ctrl-C.
 ## Cost bounds
 
 The branch-level model runs `en-simplify` and the Outside Voice review **once**
-over the branch diff, not per unit. Only destructive and gated units get a
-dedicated per-unit peer pass, capped by `--max-per-unit-iterations` (default 1).
+over the branch diff, not per unit. No unit class is an exception: destructive
+and gated units are covered by the same branch-level review as every other unit
+(D52). What they keep is the user confirmation at step 9a, which is not review.
 
 ## Recursion
 
