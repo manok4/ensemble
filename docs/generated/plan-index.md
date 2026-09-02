@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-08-28
-total_entries: 13
+updated: 2026-09-02
+total_entries: 14
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 13
 
 ## Active
 
-_(none)_
+- [`EN15-feature_verification-receipt.md`](../plans/active/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (in_progress)
 
 ## Completed
 
