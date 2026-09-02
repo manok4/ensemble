@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN15
 title: Verification receipt, structured ship state, and a test-impact map
-status: draft
+status: open
 location: active
 created: 2026-09-01
 shipped:
@@ -339,4 +339,6 @@ with a back-reference to U1.
 
 ## Iteration log
 
-> - 2026-09-01 (initial): plan v0 from D57's deferred tier and the PR post-mortem. Not yet peer-reviewed.
+> - 2026-09-01 (initial): plan v0 from D57's deferred tier and the PR post-mortem.
+> - 2026-09-02: flipped to `open` on the user's review. No cross-agent peer pass ran — the peer CLI
+>   is not available in this session, so the plan is user-approved rather than peer-approved.
