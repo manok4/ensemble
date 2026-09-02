@@ -159,4 +159,38 @@ done
   && pass "every carrier of the dispatch doc actually carries agents" \
   || fail "every carrier of the dispatch doc actually carries agents" "$orphan"
 
+# --- the tier policy is stated, and the agents obey it -----------------------
+# Every agent already declared a tier; nothing said why, so a new agent had no
+# rule to follow and the assignments were unauditable.
+rule "Which model a bundled agent runs on" "the dispatch doc states a tier policy"
+# Single-line fragments only. grep is line-based and this file wraps, which has
+# now cost two clauses in this suite alone.
+rule "tier alias"                          "an agent declares a tier alias"
+rule "volatile CLI literal"                "the reason tiers are not model IDs is recorded"
+rule "only retrieves"                      "the retrieve-vs-decide line is named"
+
+# The no-concrete-model-ID rule, enforced rather than asserted. A model ID is a
+# volatile CLI literal: D44 cost a whole plan when one was scattered across nine
+# files. Character classes so this pattern cannot match itself.
+badmodel=""
+for f in "$REPO_ROOT"/skills/*/agents/*.md; do
+  [ -f "$f" ] || continue
+  grep -qE '^model:[[:space:]]*(claude[-]|gpt[-]|gemini[-]|o[0-9])' "$f" && badmodel="$badmodel $(basename "$f")"
+done
+[ -z "$badmodel" ] \
+  && pass "no agent pins a concrete model ID" \
+  || fail "no agent pins a concrete model ID" "$badmodel"
+
+# Every agent must declare SOME tier: an agent with no model line inherits the
+# orchestrator's, which is the most expensive tier reached by omission rather
+# than by decision.
+notier=""
+for f in "$REPO_ROOT"/skills/*/agents/*.md; do
+  [ -f "$f" ] || continue
+  grep -q '^model:' "$f" || notier="$notier $(basename "$f")"
+done
+[ -z "$notier" ] \
+  && pass "every agent declares a tier rather than inheriting by omission" \
+  || fail "every agent declares a tier rather than inheriting by omission" "$notier"
+
 report
