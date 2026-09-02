@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# ensemble-ship-preflight — return the git, base and staging state /en-ship needs,
+# as data instead of prose that re-derives it.
+#
+# The skill described what to SHOW and never how files reach the index, and its
+# failure protocol offered "stage all" on a dirty tree — which on a machine with
+# unrelated edits in flight commits work the user never offered. D57 replaced that
+# with a five-case state machine; this returns which case holds, and the file lists
+# behind it, so the skill decides rather than re-deriving.
+#
+# READ-ONLY. It classifies and never stages, commits, fetches or rewrites. The one
+# network-touching step (`git fetch`) stays in the skill, because a helper that
+# quietly reaches the network is a helper nobody can reason about.
+#
+# Usage:
+#   ensemble-ship-preflight [--base <ref>] [--scope <path>]... [--json]
+#
+# Exit codes:
+#   0  state resolved
+#   1  cannot ship from here (detached HEAD, conflicted tree, unresolvable base)
+#   3  usage error
+#
+# The staging case is one of:
+#   push-existing  clean tree, commits already ahead of base -> push, commit nothing
+#   stage-scoped   tracked changes in scope -> stage that allowlist, path by path
+#   no-op          nothing ahead and nothing in scope -> stop; not a failure
+
+set -u
+
+die() { printf '%s\n' "$*" >&2; exit 3; }
+
+command -v git >/dev/null 2>&1 || die "ensemble-ship-preflight: git not found"
+command -v python3 >/dev/null 2>&1 || die "ensemble-ship-preflight: python3 not found"
+git rev-parse --git-dir >/dev/null 2>&1 || die "ensemble-ship-preflight: not a git repository"
+
+base=""; scopes=""; as_json=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base)  [ $# -ge 2 ] || die "--base needs a ref";  base="$2";              shift 2 ;;
+    --scope) [ $# -ge 2 ] || die "--scope needs a path"; scopes="$scopes $2";   shift 2 ;;
+    --json)  as_json=1; shift ;;
+    *) die "ensemble-ship-preflight: unknown argument $1" ;;
+  esac
+done
+
+emit_and_exit() {  # $1=exit code  $2=json
+  if [ "$as_json" -eq 1 ]; then
+    printf '%s\n' "$2"
+  else
+    printf '%s\n' "$2" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+if d.get("blocked"):
+    print("blocked: {}".format(d["blocked"]))
+else:
+    print("branch      {}".format(d["branch"]))
+    print("base        {} (+{} / -{})".format(d["base_ref"] or "(none)", d["ahead"], d["behind"]))
+    print("published   {}".format(d["published"]))
+    print("case        {}".format(d["staging_case"]))
+    print("in scope    {}".format(len(d["scope_matched"])))
+    print("excluded    {}".format(len(d["excluded"])))
+'
+  fi
+  exit "$1"
+}
+
+json_blocked() {  # $1=reason
+  BLOCKED="$1" python3 -c 'import json,os;print(json.dumps({"blocked": os.environ["BLOCKED"]}, sort_keys=True))'
+}
+
+# --- refuse before classifying ------------------------------------------------
+# A detached HEAD has nothing to push to, and a conflicted tree must never be
+# shipped. Both are surfaced as a non-zero exit AND a field, so a caller cannot
+# proceed by reading only the JSON and ignoring the status.
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'HEAD')
+if [ "$branch" = "HEAD" ]; then
+  emit_and_exit 1 "$(json_blocked detached-head)"
+fi
+if git status --porcelain 2>/dev/null | grep -qE '^(UU|AA|DD|AU|UA|DU|UD) '; then
+  emit_and_exit 1 "$(json_blocked merge-conflict)"
+fi
+
+base_sha=""
+if [ -n "$base" ]; then
+  base_sha=$(git rev-parse --verify --quiet "$base" 2>/dev/null || true)
+  # A base that does not resolve must not read as "0 behind" — that is the shape
+  # of a silent lie, where the caller believes it checked freshness and did not.
+  [ -n "$base_sha" ] || emit_and_exit 1 "$(json_blocked "base-unresolvable:$base")"
+fi
+
+ahead=0; behind=0
+if [ -n "$base_sha" ]; then
+  counts=$(git rev-list --left-right --count "$base_sha...HEAD" 2>/dev/null || printf '0\t0')
+  behind=$(printf '%s' "$counts" | cut -f1)
+  ahead=$(printf '%s' "$counts" | cut -f2)
+fi
+
+# Published = the branch exists on a remote. A published branch must never be
+# rebased automatically, which is the caller's rule; this just reports the fact.
+published=false
+git rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1 && published=true
+
+# --- file classification ------------------------------------------------------
+tracked_changed=$(git diff --name-only HEAD 2>/dev/null | sort -u)
+untracked=$(git ls-files --others --exclude-standard 2>/dev/null | sort -u)
+
+SCOPES="$scopes" TRACKED="$tracked_changed" UNTRACKED="$untracked" \
+BRANCH="$branch" BASE="$base" AHEAD="$ahead" BEHIND="$behind" PUBLISHED="$published" \
+python3 <<'PY' > /tmp/.ensemble-preflight.$$ 2>/dev/null || die "ensemble-ship-preflight: classification failed"
+import json, os, fnmatch
+
+tracked = [l for l in os.environ['TRACKED'].splitlines() if l]
+untracked = [l for l in os.environ['UNTRACKED'].splitlines() if l]
+scopes = [s for s in os.environ['SCOPES'].split() if s]
+
+def in_scope(path):
+    # No --scope given means every tracked modification is the ship's business.
+    # Untracked files are never implied into scope: the whole point of the
+    # five-case machine is that an unrelated new file is preserved, not shipped.
+    if not scopes:
+        return True
+    return any(path == s or path.startswith(s.rstrip('/') + '/') or fnmatch.fnmatch(path, s)
+               for s in scopes)
+
+scope_matched = [p for p in tracked if in_scope(p)]
+excluded = [p for p in tracked if not in_scope(p)] + untracked
+
+ahead = int(os.environ['AHEAD'])
+if scope_matched:
+    case = 'stage-scoped'
+elif ahead > 0:
+    case = 'push-existing'
+else:
+    case = 'no-op'
+
+print(json.dumps({
+    'branch': os.environ['BRANCH'],
+    'base_ref': os.environ['BASE'],
+    'ahead': ahead,
+    'behind': int(os.environ['BEHIND']),
+    'detached': False,
+    'conflicted': False,
+    'published': os.environ['PUBLISHED'] == 'true',
+    'staging_case': case,
+    'scope_matched': sorted(scope_matched),
+    'excluded': sorted(excluded),
+    'untracked_inventory': sorted(untracked),
+    'staged': [],
+}, sort_keys=True))
+PY
+
+out=$(cat "/tmp/.ensemble-preflight.$$"); rm -f "/tmp/.ensemble-preflight.$$"
+emit_and_exit 0 "$out"

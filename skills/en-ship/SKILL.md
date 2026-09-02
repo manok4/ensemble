@@ -279,6 +279,8 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 
 ## Bundled scripts
 
+- `scripts/ensemble-ship-preflight` — returns git, base and staging state as JSON: ahead/behind, whether the branch is published, which of the five staging cases holds, and the in-scope / excluded / untracked file lists. Read-only; it classifies and never stages. A state it cannot resolve (detached HEAD, conflicted tree, unresolvable base) exits non-zero *and* names itself, so a caller cannot proceed by reading the JSON and ignoring the status.
+- `scripts/ensemble-plan-checkpoint` — resolves the plan-completion outcome: `complete`, `partial_expected`, `complete_evidence_missing`, `incomplete_unexpected`, plus `up_to_date` and `not_applicable`. Read-only; `/en-ship` owns the lifecycle flip.
 - `scripts/ensemble-verification-receipt` — records and checks which expensive verifications already passed against this exact working tree, so `/en-ship` and a project's pre-push hook can skip what `/en-build` already proved. Validity is a conjunction: fingerprint, base SHA, dependency hashes, repo path and age must all hold, or the checks run. Run `verify --requires <checks>`; a non-zero exit always carries a reason.
 
 ## Failure protocol
