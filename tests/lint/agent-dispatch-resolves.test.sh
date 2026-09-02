@@ -119,4 +119,44 @@ else
   pass "no skill dispatches the retired per-dimension reviewers"
 fi
 
+# --- the three rules survive compression -------------------------------------
+# agent-dispatch.md went from 41 lines to 15 on 2026-09-02. Only its placeholder
+# was asserted, so the compression could have dropped a rule and stayed green.
+# Prose that was just shortened is exactly what drifts next, so each rule is now
+# anchored on its own.
+AD="$REPO_ROOT/skills/en-brainstorm/references/agent-dispatch.md"
+
+rule() { grep -qF -- "$1" "$AD" && pass "$2" || fail "$2" "not in agent-dispatch.md"; }
+
+rule "Dispatch by name"          "the normal path is a named dispatch"
+rule "When the name does not resolve" \
+                                 "the fallback names the condition that triggers it"
+rule "general-purpose agent with that body as its prompt" \
+                                 "the fallback says how to dispatch from the file"
+
+# The ordering rule is the one worth losing sleep over: without it a skill could
+# fall back every time, and a registry that stopped publishing would look fine.
+rule "Only after the named dispatch fails" "the fallback is second, never first"
+# Anchored on a fragment that sits on ONE line: grep is line-based, and the
+# phrase this originally used spans a wrap in the source file.
+rule "a broken registry publish behind a path" "the reason for that ordering is recorded"
+
+# Every carrier stays byte-identical — the compression touched nine files.
+# hash_file from assert.sh, not `md5 -q` directly: that spelling is macOS-only,
+# and the harness forbids it for the same reason CI caught a BSD-vs-GNU grep
+# difference in #63 — a suite that works on one platform proves nothing on the other.
+distinct=$(for f in "$REPO_ROOT"/skills/*/references/agent-dispatch.md; do hash_file "$f"; done | sort -u | wc -l | tr -d " ")
+assert_eq "1" "$distinct" "every agent-dispatch.md carrier is byte-identical"
+
+# A carrier that ships the dispatch doc but has no agents to dispatch is payload
+# nothing reaches — the defect this campaign found in en-foundation and en-learn.
+orphan=""
+for d in "$REPO_ROOT"/skills/*/references/agent-dispatch.md; do
+  skill=$(basename "$(dirname "$(dirname "$d")")")
+  ls "$REPO_ROOT/skills/$skill"/agents/*.md >/dev/null 2>&1 || orphan="$orphan $skill"
+done
+[ -z "$orphan" ] \
+  && pass "every carrier of the dispatch doc actually carries agents" \
+  || fail "every carrier of the dispatch doc actually carries agents" "$orphan"
+
 report

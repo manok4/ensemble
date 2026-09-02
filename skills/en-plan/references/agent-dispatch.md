@@ -1,41 +1,15 @@
 # Dispatching a bundled agent
 
-How a skill dispatches one of the agents in its own `agents/` directory.
+**Dispatch by name:** `Agent(subagent_type: "<name>", …)`. The host resolves it
+from the registry `./setup` populates from `skills/*/agents/*.md`. In a normal
+install this is the only path.
 
-## The normal path
+**When the name does not resolve** — a lone skill directory, copied in on its own
+with nothing to register it — read `agents/<name>.md` from this skill and dispatch
+a general-purpose agent with that body as its prompt, task appended. Same
+contract, same output shape: it is the file the registry would have used.
 
-Dispatch by name, the way you always have:
-
-```
-Agent(subagent_type: "<name>", prompt: "…")
-```
-
-The host resolves that name from its flat agent registry, which `./setup`
-populates from `skills/*/agents/*.md`. In a normal install every agent a skill
-carries is registered, and this is the only path you need.
-
-## When the name is not registered
-
-A skill directory can arrive on its own: someone copies one skill into a host's
-skills folder, or a converter ships a single skill as an isolated unit. There is
-no host hook that registers an agent in that case, so `subagent_type:
-"<name>"` resolves to nothing.
-
-The skill carries the definition, so resolve it yourself:
-
-1. Read `agents/<name>.md` from this skill's directory.
-2. Dispatch a general-purpose agent whose prompt is that file's body, with the
-   task appended.
-3. Treat the result exactly as you would the named agent's — same contract, same
-   output shape. The definition is the same file the registry would have used.
-
-Do this **only** after the named dispatch fails to resolve. When the agent is
-registered, use the registry: falling back unconditionally would hide a broken
-registry publish behind a path that happens to work.
-
-## Why the copies exist at all
-
-Without the fallback the bundled copies would be decoration — present in the
-folder, read by nothing, since dispatch never consults a skill directory. The
-fallback is what makes a lone skill directory actually able to do its work, and
-it needs nothing outside that directory.
+**Only after the named dispatch fails.** Falling back unconditionally would hide
+a broken registry publish behind a path that happens to work. The fallback is
+also why the bundled copies are not decoration — without it, a lone skill
+directory carries agent definitions nothing can reach.

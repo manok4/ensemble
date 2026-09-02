@@ -68,12 +68,21 @@ fi
 # The BSD hash flag is macOS-only; a parity suite that dies on the hash never reaches the
 # comparison it exists for. hash_file in the shared lib covers all three spellings.
 # Character classes so this pattern cannot match itself.
-badhash=$(grep -rln 'md[5] -q\|md[5]sum ' "$REPO_ROOT"/tests/*/*.test.sh 2>/dev/null || true)
+#
+# Comment lines are stripped first. The pattern matched a suite's own comment
+# explaining WHY it uses hash_file instead of the platform spelling — so the rule
+# forbade documenting itself, and the only way to comply was to leave the reason
+# out. A guard that its own explanation trips is measuring the prose, not the code.
+badhash=""
+for f in "$REPO_ROOT"/tests/*/*.test.sh; do
+  [ -f "$f" ] || continue
+  sed 's/[[:space:]]*#.*$//' "$f" | grep -q 'md[5] -q\|md[5]sum ' && badhash="$badhash $f"
+done
 if [ -z "$badhash" ]; then
   pass "no suite calls a platform-specific hash directly"
 else
   fail "no suite calls a platform-specific hash directly" \
-       "$(echo "$badhash" | sed "s|$REPO_ROOT/||" | tr '\n' ' ')"
+       "$(echo $badhash | sed "s|$REPO_ROOT/||g")"
 fi
 
 report
