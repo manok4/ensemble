@@ -12,7 +12,7 @@ total_entries: 14
 
 ## Active
 
-- [`EN15-feature_verification-receipt.md`](../plans/active/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (in_progress)
+- [`EN15-feature_verification-receipt.md`](../plans/active/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (open)
 
 ## Completed
 
