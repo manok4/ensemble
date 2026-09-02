@@ -102,6 +102,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Category:** feature | observability | diagnostics | api-additive | migration-additive | migration | backfill | schema-evolution | deletion | drop | removal | other
 - **Reversibility:** trivial | reversible | rollback-required | irreversible
 - **Gated:** false (default; set `true` ONLY when running this unit at build time changes production user state or external system state — see Generation notes for the exact criteria; over-gating trains users to autopilot through prompts)
+- **Ship scope:** in (default) | deferred | production_pending — whether this unit is expected to land in the same PR as the rest. `deferred` and `production_pending` tell `/en-ship`'s completion checkpoint that the unit's absence is intentional, so a partial ship reports `partial_expected` rather than looking like an unfinished build. Only set this when the plan genuinely intends to ship without the unit; it is not a way to quiet the checkpoint.
 - **Execution note:** test-first | characterization-first | pragmatic
 - **Patterns to follow:** <citations from `docs/learnings/` if relevant>
 - **Test scenarios:** For a **feature-bearing** unit (anything that adds/changes behavior), enumerate **actual** scenarios across the applicable categories — each with concrete inputs, actions, and expected outcomes:

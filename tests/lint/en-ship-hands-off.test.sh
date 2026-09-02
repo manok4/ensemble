@@ -45,8 +45,14 @@ else
 fi
 
 # --- plan-completion auto-resolve, both branches ---
-if grep -qiE "auto-select \`y\`|auto-\`y\`" "$EN_SHIP" && grep -qE "incomplete_build" "$EN_SHIP"; then
-  pass "en-ship plan-completion auto-resolves (auto-y complete / informational incomplete)"
+# This required the string `incomplete_build`, which D57 retired in favour of four
+# outcomes. It kept passing only because a historical note still mentions the old
+# name — so the clause was asserting the presence of a comment, not a behaviour.
+# It now names the outcomes that actually exist on each branch of the decision.
+if grep -qiE "auto-select \`y\`|auto-\`y\`" "$EN_SHIP" \
+   && grep -qF "plan_completion_checkpoint: complete" "$EN_SHIP" \
+   && grep -qF "plan_completion_checkpoint: incomplete_unexpected" "$EN_SHIP"; then
+  pass "en-ship plan-completion auto-resolves (auto-y on complete / informational otherwise)"
 else
   fail "en-ship plan-completion must auto-resolve under hands-off"
 fi
