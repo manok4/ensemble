@@ -24,7 +24,10 @@ fi
 # 2. Placement: AFTER lint+typecheck+secret-scan+scope-confirm, BEFORE commit-message
 #    Specifically: between step 7 (Confirm scope) and step 9 (Generate commit message)
 checkpoint_line=$(grep -n "Plan completion checkpoint" "$EN_SHIP" | head -1 | cut -d: -f1)
-scope_line=$(grep -nE "^[0-9]+\. \*\*Confirm scope" "$EN_SHIP" | head -1 | cut -d: -f1)
+# Anchored on the staging step by what it DOES, not by its opening words: it was renamed on
+# 2026-09-01 when it gained the five-case state machine, and an anchor on the old first two
+# words silently found nothing and reported a missing anchor rather than a real ordering fault.
+scope_line=$(grep -nE "^[0-9]+\. \*\*(Confirm scope|Resolve what to commit)" "$EN_SHIP" | head -1 | cut -d: -f1)
 commit_msg_line=$(grep -nE "^[0-9]+\. \*\*Generate conventional-commit" "$EN_SHIP" | head -1 | cut -d: -f1)
 secret_line=$(grep -nE "^[0-9]+\. \*\*Secret scan" "$EN_SHIP" | head -1 | cut -d: -f1)
 if [ -n "$checkpoint_line" ] && [ -n "$scope_line" ] && [ -n "$commit_msg_line" ] && [ -n "$secret_line" ]; then
