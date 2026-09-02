@@ -15,15 +15,21 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 ## Process
 
-1. **Detect host (light).** Source `references/host-detect.md` for path conventions and subagent-dispatch primitives.
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't run simplification passes).
+1. **Resolve the subagent primitive.** `Agent` with `subagent_type` on Claude Code, `spawn_agent` on Codex. That is the only host fact this skill needs — it invokes no peer, so it carries none of the peer-detection machinery.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit — a peer subprocess does not run simplification passes. This skill only *reads* that variable; it never invokes a peer and never sets it, so it carries none of the protocol for doing so.
 3. **Resolve scope** (first match wins):
    1. **User-named scope** (a file, directory, "the function I just wrote", "this morning's changes") — authoritative; do not widen it.
    2. **In a git repo (default):** the diff between the current branch and its base (`git diff origin/<base>...` or the configured upstream). Covers the common "simplify everything on this feature branch before PR." If no upstream/base, fall back to staged + unstaged (`git diff HEAD`).
    3. **Outside a git repo or no diff:** the most recently modified files named by the user or edited earlier in the conversation.
 
    If none yields a non-empty scope, **ask** what to simplify (use `AskUserQuestion` in Claude Code / `request_user_input` in Codex). Never silently skip.
+
+   **When a caller passed an explicit scope, never ask.** `/en-build` invokes this inside a phase whose autonomy contract permits pauses only in seven enumerated cases, and a question here is not one of them. A caller-supplied scope that resolves empty is a **result to return**, not a question to ask: report "nothing in scope" and let the caller decide. Asking a human who is not watching stalls a build that was told to run unattended.
 4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex), each passed the full diff or resolved file set. Use the existing `agents/code-simplifier.md` agent for each dimension, seeded with the dimension's checklist below. Omit any model override so the user's configured settings apply.
+
+   **The reviewers are read-only in this skill.** Each returns findings; **step 5 applies them, in the parent**. `code-simplifier`'s own description says it may modify files — that is true of it elsewhere and must not be true here, because three of them run **concurrently on one working tree** and three writers editing the same files is a race whose outcome depends on scheduling. Say so in every dispatch prompt rather than relying on the reader inferring it.
+
+   Because they only find and never write, this is evidence-tier work rather than ceiling: the judgement that becomes an edit is made by the parent at step 5.
 
    - **Dimension 1 — Reuse:** existing utilities/helpers that could replace new code; new functions duplicating existing functionality; inline logic that could use an existing utility; diff code reimplementing a stdlib/runtime primitive (suggest the built-in only when behavior-equivalent — never swap native UI controls, locale/`Intl` formatting, sort-stability, or serialization edge cases).
    - **Dimension 2 — Quality:** redundant/derivable state; parameter sprawl; copy-paste-with-variation; leaky abstractions; stringly-typed code where constants/enums exist; unnecessary wrapper elements (component-tree frameworks only); nested conditionals 3+ deep (flatten with guards/early returns/lookup tables); unnecessary comments (keep only non-obvious WHY); dead code / unused imports / unused exports (prefer the project's dead-code linter or `ast-grep` over text grep; account for re-exports, dynamic imports, framework exports).
@@ -53,7 +59,6 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 - `references/code-simplifier-dispatch.md` — dispatch + revert protocol
 - `agents/code-simplifier.md` — the reviewer agent
-- `references/host-detect.md`
 
 ## Failure protocol
 
