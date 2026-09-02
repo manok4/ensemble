@@ -48,6 +48,8 @@ For each bug:
 2. **Identify root cause.** Read the source; trace the path; find the actual issue (not just symptoms).
 3. **Fix in source code.** Surgical edit; preserve unrelated behavior.
 4. **Add regression test.** A test that fails on the unfixed code and passes on the fix. Test belongs in the project's test suite (not in `docs/`).
+
+   It must exercise the behaviour through a real interface and assert the observable result — the output, the state, the side effect. A test whose only evidence is that a source file now contains, or no longer contains, some string proves nothing: the text can be dead or commented out, and a behaviour-preserving refactor breaks the test while the bug stays fixed.
 5. **Atomic commit.** `fix(qa): <one-line description>` with body citing the QA flow that surfaced the bug.
 6. **Re-verify.** Re-run the failing flow and the regression test. Both should now pass.
 

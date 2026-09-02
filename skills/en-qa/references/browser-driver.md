@@ -1,6 +1,30 @@
-# Playwright MCP helpers — usage patterns for `/en-qa`
+# Browser driver
 
-Reference patterns for invoking Playwright MCP tools during browser QA. The MCP server provides `mcp__playwright_*` tools (or platform equivalents); skills consult this file for canonical usage.
+Which browser surface a QA run drives, and how to use each one.
+
+## Selecting
+
+1. **A host-native browser surface** the harness already owns — one that can
+   navigate, inspect rendered and interactive state, click and type, screenshot,
+   and read console errors. Prefer it: nothing to install, already permitted.
+2. **Playwright MCP**, when present. Its patterns are below.
+3. **Neither** — Phase 1 only. Name the drivers that were looked for, so the
+   report distinguishes "no browser here" from "browser QA was skipped".
+
+**Never introduce a third stack.** Do not install Puppeteer, a standalone
+Playwright, or any other automation surface to make a run possible. A project
+with no usable driver is reporting a fact about itself; installing one turns a
+QA pass into a setup task nobody asked for. A Playwright API exposed *inside* a
+host-native browser is still host-native — that is not the standalone stack.
+
+**One driver per run.** Element references, screenshots, cookies and auth state
+do not survive a switch. A run that changes driver mid-way produces a report
+whose earlier evidence describes a session that no longer exists. Falling back
+is allowed only before the first flow is exercised; after that, a driver failure
+ends Phase 2 and is reported.
+
+## Playwright MCP patterns
+
 
 ## Setup check
 
