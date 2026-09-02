@@ -11,6 +11,8 @@ description: "Reproduce a bug from telemetry. Reads structured logs from the con
 
 Telemetry-driven debugging. Takes an error message, trace ID, or log excerpt; reads logs from the project's configured source; correlates entries; surfaces a hypothesis pointing at specific source code.
 
+> **This skill is invoked by a person, not by another skill.** Nothing in Ensemble drives it: `/en-ship` routes a failing check to `/en-resolve-pr`, and `/en-build` hands off rather than calling in. So the blocking choice in code mode is **deliberate, not an oversight** — there is always someone to answer it. If a caller is ever wired in, that gate is the first thing that needs a non-blocking path, and this line is where to start.
+
 > **Read-only by default.** The skill defaults to diagnosis. It writes code only on the **code-mode fix path**, and only after the user explicitly chooses "Fix it now" — never silently.
 
 ## Modes
@@ -33,6 +35,8 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
 | (none) | **Tail mode** — read the last 200 log lines; ask the user which event is interesting |
 
 ## Process
+
+1. **Resolve context.** The argument and its shape (per the table above), the branch and its base, and which mode this run is in. Mode is decided here, once: telemetry if the argument is log-anchored and `observability:` is configured, code mode otherwise. Later steps read that decision rather than re-deriving it.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Read observability config** from `.ensemble/config.local.yaml` `observability:` block.
