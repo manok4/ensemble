@@ -173,7 +173,32 @@ rule "volatile CLI"                        "the reason tiers are not model IDs i
 # a model Codex cannot select. A policy that does not say which host it binds on
 # reads as universal and is wrong half the time.
 rule "only Claude Code"                    "the tier binding names the host it applies to"
-rule "inert"                               "the policy says what happens on the other host"
+rule "take the default model and select nothing" \
+                                           "Codex takes its default, as stated policy"
+rule "a second mapping to maintain"        "the reason for not mapping on Codex is recorded"
+
+# The table and the frontmatter must agree. This is the drift that matters: a
+# tier row is documentation, a `model:` line is what actually binds, and nothing
+# connected them until dimension-reviewer moved rows and its file did not.
+tier_row() {  # $1=tier -> the agent names listed in that row
+  # awk on the field, not sed on the line: `.*| *` is greedy and consumed through
+  # the row's trailing pipe, so this returned EMPTY and the loop below never ran.
+  # The check passed for any input until its own negative control caught it.
+  grep -E "^\| .$1. \|" "$AD" | awk -F'|' '{print $4}' | tr -d '`' | tr ',' ' '
+}
+mismatch=""
+for pair in "evidence sonnet" "ceiling opus" "retrieval haiku"; do
+  set -- $pair
+  for agent in $(tier_row "$1"); do
+    case "$agent" in "(none"*|"today)"|"") continue ;; esac
+    f=$(find "$REPO_ROOT"/skills -path "*/agents/$agent.md" | head -1)
+    [ -n "$f" ] || { mismatch="$mismatch $agent(no-file)"; continue; }
+    grep -qE "^model: *$2$" "$f" || mismatch="$mismatch $agent(row:$1 file:$(grep -m1 '^model:' "$f" | cut -d' ' -f2))"
+  done
+done
+[ -z "$mismatch" ] \
+  && pass "every agent's declared model matches the tier row it is listed in" \
+  || fail "every agent's declared model matches the tier row it is listed in" "$mismatch"
 rule "omit any model override"             "call sites let the declaration decide"
 rule "only retrieves"                      "the retrieve-vs-decide line is named"
 

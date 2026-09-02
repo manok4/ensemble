@@ -23,16 +23,20 @@ omit any model override so the declaration, not the caller, decides.
 | Tier | For | Ours |
 |---|---|---|
 | `retrieval` | find it, cite it, do not judge it | (none today) |
-| `evidence` | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research`, `dimension-reviewer` |
-| `ceiling` | output is code, or a judgement the orchestrator would otherwise make itself | `code-simplifier` |
+| `evidence` | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research` |
+| `ceiling` | output is code, or a judgement the orchestrator would otherwise make itself | `code-simplifier`, `dimension-reviewer` |
 
 **The binding is Claude Code's, and only Claude Code's.** An agent's `model:`
-frontmatter is read by Claude Code's agent loader. `./setup` installs the same
-agent files into a Codex host too, where that field names a model Codex cannot
-select — so on Codex the tier is **inert** and the effective model is whatever
-the user's Codex configuration chooses. Write the tier down anyway: it records
-which work is cheap and which is expensive, which is true of the agent whatever
-host runs it, and it binds wherever a host can honour it.
+frontmatter is read by Claude Code's agent loader, which maps the tier to a
+model. `./setup` installs the same agent files into a Codex host too, where that
+field names a model Codex cannot select.
+
+**On Codex, take the default model and select nothing.** Not because the field
+happens to be ignored there, but as the policy: Codex's model lineup is its own,
+it moves on its own schedule, and a second mapping to maintain would be a second
+thing to get wrong — D44's lesson about per-CLI literals, arriving by a different
+road. The tier is still worth declaring, because it records which work is cheap
+and which is expensive, and that is true of the agent whichever host runs it.
 
 Never write a concrete model ID in either place. A model ID is a volatile CLI
 literal, and D44 cost a whole plan when one was scattered across nine files.
