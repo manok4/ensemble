@@ -134,7 +134,9 @@ assert_eq "$wr" "2" "web-research still carried by the two skills that dispatch 
 
 # The half that proves the cut was scoped rather than a blanket removal.
 rr=$(ls "$REPO_ROOT"/skills/*/agents/repo-research.md 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "$rr" "5" "repo-research still carried by the five skills that scan a codebase"
+# 5 -> 4 on 2026-09-02: en-setup carried it and dispatched nothing. It writes
+# files from templates and probes for their presence; it never scans a codebase.
+assert_eq "$rr" "4" "repo-research still carried by the four skills that scan a codebase"
 
 # The dispatch site must name the agent it dispatches. It read "dispatch a
 # sub-agent" with no name, which is what let the carried definitions drift out
