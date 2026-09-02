@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN15
 title: Verification receipt, structured ship state, and a test-impact map
-status: open
+status: completed
 location: active
 created: 2026-09-01
-shipped:
+shipped: 2026-09-02
 deepened:
 covers_requirements: []
 requirements_pending: true
@@ -342,3 +342,10 @@ with a back-reference to U1.
 > - 2026-09-01 (initial): plan v0 from D57's deferred tier and the PR post-mortem.
 > - 2026-09-02: flipped to `open` on the user's review. No cross-agent peer pass ran — the peer CLI
 >   is not available in this session, so the plan is user-approved rather than peer-approved.
+> - 2026-09-02: all eight units built on `en15-build`, stacked on PR #63 because U3/U5/U6/U8 edit
+>   en-ship's SKILL.md on top of D57's changes. Two assumptions the plan flagged were checked and
+>   one was falsified: fingerprinting spawned a process per untracked file (7s for 200), now batched
+>   to 0s. The dependency-comparison path was also found untested — both fixtures passed via
+>   fingerprint-mismatch — and is now isolated with an ignored lockfile.
+> - 2026-09-02: all eight units shipped to main. The build branch merged into its own base
+>   rather than main, so the delta was reapplied onto main as one change.
