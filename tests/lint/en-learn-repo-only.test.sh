@@ -118,4 +118,41 @@ done
 wr=$(ls "$REPO_ROOT"/skills/*/agents/web-research.md 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "$wr" "2" "web-research still carried by the two skills that dispatch it"
 
+# --- en-learn scouts the wiki, never the codebase ----------------------------
+# It carried a repo-research definition until 2026-09-01, orphaned when the
+# one-time pattern-seeding mode that justified it was retired. Nothing in the
+# flow dispatched it: the two carried files naming the agent describe what
+# en-sweep and en-foundation do with it, and step 12's architecture sync is
+# "surgical edits only — never regenerate", which reads no codebase.
+#
+# The distinction is the skill's whole premise. It captures what reading the
+# code CANNOT recover, so an agent whose job is reading the code answers a
+# question en-learn is not asking.
+[ -e "$REPO_ROOT/skills/en-learn/agents/repo-research.md" ] \
+  && fail "en-learn carries no codebase scout" \
+  || pass "en-learn carries no codebase scout"
+
+# The half that proves the cut was scoped rather than a blanket removal.
+rr=$(ls "$REPO_ROOT"/skills/*/agents/repo-research.md 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "$rr" "5" "repo-research still carried by the five skills that scan a codebase"
+
+# The dispatch site must name the agent it dispatches. It read "dispatch a
+# sub-agent" with no name, which is what let the carried definitions drift out
+# of any relationship with the flow.
+grep -q 'Dispatch the `learnings-research` agent only when the search is genuinely broad' \
+  "$REPO_ROOT/skills/en-learn/SKILL.md" \
+  && pass "the broad-search escape names the agent it dispatches" \
+  || fail "the broad-search escape names the agent it dispatches"
+
+grep -q 'That agent is the only one this skill dispatches' "$REPO_ROOT/skills/en-learn/SKILL.md" \
+  && pass "the flow states that it dispatches exactly one agent" \
+  || fail "the flow states that it dispatches exactly one agent"
+
+# en-learn had no row in the shared matrix at all, which is the silence that let
+# the contradiction sit. A row that says "never" is what a future reader checks.
+grep -qE '^\| .en-learn. \| \(any\) \| never \|' \
+  "$REPO_ROOT/skills/en-learn/references/research-dispatch.md" \
+  && pass "the dispatch matrix carries en-learn's row, and it says never" \
+  || fail "the dispatch matrix carries en-learn's row, and it says never"
+
 report

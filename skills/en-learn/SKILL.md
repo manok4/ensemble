@@ -56,7 +56,7 @@ After every write:
 
    **Matching two types is normal.** Write the more durable one — `term > decision > solution` — and let it cite the other. Never write both: that reintroduces the duplication the gate's generalization step exists to prevent.
 
-6. **Gather what the entry needs.** Read the relevant commits and search `docs/learnings/` for overlap — an existing entry to extend beats a near-duplicate. Dispatch a sub-agent only when the search is genuinely broad; a gate-passing learning is usually a few sentences whose material you already hold, and three parallel sub-agents to produce a paragraph costs more than it returns.
+6. **Gather what the entry needs.** Read the relevant commits and search `docs/learnings/` for overlap — an existing entry to extend beats a near-duplicate. Dispatch the `learnings-research` agent only when the search is genuinely broad; a gate-passing learning is usually a few sentences whose material you already hold, and three parallel sub-agents to produce a paragraph costs more than it returns. **That agent is the only one this skill dispatches** — it does not scout the codebase, because what it captures is what reading the code cannot recover.
 7. **Compose, per the routed type.** Each type has its own shape, so each has its own template. Using the solution template for all three would give a term frontmatter it must not carry and an ADR a form its format forbids.
 
    - **Term** → `references/glossary-rules.md`. A definition sentence, optional `_Avoid:_` aliases. No frontmatter.

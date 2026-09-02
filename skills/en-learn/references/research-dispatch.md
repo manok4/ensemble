@@ -21,6 +21,9 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | `en-plan` | Standard | **always** | **always** | conditional |
 | `en-plan` | Deep | **always** | **always** | conditional |
 | `en-foundation` | (any) | **always** for retrofits, optional for greenfield | never | optional |
+| `en-learn` | (any) | never | on a genuinely broad overlap search only | never |
+
+**`en-learn` dispatches only `learnings-research`, and only on a broad search.** It never scouts the codebase: its whole subject is what reading the code cannot recover, so a repo scan answers a question it is not asking. It carried a `repo-research` definition until 2026-09-01 anyway — left behind when the one-time pattern-seeding mode that justified it was retired, and kept reachable by two carried references describing what *other* skills do with that agent.
 
 **`en-foundation` dispatches only `repo-research`.** It reads `docs/learnings/index.md` inline during its orient step, for the same reason `en-brainstorm` does: a scout costs a dispatch round-trip to summarise a file the skill can just read. This row said **always** for `learnings-research` until 2026-09-01, while the flow had never dispatched it — the contradiction is what kept 297 lines of agent definition alive in a skill that never called them.
 
