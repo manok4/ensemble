@@ -30,6 +30,15 @@ skip_peer_below_lines: 50
 # Skip peer review on Lightweight depth.
 skip_peer_on_lightweight: true
 
+# --- en-ship watch loop ---
+
+# How many REPAIR cycles the post-PR watch loop may run before escalating the
+# remaining findings as needs-human. A cycle is a fix-and-push iteration, not a
+# status poll: waiting on unchanged CI costs nothing, so a long test job cannot
+# exhaust the budget by being slow. /en-flow documents the same default.
+# ship:
+#   watch_max_cycles: 2
+
 # --- Build behavior ---
 
 # Default branch (used when the repo doesn't have a clear default).

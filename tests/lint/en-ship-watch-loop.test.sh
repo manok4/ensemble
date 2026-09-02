@@ -59,11 +59,21 @@ else
   fail "loop must gate on trusted source (author/bot, same-repo) before auto-fixing"
 fi
 
-# --- bounded by watch.max_cycles, default 3, then escalate needs-human ---
-if grep -qF "watch.max_cycles" "$EN_SHIP" && grep -qE "default \`?3\`?" "$EN_SHIP" && grep -qiE "needs-human" "$EN_SHIP"; then
-  pass "loop bounded by watch.max_cycles (default 3) then escalates needs-human"
+# --- bounded by repair cycles, default 2, agreeing with en-flow ---
+# The key was `watch.max_cycles` default 3 while /en-flow documented 2, and it appeared in no config
+# example, so neither number was checkable by a reader. It also counted polls: against a 16-minute CI
+# job three polls can expire before the job finishes, escalating a PR that was never in trouble.
+if grep -qF "ship.watch_max_cycles" "$EN_SHIP" && grep -qE "default \`?2\`?" "$EN_SHIP" && grep -qiE "needs-human" "$EN_SHIP"; then
+  pass "loop bounded by ship.watch_max_cycles (default 2) then escalates needs-human"
 else
-  fail "loop must be bounded by watch.max_cycles (default 3) then escalate needs-human"
+  fail "loop must be bounded by ship.watch_max_cycles (default 2) then escalate needs-human"
+fi
+
+# The cap and /en-flow's description of it must not drift apart again.
+if grep -qE 'capped at 2 cycles' "$REPO_ROOT/skills/en-flow/SKILL.md"; then
+  pass "en-flow's stated cap agrees with en-ship's default"
+else
+  fail "en-flow's stated cap must agree with en-ship's default"
 fi
 
 # --- CI is read-only (no CI-side writer) ---

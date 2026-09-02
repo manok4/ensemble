@@ -38,7 +38,12 @@ else
 fi
 
 # 3. All five terminal outcome values documented
-for outcome in "completed_and_moved" "skipped_by_user" "up_to_date" "not_applicable" "incomplete_build"; do
+# `incomplete_build` was retired on 2026-09-01. It conflated three situations that need three
+# different responses: work genuinely unbuilt, work built but with no review-verdict covering
+# it, and work deliberately held back. A branch that had shipped U1-U7, held U8 behind a
+# production gate and HAD been reviewed still reported as an unfinished build.
+for outcome in "completed_and_moved" "skipped_by_user" "up_to_date" "not_applicable" \
+               "complete_evidence_missing" "incomplete_unexpected" "partial_expected"; do
   if grep -qF "plan_completion_checkpoint: $outcome" "$EN_SHIP"; then
     pass "checkpoint documents outcome: $outcome"
   else
@@ -69,16 +74,29 @@ else
   fail "status open should flow through the same path as in_progress"
 fi
 
-# 7. Audit scoped to unit commits only (PR #22 P2 fix #2)
-if grep -qF "unit commit" "$EN_SHIP" && grep -qiE "U<N>.*subject|subject.*U<N>" "$EN_SHIP"; then
-  pass "audit scope discriminator (U<N> in subject) documented"
+# 7. One evidence path, not two (D52)
+# These two clauses asserted a unit-commit discriminator that scoped a per-unit audit. D52 removed
+# the per-unit path: the host implements every unit and one branch-level review covers all of them,
+# so unit commits carry only `phase:`. The discriminator scoped an audit that can no longer find
+# anything, and en-ship kept looking for trailers en-build had stopped writing. What replaces them
+# is the assertion that the skill does not go looking again.
+if grep -qF "There is one evidence path, not two" "$EN_SHIP"; then
+  pass "the checkpoint states there is a single evidence path"
 else
-  fail "audit scope should document the unit-commit discriminator (U<N> in subject)"
+  fail "the checkpoint must state there is a single evidence path (D52)"
 fi
-if grep -qF "docs(plan)" "$EN_SHIP" && grep -qiE "excluded|not a unit commit" "$EN_SHIP"; then
-  pass "plan-init commit explicitly excluded from audit scope"
+if grep -qE 'peer-verdict:.*only on a branch built before|only on a branch built before' "$EN_SHIP"; then
+  pass "a missing per-unit trailer is documented as pre-D52 history, not a gap"
 else
-  fail "plan-init 'docs(plan): <plan_id>' commit should be explicitly excluded"
+  fail "a missing per-unit trailer must be documented as pre-D52 history, not a gap"
+fi
+
+# The plan-side field that makes partial_expected reachable. Without it the outcome can never fire,
+# which would make it decorative — the exact defect this campaign keeps finding.
+if grep -qF "Ship scope: deferred" "$EN_SHIP"; then
+  pass "partial_expected is anchored to a real plan-side declaration"
+else
+  fail "partial_expected must read a plan-side Ship scope declaration, or it can never fire"
 fi
 
 # 8. Atomic mutation with ship commit (PR #22 P2 fix #1)

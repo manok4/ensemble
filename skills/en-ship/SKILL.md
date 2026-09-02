@@ -9,12 +9,14 @@ description: "Push clean changes to the remote with a meaningful commit and PR. 
 > **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
 
 
-> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
-
-
 Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/en-qa` have already passed.
 
 ## Process
+
+1. **Resolve context.** Establish, once, what this run is operating on — every later step reads these rather than re-deriving them:
+   - **Repo and branch** — `git rev-parse --abbrev-ref HEAD`, and refuse a detached HEAD here rather than at push time.
+   - **Base** — `--base` if passed, else the repo's default branch.
+   - **Existing PR** — `gh pr list --head <branch> --state open`. **If one exists, this run updates it**: step 12 pushes to it and the watch loop resumes on it, and `gh pr create` is never called a second time. Re-running `/en-ship` on a branch that already has a PR is an ordinary, safe operation, not a new ship.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't ship).
 3. **Pre-flight.**
@@ -44,7 +46,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    - Heuristic match only → surface as warning; let user confirm.
 7. **Confirm scope of staging.** Show what will be committed (`git diff --cached` summary). **Hands-off (default):** auto-accept the computed scope and continue. **`--interactive`:** the user confirms or revises before proceeding.
 
-8. **Plan completion checkpoint.** AFTER all blocking preflight checks have passed (lint, typecheck, tests, secret scan, scope confirm) and BEFORE committing. The checkpoint is informational on `incomplete_build` (does NOT gate ship); it catches plans orphaned at `status: in_progress` (or `open`) that should have been flipped to `completed` by `/en-learn capture` step 11 but weren't (dropped soft prompt, skipped capture, etc.).
+8. **Plan completion checkpoint.** AFTER all blocking preflight checks have passed (lint, typecheck, tests, secret scan, scope confirm) and BEFORE committing. The checkpoint never gates the ship — every outcome is informational; it catches plans orphaned at `status: in_progress` (or `open`) that should have been flipped to `completed` by `/en-learn capture` step 11 but weren't (dropped soft prompt, skipped capture, etc.).
 
    **Placement rationale.** This step deliberately runs LATE in preflight — after lint/typecheck/secret-scan/scope-confirm and before commit-message generation. Earlier placement would mutate the plan (flip status, set shipped, git mv) before later checks could fail, leaving the plan recording having shipped when the PR never opened. Late placement makes the lifecycle mutation atomic with the ship commit.
 
@@ -58,20 +60,40 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
       - `draft` → record `plan_completion_checkpoint: not_applicable`; surface a one-line notice ("plan still in draft state; finalize via /en-plan before shipping"); skip to step 9.
       - `abandoned` → record `plan_completion_checkpoint: not_applicable`; terminal state; skip to step 9.
 
-   4. **Build completeness check** (accepts per-unit OR branch-level evidence). A unit's build is complete when **either**:
-      - **(per-unit, legacy)** its U-ID has ≥1 unit commit carrying a peer-evidence trailer (`peer-verdict:`, `peer-resolution:`, or `peer-skipped:`), verified via `$SKILL_DIR/scripts/ensemble-verify-peer-evidence <sha>`; **or**
-      - **(branch-level, lfg model)** its U-ID appears in the `covered_units` from `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --json` — i.e. the post-build branch-level review (`review-verdict:` trailer) covered it.
+   4. **Build completeness check.** Resolve exactly one outcome. Compute coverage once:
+      `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --json` → `covered_units`,
+      the U-IDs the branch's `review-verdict:` trailers cover.
 
-      Compute `covered_units` once, then for each plan U-ID check per-unit evidence first, then branch-level coverage. If every U-ID is covered by one path or the other → build complete; continue to step 5. If any U-ID has neither per-unit evidence nor branch-level coverage → outcome `incomplete_build`; list the uncovered U-IDs; surface a one-line notice; skip to step 9 (PR still opens — informational, not blocking).
+      **There is one evidence path, not two.** Under D52 the host implements every unit and a single
+      branch-level review at `/en-build` step 10.3 covers all of them, so unit commits carry only
+      `phase: P<N>`. A per-unit `peer-verdict:` / `peer-resolution:` / `peer-skipped:` trailer can exist
+      only on a branch built before that change. Do not treat its absence as a gap, and do not look for it.
 
-   4a. **What counts as a "unit commit"** (audit-scope discriminator). A commit on the plan branch is a *unit commit* if AND ONLY IF its subject line contains a U-ID pattern (`U<N>` where `<N>` is a positive integer) matching one in the plan AND it has ≥1 of the three peer-evidence trailer types. Specifically excluded:
-       - The initial `docs(plan): <plan_id> <slug>` commit from `/en-plan`'s auto-commit step — has no U-ID and no peer-evidence trailers; not a unit commit.
-       - Merge commits.
-       - Manual cleanup commits, doc fixes, gitignore updates — no U-ID in the subject.
+      Then classify each plan U-ID and resolve the outcome from the combination:
 
-       The audit walks commits on the branch since `git merge-base HEAD <default-branch>`, extracts U-IDs via regex from each subject, and only counts commits whose subject matches a U-ID in the plan AND that have evidence trailers. Non-unit commits are ignored — they're not part of the build-completeness signal.
+      | Recorded outcome | When | Meaning |
+      |---|---|---|
+      | `plan_completion_checkpoint: complete` | every in-scope U-ID is in `covered_units` | the build is done and its review is on record |
+      | `plan_completion_checkpoint: partial_expected` | every *missing* U-ID declares `Ship scope: deferred` or `production_pending` | the plan intends to ship without them |
+      | `plan_completion_checkpoint: complete_evidence_missing` | in-scope U-IDs have implementing commits on the branch but no `review-verdict:` covers them | the work is there; the audit trail is not |
+      | `plan_completion_checkpoint: incomplete_unexpected` | an in-scope U-ID has neither coverage nor an implementing commit | something is genuinely unbuilt |
 
-   5. **Surface the checkpoint prompt** (structured). **Hands-off (default):** do NOT prompt - when the build is verifiably complete, auto-select `y` (the recommended action) and perform the flip in sub-step 6; when it is `incomplete_build`, the informational outcome is already recorded (no prompt, PR still opens). **`--interactive`:** surface the prompt and let the user choose:
+      **Why these are separate.** Collapsing them into one `incomplete_build` was the observed failure: a
+      branch that had shipped U1–U7, deliberately held U8 behind a production gate, and had genuinely been
+      reviewed still reported as an unfinished build. Three different situations, three different responses —
+      one of them needs code written, one needs a trailer, and one needs nothing at all.
+
+      **All four are informational. None blocks the PR.** Only `plan_completion_checkpoint: complete` and
+      `plan_completion_checkpoint: partial_expected` permit the
+      lifecycle flip in sub-step 6; `complete_evidence_missing` and `incomplete_unexpected` leave the plan
+      `active` and name what is missing:
+
+      ```
+      partial_expected: U1-U7 shipped; U8 held (production_pending)
+      evidence_warning: no review-verdict covers U5, U6
+      ```
+
+   5. **Surface the checkpoint prompt** (structured). **Hands-off (default):** do NOT prompt - on `complete` or `partial_expected`, auto-select `y` (the recommended action) and perform the flip in sub-step 6; when the outcome is `complete_evidence_missing` or `incomplete_unexpected`, it is already recorded (no prompt, PR still opens). **`--interactive`:** surface the prompt and let the user choose:
       ```
       Plan completion checkpoint
       ──────────────────────────
@@ -94,7 +116,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
         - Continue to step 9 (commit-message generation); the lifecycle flip becomes part of the same commit as the ship work. **If push or PR-create at step 11 / 12 fails, the lifecycle flip is locally committed but the ship didn't complete remotely.** This is acceptable: the local state correctly records the plan as completed (the work IS done), and the user can rerun `/en-ship` to retry the remote operations. Next run sees `completed` → `up_to_date`.
         - Record `plan_completion_checkpoint: completed_and_moved`.
       - `skip`: record `plan_completion_checkpoint: skipped_by_user` with an audit-friendly note ("user explicit skip; plan stays at <in_progress|open>"). Continue to step 9 with no mutation.
-      - (For reference, the other terminal outcomes — `plan_completion_checkpoint: up_to_date`, `plan_completion_checkpoint: not_applicable`, `plan_completion_checkpoint: incomplete_build` — are set automatically from earlier steps; see sub-steps 1–4.)
+      - (For reference, the outcomes set automatically from earlier sub-steps are `up_to_date`, `not_applicable`, `complete_evidence_missing` and `incomplete_unexpected`; see sub-steps 1–4.)
       - `details`: show per-unit completion state (U-ID, unit-commit SHA, evidence trailer count, U-ID's risk classification). Show plan-branch detection source. Re-prompt; loop until terminal option.
 
    7. **Idempotency.** Re-running `/en-ship` on the same branch after the checkpoint flipped status to `completed`:
@@ -130,7 +152,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
       - Plan reference: `Closes plan: <resolved-plan-path>` if the branch name carries a recognizable plan ID (`<PREFIX><NN>`). The resolved path depends on the step-8 checkpoint outcome:
         - `completed_and_moved` → use `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (the plan was just renamed; the active/ path no longer exists).
         - `up_to_date` → use `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (already in completed/ from a prior ship).
-        - `skipped_by_user`, `incomplete_build`, `not_applicable` → use `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (plan stayed in active/).
+        - `skipped_by_user`, `complete_evidence_missing`, `incomplete_unexpected`, `not_applicable` → use `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (plan stayed in active/).
     - Use HEREDOC for body to preserve formatting.
     - On PR-creation success → return URL.
 13. **Local watch-and-fix loop (default ON).** After the PR opens, watch it and resolve findings **locally** - the fixing happens on this machine, not in CI (EN04, D38). CI's role is to run tests and let a review model (e.g. the Anthropic Code Review action, CodeRabbit, `/en-sweep`'s review) post findings; en-ship watches for those and fixes them here, in your checkout, with your credentials. This keeps write access and secrets off CI entirely.
@@ -143,7 +165,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
        - **Failing checks** (red CI, no review comment) — fetch the failed-job logs (`gh run view --log-failed`) and pass them into `/en-resolve-pr` so it has the actual failure, not just "a check is red." `/en-resolve-pr` handles both review-thread findings AND failing-check logs; it fixes, commits, pushes, and replies/resolves threads. Plain red tests get a real repair path this way, not wasted cycles.
        - **Review-thread / comment findings** — `/en-resolve-pr` addresses each per its 6-verdict rubric.
        The push re-triggers CI + the review model.
-    4. **Loop until clean.** Re-poll after each push; if new trusted findings land, resolve again. Continue until all checks are green AND no unresolved review threads remain - bounded to `watch.max_cycles` rounds (default `3`) to avoid spinning on an unfixable finding.
+    4. **Loop until clean.** Re-poll after each push; if new trusted findings land, resolve again. Continue until all checks are green AND no unresolved review threads remain - bounded to `ship.watch_max_cycles` **repair cycles** (default `2`, matching what `/en-flow` documents) to avoid spinning on an unfixable finding.
     5. **Exit conditions:** all green + no unresolved threads → *"PR is green and clean - ready for your review/merge."*; PR merged/closed externally → stop; cap hit → **escalate**: surface the remaining findings as `needs-human` and stop.
     6. **Never auto-merges.** The loop leaves merging to you (or to `--auto-merge`, below).
     - `--no-watch` opens the PR and stops (no loop).
@@ -212,7 +234,7 @@ Next: PR is green and clean - ready for your review/merge.
 | Targeted tests fail | Stop; surface failing test names; suggest `/en-qa` |
 | Secret scan matches high-confidence pattern | Stop; print offenders; require `--allow-secrets` to override |
 | Merge conflict | Stop; do not attempt ship on conflicted tree |
-| User pushes to `main` without confirm flag | Refuse; require `--allow-main-push` |
+| Push target is the default branch | Refuse until the step-3 confirmation is given verbatim. There is no flag for this: a typed confirmation is the whole mechanism, and a flag would let a caller pre-authorise it in a config file. |
 | `gh pr create` fails (auth, repo permissions) | Surface error; commit + push succeed regardless; user can open PR manually |
 | Auto-merge requested but branch protection rejects | Surface; PR remains open; user reviews and merges manually |
 | Unstaged dirty tree at start | Ask user: stage all, stage nothing (abort), or list-and-pick |
