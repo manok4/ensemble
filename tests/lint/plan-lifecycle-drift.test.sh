@@ -23,9 +23,22 @@ cd "$REPO_ROOT" || exit 1
 ACTIVE="docs/plans/active"
 
 # Resolve the default branch once; fall back to main when there is no remote.
-DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||')
-[ -n "$DEFAULT" ] || DEFAULT=main
-git rev-parse --verify --quiet "$DEFAULT" >/dev/null 2>&1 || DEFAULT=HEAD
+# Prefer a REMOTE default branch. A CI checkout has origin/main but usually no
+# local main, and the old fallback landed on HEAD — which on a PR branch makes
+# "already on the default branch" mean "anywhere on this PR", so a plan built in
+# the PR reads as already shipped.
+DEFAULT=""
+for cand in \
+  "$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null)" \
+  origin/main origin/master main master; do
+  [ -n "$cand" ] || continue
+  if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1; then DEFAULT="$cand"; break; fi
+done
+# No default branch to compare against means the question cannot be asked here.
+if [ -z "$DEFAULT" ]; then
+  pass "skipped: no default branch available to check drift against"
+  report
+fi
 
 # A unit counts as shipped only when ONE commit carries both the plan id and the
 # U-ID. Matching the U-ID alone is what this check did until 2026-09-02, and every
@@ -87,10 +100,13 @@ else
        "it matches nothing, so the drift loop below cannot detect anything"
 fi
 
-# And it must not fire across plans: EN14's U1 must not satisfy another plan's U1.
-if unit_shipped "EN15" "U1"; then
+# And it must not fire across plans: one plan's U1 must not satisfy another's.
+# The probe uses an id that can never be minted. It named a real in-flight plan
+# once, and matched the commit message of the change that introduced this check —
+# which mentioned both that plan and "(U1)" while explaining the bug.
+if unit_shipped "ZZ00" "U1"; then
   fail "the matcher is scoped to its own plan" \
-       "EN15 U1 matched a commit; another plan's U-ID is satisfying it"
+       "a plan id that cannot exist matched a commit; the scoping is not working"
 else
   pass "the matcher is scoped to its own plan"
 fi
