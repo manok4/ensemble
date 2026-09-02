@@ -165,8 +165,16 @@ done
 rule "Which model a bundled agent runs on" "the dispatch doc states a tier policy"
 # Single-line fragments only. grep is line-based and this file wraps, which has
 # now cost two clauses in this suite alone.
-rule "tier alias"                          "an agent declares a tier alias"
-rule "volatile CLI literal"                "the reason tiers are not model IDs is recorded"
+rule "Three layers, the same separation"   "the tier policy separates policy from binding"
+rule "volatile CLI"                        "the reason tiers are not model IDs is recorded"
+
+# The host scoping. `model:` frontmatter is Claude Code's loader convention, and
+# ./setup installs the SAME agent files into a Codex host, where the field names
+# a model Codex cannot select. A policy that does not say which host it binds on
+# reads as universal and is wrong half the time.
+rule "only Claude Code"                    "the tier binding names the host it applies to"
+rule "inert"                               "the policy says what happens on the other host"
+rule "omit any model override"             "call sites let the declaration decide"
 rule "only retrieves"                      "the retrieve-vs-decide line is named"
 
 # The no-concrete-model-ID rule, enforced rather than asserted. A model ID is a

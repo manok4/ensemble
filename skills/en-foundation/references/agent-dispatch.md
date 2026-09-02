@@ -16,18 +16,29 @@ directory carries agent definitions nothing can reach.
 
 ## Which model a bundled agent runs on
 
-Each agent declares a **tier alias** in its own frontmatter — never a concrete
-model ID, which is a volatile CLI literal for the reason `peer-model-policy.md`
-gives. The dispatching skill inherits that declaration and does not restate it.
+Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this
+table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites**
+omit any model override so the declaration, not the caller, decides.
 
 | Tier | For | Ours |
 |---|---|---|
-| cheapest capable | retrieval and quoting — find it, cite it, do not judge it | (none today) |
-| mid | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research`, `dimension-reviewer` |
-| ceiling | work whose output is code, or a judgement the orchestrator would otherwise make itself | `code-simplifier` |
+| `retrieval` | find it, cite it, do not judge it | (none today) |
+| `evidence` | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research`, `dimension-reviewer` |
+| `ceiling` | output is code, or a judgement the orchestrator would otherwise make itself | `code-simplifier` |
 
-The line that matters is the first one: an agent that **only retrieves** can run
-cheaper than one that **decides**. `learnings-research` sits above that line today
-and arguably belongs below it — but a retrieval agent that starts mis-judging
+**The binding is Claude Code's, and only Claude Code's.** An agent's `model:`
+frontmatter is read by Claude Code's agent loader. `./setup` installs the same
+agent files into a Codex host too, where that field names a model Codex cannot
+select — so on Codex the tier is **inert** and the effective model is whatever
+the user's Codex configuration chooses. Write the tier down anyway: it records
+which work is cheap and which is expensive, which is true of the agent whatever
+host runs it, and it binds wherever a host can honour it.
+
+Never write a concrete model ID in either place. A model ID is a volatile CLI
+literal, and D44 cost a whole plan when one was scattered across nine files.
+
+The line that matters is the first row: an agent that **only retrieves** can run
+cheaper than one that **decides**. `learnings-research` sits above that line and
+arguably belongs below it — but a retrieval agent that starts mis-judging
 `applies_when` fit degrades a plan silently, so move one down on measured
 evidence, not on the shape of its description.
