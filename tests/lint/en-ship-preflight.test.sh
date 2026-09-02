@@ -81,4 +81,66 @@ else
   pass "the test plan is never synthesised from the changed files"
 fi
 
+# --- targeted-test selection (EN15 U8) ---------------------------------------
+# The old heuristic assumed tests sit beside sources. In a layout where they do
+# not, it matched nothing, ran nothing, and reported a pass — the silent case.
+has "$S" "resolve the set in this fixed order" "test selection has a fixed resolution order"
+has "$S" "test_changed_command:" "a project command wins outright"
+has "$S" "test_impact:" "the prefix map is the second tier"
+has "$S" "sibling-filename heuristic" "the heuristic remains the fallback"
+has "$S" "Report why each test was selected" "the selection is auditable"
+has "$S" "An empty selection is reported as empty, never as a pass" \
+                                              "zero tests found is not a green check"
+
+# The order is asserted structurally, so a later edit cannot silently promote the
+# heuristic above a map the project actually declared.
+cmd_line=$(grep -n 'test_changed_command:' "$S" | head -1 | cut -d: -f1)
+map_line=$(grep -n 'The `test_impact:` prefix map' "$S" | head -1 | cut -d: -f1)
+heur_line=$(grep -n 'sibling-filename heuristic' "$S" | head -1 | cut -d: -f1)
+if [ -n "$cmd_line" ] && [ -n "$map_line" ] && [ -n "$heur_line" ] \
+   && [ "$cmd_line" -lt "$map_line" ] && [ "$map_line" -lt "$heur_line" ]; then
+  pass "command beats map beats heuristic, in that order"
+else
+  fail "command beats map beats heuristic, in that order" \
+       "cmd=$cmd_line map=$map_line heuristic=$heur_line"
+fi
+
+# The schema has to exist where a project can actually declare it, in both
+# carriers of the template. A rule with nowhere to be written is decorative.
+for t in "$REPO_ROOT"/skills/*/references/templates/agents-md-template.md; do
+  grep -qF '## Test impact' "$t" \
+    && pass "AGENTS.md template offers a Test impact section: $(basename "$(dirname "$(dirname "$(dirname "$t")")")")" \
+    || fail "AGENTS.md template offers a Test impact section: $t"
+done
+
+# --- receipt consumption (EN15 U3) -------------------------------------------
+# The unit that can skip verification. A wrong rule here ships untested code, so
+# these clauses are about what en-ship must REFUSE to do, not what it may do.
+has "$S" 'verify --requires lint,typecheck,full_suite' "preflight asks the receipt what it covers"
+has "$S" "surface the refusal reason verbatim" "a refusal is reported, never silent"
+has "$S" "There is no partial credit" "an invalid receipt means run everything"
+has "$S" "The secret scan and \`git diff --check\` always run" \
+                                              "cheap diff-scoped checks are never skipped"
+
+# Ordering: the receipt is consulted AFTER the base-freshness gate. Consulting it
+# first would accept a receipt whose base had silently advanced.
+base_line=$(grep -n "Base freshness" "$S" | head -1 | cut -d: -f1)
+receipt_line=$(grep -n "already proved this exact tree" "$S" | head -1 | cut -d: -f1)
+if [ -n "$base_line" ] && [ -n "$receipt_line" ] && [ "$base_line" -lt "$receipt_line" ]; then
+  pass "the receipt is consulted after the base-freshness gate"
+else
+  fail "the receipt is consulted after the base-freshness gate" "base=$base_line receipt=$receipt_line"
+fi
+
+# The reintroduction guard. Codex proposed "run tests covering the incoming base
+# delta" as a receipt branch; EN15 rejected it because selecting tests from a
+# delta is exactly the analysis the project cannot do reliably. This is what
+# stops a later editor adding it back as an obvious-looking optimisation.
+if grep -qiE 'tests covering (the )?(incoming )?(base )?delta|only the (tests|suite) affected by' "$S"; then
+  fail "no partial-credit path may be reintroduced" \
+       "en-ship names a subset-of-tests path; an invalid receipt must mean run everything"
+else
+  pass "no partial-credit path may be reintroduced"
+fi
+
 report
