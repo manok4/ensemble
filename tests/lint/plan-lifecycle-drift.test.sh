@@ -23,9 +23,35 @@ cd "$REPO_ROOT" || exit 1
 ACTIVE="docs/plans/active"
 
 # Resolve the default branch once; fall back to main when there is no remote.
-DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||')
-[ -n "$DEFAULT" ] || DEFAULT=main
-git rev-parse --verify --quiet "$DEFAULT" >/dev/null 2>&1 || DEFAULT=HEAD
+# Prefer a REMOTE default branch. A CI checkout has origin/main but usually no
+# local main, and the old fallback landed on HEAD — which on a PR branch makes
+# "already on the default branch" mean "anywhere on this PR", so a plan built in
+# the PR reads as already shipped.
+DEFAULT=""
+for cand in \
+  "$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null)" \
+  origin/main origin/master main master; do
+  [ -n "$cand" ] || continue
+  if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1; then DEFAULT="$cand"; break; fi
+done
+# No default branch to compare against means the question cannot be asked here.
+if [ -z "$DEFAULT" ]; then
+  pass "skipped: no default branch available to check drift against"
+  report
+fi
+
+# A unit counts as shipped only when ONE commit carries both the plan id and the
+# U-ID. Matching the U-ID alone is what this check did until 2026-09-02, and every
+# plan starts at U1: EN13 and EN14 had already put `(U1)`, `(U3)` and `(U8)` on the
+# default branch, so a brand-new plan read as fully shipped the moment it was
+# written. `--all-match` turns git's OR of multiple --grep into an AND.
+#
+# The bug survived because docs/plans/active/ was EMPTY on the default branch, so
+# the loop never ran and the check passed vacuously from the day it was written.
+# The self-test below is the fix for that: it proves the matcher can still fire.
+unit_shipped() {  # $1=plan id  $2=U-ID
+  git log "$DEFAULT" --all-match --grep="$1" --grep="($2)" --oneline 2>/dev/null | grep -q .
+}
 
 drifted=""
 checked=0
@@ -46,13 +72,44 @@ for p in "$ACTIVE"/*.md; do
 
   unshipped=0
   for u in $units; do
-    git log "$DEFAULT" --grep="($u)" --grep="$u)" --oneline 2>/dev/null | grep -q . || unshipped=$((unshipped + 1))
+    unit_shipped "$id" "$u" || unshipped=$((unshipped + 1))
   done
 
   if [ "$unshipped" -eq 0 ]; then
     drifted="$drifted $id"
   fi
 done
+
+# A shallow clone has no history to match against, so every unit reads as
+# unshipped and the whole check is vacuous. Say so and stop, rather than passing
+# quietly — a checkout without history cannot answer this question, and pretending
+# otherwise is how the check went unexercised for its whole life the first time.
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+  pass "skipped: shallow clone has no history to check drift against"
+  report
+fi
+
+# --- the matcher must be able to fire -----------------------------------------
+# A matcher that never matches makes the loop above pass for any input, which is
+# indistinguishable from "nothing has drifted". Probe it against a plan known to
+# have shipped: EN14 is in completed/ and its units are on the default branch.
+if unit_shipped "EN14" "U1"; then
+  pass "the shipped-unit matcher fires on a known-shipped unit (EN14 U1)"
+else
+  fail "the shipped-unit matcher fires on a known-shipped unit (EN14 U1)" \
+       "it matches nothing, so the drift loop below cannot detect anything"
+fi
+
+# And it must not fire across plans: one plan's U1 must not satisfy another's.
+# The probe uses an id that can never be minted. It named a real in-flight plan
+# once, and matched the commit message of the change that introduced this check —
+# which mentioned both that plan and "(U1)" while explaining the bug.
+if unit_shipped "ZZ00" "U1"; then
+  fail "the matcher is scoped to its own plan" \
+       "a plan id that cannot exist matched a commit; the scoping is not working"
+else
+  pass "the matcher is scoped to its own plan"
+fi
 
 if [ -z "$drifted" ]; then
   pass "no plan in active/ has all its units already on $DEFAULT ($checked checked)"

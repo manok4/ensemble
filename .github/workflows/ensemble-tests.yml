@@ -19,6 +19,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history. plan-lifecycle-drift asks whether a plan's units have
+          # already landed on the default branch, which the default depth-1
+          # checkout cannot answer: with no history the matcher finds nothing,
+          # and a check that can never match is indistinguishable from one
+          # reporting no drift.
+          fetch-depth: 0
 
       - name: Verify required tools
         run: |
