@@ -122,7 +122,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - `.ensemble/config.local.yaml` — **required.** Confirm with `grep -qF '.ensemble/config.local.yaml' .gitignore` after writing. If `.gitignore` doesn't exist, create it with this line.
    - Optionally `docs/learnings/archive/` — ask the user.
 
-   This step is verified again in the final-verification phase (step 17). Both checks must pass.
+   This step is verified again in the final-verification phase (step 18). Both checks must pass.
 10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
@@ -134,7 +134,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
    For each of the four scripts: copy from `<plugin>/bin/<name>` to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
 
-   **Verification:** after copying, confirm with `[ -x bin/<name> ]` for each. Re-checked in the final-verification phase (step 17).
+   **Verification:** after copying, confirm with `[ -x bin/<name> ]` for each. Re-checked in the final-verification phase (step 18).
 
    These bin scripts are project-local on purpose — they're invoked from `.github/workflows/en-sweep.yml` via relative paths, which only works if they're committed to the repo.
 
@@ -151,7 +151,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
        - `monthly` → `0 9 1 * *` (1st of the month, 9am UTC)
        - Anything else is treated as a literal cron expression and substituted as-is.
     3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
-    4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 17.
+    4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 18.
     5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
     6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
 
@@ -197,7 +197,18 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
-17. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. This is the safety net — long mechanical sequences drop steps under context pressure, and a verification phase at the end catches that.
+17. **Verification-receipt notice (informational).** Surface once, and write nothing:
+
+    > "`/en-build` records which checks passed against an exact working tree, and `/en-ship` skips what
+    > that receipt covers. Your pre-push hook can read the same receipt instead of re-running a suite
+    > `/en-ship` finished seconds earlier. `/en-ship` carries a `verification-receipt` reference with a
+    > snippet to paste into `.git/hooks/pre-push`."
+
+    **This step never creates or edits a hook.** A hook is where a project encodes its own policy;
+    rewriting one on a user's behalf is help nobody asked for, and `/en-ship` never bypasses hooks
+    either. Print the pointer and move on.
+
+18. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. This is the safety net — long mechanical sequences drop steps under context pressure, and a verification phase at the end catches that.
 
     **Required artifacts** (must exist; missing → fail):
 
@@ -263,7 +274,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Idempotency check:** running `/en-setup` again on the same repo must produce zero new changes once verification has passed. Encode this expectation in the report ("Final verification: 14 / 14 required artifacts present").
 
-18. **Recommend next steps:**
+19. **Recommend next steps:**
     ```
     Two paths:
       - Run /en-foundation --retrofit to back-fill docs/foundation.md and docs/architecture.md from existing code.
@@ -295,7 +306,7 @@ Invoke `bash "$SKILL_DIR/scripts/check-health"` — this skill carries it, ancho
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Required-artifact verification** - same table as State 2 step 17 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
+- **Required-artifact verification** - same table as State 2 step 18 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
 - **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").

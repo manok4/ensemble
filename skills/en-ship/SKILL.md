@@ -275,6 +275,7 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 
 - `references/conventional-commits.md` — message format
 - `references/secret-patterns.md` — secret-scan regex catalog
+- `references/verification-receipt.md` — what makes a receipt valid, and how a project's own pre-push hook can read one
 
 ## Bundled scripts
 
