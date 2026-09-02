@@ -58,4 +58,56 @@ else
   fail "no-frontend auto-skip reason must be documented"
 fi
 
+# --- driver policy: en-qa was locked to one stack (2026-09-02) ---------------
+# It named Playwright 16 times and skipped Phase 2 entirely when that MCP was
+# absent — including on hosts with a perfectly good native browser. The order is
+# the whole rule, so it is asserted structurally, not just by presence.
+QS="$REPO_ROOT/skills/en-qa/SKILL.md"
+QD="$REPO_ROOT/skills/en-qa/references/browser-driver.md"
+QF="$REPO_ROOT/skills/en-qa/references/qa-flows.md"
+
+qhas() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "not in $(basename "$1")"; }
+
+[ -f "$QD" ] && pass "the driver reference is driver-neutral, not playwright-helpers" \
+             || fail "the driver reference is driver-neutral, not playwright-helpers"
+[ -e "$REPO_ROOT/skills/en-qa/references/playwright-helpers.md" ] \
+  && fail "the Playwright-named reference is gone" \
+  || pass "the Playwright-named reference is gone"
+
+qhas "$QS" "host-native browser surface" "a host-native driver is preferred"
+qhas "$QS" "Never introduce a third stack" "no third browser stack may be installed"
+qhas "$QS" "One driver for the whole run"  "the driver does not change mid-run"
+qhas "$QD" "do not survive a switch"       "the reason mixing drivers is forbidden is recorded"
+
+# Host-native must be listed BEFORE Playwright, or the preference is decorative.
+native=$(grep -n "host-native browser surface" "$QS" | head -1 | cut -d: -f1)
+pw=$(grep -n "Playwright MCP" "$QS" | head -1 | cut -d: -f1)
+if [ -n "$native" ] && [ -n "$pw" ] && [ "$native" -lt "$pw" ]; then
+  pass "host-native is preferred before Playwright, in that order"
+else
+  fail "host-native is preferred before Playwright, in that order" "native=$native playwright=$pw"
+fi
+
+# --- QA is scoped to the change, not a regression sweep ----------------------
+qhas "$QS" "browser QA of what was implemented" "Phase 2 is scoped to the change"
+qhas "$QS" "Exercise only those flows"          "only attributed flows run"
+qhas "$QS" "not a release regression sweep"     "the skill says what it is not"
+qhas "$QS" "do not fall back to everything"     "incomplete attribution does not expand the run"
+qhas "$QS" "impact undetermined"                "unattributed files are reported, not swept up"
+qhas "$QS" "--all-flows"                        "the sweep has an explicit opt-in"
+
+# --- every flow gets an outcome ----------------------------------------------
+qhas "$QS" "Pass, Fail, or Skip with its reason" "every in-scope flow ends with an outcome"
+qhas "$QS" "an absent flow reads as a flow that passed" \
+                                                 "the reason a flow may not vanish is recorded"
+qhas "$QS" "needs external interaction"          "un-drivable flows are skipped with a reason"
+
+# --- the orchestrated seam ---------------------------------------------------
+qhas "$QS" "none of those three may block"       "pre-flow questions do not block a driven run"
+qhas "$QS" "it waits, which is worse"            "the reason names waiting, not failing"
+
+# --- regression tests assert behaviour, not source text ----------------------
+qhas "$QF" "through a real interface"            "a regression test exercises a real interface"
+qhas "$QF" "can be dead or commented out"        "the source-grep anti-pattern is named"
+
 report

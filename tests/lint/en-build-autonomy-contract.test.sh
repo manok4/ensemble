@@ -7,6 +7,9 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
+# The en-qa pre-flow exclusion was named "Playwright bootstrap" until 2026-09-02.
+# en-qa stopped being Playwright-locked (it now selects a driver), so the exclusion
+# is driver-neutral. The rule is unchanged: a bootstrap offer is pre-flow.
 TEST_NAME="en-build autonomy contract"
 
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
@@ -57,7 +60,7 @@ if grep -qF "already-runnable QA flows" "$EN_QA"; then
 else
   fail "en-qa scope should name 'already-runnable QA flows' as the window"
 fi
-for pre_flow in "URL discovery" "--system-only" "Playwright bootstrap"; do
+for pre_flow in "URL discovery" "--system-only" "Test-framework bootstrap"; do
   if grep -qF -- "$pre_flow" "$EN_QA"; then
     pass "en-qa scope documents pre-flow exclusion: $pre_flow"
   else

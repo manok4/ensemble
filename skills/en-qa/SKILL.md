@@ -11,6 +11,8 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
 ## Process
 
+1. **Resolve context.** Establish once: the branch and its base, the changed files, and **whether a human is driving**. A caller (`/en-build`, `/en-loop`) drives this unattended; a person invoking it directly does not. That single fact changes what happens at every prompt below, so resolve it first and state it in the report.
+
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocess shouldn't QA in CI).
 3. **Phase 1 — system checks.** Run in this order; stop on first failure:
    - Project lint (from `AGENTS.md` `{{LINT_CMD}}`).
@@ -22,13 +24,25 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - PR comment containing a Vercel/Cloudflare preview URL (regex match).
    - Local dev server detection (e.g., `localhost:3000` if a dev server is responsive).
    - User asks if none found.
-5. **Verify Playwright MCP.** Per `references/playwright-helpers.md`. If unavailable → run Phase 1 only and surface the gap.
+5. **Select a browser driver, then keep it.** Per `references/browser-driver.md`. In order:
+   1. **A host-native browser surface**, if the harness has one that can navigate, inspect rendered state, click and type, screenshot, and read console errors. Prefer it: it needs no install and is already permitted.
+   2. **Playwright MCP**, when present.
+   3. Neither → Phase 1 only, and say which drivers were looked for.
+
+   **Never introduce a third stack.** Do not install Puppeteer, a standalone Playwright, or another automation surface to make a run possible; a project that has none is a finding, not a setup task.
+
+   **One driver for the whole run.** After the first flow is exercised, do not switch: element references, screenshots, session and auth state do not carry across drivers, and a run that mixes them produces a report where half the evidence describes a session that no longer exists. Falling back is allowed only before the first flow runs.
 6. **Bootstrap test framework if absent.** If the project has no test suite at all, surface and offer to install Playwright (or the project's preferred framework). Bootstrap is its own commit.
 6a. **Browser-phase detector.** Before running Phase 2, classify the change via `references/diff-signal-detection.md`. Run Phase 2 only when `needs_browser` is `true` (the diff touches frontend/UI files) **OR** the user passed `--browser`. When `needs_browser` is `false` AND `--browser` was not passed: skip Phase 2 with the one-line note *"Browser QA auto-skipped — no frontend files changed; pass --browser to force."* and proceed to the report. **Fail closed:** if the diff can't be classified (no base ref, detached HEAD), treat as `needs_browser: true` and run Phase 2. `--browser` always forces Phase 2; `--system-only` always skips it (and wins over `--browser`).
-7. **Phase 2 — browser QA.** Per `references/qa-flows.md`:
-   - Walk each top-level user flow (from foundation §6 F-IDs).
-   - For each, exercise the golden path + the edge cases (empty state, error state, slow network, double-click, navigate-mid-action, keyboard-only, mobile viewport).
-   - Capture screenshots at decision points.
+7. **Phase 2 — browser QA of what was implemented.** Per `references/qa-flows.md`.
+
+   **Scope first: map the change to flows.** Take the changed files and attribute each to the flows (foundation §6 F-IDs) it can reach, through routes, components, and the modules those import. **Exercise only those flows.** This is QA of a change, not a release regression sweep: walking twenty flows for a one-route edit spends most of the run re-proving things nobody touched, and buries the finding that matters in a wall of green.
+
+   **When attribution is incomplete, say so — do not fall back to everything.** If a changed file cannot be attributed to any flow (a shared utility, a build-config change, no route map available), exercise the flows you *did* attribute, then list the unattributed files in the report under "impact undetermined". Expanding silently to the full catalogue trades a stated gap for an unstated cost, and the reader can no longer tell which flows were run because they were implicated and which were swept up. `--flow <name>` overrides attribution; `--all-flows` is the explicit way to ask for the sweep.
+
+   For each in-scope flow, exercise the golden path + the edge cases (empty state, error state, slow network, double-click, navigate-mid-action, keyboard-only, mobile viewport), and capture screenshots at decision points.
+
+   **A flow that cannot be driven automatically is Skipped, never faked.** OAuth handoffs, email or SMS confirmation, real payments, third-party APIs without a sandbox: when a human is driving, ask whether to do that step manually; when a caller is driving, record `Skip — needs external interaction: <what>` and continue.
 8. **Bug protocol** (for each bug found):
    - Reproduce — confirm consistently.
    - Identify root cause — read source; trace path.
@@ -36,6 +50,8 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - Add regression test (must fail on unfixed code, pass on fix).
    - Atomic commit: `fix(qa): <one-line>`. Body cites the QA flow.
    - Re-verify — re-run failing flow + regression test.
+8a. **Done means every in-scope flow has an outcome.** The run ends one of two ways: a report in which **every flow selected at step 7 is marked Pass, Fail, or Skip with its reason**, or a preflight blocker that stopped QA before any flow could run, named alongside what would clear it. Ending in neither, or dropping a flow from the report because nothing could reach it, is the failure this bar exists to prevent — an absent flow reads as a flow that passed.
+
 9. **Output QA report** — system-check status, flows exercised, bugs found and fixed, regression tests added, screenshots, skipped flows with reasons.
 
 ## Flags
@@ -45,7 +61,8 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 | `--url <url>` | Override URL detection |
 | `--system-only` | Skip Phase 2 (browser QA). Wins over `--browser`. |
 | `--browser` | Force Phase 2 even when the detector finds no frontend files changed. |
-| `--flow <name>` | Run only the named flow |
+| `--flow <name>` | Run only the named flow; overrides change attribution |
+| `--all-flows` | Exercise the whole §6 catalogue, not just flows the change reaches. The explicit way to ask for a regression sweep. |
 | `--no-fix` | Find bugs, don't fix; output as a list for triage |
 | `--mobile-only` / `--desktop-only` | Limit viewports |
 
@@ -54,7 +71,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 Surface a one-line note in the report: "Browser QA skipped — <reason>." Reasons:
 
 - No URL provided and none detected.
-- Playwright MCP unavailable.
+- No usable browser driver (host-native or Playwright MCP).
 - Branch is doc-only (`git diff --name-only` shows only `docs/`).
 - **No frontend files changed** (detector `needs_browser: false`, no `--browser`) — per `references/diff-signal-detection.md`.
 - `--system-only` flag.
@@ -76,7 +93,9 @@ The contract governs **already-runnable QA flows** — the period after setup ha
 
 - **URL discovery prompt** — when no app URL is found, ask the user. Pre-flow; the QA flow can't start without a URL.
 - **Phase 2 skip on doc-only branches / `--system-only` / browser-disabled config** — Phase 2 is correctly skipped; the contract doesn't force it to run.
-- **Playwright bootstrap offer** when no test framework is detected — pre-flow setup question; out of contract scope.
+- **Test-framework bootstrap offer** when none is detected — pre-flow setup question; out of contract scope.
+
+**When a caller is driving, none of those three may block.** `/en-build` and `/en-loop` both hand off to `/en-qa`, and `/en-loop` runs unattended overnight. Each pre-flow question becomes a **Skip with its reason** instead: no URL found, no driver available, no framework to bootstrap. The run continues and the report says what could not be done. A question asked with nobody watching does not fail — it waits, which is worse, because the caller cannot tell a stalled run from a slow one.
 
 Why scope this way: the autonomy bug class is the same as en-build's — agent-initiated checkpoints during the QA loop ("the next flow has more assertions; let me checkpoint"). The contract closes that, without invalidating legitimate pre-flow decisions about whether QA can sensibly run at all.
 
@@ -144,7 +163,7 @@ URL: https://preview-fr07.vercel.app
 ## Reference files
 
 - `references/qa-flows.md` — flow catalog and bug protocol
-- `references/playwright-helpers.md` — MCP usage patterns
+- `references/browser-driver.md` — driver selection, and per-driver usage patterns
 
 ## Failure protocol
 
@@ -152,7 +171,7 @@ URL: https://preview-fr07.vercel.app
 |---|---|
 | Lint fails | Surface; exit. Don't proceed to browser. |
 | Test suite fails | Surface failing tests; exit. Don't proceed. |
-| Playwright MCP unavailable | Phase 1 only; note in report. |
+| No usable browser driver | Phase 1 only; name the drivers looked for. Never install one to proceed. |
 | URL unreachable | Surface; ask user for a different URL or `--system-only`. |
 | Bug found but root cause unclear | Surface the symptom; capture screenshot; mark as "needs human" in the report; don't commit a guessed fix. |
 | Regression test passes on unfixed code | The test isn't actually exercising the fix. Surface; iterate on the test until it fails on unfixed code. |
