@@ -70,6 +70,30 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 - **Conventional commits:** `<type>(<scope>): <subject>` — types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Subject ≤ 50 chars, imperative.
 - **Doc-as-source-of-truth:** if a decision isn't in `docs/`, the agent can't see it. Capture it via `/en-learn capture` before moving on.
 
+## Test impact
+
+*Optional. Omit the whole section when the project's tests sit beside their
+sources; `/en-ship` falls back to a filename heuristic, which is correct for
+that layout and useless for any other.*
+
+Either give a command, which wins outright:
+
+```yaml
+test_changed_command: "pytest --picked --parent-branch=origin/main"
+```
+
+Or map source prefixes to test prefixes:
+
+```yaml
+test_impact:
+  backend/app/services/: backend/tests/services/
+  backend/app/api/routes/: backend/tests/api/routes/
+  frontend/src/: frontend/tests/
+```
+
+This lives here rather than in `.ensemble/config.local.yaml` because it must be
+shared with the team and with CI, and `config.local.yaml` is gitignored.
+
 ## Working with this project
 
 - **Start a new feature** → `/en-plan`

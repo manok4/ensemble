@@ -12,7 +12,7 @@ total_entries: 14
 
 ## Active
 
-- [`EN15-feature_verification-receipt.md`](../plans/active/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (open)
+_(none)_
 
 ## Completed
 
@@ -29,3 +29,4 @@ total_entries: 14
 - [`EN12-improvement_self-contained-skills.md`](../plans/completed/EN12-improvement_self-contained-skills.md) — **EN12** Self-contained skill directories with a synced shared tree (shipped 2026-08-27)
 - [`EN13-improvement_shared-tree-removal.md`](../plans/completed/EN13-improvement_shared-tree-removal.md) — **EN13** Remove the shared tree; each skill owns its files outright (shipped 2026-08-28)
 - [`EN14-improvement_learning-artifact-types.md`](../plans/completed/EN14-improvement_learning-artifact-types.md) — **EN14** Three artifact types for captured knowledge, replacing the flat learnings taxonomy (shipped 2026-08-28)
+- [`EN15-feature_verification-receipt.md`](../plans/completed/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (shipped 2026-09-02)

@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+# ensemble-verification-receipt — record and check which expensive verifications
+# already passed against an exactly-identified working tree.
+#
+# Four layers verify the same tree and none can see the others: /en-build runs the
+# full suite, /en-ship then runs lint plus targeted tests, the project's pre-push
+# hook runs more of the same seconds later on an identical tree, and CI runs the
+# authoritative suite. The receipt lets a layer skip what another already proved.
+#
+# WHERE IT LIVES.  $(git rev-parse --git-dir)/ensemble/receipt.json — per clone,
+# already ignored, never committed, gone when the checkout is. A receipt cannot
+# outlive the tree it describes or travel to a machine it does not describe.
+#
+# VALIDITY IS A CONJUNCTION.  Fingerprint, base SHA, dependency hashes, repo path
+# and age must ALL hold. There is no partial credit and no reasoning about which
+# subset of checks might still apply: every clever invalidation rule is a way to
+# ship untested code, and the cost of being wrong is asymmetric. When in doubt
+# this exits non-zero and the caller runs the checks.
+#
+# CI NEVER READS ONE.  It is the independent authority; a receipt is a local
+# optimisation and worthless to anyone but this checkout.
+#
+# Usage:
+#   ensemble-verification-receipt write --check <name>=passed [--check ...]
+#                                       [--base <ref>] [--dep <path>]... [--by <who>]
+#   ensemble-verification-receipt verify [--requires <a,b>] [--ttl <minutes>] [--json]
+#   ensemble-verification-receipt show [--json]
+#
+# Exit codes:
+#   0  valid (and, with --requires, every named check recorded as passed)
+#   1  invalid — a machine-readable reason is emitted
+#   2  no receipt present
+#   3  usage error
+#
+# Refusal reasons: fingerprint-mismatch · base-moved · dependency-changed ·
+#                  wrong-repo · expired · check-not-recorded · malformed
+#
+# Only `passed` is ever recorded. A receipt is evidence something succeeded, not
+# a log that it ran, so a failing check simply leaves no receipt behind.
+
+set -u
+
+TTL_DEFAULT_MINUTES="${ENSEMBLE_RECEIPT_TTL_MINUTES:-120}"
+
+die() { printf '%s\n' "$*" >&2; exit 3; }
+
+command -v git >/dev/null 2>&1 || die "ensemble-verification-receipt: git not found"
+command -v python3 >/dev/null 2>&1 || die "ensemble-verification-receipt: python3 not found"
+
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || die "ensemble-verification-receipt: not a git repository"
+REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || die "ensemble-verification-receipt: no worktree"
+RECEIPT_DIR="$GIT_DIR/ensemble"
+RECEIPT="$RECEIPT_DIR/receipt.json"
+
+# --- fingerprint -------------------------------------------------------------
+# Committed tree + every tracked modification (staged and unstaged) + the content
+# of untracked, non-ignored files. Anything a test could read moves this.
+#
+# Untracked files are hashed by content rather than by name because a new source
+# file is exactly the case where a stale receipt would be most wrong: the tests
+# that would cover it do not exist in the committed tree at all.
+fingerprint() {
+  {
+    git rev-parse HEAD^{tree} 2>/dev/null || printf 'no-head\n'
+    git diff HEAD 2>/dev/null
+    # Every untracked path is hashed inside ONE python process. The first version
+    # spawned one per file and cost 7s for 200 files - interpreter startup, not
+    # hashing - which would make a large working tree slower to fingerprint than
+    # to just run the tests, defeating the point of the receipt.
+    git ls-files --others --exclude-standard -z 2>/dev/null | sort -z | python3 -c '
+import hashlib, sys
+for name in filter(None, sys.stdin.buffer.read().split(b"\0")):
+    sys.stdout.buffer.write(name + b"\n")
+    sys.stdout.flush()
+    try:
+        h = hashlib.sha256()
+        with open(name, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        sys.stdout.write(h.hexdigest() + "\n")
+    except OSError:
+        # Unreadable or vanished mid-walk: record the fact rather than skipping,
+        # so the fingerprint still moves when the tree does.
+        sys.stdout.write("unreadable\n")
+'
+  } | python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+}
+
+hash_file() {  # $1=path -> sha256, or "absent"
+  if [ -f "$1" ]; then
+    python3 - "$1" <<'PY'
+import hashlib, sys
+h = hashlib.sha256()
+with open(sys.argv[1], 'rb') as fh:
+    for chunk in iter(lambda: fh.read(65536), b''):
+        h.update(chunk)
+print(h.hexdigest())
+PY
+  else
+    printf 'absent\n'
+  fi
+}
+
+resolve_base() {  # $1=ref -> sha, or empty
+  git rev-parse --verify --quiet "$1" 2>/dev/null || true
+}
+
+# --- write -------------------------------------------------------------------
+cmd_write() {
+  checks=""; base_ref=""; deps=""; by="unknown"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --check) [ $# -ge 2 ] || die "--check needs <name>=passed"; checks="$checks $2"; shift 2 ;;
+      --base)  [ $# -ge 2 ] || die "--base needs a ref";          base_ref="$2";      shift 2 ;;
+      --dep)   [ $# -ge 2 ] || die "--dep needs a path";          deps="$deps $2";    shift 2 ;;
+      --by)    [ $# -ge 2 ] || die "--by needs a name";           by="$2";            shift 2 ;;
+      *) die "ensemble-verification-receipt write: unknown argument $1" ;;
+    esac
+  done
+  [ -n "$checks" ] || die "ensemble-verification-receipt write: at least one --check is required"
+
+  # Only `passed` is recordable. Refusing here keeps "a receipt exists" and
+  # "something passed" the same statement, so no consumer has to check both.
+  for c in $checks; do
+    case "$c" in
+      *=passed) ;;
+      *=*) die "ensemble-verification-receipt write: only '=passed' is recordable, got '$c'" ;;
+      *) die "ensemble-verification-receipt write: --check needs <name>=passed, got '$c'" ;;
+    esac
+  done
+
+  base_sha=""
+  [ -n "$base_ref" ] && base_sha=$(resolve_base "$base_ref")
+
+  dep_pairs=""
+  for d in $deps; do
+    dep_pairs="$dep_pairs $d=$(hash_file "$d")"
+  done
+
+  mkdir -p "$RECEIPT_DIR" || die "ensemble-verification-receipt: cannot create $RECEIPT_DIR"
+
+  FP="$(fingerprint)" \
+  HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || printf '')" \
+  BASE_REF="$base_ref" BASE_SHA="$base_sha" REPO="$REPO_TOP" BY="$by" \
+  CHECKS="$checks" DEPS="$dep_pairs" \
+  python3 - "$RECEIPT" <<'PY'
+import json, os, sys, time
+checks = {c.split('=', 1)[0]: 'passed' for c in os.environ['CHECKS'].split()}
+deps = dict(d.split('=', 1) for d in os.environ['DEPS'].split())
+doc = {
+    "schema": 1,
+    "source_fingerprint": os.environ['FP'],
+    "head_sha": os.environ['HEAD_SHA'],
+    "base_ref": os.environ['BASE_REF'],
+    "base_sha": os.environ['BASE_SHA'],
+    "dependency_hashes": deps,
+    "checks": checks,
+    "written_by": os.environ['BY'],
+    "written_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    "repo_path": os.environ['REPO'],
+}
+# Written to a temp file in the same directory, then renamed: a reader must never
+# see a half-written receipt and treat its missing fields as a mismatch.
+tmp = sys.argv[1] + '.tmp'
+with open(tmp, 'w') as fh:
+    json.dump(doc, fh, indent=2, sort_keys=True)
+    fh.write('\n')
+os.replace(tmp, sys.argv[1])
+PY
+  printf 'receipt written: %s\n' "$RECEIPT"
+}
+
+# --- verify ------------------------------------------------------------------
+cmd_verify() {
+  requires=""; ttl="$TTL_DEFAULT_MINUTES"; as_json=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --requires) [ $# -ge 2 ] || die "--requires needs a list"; requires="$2"; shift 2 ;;
+      --ttl)      [ $# -ge 2 ] || die "--ttl needs minutes";     ttl="$2";      shift 2 ;;
+      --json)     as_json=1; shift ;;
+      *) die "ensemble-verification-receipt verify: unknown argument $1" ;;
+    esac
+  done
+
+  if [ ! -f "$RECEIPT" ]; then
+    if [ "$as_json" -eq 1 ]; then
+      printf '{"valid": false, "reason": "no-receipt"}\n'
+    else
+      printf 'no receipt\n'
+    fi
+    exit 2
+  fi
+
+  # The live side of every comparison is computed here, in shell, so the checker
+  # below only compares. A recorded dependency is re-hashed from its own path, so
+  # a deleted lockfile reads as "absent" and mismatches rather than disappearing.
+  live_deps=""
+  recorded_deps=$(python3 - "$RECEIPT" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for k in sorted(d.get('dependency_hashes') or {}):
+    print(k)
+PY
+)
+  for d in $recorded_deps; do
+    live_deps="$live_deps $d=$(hash_file "$d")"
+  done
+
+  base_ref=$(python3 - "$RECEIPT" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    print((json.load(open(sys.argv[1])).get('base_ref') or ''))
+except Exception:
+    pass
+PY
+)
+  live_base=""
+  [ -n "$base_ref" ] && live_base=$(resolve_base "$base_ref")
+
+  FP="$(fingerprint)" REPO="$REPO_TOP" LIVE_BASE="$live_base" \
+  LIVE_DEPS="$live_deps" REQUIRES="$requires" TTL="$ttl" JSON="$as_json" \
+  python3 - "$RECEIPT" <<'PY'
+import json, os, sys, time, calendar
+
+def out(valid, reason, extra=None):
+    doc = {"valid": valid, "reason": reason}
+    if extra:
+        doc.update(extra)
+    if os.environ['JSON'] == '1':
+        print(json.dumps(doc, sort_keys=True))
+    elif valid:
+        print("valid ({} checks)".format(len(doc.get('checks') or {})))
+    else:
+        print("invalid: {}".format(reason))
+    sys.exit(0 if valid else 1)
+
+try:
+    r = json.load(open(sys.argv[1]))
+except Exception:
+    out(False, "malformed")
+
+if not isinstance(r, dict) or r.get('schema') != 1:
+    out(False, "malformed")
+
+# A receipt from another checkout describes a tree this one cannot vouch for,
+# even when the fingerprints happen to agree.
+if r.get('repo_path') != os.environ['REPO']:
+    out(False, "wrong-repo")
+
+if r.get('source_fingerprint') != os.environ['FP']:
+    out(False, "fingerprint-mismatch")
+
+# Only checked when the receipt recorded a base. A receipt written without one
+# makes no claim about the base and is not invalidated by it moving.
+if r.get('base_ref'):
+    if (r.get('base_sha') or '') != os.environ['LIVE_BASE']:
+        out(False, "base-moved")
+
+live = dict(d.split('=', 1) for d in os.environ['LIVE_DEPS'].split()) if os.environ['LIVE_DEPS'].strip() else {}
+for path, recorded in (r.get('dependency_hashes') or {}).items():
+    if live.get(path) != recorded:
+        out(False, "dependency-changed", {"dependency": path})
+
+# The one invalidation input not derivable from the tree: the toolchain can move
+# under an unchanged tree, and a receipt cannot see that. Age is the proxy.
+try:
+    written = calendar.timegm(time.strptime(r['written_at'], '%Y-%m-%dT%H:%M:%SZ'))
+except Exception:
+    out(False, "malformed")
+age = int(time.time() - written)
+ttl_seconds = int(os.environ['TTL']) * 60
+if ttl_seconds >= 0 and age > ttl_seconds:
+    out(False, "expired", {"age_seconds": age})
+
+checks = r.get('checks') or {}
+required = [c for c in os.environ['REQUIRES'].replace(',', ' ').split() if c]
+missing = [c for c in required if checks.get(c) != 'passed']
+if missing:
+    out(False, "check-not-recorded", {"missing": sorted(missing)})
+
+out(True, "ok", {"checks": checks, "age_seconds": age, "written_by": r.get('written_by')})
+PY
+}
+
+# --- show --------------------------------------------------------------------
+cmd_show() {
+  [ -f "$RECEIPT" ] || { printf 'no receipt\n'; exit 2; }
+  if [ "${1:-}" = "--json" ]; then
+    cat "$RECEIPT"
+  else
+    python3 - "$RECEIPT" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+print("written_by  {}".format(r.get('written_by')))
+print("written_at  {}".format(r.get('written_at')))
+print("checks      {}".format(', '.join(sorted(r.get('checks') or {}))))
+print("base        {} {}".format(r.get('base_ref') or '(none)', (r.get('base_sha') or '')[:12]))
+print("deps        {}".format(', '.join(sorted(r.get('dependency_hashes') or {})) or '(none)'))
+PY
+  fi
+}
+
+case "${1:-}" in
+  write)  shift; cmd_write "$@" ;;
+  verify) shift; cmd_verify "$@" ;;
+  show)   shift; cmd_show "$@" ;;
+  ''|-h|--help) die "usage: ensemble-verification-receipt {write|verify|show} [options]" ;;
+  *) die "ensemble-verification-receipt: unknown command '$1'" ;;
+esac

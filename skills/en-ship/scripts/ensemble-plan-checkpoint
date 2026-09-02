@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# ensemble-plan-checkpoint — resolve /en-ship's plan-completion outcome mechanically.
+#
+# This was the largest prose block in /en-ship and the most mechanical: find the
+# branch's plan, read its units, ask which the branch's review covered, and pick
+# one outcome. Prose re-derived all of that on every run.
+#
+# The four outcomes exist because one (`incomplete_build`) conflated three
+# situations needing three different responses. A branch that had shipped U1-U7,
+# deliberately held U8 behind a production gate, and HAD been reviewed still
+# reported as an unfinished build:
+#
+#   complete                   every in-scope unit is covered
+#   partial_expected           the missing units declare they are not shipping now
+#   complete_evidence_missing  the work is on the branch; no review-verdict covers it
+#   incomplete_unexpected      a unit is genuinely unbuilt
+#
+# Plus two states that are about the plan rather than the build:
+#   up_to_date                 the plan is already completed
+#   not_applicable             no plan for this branch, or it is draft/abandoned
+#
+# READ-ONLY. It never edits the plan, moves it, or commits. /en-ship owns the
+# lifecycle flip; this only answers what the state is.
+#
+# Usage:
+#   ensemble-plan-checkpoint [--base <ref>] [--plan <path>] [--json]
+#
+# Exit 0 whenever an outcome was resolved — including the negative ones. Most
+# branches are not plan branches, and a checkpoint that exits non-zero for the
+# ordinary case would make every caller special-case it.
+# Exit 3 on usage error.
+
+set -u
+
+die() { printf '%s\n' "$*" >&2; exit 3; }
+
+command -v git >/dev/null 2>&1 || die "ensemble-plan-checkpoint: git not found"
+command -v python3 >/dev/null 2>&1 || die "ensemble-plan-checkpoint: python3 not found"
+git rev-parse --git-dir >/dev/null 2>&1 || die "ensemble-plan-checkpoint: not a git repository"
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+base=""; plan=""; as_json=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base) [ $# -ge 2 ] || die "--base needs a ref";  base="$2"; shift 2 ;;
+    --plan) [ $# -ge 2 ] || die "--plan needs a path"; plan="$2"; shift 2 ;;
+    --json) as_json=1; shift ;;
+    *) die "ensemble-plan-checkpoint: unknown argument $1" ;;
+  esac
+done
+
+TOP=$(git rev-parse --show-toplevel) || die "ensemble-plan-checkpoint: no worktree"
+cd "$TOP" || die "ensemble-plan-checkpoint: cannot enter worktree"
+
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'HEAD')
+
+# --- locate the plan ----------------------------------------------------------
+# The branch is named <plan_id>-<slug>, and /en-build may create it lowercase
+# while the plan file is named with the uppercase prefix. Normalising matters on
+# a case-sensitive filesystem, where an unnormalised lookup misses the plan and
+# silently reports not_applicable — defeating the checkpoint entirely.
+if [ -z "$plan" ]; then
+  id=$(printf '%s' "$branch" | sed -n 's/^\([A-Za-z][A-Za-z]*[0-9][0-9]*\)-.*/\1/p' \
+        | tr '[:lower:]' '[:upper:]')
+  if [ -n "$id" ]; then
+    for d in docs/plans/active docs/plans/completed; do
+      for f in "$d/$id"-*.md; do
+        [ -f "$f" ] && { plan="$f"; break 2; }
+      done
+    done
+  fi
+fi
+
+emit() {  # $1=json
+  if [ "$as_json" -eq 1 ]; then
+    printf '%s\n' "$1"
+  else
+    printf '%s\n' "$1" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print("outcome     {}".format(d["outcome"]))
+print("plan        {}".format(d.get("plan_path") or "(none)"))
+if d.get("missing_units"):  print("missing     {}".format(", ".join(d["missing_units"])))
+if d.get("deferred_units"): print("deferred    {}".format(", ".join(d["deferred_units"])))
+'
+  fi
+  exit 0
+}
+
+none_json() {  # $1=outcome
+  OUT="$1" PLAN="$plan" python3 -c '
+import json, os
+print(json.dumps({"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"] or None,
+                  "covered_units": [], "missing_units": [], "deferred_units": []}, sort_keys=True))'
+}
+
+[ -n "$plan" ] || emit "$(none_json not_applicable)"
+
+status=$(grep -m1 '^status:' "$plan" | cut -d: -f2- | tr -d ' ')
+case "$status" in
+  completed)         emit "$(none_json up_to_date)" ;;
+  draft|abandoned)   emit "$(none_json not_applicable)" ;;
+esac
+
+# --- what the branch's review covered ----------------------------------------
+range=""
+if [ -n "$base" ]; then
+  mb=$(git merge-base HEAD "$base" 2>/dev/null || true)
+  [ -n "$mb" ] && range="$mb..HEAD"
+fi
+
+covered=""
+EVIDENCE="$SELF_DIR/ensemble-verify-peer-evidence"
+if [ -n "$range" ] && [ -x "$EVIDENCE" ]; then
+  covered=$(bash "$EVIDENCE" --branch-coverage "$range" --json 2>/dev/null \
+    | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(0)
+for u in (d.get("covered_units") or []):
+    print(u)
+' 2>/dev/null || true)
+fi
+
+# Which U-IDs have an implementing commit on the branch. This is what separates
+# "the work is there but unreviewed" from "the work was never done" — without it
+# both look identical and the caller cannot tell whether to write code or a trailer.
+implemented=""
+if [ -n "$range" ]; then
+  implemented=$(git log "$range" --format='%s%n%b' 2>/dev/null | grep -oE '\bU[0-9]+\b' | sort -u || true)
+fi
+
+result=$(PLAN="$plan" COVERED="$covered" IMPLEMENTED="$implemented" STATUS="$status" python3 <<'PY'
+import json, os, re
+
+plan = os.environ['PLAN']
+text = open(plan, encoding='utf-8', errors='ignore').read()
+
+# Units and their declared ship scope. `Ship scope:` is what makes
+# partial_expected reachable at all — without a plan-side declaration the outcome
+# could never fire, which would make it decorative.
+units = []
+for m in re.finditer(r'^### (U\d+)\.', text, re.M):
+    uid = m.group(1)
+    block = text[m.end(): text.find('\n### ', m.end()) if '\n### ' in text[m.end():] else len(text)]
+    scope_m = re.search(r'^-\s+\*\*Ship scope:\*\*\s*([a-z_]+)', block, re.M)
+    units.append((uid, (scope_m.group(1) if scope_m else 'in')))
+
+covered = {u for u in os.environ['COVERED'].split() if u}
+implemented = {u for u in os.environ['IMPLEMENTED'].split() if u}
+
+in_scope = [u for u, s in units if s == 'in']
+deferred = [u for u, s in units if s != 'in']
+missing = [u for u in in_scope if u not in covered]
+
+if not units:
+    outcome = 'not_applicable'
+elif not missing:
+    outcome = 'complete'
+elif all(u in implemented for u in missing):
+    # Built, but no review-verdict names it. Needs a trailer, not more code.
+    outcome = 'complete_evidence_missing'
+else:
+    outcome = 'incomplete_unexpected'
+
+# A partial ship is only "expected" when every unit NOT shipping said so. If any
+# in-scope unit is missing, the plan did not intend this shape of ship.
+if outcome == 'complete' and deferred:
+    outcome = 'partial_expected'
+
+print(json.dumps({
+    'outcome': outcome,
+    'plan_path': plan,
+    'plan_status': os.environ['STATUS'],
+    'covered_units': sorted(covered),
+    'missing_units': sorted(missing),
+    'deferred_units': sorted(deferred),
+}, sort_keys=True))
+PY
+)
+emit "$result"

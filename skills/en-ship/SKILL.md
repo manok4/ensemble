@@ -41,9 +41,39 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    - **`--interactive` escape hatch** restores the prior stop-and-ask flow: it re-enables the scope-confirm and plan-completion prompts. (It does **not** prompt for learnings — learning capture is a single checkpoint at `/en-build` completion; `/en-ship` never handles it.)
 
 5. **Lint + typecheck + targeted tests on changed files.**
+
+   **First, ask whether another layer already proved this exact tree.** Run
+   `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" verify --requires lint,typecheck,full_suite --json`.
+   This runs **after** the step-3 base-freshness gate, because that gate is what makes a moved base
+   detectable at all — checking the receipt first would accept one whose base had silently advanced.
+
+   - **Exit 0** → skip lint, typecheck and the targeted tests. Report what was skipped, which checks the
+     receipt covered, how old it is, and who wrote it. A skip nobody can see is indistinguishable from a
+     check that never existed.
+   - **Any non-zero** → run everything, and **surface the refusal reason verbatim** (`fingerprint-mismatch`,
+     `base-moved`, `dependency-changed`, `wrong-repo`, `expired`, `check-not-recorded`, `no-receipt`).
+     A silent re-run teaches nobody why the optimisation did not apply.
+
+   **There is no partial credit.** An invalid receipt means run everything. Do not run "the tests covering
+   what changed", do not keep the lint result and re-run only the suite, and do not reason about which
+   subset might still apply. Selecting a subset from a delta is test-impact analysis, which the tier below
+   shows this project cannot do reliably — and a receipt that silently under-tests is worse than no receipt.
+   The asymmetry is the whole argument: a needless re-run costs minutes, a wrongly-skipped one costs a
+   broken main branch.
+
+   **The secret scan and `git diff --check` always run**, receipt or not. They are cheap, and they ask a
+   question about *this diff* rather than about the tree's tests, so no receipt can answer them.
+
    - Project `lint` command (from `AGENTS.md`).
    - Project `typecheck` command if applicable.
-   - Test files matching changed source files (heuristic: same path with `.test.` / `.spec.` / `_test.` insertion).
+   - **Targeted tests — resolve the set in this fixed order, first match wins:**
+     1. **`test_changed_command:` from `AGENTS.md`**, if the project declares one. It wins outright: the project knows how to select its own tests better than any inference here.
+     2. **The `test_impact:` prefix map from `AGENTS.md`**, mapping source directories to test directories.
+     3. **The sibling-filename heuristic** — same path with `.test.` / `.spec.` / `_test.` inserted. This is the fallback for projects that have declared nothing, so adding the map is additive and never breaks an existing repo.
+
+     **Report why each test was selected** — which rule matched, and for the map, which prefix. A selection nobody can audit is one nobody will notice is wrong.
+
+     **An empty selection is reported as empty, never as a pass.** This is the failure the heuristic caused: in any layout where tests do not sit beside sources — `backend/app/services/` mapping to `backend/tests/services/`, say — it matches nothing, runs nothing, and the step reports success. Zero tests found is a finding about the project's configuration, not a green check.
    - On any failure → stop; surface; offer to run `/en-review` or `/en-qa` to triage.
 6. **Secret scan on diff.** Per `references/secret-patterns.md`. Match against high-confidence regexes + file-name red flags.
    - Match → stop; print offenders; suggest `git restore <file>` or `--allow-secrets` (rare).
@@ -275,6 +305,13 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 
 - `references/conventional-commits.md` — message format
 - `references/secret-patterns.md` — secret-scan regex catalog
+- `references/verification-receipt.md` — what makes a receipt valid, and how a project's own pre-push hook can read one
+
+## Bundled scripts
+
+- `scripts/ensemble-ship-preflight` — returns git, base and staging state as JSON: ahead/behind, whether the branch is published, which of the five staging cases holds, and the in-scope / excluded / untracked file lists. Read-only; it classifies and never stages. A state it cannot resolve (detached HEAD, conflicted tree, unresolvable base) exits non-zero *and* names itself, so a caller cannot proceed by reading the JSON and ignoring the status.
+- `scripts/ensemble-plan-checkpoint` — resolves the plan-completion outcome: `complete`, `partial_expected`, `complete_evidence_missing`, `incomplete_unexpected`, plus `up_to_date` and `not_applicable`. Read-only; `/en-ship` owns the lifecycle flip.
+- `scripts/ensemble-verification-receipt` — records and checks which expensive verifications already passed against this exact working tree, so `/en-ship` and a project's pre-push hook can skip what `/en-build` already proved. Validity is a conjunction: fingerprint, base SHA, dependency hashes, repo path and age must all hold, or the checks run. Run `verify --requires <checks>`; a non-zero exit always carries a reason.
 
 ## Failure protocol
 

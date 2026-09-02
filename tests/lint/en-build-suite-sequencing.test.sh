@@ -85,4 +85,37 @@ else
   fail "foundation must record D53 with its cost"
 fi
 
+# --- 7. the layer that paid for the suite records that it did (EN15 U2) ------
+# Four layers verified the same tree on a measured PR and none could see the
+# others. en-build is the one that pays for the full suite, so it is the one
+# that writes the receipt the others read.
+EN_BUILD_SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
+
+if grep -qF 'ensemble-verification-receipt" write' "$EN_BUILD_SKILL"; then
+  pass "en-build writes a verification receipt"
+else
+  fail "en-build writes a verification receipt"
+fi
+
+# Ordering: the write must come after the suite, not before it. A receipt
+# written first would vouch for a run that had not happened.
+suite_line=$(grep -n 'The full suite, once' "$EN_BUILD_SKILL" | head -1 | cut -d: -f1)
+write_line=$(grep -n 'On success, write a verification receipt' "$EN_BUILD_SKILL" | head -1 | cut -d: -f1)
+commit_line=$(grep -n 'Commit the simplify + review changes' "$EN_BUILD_SKILL" | head -1 | cut -d: -f1)
+if [ -n "$suite_line" ] && [ -n "$write_line" ] && [ -n "$commit_line" ] \
+   && [ "$suite_line" -lt "$write_line" ] && [ "$write_line" -lt "$commit_line" ]; then
+  pass "the receipt is written after the suite and before the commit trailers"
+else
+  fail "the receipt is written after the suite and before the commit trailers" \
+       "suite=$suite_line write=$write_line commit=$commit_line"
+fi
+
+# Two properties that keep the receipt an optimisation rather than a new way to
+# fail a build, and keep "a receipt exists" equivalent to "something passed".
+if grep -qF 'Only on a passing suite, and never fatal' "$EN_BUILD_SKILL"; then
+  pass "the receipt is written only on a pass, and a failed write is not fatal"
+else
+  fail "the receipt is written only on a pass, and a failed write is not fatal"
+fi
+
 report
