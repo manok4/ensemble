@@ -276,6 +276,10 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 - `references/conventional-commits.md` — message format
 - `references/secret-patterns.md` — secret-scan regex catalog
 
+## Bundled scripts
+
+- `scripts/ensemble-verification-receipt` — records and checks which expensive verifications already passed against this exact working tree, so `/en-ship` and a project's pre-push hook can skip what `/en-build` already proved. Validity is a conjunction: fingerprint, base SHA, dependency hashes, repo path and age must all hold, or the checks run. Run `verify --requires <checks>`; a non-zero exit always carries a reason.
+
 ## Failure protocol
 
 | Failure | Behavior |
