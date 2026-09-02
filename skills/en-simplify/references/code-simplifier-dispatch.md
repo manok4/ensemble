@@ -1,146 +1,79 @@
-# Code-simplifier dispatch (D29)
+# Code-simplifier dispatch
 
-How `en-build` invokes the `code-simplifier` agent per unit, and what to do when verification fails.
+How the three reviewers are dispatched, what they receive, and what happens when
+one of them cannot run.
 
-## When to dispatch
+> **This file described a per-unit pass until 2026-09-02.** D29 dispatched the
+> simplifier inside `/en-build`'s unit loop, between two verification gates, once
+> per `U<N>`. **D52 removed that**: the host implements every unit and one
+> branch-level pass runs once in `/en-build`'s post-build phase, over the whole
+> branch diff.
+> The per-unit shape, the `U<N>` prompts and the two-gate diagram are gone
+> because the thing they described is.
 
-After verification gate 1 (unit tests + lint pass) and **before** per-unit Outside Voice peer review, dispatch the simplifier against the unit's diff.
-
-```
-implement → verify gate 1 → SIMPLIFY → verify gate 2 → peer review → host applies findings → commit
-                              ▲
-                          this step
-```
-
-## When to skip
-
-- **Trivial units** — renames, single-line config tweaks, pure deletions, version bumps. The simplifier has nothing to add.
-- **`--no-simplify` flag** on the `/en-build` invocation.
-- **Recovery from a previous simplifier failure** in the same unit (don't run twice).
-- **Generated files** in the diff (the simplifier shouldn't touch them).
-
-Heuristic for "trivial":
-
-- Diff <10 lines added/modified across <3 files.
-- Pure deletions (only `-` lines, no `+` lines).
-- Diff matches `^[\s-]*[a-zA-Z_]+: ` (config-only changes).
-
-When in doubt, **run** — the cost is low and the second verification gate catches breakage.
-
-## What to pass to the simplifier
-
-The simplifier agent (sourced from Anthropic claude-plugins-official) operates on **recently modified code**. Pass:
-
-- The list of files touched by the unit.
-- The unit's `Approach` from the plan (gives the simplifier intent context).
-- The project's `CLAUDE.md` and `AGENTS.md` content (so the simplifier knows the conventions).
-- A reminder to **preserve exact functionality**.
-
-Concrete dispatch (Claude Code; Codex equivalent uses `spawn_agent`):
+## The shape now
 
 ```
-Agent({
-  subagent_type: "code-simplifier",
-  description: "Simplify U<N> diff",
-  prompt: "Simplify the changes for U<N> in <plan-path>.
-
-Files touched:
-  - src/auth/refresh.ts
-  - src/auth/refresh.test.ts
-
-Unit approach: <copy of plan's Approach for U<N>>
-
-Project conventions: see AGENTS.md. Project-specific Claude guidance: see CLAUDE.md.
-
-CRITICAL CONSTRAINTS:
-  - Preserve exact functionality.
-  - Don't introduce new dependencies.
-  - Don't refactor outside the unit's scope.
-  - Don't add features.
-  - Avoid over-simplification (no nested ternaries, no clever-at-cost-of-readable).
-
-Return summary + changes_made[]."
-})
+all units commit → cheap gate (lint + typecheck) → SIMPLIFY → branch review → full suite → commit
+                                                      ▲
+                                                  this pass
 ```
 
-## Verification gate 2 — re-run unit tests after the simplifier
+One pass, one scope: `git diff <merge-base>..HEAD`. `/en-build` skips it entirely
+on a docs-only or trivial branch, so this file no longer carries a triviality
+heuristic — the caller owns that decision, and duplicating it here would let the
+two drift.
 
-The simplifier modifies files directly. **Immediately** after it returns:
+## The reviewers are read-only
 
-1. Run the unit-level tests + project lint.
-2. **If everything passes** → continue to peer review with the simplified diff.
-3. **If anything fails** → revert the simplifier's changes (`git restore` for each file in `changes_made[]`), surface the regression in the unit's progress report, and continue to peer review with the **original** implementation.
+Three dimensions run **concurrently against one working tree**. They return
+findings; the parent applies them at step 5.
 
-```bash
-# Re-run unit tests (project-specific; this is illustrative)
-bun test src/auth/refresh.test.ts || {
-  echo "Simplifier broke tests for U$U_ID — reverting." >&2
-  for file in $simplifier_changed_files; do
-    git restore --staged "$file" 2>/dev/null
-    git restore "$file"
-  done
-  echo "REGRESSION: code-simplifier introduced test failures on U$U_ID; original implementation retained."
-}
-```
+`code-simplifier`'s own description says it may modify files. That is true of it
+in other contexts and must not be true here: three agents editing the same files
+at once is a race whose result depends on scheduling, and the losing edits vanish
+without an error. **State the read-only constraint in each dispatch prompt** —
+do not rely on the agent inferring it from how it was called.
 
-## What the simplifier returns
+## What each reviewer receives
 
-Per `agents/code-simplifier.md`:
+- The resolved scope: the full diff, or the file set.
+- Its dimension's rubric, **passed verbatim**. Read it and pass the text; a rubric
+  re-rendered from memory loses the gating rules that keep the pass
+  behavior-preserving, and those rules are the reason the dimension is safe to run.
+- The project's `CLAUDE.md` and `AGENTS.md` content, so conventions are known.
+- The read-only constraint, and the requirement to preserve exact functionality:
+  same output for every input, same errors, same side effects, same ordering.
 
-```json
-{
-  "summary": "<1-3 sentences on what changed and why>",
-  "changes_made": [
-    {
-      "file": "src/auth/refresh.ts",
-      "change": "Replaced nested ternary with early return for clarity"
-    },
-    {
-      "file": "src/auth/refresh.test.ts",
-      "change": "Renamed test cases to follow project convention (it() → describe → it pattern)"
-    }
-  ]
-}
-```
+## When a dispatch cannot run
 
-The host posts `summary` + `changes_made[]` in the unit's progress report so the user sees what the simplifier did before peer review runs.
+- **Concurrency or active-agent limits are backpressure, not failure.** Leave the
+  reviewer queued and retry once a slot frees. Treating a limit as a failed
+  reviewer silently drops a whole dimension from the pass.
+- **A dispatch that fails for a reason correcting the call will not fix** — no
+  subagent primitive on this host, a persistent error — runs **inline in the
+  parent** using the same rubric, and the substitution is disclosed in one line
+  of the summary. A dimension reviewed inline is weaker than one reviewed in a
+  fresh context; a reader who is not told cannot know which they got.
+- **Proceed only when all three dimensions have an outcome**, whether dispatched
+  or inline. Applying a partial set and reporting it as a pass overstates what
+  was checked.
+
+## When verification fails afterwards
+
+The parent applies findings, then verifies. On a break:
+
+1. Identify which applied fix caused it.
+2. **Revert that specific change**, not the whole pass.
+3. Continue with the rest, and surface the reverted finding in the summary.
+
+Never relax an assertion, weaken a type, or skip a test to make the check pass.
+A simplification that cannot survive the project's own checks is not a
+simplification.
 
 ## Configuration
 
-`~/.ensemble/config.json` keys:
-
-```json
-{
-  "simplifier": {
-    "enabled_default": true,
-    "skip_on_trivial": true,
-    "max_lines_to_run": 2000
-  }
-}
-```
-
-`max_lines_to_run` — if the unit's diff exceeds this, skip the simplifier (defensive; large diffs are rare per-unit and the cost of a botched simplification grows quickly).
-
-## Why two gates around the simplifier
-
-The simplifier is the only agent that **modifies code** (refiner, not reviewer). The two verification gates are the safety contract:
-
-- **Gate 1** (before): the unit must already be correct. The simplifier is for refinement, not for fixing broken code.
-- **Gate 2** (after): the simplifier didn't break anything. If it did, revert and proceed with the original.
-
-Without gate 1, the simplifier can hide bugs behind "cleaner" rewrites. Without gate 2, broken-but-prettier code reaches the peer reviewer and wastes a peer round.
-
-## Failure protocol
-
-| Failure | Behavior |
-|---|---|
-| Simplifier subprocess errors out | Log; surface in progress; proceed with original (no revert needed — nothing was applied) |
-| Simplifier returns empty `changes_made` | Treat as "no improvements found"; continue with original |
-| Simplifier returns malformed JSON | Log; surface; proceed with original |
-| Gate 2 test failure | Revert; surface regression with the failing test name; proceed with original |
-| Gate 2 lint failure | Revert; surface; proceed with original |
-| Multiple consecutive units fail Gate 2 | After 3 in a row, **disable the simplifier for the rest of the run** with a one-line note. Suggests something systemic (project conventions clash with simplifier rules) for a `learn capture` after the build |
-
-## Branch-level invocation (D35)
-
-In the branch-level review model, `en-build` no longer runs the code-simplifier per unit. The post-build phase invokes `/en-simplify` once over the whole branch diff (which itself dispatches the `code-simplifier` agent across reuse/quality/efficiency dimensions and runs scoped verification). The per-unit dispatch + two-gate revert protocol documented above still applies when `/en-simplify` runs its own verification, and remains the contract for any skill that dispatches the simplifier directly.
+`simplifier.enabled_default`, `simplifier.skip_on_trivial` and
+`simplifier.max_lines_to_run` live in `.ensemble/config.local.yaml`. They gate
+whether `/en-build` invokes this pass at all; they do not change what the pass
+does once invoked.
