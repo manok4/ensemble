@@ -58,7 +58,11 @@ has "$S" "do not call \`gh pr create\` again" \
                                           "case: an existing PR is updated"
 
 # The specific commands that caused the incident class.
-if grep -qE 'Never \`git add \.\` or \`git add -A\`' "$S"; then
+# Fixed-string, not a regex. As an ERE this read `Never \`git add ...` — and in
+# GNU grep (which is what CI runs) \` is the "beginning of buffer" anchor, so the
+# pattern could never match mid-line. BSD grep on macOS treats it as a literal
+# backtick, so it passed locally and failed only in CI.
+if grep -qF 'Never `git add .` or `git add -A`' "$S"; then
   pass "bare staging is forbidden by name"
 else
   fail "bare staging must be forbidden by name (git add . / git add -A)"
