@@ -116,6 +116,6 @@ done
 # It is dispatched during research by plan/brainstorm/foundation. Removing
 # en-learn's external modes must not strip the agent from skills that still use it.
 wr=$(ls "$REPO_ROOT"/skills/*/agents/web-research.md 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "$wr" "3" "web-research still carried by the three skills that dispatch it"
+assert_eq "$wr" "2" "web-research still carried by the two skills that dispatch it"
 
 report

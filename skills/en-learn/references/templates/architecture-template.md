@@ -90,7 +90,7 @@ Forbidden cross-cuts:
 
 > **Maintenance.** `en-learn` updates the relevant section after every material structural change ships. `en-sweep` checks this file for drift on every PR merge to `main` and opens fix-up PRs when components, dependencies, or boundaries diverge from the documented state. Cosmetic refactors and pure test additions do not trigger updates.
 >
-> Material changes (per `references/architecture-update-rules.md`):
+> Material changes (per the architecture-update rules `en-learn` and `en-sweep` enforce):
 > - New / removed component, service, module, package
 > - Changed component boundary or layer
 > - New / removed external integration

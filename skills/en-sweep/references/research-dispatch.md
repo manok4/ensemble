@@ -7,7 +7,7 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | Agent | Purpose | Latency | When to dispatch |
 |---|---|---|---|
 | `repo-research` | Scan the codebase for patterns, conventions, file paths, existing implementations | Medium (file reads + grep) | Always for Standard/Deep `en-plan`; always for State-2 `en-foundation` retrofits |
-| `learnings-research` | Query `docs/learnings/` for relevant past terms, decisions, and solutions via `index.md` | Fast | Always for Standard/Deep `en-plan` and `en-foundation` |
+| `learnings-research` | Query `docs/learnings/` for relevant past terms, decisions, and solutions via `index.md` | Fast | Always for Standard/Deep `en-plan` |
 | `web-research` | External docs (Context7) and best-practice search (WebSearch); URL fetch for ingest | High (network) | Only when local context is thin and external prior art would change the recommendation |
 
 ## Dispatch matrix
@@ -20,7 +20,9 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | `en-plan` | Lightweight | optional | **always** | optional |
 | `en-plan` | Standard | **always** | **always** | conditional |
 | `en-plan` | Deep | **always** | **always** | conditional |
-| `en-foundation` | (any) | **always** for retrofits, optional for greenfield | **always** | optional |
+| `en-foundation` | (any) | **always** for retrofits, optional for greenfield | never | optional |
+
+**`en-foundation` dispatches only `repo-research`.** It reads `docs/learnings/index.md` inline during its orient step, for the same reason `en-brainstorm` does: a scout costs a dispatch round-trip to summarise a file the skill can just read. This row said **always** for `learnings-research` until 2026-09-01, while the flow had never dispatched it — the contradiction is what kept 297 lines of agent definition alive in a skill that never called them.
 
 **`en-brainstorm` dispatches no scouts.** It reads `docs/learnings/index.md` and the foundation section-index inline (its bounded existing-context scan) rather than spawning `repo-research` or `learnings-research`. A scout would return a gist for less context, but it costs a dispatch round-trip in a skill whose entire cost profile is round-trips. Only `web-research` is ever dispatched here, and only on request.
 
