@@ -27,6 +27,19 @@ DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's
 [ -n "$DEFAULT" ] || DEFAULT=main
 git rev-parse --verify --quiet "$DEFAULT" >/dev/null 2>&1 || DEFAULT=HEAD
 
+# A unit counts as shipped only when ONE commit carries both the plan id and the
+# U-ID. Matching the U-ID alone is what this check did until 2026-09-02, and every
+# plan starts at U1: EN13 and EN14 had already put `(U1)`, `(U3)` and `(U8)` on the
+# default branch, so a brand-new plan read as fully shipped the moment it was
+# written. `--all-match` turns git's OR of multiple --grep into an AND.
+#
+# The bug survived because docs/plans/active/ was EMPTY on the default branch, so
+# the loop never ran and the check passed vacuously from the day it was written.
+# The self-test below is the fix for that: it proves the matcher can still fire.
+unit_shipped() {  # $1=plan id  $2=U-ID
+  git log "$DEFAULT" --all-match --grep="$1" --grep="($2)" --oneline 2>/dev/null | grep -q .
+}
+
 drifted=""
 checked=0
 for p in "$ACTIVE"/*.md; do
@@ -46,13 +59,32 @@ for p in "$ACTIVE"/*.md; do
 
   unshipped=0
   for u in $units; do
-    git log "$DEFAULT" --grep="($u)" --grep="$u)" --oneline 2>/dev/null | grep -q . || unshipped=$((unshipped + 1))
+    unit_shipped "$id" "$u" || unshipped=$((unshipped + 1))
   done
 
   if [ "$unshipped" -eq 0 ]; then
     drifted="$drifted $id"
   fi
 done
+
+# --- the matcher must be able to fire -----------------------------------------
+# A matcher that never matches makes the loop above pass for any input, which is
+# indistinguishable from "nothing has drifted". Probe it against a plan known to
+# have shipped: EN14 is in completed/ and its units are on the default branch.
+if unit_shipped "EN14" "U1"; then
+  pass "the shipped-unit matcher fires on a known-shipped unit (EN14 U1)"
+else
+  fail "the shipped-unit matcher fires on a known-shipped unit (EN14 U1)" \
+       "it matches nothing, so the drift loop below cannot detect anything"
+fi
+
+# And it must not fire across plans: EN14's U1 must not satisfy another plan's U1.
+if unit_shipped "EN15" "U1"; then
+  fail "the matcher is scoped to its own plan" \
+       "EN15 U1 matched a commit; another plan's U-ID is satisfying it"
+else
+  pass "the matcher is scoped to its own plan"
+fi
 
 if [ -z "$drifted" ]; then
   pass "no plan in active/ has all its units already on $DEFAULT ($checked checked)"
