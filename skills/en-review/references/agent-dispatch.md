@@ -1,41 +1,48 @@
 # Dispatching a bundled agent
 
-How a skill dispatches one of the agents in its own `agents/` directory.
+**Dispatch by name:** `Agent(subagent_type: "<name>", …)`. The host resolves it
+from the registry `./setup` populates from `skills/*/agents/*.md`. In a normal
+install this is the only path.
 
-## The normal path
+**When the name does not resolve** — a lone skill directory, copied in on its own
+with nothing to register it — read `agents/<name>.md` from this skill and dispatch
+a general-purpose agent with that body as its prompt, task appended. Same
+contract, same output shape: it is the file the registry would have used.
 
-Dispatch by name, the way you always have:
+**Only after the named dispatch fails.** Falling back unconditionally would hide
+a broken registry publish behind a path that happens to work. The fallback is
+also why the bundled copies are not decoration — without it, a lone skill
+directory carries agent definitions nothing can reach.
 
-```
-Agent(subagent_type: "<name>", prompt: "…")
-```
+## Which model a bundled agent runs on
 
-The host resolves that name from its flat agent registry, which `./setup`
-populates from `skills/*/agents/*.md`. In a normal install every agent a skill
-carries is registered, and this is the only path you need.
+Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this
+table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites**
+omit any model override so the declaration, not the caller, decides.
 
-## When the name is not registered
+| Tier | For | Ours |
+|---|---|---|
+| `retrieval` | find it, cite it, do not judge it | (none today) |
+| `evidence` | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research` |
+| `ceiling` | output is code, or a judgement the orchestrator would otherwise make itself | `code-simplifier`, `dimension-reviewer` |
 
-A skill directory can arrive on its own: someone copies one skill into a host's
-skills folder, or a converter ships a single skill as an isolated unit. There is
-no host hook that registers an agent in that case, so `subagent_type:
-"<name>"` resolves to nothing.
+**The binding is Claude Code's, and only Claude Code's.** An agent's `model:`
+frontmatter is read by Claude Code's agent loader, which maps the tier to a
+model. `./setup` installs the same agent files into a Codex host too, where that
+field names a model Codex cannot select.
 
-The skill carries the definition, so resolve it yourself:
+**On Codex, take the default model and select nothing.** Not because the field
+happens to be ignored there, but as the policy: Codex's model lineup is its own,
+it moves on its own schedule, and a second mapping to maintain would be a second
+thing to get wrong — D44's lesson about per-CLI literals, arriving by a different
+road. The tier is still worth declaring, because it records which work is cheap
+and which is expensive, and that is true of the agent whichever host runs it.
 
-1. Read `agents/<name>.md` from this skill's directory.
-2. Dispatch a general-purpose agent whose prompt is that file's body, with the
-   task appended.
-3. Treat the result exactly as you would the named agent's — same contract, same
-   output shape. The definition is the same file the registry would have used.
+Never write a concrete model ID in either place. A model ID is a volatile CLI
+literal, and D44 cost a whole plan when one was scattered across nine files.
 
-Do this **only** after the named dispatch fails to resolve. When the agent is
-registered, use the registry: falling back unconditionally would hide a broken
-registry publish behind a path that happens to work.
-
-## Why the copies exist at all
-
-Without the fallback the bundled copies would be decoration — present in the
-folder, read by nothing, since dispatch never consults a skill directory. The
-fallback is what makes a lone skill directory actually able to do its work, and
-it needs nothing outside that directory.
+The line that matters is the first row: an agent that **only retrieves** can run
+cheaper than one that **decides**. `learnings-research` sits above that line and
+arguably belongs below it — but a retrieval agent that starts mis-judging
+`applies_when` fit degrades a plan silently, so move one down on measured
+evidence, not on the shape of its description.

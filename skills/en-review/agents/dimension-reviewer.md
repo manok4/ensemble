@@ -1,7 +1,7 @@
 ---
 name: dimension-reviewer
 description: "Reviews a diff along ONE named review dimension — correctness, testing, maintainability, standards, security, performance, or migrations. The dimension, its focus, and its scope arrive in the prompt; this agent supplies the discipline, not the subject. Read-only. Returns findings JSON per the peer contract. Dispatched in parallel, one instance per dimension, by en-review, en-build, en-plan, en-foundation."
-model: sonnet
+model: opus
 ---
 
 # dimension-reviewer
