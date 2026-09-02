@@ -220,12 +220,16 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     3. **Cancel a stale tick.** Re-check the head SHA captured at step 0. If it moved — a delegate pushed, or someone else did — **this tick's CI results are dead**: discard them and re-poll rather than acting on a status that describes a commit that is no longer the head.
 
     4. **When trusted findings appear, fix locally. Feedback before CI, in that order.**
-       - **Review-thread / comment findings first** — `/en-resolve-pr` addresses each per its 6-verdict rubric.
-       - **Failing checks second** — fetch the failed-job logs (`gh run view --log-failed`) and pass them into `/en-resolve-pr` so it has the actual failure, not just "a check is red."
+       - **Review-thread / comment findings first** — `/en-resolve-pr --orchestrated` addresses each per its 6-verdict rubric.
+       - **Failing checks second** — fetch the failed-job logs (`gh run view --log-failed`) and pass them into `/en-resolve-pr --orchestrated` so it has the actual failure, not just "a check is red."
+
+       **Always pass `--orchestrated`.** It is what tells the delegate a human is not watching: it returns `needs-human` as a result instead of asking a question this loop cannot answer, runs one pass instead of cycling inside a cycle, and refuses to arm auto-merge. Omitting it is how an unattended loop stalls on a question, or spends six rounds while this step counts two.
 
        **The ordering is load-bearing, not stylistic.** A comment pass that pushes invalidates every CI result on the old SHA. Repairing CI first therefore spends a whole cycle on a commit the next push orphans. Only when there are no actionable comments is the current CI failure worth the repair.
 
        **What `/en-resolve-pr` may do on this skill's behalf.** Being invoked here is not itself authorization; it acts under the scope this run holds. **Permitted:** fix, commit, push, reply, resolve threads, on this PR's head. **Excluded:** merge, rebase, force-push, approving checks, and any branch update this loop did not ask for. It may narrow that scope — deferring an item as `needs-human` — but never widen it. If resolving something would require an excluded action, it comes back as `needs-human` instead of being done.
+
+       The delegate states the same bound from its own side, so neither skill is the only place it is written down.
 
        **en-ship edits nothing here itself.** Fixing is delegated; a watcher that also patches code is two skills in a trench coat, and the seam is where the authority bound lives.
 
