@@ -67,6 +67,15 @@ for p in "$ACTIVE"/*.md; do
   fi
 done
 
+# A shallow clone has no history to match against, so every unit reads as
+# unshipped and the whole check is vacuous. Say so and stop, rather than passing
+# quietly — a checkout without history cannot answer this question, and pretending
+# otherwise is how the check went unexercised for its whole life the first time.
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+  pass "skipped: shallow clone has no history to check drift against"
+  report
+fi
+
 # --- the matcher must be able to fire -----------------------------------------
 # A matcher that never matches makes the loop above pass for any input, which is
 # indistinguishable from "nothing has drifted". Probe it against a plan known to
