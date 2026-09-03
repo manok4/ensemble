@@ -58,6 +58,7 @@ Otherwise `false` — **fail closed**. Specifically, any of these forces `false`
 | `uncounted-files` | `UNCOUNTED_FILES > 0` |
 | `risk-signal` | `RISK_SIGNALS` non-empty |
 | `conditional-persona:<names>` | (caller-added, en-review) a conditional review persona fired independently; `<names>` is the alphabetically-sorted `+`-joined persona list, e.g. `conditional-persona:performance+security` |
+| `no-persona-roster` | (caller-added, en-review) the run has no host persona roster to collapse, because `--peer` (the default) dispatches the peer alone. Reported rather than ignored so a `--lite` that did nothing says so |
 
 When multiple conditions fail, report all of them, deduplicated, in the fixed table order above, comma+space separated — one deterministic encoding so equivalent runs produce identical output.
 

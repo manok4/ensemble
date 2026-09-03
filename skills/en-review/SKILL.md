@@ -33,7 +33,6 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    | Condition | `peer` | `reason` |
    |---|---|---|
    | `PEER_MODE=cross-agent` AND mode is `interactive`/`headless` | `on` | `default-on` (or `explicit-flag` if `--peer` was passed) |
-   | `--no-peer` passed | `off` | `no-peer-flag` |
    | `--host` passed | `off` | `host-only-mode` |
    | mode is `report-only` | `off` | `report-only-mode` |
    | `ENSEMBLE_PEER_REVIEW=true` | `off` | `recursion-guard` |
@@ -77,7 +76,11 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` and `bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
 7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
 
-   **Peer-only short-circuit (`--peer-only`).** If `--peer-only` is set, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** — the sole reviewer is the cross-agent Outside Voice peer (step 9). This is the mode `/en-build`'s post-build phase uses: the host implemented the code, so review must come from the *other* agent, with no host-side personas. `--peer-only` and `--lite` are mutually exclusive (lite is a host-persona roster; peer-only has no host personas) — if both are passed, `--peer-only` wins. Proceed directly to step 9.
+   **Peer-sole short-circuit (`--peer`, the default).** Unless `--cross` or `--host` was passed, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** and proceed directly to step 9, where the cross-agent Outside Voice peer is the sole reviewer. This is also what `/en-build`'s post-build phase relies on: the host implemented the code, so the review must come from the *other* agent.
+
+   This block said `--peer-only` until 2026-09-03. That flag was renamed to `--peer` on 2026-09-01 and made the default; the short-circuit is therefore the ordinary path, not an opt-in, and the sentence describing it as one read as though the persona roster ran by default. It does not.
+
+   **`--lite` does nothing under `--peer`.** It collapses the *host persona roster*, and this mode runs no personas. That used to be a rare collision between two opt-ins; with `--peer` as the default it is what happens to anyone who passes `--lite` alone. Do not silently ignore it: report `lite_gate: overridden (no-persona-roster)` so the run says the flag had no effect, and pair `--lite` with `--host` or `--cross` to get the collapsed roster. The reason id is the existing `overridden` shape rather than a fourth outcome, so the three-value enum and the JSON envelope are unchanged.
 
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
@@ -116,8 +119,8 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - Build the prompt: `$SKILL_DIR/scripts/ensemble-build-peer-prompt --artifact-type code --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"`.
    - Translate the tier resolved in step 2b: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. **Do not restate the retry algorithm here** — the helper owns invocation, classification, the single bounded retry that drops only the rejected fragment, and the fallback, so the behavior is executable and testable rather than prose (EN11-PR-006). It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
-   - **Default (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10.
-   - **`--peer-only`** (sole reviewer): the peer's findings ARE the envelope; no reconciliation is needed. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
+   - **`--peer` (the default), sole reviewer:** the peer's findings ARE the envelope; no reconciliation is needed.
+   - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. This bullet was labelled "Default" until 2026-09-03, which had the two modes exactly backwards: `--cross` is the thorough opt-in, and the default is peer-sole. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
 9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
@@ -266,8 +269,8 @@ review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto
 - `references/finding-schema.md` — JSON shape
 - `references/severity.md` — autofix routing
 - `references/severity-and-routing.md` — alias
-- `references/outside-voice.md` — peer-review prompt (when `--peer` / `--peer-only`)
-- `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` / `--peer-only`
+- `references/outside-voice.md` — peer-review prompt (used by `--peer` and `--cross`)
+- `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` and `--cross`
 - `references/single-agent-fallback.md` — fallback when only one CLI is installed
 - `references/recursion-guard.md`
 

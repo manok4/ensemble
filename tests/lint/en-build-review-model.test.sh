@@ -106,9 +106,9 @@ else
   fail "step 10.5 must still fail on a missing or failed branch review under --require-simplify"
 fi
 if grep -qiE "skip persona detection and dispatch|sole reviewer.*peer|peer.*sole reviewer" "$EN_REVIEW"; then
-  pass "en-review --peer-only still skips host personas (peer is sole reviewer)"
+  pass "en-review still has a peer-sole mode that skips host personas (--peer, the default)"
 else
-  fail "en-review --peer-only must skip host personas"
+  fail "en-review must keep a peer-sole mode that skips host personas"
 fi
 # the peer machinery lives in en-review (build-peer-prompt referenced there)
 if grep -qF "ensemble-build-peer-prompt" "$EN_REVIEW"; then
