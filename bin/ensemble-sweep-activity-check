@@ -43,9 +43,22 @@ if [ "$MANUAL" = "true" ]; then
   exit 0
 fi
 
-# Sweep's commit-message patterns. These are the same patterns Guard 1 in the
-# old event-driven workflow used to identify sweep-authored commits.
-SWEEP_PATTERN='^chore\((sweep|arch|plans|learnings|maps|docs)\):'
+# Sweep's commit-message scopes. Every scope here must be one sweep authors and
+# a human would not, because the gate reads a match as "sweep wrote this" in two
+# places: picking LAST_SWEEP_SHA, and subtracting via --invert-grep. Both errors
+# push the same way, toward skipping the cycle.
+#
+# `docs` was in this list until 2026-09-03 and collided with humans. A repo whose
+# only new commit was `chore(docs): fix a typo` got should-run=false: the commit
+# was chosen as the last sweep AND excluded from the count. That is the
+# green-but-inert failure this project already shipped once (FR01 U11), reached
+# by a different route. Sweep's lint batch now authors `chore(sweep):` instead
+# (see references/sweep-checks.md, PR batching), so no scope is shared.
+#
+# Repos with pre-2026-09-03 history carry `chore(docs):` sweep commits that this
+# pattern no longer recognises. Those cycles run when they might have skipped,
+# which is the safe direction.
+SWEEP_PATTERN='^chore\((sweep|arch|plans|learnings|maps)\):'
 
 if ! command -v git >/dev/null 2>&1; then
   echo "should-run=true"

@@ -119,7 +119,9 @@ learnings_cross_project: false
 #   # tweak after install — re-running /en-setup respects the schedule already
 #   # in the workflow unless you explicitly opt to regenerate.
 #   schedule: weekly                     # daily | weekly | monthly | <cron expression>
-#   ci_timeout_minutes: 30
+#   # The CI timeout is NOT set here. It is `timeout-minutes:` in
+#   # .github/workflows/en-sweep.yml. A `ci_timeout_minutes` key sat in this
+#   # block until 2026-09-03 with nothing substituting it into the workflow.
 #   max_prs_per_run: 6
 #   # Dead-code + dep-vuln continuous monitoring.
 #   continuous_monitoring:
