@@ -34,6 +34,17 @@ for f in skills/*/SKILL.md; do
   # only the first reported en-build's own 4a/9a/9d as dangling.
   defined=$( { grep -oE '^[[:space:]]*[0-9]+[a-z]?\. \*\*' "$f" | grep -oE '[0-9]+[a-z]?'
                grep -oE '\*\*[0-9]+[a-z]?\.' "$f" | grep -oE '[0-9]+[a-z]?'
+               # A numbered heading: /en-flow writes its four stages as
+               # `### 3. Plan`. Added 2026-09-03, when that skill stopped
+               # carrying two numbering schemes at once and its own citations
+               # were reported dangling against steps it plainly defines.
+               #
+               # Two or more hashes, never one. A single `#` also starts a
+               # shell comment, and host-detect.md's fenced snippet numbers its
+               # branches `# 1. Identify HOST`. Counting those would invent
+               # steps 1-3 in seven files and let a genuinely dangling citation
+               # pass, which is the direction that costs something.
+               grep -oE '^#{2,} [0-9]+[a-z]?\. ' "$f" | grep -oE '[0-9]+[a-z]?'
              } | sort -u )
   [ -n "$defined" ] || continue
 
