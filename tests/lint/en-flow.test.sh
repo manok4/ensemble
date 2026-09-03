@@ -26,10 +26,10 @@ else
 fi
 
 # --- stage order: plan -> build -> learn -> ship ---
-plan_l=$(grep -n "Stage 1 — Plan" "$FLOW" | head -1 | cut -d: -f1)
-build_l=$(grep -n "Stage 2 — Build" "$FLOW" | head -1 | cut -d: -f1)
-learn_l=$(grep -n "Stage 3 — Learn" "$FLOW" | head -1 | cut -d: -f1)
-ship_l=$(grep -n "Stage 4 — Ship" "$FLOW" | head -1 | cut -d: -f1)
+plan_l=$(grep -n '^### 3\. Plan' "$FLOW" | head -1 | cut -d: -f1)
+build_l=$(grep -n '^### 4\. Build' "$FLOW" | head -1 | cut -d: -f1)
+learn_l=$(grep -n '^### 5\. Learn' "$FLOW" | head -1 | cut -d: -f1)
+ship_l=$(grep -n '^### 6\. Ship' "$FLOW" | head -1 | cut -d: -f1)
 if [ -n "$plan_l" ] && [ -n "$build_l" ] && [ -n "$learn_l" ] && [ -n "$ship_l" ] \
    && [ "$plan_l" -lt "$build_l" ] && [ "$build_l" -lt "$learn_l" ] && [ "$learn_l" -lt "$ship_l" ]; then
   pass "stages ordered plan → build → learn → ship"

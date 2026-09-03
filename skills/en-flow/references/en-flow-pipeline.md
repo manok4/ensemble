@@ -20,7 +20,7 @@ The `/en-flow` orchestrator (`disable-model-invocation: true`) chains the lifecy
                                     watch loop            (bounded 2 cycles, then escalate)
                  │
                  ▼
-             <promise>DONE</promise>
+              terminal report
 ```
 
 ## Artifact contracts
