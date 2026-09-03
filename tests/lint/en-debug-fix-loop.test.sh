@@ -66,4 +66,62 @@ else
   fail "reference must document anti-patterns + smart escalation"
 fi
 
+# --- convergent vs divergent (2026-09-02) ------------------------------------
+# The skill had zero occurrences of this idea. A red test may be asserting the
+# guarantee the change broke on purpose; "fixing" it deletes that guarantee.
+DS="$REPO_ROOT/skills/en-debug/SKILL.md"
+dhas() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "not in $(basename "$1")"; }
+
+dhas "$DS" "convergent or divergent"       "the fix is classified before it is applied"
+dhas "$DS" "is never applied here"         "a divergent fix is surfaced, not applied"
+dhas "$DS" "may be asserting the behavior that is correct" \
+                                           "a failing test may be the one that is right"
+dhas "$DS" "treat it as divergent"         "ambiguity resolves toward not applying"
+
+# --- findings before the gate: ordering is the whole point -------------------
+dhas "$DS" "before the question opens"     "the findings block precedes the question"
+dhas "$DS" "Naming the options is not presenting the findings" \
+                                           "listing options does not count as presenting"
+findings=$(grep -n "Write that block in full" "$DS" | head -1 | cut -d: -f1)
+gate=$(grep -n "offer a \*\*blocking choice\*\*" "$DS" | head -1 | cut -d: -f1)
+if [ -n "$findings" ] && [ -n "$gate" ] && [ "$findings" -lt "$gate" ]; then
+  pass "the presentation rule is stated before the gate it governs"
+else
+  fail "the presentation rule is stated before the gate it governs" "rule=$findings gate=$gate"
+fi
+
+# --- pre-fix scope record ----------------------------------------------------
+dhas "$DS" "Record the pre-fix scope first" "the pre-fix scope is recorded before editing"
+dhas "$DS" "cannot be reconstructed"        "the reason it must be recorded first is given"
+
+# --- investigation techniques ------------------------------------------------
+dhas "$DS" "instrument the boundaries before theorising" \
+                                            "boundaries are instrumented before hypotheses"
+# A bare "which" was the first draft here — a word this file contains a dozen
+# times over, which would have passed for any input.
+dhas "$DS" "Run once to find out"           "the instrumentation runs once, to locate the seam"
+dhas "$DS" "hour in the wrong one"          "the cost of theorising first is named"
+dhas "$DS" "Find something that works, and diff it" \
+                                            "a working analogue is compared"
+dhas "$DS" "that can't matter"              "the filtering instinct is named as the hazard"
+dhas "$DS" "not a fourth hypothesis"        "three failed fixes is an architecture signal"
+
+# --- the agent that was never dispatched stays gone --------------------------
+[ -e "$REPO_ROOT/skills/en-debug/agents/learnings-research.md" ] \
+  && fail "en-debug carries no learnings scout" \
+  || pass "en-debug carries no learnings scout"
+
+# ...but the scout it DOES dispatch, and the protocol that scout follows, stay.
+# Removing research-dispatch.md was this pass's first attempt and it was wrong:
+# repo-research follows its evidence-dossier protocol.
+for keep in agents/repo-research.md references/research-dispatch.md; do
+  [ -e "$REPO_ROOT/skills/en-debug/$keep" ] \
+    && pass "en-debug still carries $keep" \
+    || fail "en-debug still carries $keep" "repo-research depends on the dossier protocol"
+done
+grep -qE '^\| .en-debug. \| \(any\) \| fallback only' \
+  "$REPO_ROOT/skills/en-debug/references/research-dispatch.md" \
+  && pass "the dispatch matrix has en-debug's row" \
+  || fail "the dispatch matrix has en-debug's row"
+
 report

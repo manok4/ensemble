@@ -11,6 +11,8 @@ description: "Reproduce a bug from telemetry. Reads structured logs from the con
 
 Telemetry-driven debugging. Takes an error message, trace ID, or log excerpt; reads logs from the project's configured source; correlates entries; surfaces a hypothesis pointing at specific source code.
 
+> **This skill is invoked by a person, not by another skill.** Nothing in Ensemble drives it: `/en-ship` routes a failing check to `/en-resolve-pr`, and `/en-build` hands off rather than calling in. So the blocking choice in code mode is **deliberate, not an oversight** — there is always someone to answer it. If a caller is ever wired in, that gate is the first thing that needs a non-blocking path, and this line is where to start.
+
 > **Read-only by default.** The skill defaults to diagnosis. It writes code only on the **code-mode fix path**, and only after the user explicitly chooses "Fix it now" — never silently.
 
 ## Modes
@@ -33,6 +35,8 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
 | (none) | **Tail mode** — read the last 200 log lines; ask the user which event is interesting |
 
 ## Process
+
+1. **Resolve context.** The argument and its shape (per the table above), the branch and its base, and which mode this run is in. Mode is decided here, once: telemetry if the argument is log-anchored and `observability:` is configured, code mode otherwise. Later steps read that decision rather than re-deriving it.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit.
 3. **Read observability config** from `.ensemble/config.local.yaml` `observability:` block.
@@ -121,14 +125,26 @@ When there's no usable telemetry, run a systematic diagnosis loop adapted from c
 2. **Investigate.**
    - **Reproduce** — run the test / trigger the error / follow the repro steps. If it doesn't reproduce after 2–3 tries, read `references/debug-investigation.md` for intermittent-bug techniques.
    - **Verify environment sanity** — right branch, deps installed, expected runtime, env vars present, no stale build artifacts.
-   - **Trace the code path** — read the stack bottom-to-top; find the first frame where input is already invalid; instrument boundaries with *observed* values (not assumed); walk until valid input becomes invalid output. Check `git log --oneline -10 -- <file>` for recent changes; `git bisect` for regressions.
+   - **Trace the code path** — read the stack bottom-to-top; find the first frame where input is already invalid; walk until valid input becomes invalid output. Check `git log --oneline -10 -- <file>` for recent changes; `git bisect` for regressions.
+   - **Across components, instrument the boundaries before theorising.** When the failure crosses a seam — CI to build to signing, API to service to database, worker to queue — log what *enters* each component and what *leaves* it, and confirm config and environment actually propagated. Run once to find out **which** boundary breaks, then investigate that component. This is the same correlation telemetry mode does across spans, done by hand when no telemetry exists; guessing which layer is at fault before the data says so is how a session spends an hour in the wrong one.
+   - **Find something that works, and diff it.** Locate similar code in this codebase that does the analogous thing correctly, then list *every* difference — imports, config, ordering, types, error handling. Do not filter the list by what seems relevant: "that can't matter" is the judgement that hides the cause, and the whole value of the comparison is that it does not require a theory first.
 3. **Root cause.** Run an **assumption audit** (list "this must be true" beliefs; mark verified vs assumed — assumptions are the top source of stuck debugging). Form hypotheses ranked by likelihood, each with: what's wrong + where (`file:line`), **at least one concrete grounding observation** (a runtime value, a log line, a behavior delta — not "X seems off"), the causal chain, and **for uncertain links, a prediction** (something in another path that must also be true). **Causal-chain gate:** do not proceed to a fix until the full chain has no gaps. If a prediction was wrong but a fix "works," you found a symptom, not the cause. **Smart escalation:** after 2–3 exhausted hypotheses, diagnose *why* (hypotheses span subsystems → design problem, suggest `/en-brainstorm`; evidence contradicts → wrong mental model; works-locally-fails-in-CI → environment).
 
-   Present the root cause (causal chain + `file:line`), the proposed fix, the tests to add, and whether existing tests should have caught it. Then offer a **blocking choice** (use `AskUserQuestion` in Claude Code / `request_user_input` in Codex):
+   **Is the fix convergent or divergent?** A **convergent** fix restores behavior everyone agrees is correct. A **divergent** one would reverse a deliberate decision — a contract, a product choice, an intentional behavior change — and **is never applied here**; it is surfaced as a decision for the user, whatever the argument was.
+
+   The case that catches people: **a failing test may be asserting the behavior that is correct.** A test that fails because the change deliberately reversed what it asserts does not have a wrong expectation — it is doing its job, and "fixing" it deletes a guarantee someone wrote on purpose. Before changing any assertion, establish which side of that line you are on. When it is genuinely unclear, treat it as divergent: the cost of asking is a question, the cost of guessing wrong is a silently removed invariant.
+
+   Present the root cause (causal chain + `file:line`), the proposed fix, the tests to add, and whether existing tests should have caught it. **Write that block in full before the question opens** — in this turn or the immediately preceding message. A blocking question tool renders only its own stem on a modal surface, so a question fired on "root cause confirmed" leaves the user choosing with none of the causal chain in front of them. **Naming the options is not presenting the findings**, and a promise to explain after the choice is too late — by then they have already chosen.
+
+   Then offer a **blocking choice** (use `AskUserQuestion` in Claude Code / `request_user_input` in Codex):
    1. **Fix it now** → step 4.
    2. **Diagnosis only — I'll take it from here** → skip to Handoff; end.
    3. **Rethink the design (`/en-brainstorm`)** → only when the root cause is a design problem (wrong responsibility/boundary, incomplete requirements, every fix is a workaround).
-4. **Fix (only if chosen).** **Workspace & branch check first:** if uncommitted work would be overwritten, confirm; if on the default branch, offer to create a feature branch (default yes). Then **test-first:** write a failing test capturing the bug → verify it fails for the right reason → implement the minimal root-cause fix (no drive-by refactors) → verify it passes → run the broader suite for regressions → self-review the diff. **On a failed fix:** return to step 3 and *explicitly invalidate* the current hypothesis before forming a new one (no retry-variants spiral). 3 failed attempts → smart escalation.
+4. **Fix (only if chosen).** **Record the pre-fix scope first**, before touching anything: current `HEAD`, whether `git status --short` was clean, and every file that already carried edits. Then keep a running list of **fix-owned files** as you work. Afterwards this record is the only way to tell your changes from the user's — it cannot be reconstructed once both are in the tree, and the handoff at step 5 depends on the distinction.
+
+   **Workspace & branch check:** if uncommitted work would be overwritten, confirm; if on the default branch, offer to create a feature branch (default yes). Then **test-first:** write a failing test capturing the bug → verify it fails for the right reason → implement the minimal root-cause fix (no drive-by refactors) → verify it passes → run the broader suite for regressions → self-review the diff. **On a failed fix:** return to step 3 and *explicitly invalidate* the current hypothesis before forming a new one (no retry-variants spiral).
+
+   **Three failed fixes is not a fourth hypothesis — it is a signal about the design.** The tell is the shape of the failures, not their number: each fix reveals new coupling somewhere else, or needs a large refactor to land, or creates a fresh symptom elsewhere. That pattern means the architecture is wrong, not the theory. Stop and say so rather than attempting a fourth; a wrong architecture absorbs fixes indefinitely without ever being fixed.
 5. **Handoff.** Write a structured summary: Problem / Root Cause (causal chain + `file:line`) / Recommended Tests / Fix (or "diagnosis only") / Prevention / Confidence. If a fix landed, suggest `/en-ship`. If the bug exposed a recurring pattern (3+ locations, or a wrong assumption about a shared dependency), offer `/en-learn capture`.
 
 ## What this skill never does

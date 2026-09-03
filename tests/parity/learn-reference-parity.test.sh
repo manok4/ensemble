@@ -26,6 +26,9 @@ TEST_NAME="learn reference parity"
 # Expected carrier counts. A drop here is a deletion nobody meant; a rise is a
 # new carrier that must be added deliberately, with its declaration.
 #
+# 6 -> 5 on 2026-09-02: en-debug carried a copy nothing dispatched. A telemetry
+# hypothesis is anchored in the log line in front of it, not in prior write-ups,
+# and its SKILL.md named the agent zero times.
 # learnings-research went 4 -> 12 on 2026-08-29: every skill that DISPATCHES an
 # agent must carry it, since a skill installs alone and cannot reach another
 # skill's directory. See TD9.
@@ -62,7 +65,7 @@ done <<'CARRIERS'
 references/learn-lint.md|2
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
-agents/learnings-research.md|6
+agents/learnings-research.md|5
 CARRIERS
 
 # The retired taxonomy must not creep back in through any carrier. Character
