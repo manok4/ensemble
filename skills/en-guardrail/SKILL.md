@@ -12,6 +12,8 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 
 ## Process (when invoked manually)
 
+1. **Resolve the skill directory** so the bundled scripts can be run and the installed hook compared against them. Nothing else here needs resolving: the guardrail has no modes, no peer, and no host branch — the same three scripts do the same thing wherever it runs.
+
 2. **Status check.** Verify the hook is registered in `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `bin/check-guardrail.sh`). If missing, surface the install snippet (see "Installation" below) and stop.
 3. **Show protected patterns** — render the table from "What's protected" below.
 4. **Show recent fires** if `~/.ensemble/analytics/guardrail.jsonl` exists — last 10 lines, summarized as `pattern × count × repo`.
@@ -120,14 +122,24 @@ The `${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}` expansion lets you move the Ense
 
 ## How it works
 
-`bin/check-guardrail.sh` reads the tool-input JSON on stdin, extracts `tool_input.command`, normalizes case, and matches against the destructive-pattern catalog. On match, it returns `{"permissionDecision": "ask", "message": "[guardrail] <reason>"}` — Claude pauses and prompts the user. On no match (or safe-exception hit), it returns `{}` — Claude proceeds normally.
+Two scripts, and the split is the whole design.
+
+**`bin/check-guardrail.sh` is a thin wrapper** — about fifty lines, and **zero pattern matching**. It reads the tool-input JSON on stdin, honours the human bypass, calls the analyzer, and writes the output envelope plus analytics. On a destructive verdict it returns `{"permissionDecision": "ask", "message": "[guardrail] <reason>"}` and Claude prompts; otherwise `{}` and Claude proceeds.
+
+**`bin/guardrail_analyze.py` does all the deciding** — every pattern, the shell tokenisation (`shlex`), the structural parse of connection targets, and the statement-scope SQL analysis shared by the Bash and MCP paths.
+
+**The split exists because bash-regex parsing was bypassable.** EN09 found six classes it could not handle: `rm` option ordering, compound commands, quoted redirection, spoofable `localhost` substrings, quoted or aliased `UPDATE` tables, and SQL piped through wrappers. A regex over a command string cannot tokenise, and each of those is a way to look different while doing the same thing. Proper parsing is not a refinement here; it is the reason the guard holds.
+
+**Fail closed.** If the analyzer cannot run at all, the wrapper prompts rather than allowing — an unavailable analyzer must never read as a safe command.
 
 The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffected.
 
 ## Reference files
 
-- `bin/check-guardrail.sh` — the hook script (canonical source).
-- Upstream: `gstack/careful` — the original this is vendored from. To pull updates, diff against the upstream and selectively re-apply.
+- `bin/check-guardrail.sh` — the hook entry point: stdin, bypass, output envelope, analytics. Carries no patterns.
+- `bin/guardrail_analyze.py` — **the analyzer, and where every pattern lives.** Shell tokenisation, connection-target parsing, statement-scope SQL analysis, shared by the Bash and MCP paths. Change behaviour here.
+- `bin/install-guardrail` — registers and reports both `PreToolUse` matchers; `status`, `install-project`, `install-global`.
+- Upstream: `gstack/careful` — the original the wrapper was vendored from. The analyzer is Ensemble's own (EN09) and has no upstream to diff against.
 
 ## Failure protocol
 
@@ -135,6 +147,6 @@ The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffec
 |---|---|
 | `~/.claude/settings.json` lacks the `PreToolUse` registration | `/en-guardrail` surfaces the install snippet and exits non-zero — guardrail is **not** active |
 | Hook script missing or unreadable | Claude Code's hook runner skips it silently — surface a warning when `/en-guardrail` runs |
-| Pattern false positive (legitimate command flagged) | Override the prompt manually; if it recurs, tighten the regex in `bin/check-guardrail.sh` |
-| Pattern false negative (destructive command not flagged) | Open a tech-debt entry; add the pattern. Do **not** widen the safe-exceptions list reactively |
+| Pattern false positive (legitimate command flagged) | Override the prompt manually. If it recurs, narrow the rule in **`bin/guardrail_analyze.py`** — that is where every pattern lives. **Never add matching to `check-guardrail.sh`:** it is a wrapper with no regex by design, and a bash regex over a command string is what EN09 removed because it could not tokenise. Add a failing fixture to `tests/en-guardrail/` first. |
+| Pattern false negative (destructive command not flagged) | Open a tech-debt entry, add a fixture that reproduces it, then add the pattern in **`bin/guardrail_analyze.py`**. Do **not** widen the safe-exceptions list reactively — an exemption added to silence one command is a hole for every command that resembles it. |
 | `ENSEMBLE_GUARDRAIL_BYPASS=on` set in the launch environment | `/en-guardrail` warns that the bypass is active session-wide; suggest `unset ENSEMBLE_GUARDRAIL_BYPASS` and relaunch |
