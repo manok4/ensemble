@@ -73,19 +73,60 @@ else
 fi
 
 # --- Catalog header count + en-loop in the orthogonal list ------------------
-# Fifteen -> Fourteen on 2026-09-01: en-cross-review merged into /en-review as
-# its --peer mode (D54). The count is asserted rather than ignored because it is
-# the cheapest way to notice a skill added or removed without the catalog moving.--
-if grep -qiE "Fourteen skills total" "$FOUNDATION"; then
-  pass "§5 header states fourteen skills"
+# The count is worth asserting: it is the cheapest way to notice a skill added
+# or removed without the catalog moving. It was asserted as the literal word
+# "Fourteen" until 2026-09-03, which is the opposite of that. en-flow and
+# en-simplify had been added, both with 5.1 rows, and the sentence still said
+# fourteen; the guard did not notice, and anyone correcting the number would
+# have been failed by it. A count pinned to a word only ever tests that nobody
+# fixed it.
+#
+# So: derive from skills/ and compare. NUM spells the digits out because the
+# sentence does, and a mismatch names both sides rather than just going red.
+n=$(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+case "$n" in
+  12) word="Twelve" ;;  13) word="Thirteen" ;;  14) word="Fourteen" ;;
+  15) word="Fifteen" ;; 16) word="Sixteen" ;;   17) word="Seventeen" ;;
+  18) word="Eighteen" ;; 19) word="Nineteen" ;; 20) word="Twenty" ;;
+  *)  word="" ;;
+esac
+
+intro=$(grep -iE '^[A-Z][a-z]+ skills total:' "$FOUNDATION" | head -1)
+if [ -z "$intro" ]; then
+  fail "§5 must open with a '<N> skills total:' line" "no such line"
+elif [ -z "$word" ]; then
+  fail "extend the number-word table in this test" "skills/ holds $n directories"
+elif [ "${intro%% skills total:*}" = "$word" ]; then
+  pass "§5 header count matches the $n directories in skills/"
 else
-  fail "§5 header must state fourteen skills"
+  fail "§5 header count is stale" "says '${intro%% skills total:*}', skills/ holds $n ($word)"
 fi
-# en-loop listed among the orthogonal skills in the §5 intro line
-if grep -E "Fourteen skills total" "$FOUNDATION" | grep -qF "en-loop"; then
-  pass "§5 intro lists en-loop among the orthogonal skills"
-else
-  fail "§5 intro must list en-loop among the orthogonal skills"
-fi
+
+# Every skill directory must appear in that same sentence. This is what the
+# literal-word check could not do: en-flow and en-simplify were missing from the
+# list for as long as the count was wrong, and both facts had one cause.
+missing=""
+for d in "$REPO_ROOT"/skills/*/; do
+  name=$(basename "$d")
+  short=${name#en-}
+  case "$intro" in *"$name"*|*"$short"*) ;; *) missing="$missing $name" ;; esac
+done
+[ -z "$missing" ] \
+  && pass "§5 intro names every skill in skills/" \
+  || fail "§5 intro omits a skill that exists" "$missing"
+
+# en-loop specifically, since this file is en-loop's foundation guard.
+case "$intro" in
+  *en-loop*) pass "§5 intro lists en-loop among the orthogonal skills" ;;
+  *) fail "§5 intro must list en-loop among the orthogonal skills" ;;
+esac
+
+# The 5.1 table numbers its rows; the numbers must run 1..N with no gap. They
+# ran 1..17 across 16 rows until 2026-09-03, skipping 11 where a retired skill
+# had been.
+nums=$(grep -oE '^\| [0-9]+ \| `en-[a-z-]+`' "$FOUNDATION" | grep -oE '[0-9]+' | tr '\n' ' ')
+expect=""; i=1
+for _ in $nums; do expect="$expect$i "; i=$((i+1)); done
+assert_eq "$nums" "$expect" "the 5.1 table numbers its rows 1..N with no gap"
 
 report

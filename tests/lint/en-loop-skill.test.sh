@@ -165,6 +165,58 @@ else
   fail "must distinguish gnhf pass-through vs en-loop-owned flags and own --max-runtime via timeout/gtimeout"
 fi
 
+# --- WHICH side each flag sits on -------------------------------------------
+# The assertion above checks the section exists and uses the right vocabulary.
+# It passed while --max-iterations was filed as a gnhf pass-through, which is
+# the one placement with a consequence: gnhf's own --max-iterations carries the
+# PER-CHUNK cap (= --review-every), so forwarding the user's overall cap runs
+# the whole budget as a single chunk and no checkpoint review ever fires. That
+# is half of what en-loop adds over a bare gnhf run, lost silently.
+#
+# Read from the flags table, one row per flag, rather than by splitting the
+# ownership sentence. The first draft of this guard parsed that sentence and
+# fired the wrong assertion when the defect was reintroduced: it happened to go
+# red, but through a fallback in the string surgery rather than the check that
+# was supposed to catch it. A row is structure; a sentence is prose.
+row_owner() {  # $1=flag -> "en-loop" | "gnhf" | "" (absent/unlabelled)
+  local line
+  line=$(grep -F "| \`$1" "$SKILL" | head -1)
+  case "$line" in
+    *'**en-loop-owned.**'*)      printf 'en-loop' ;;
+    *'**gnhf pass-through.**'*)  printf 'gnhf' ;;
+  esac
+}
+
+# Every flag the table lists must declare a side. An unlabelled row is how the
+# ambiguity started.
+for f in "--objective" "--stop-when" "--max-iterations" "--max-tokens" "--max-runtime" \
+         "--worktree" "--push" "--agent" "--review-every" "--mode"; do
+  o=$(row_owner "$f")
+  [ -n "$o" ] || fail "every flags-table row declares its owner" "$f is unlabelled or missing"
+done
+
+for f in "--objective" "--stop-when" "--review-every" "--mode" "--max-iterations" "--max-runtime"; do
+  assert_eq "$(row_owner "$f")" "en-loop" "$f is en-loop-owned, not forwarded to gnhf"
+done
+for f in "--max-tokens" "--worktree" "--push" "--agent"; do
+  assert_eq "$(row_owner "$f")" "gnhf" "$f is a gnhf pass-through"
+done
+
+# The consequence has to be written down, not just the placement. A reader who
+# knows only that the flag is "en-loop-owned" still does not know that gnhf
+# receives --review-every in its place.
+said_it=0
+while IFS= read -r line; do
+  case "$line" in
+    *gnhf*--review-every*|*--review-every*gnhf*) said_it=1; break ;;
+  esac
+done < "$SKILL"
+if [ "$said_it" -eq 1 ]; then
+  pass "one sentence names gnhf and --review-every together (what the engine is capped at)"
+else
+  fail "must say what gnhf's own --max-iterations receives instead of the overall cap"
+fi
+
 # --- Guardrail coverage is conditional: claude worker covered, codex/other not ---
 if grep -qiE "[Gg]uardrail coverage is conditional|covers.*only.*claude worker|only for a .+claude.+ worker|only when the worker runtime honors" "$SKILL" \
    && grep -qiE "covered by the Claude hook" "$SKILL"; then
