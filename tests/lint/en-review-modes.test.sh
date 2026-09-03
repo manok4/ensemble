@@ -93,4 +93,36 @@ done
   && pass "the retired flag spellings are gone from the table" \
   || fail "a retired flag spelling is back" "$back"
 
+# --- 5a. and gone from the STEPS, not just the table ------------------------
+# The check above scanned only the flags table, and the retired spelling
+# survived in the steps for three days short of a month: step 7's short-circuit
+# was headed "Peer-only short-circuit (--peer-only)", step 9 labelled the
+# --cross behaviour "Default" and the actual default "--peer-only", and two
+# Reference-files entries carried it. A flag absent from its own table but
+# instructed on in the flow is worse than one that is merely stale: the reader
+# looks for it, does not find it, and has to guess which half is current.
+#
+# Historical prose is allowed and wanted — it is how a reader learns the
+# spelling changed — so a line is exempt when it dates or names the change.
+HIST='until 202[0-9]|former|renamed|supersed|was the mode|replaced by|no longer'
+live=""
+for gone in "--no-peer" "--peer-only"; do
+  hits=$(grep -nF -- "$gone" "$SKILL" | grep -vE "$HIST" || true)
+  [ -n "$hits" ] && live="$live $gone:$(printf '%s' "$hits" | cut -d: -f1 | tr '\n' ',')"
+done
+[ -z "$live" ] \
+  && pass "no step instructs on a retired flag spelling" \
+  || fail "a retired flag spelling is instructed on outside the table" "$live"
+
+# The replacement has to be stated where the reader meets it: --peer is the
+# default and it is peer-sole, --cross is the opt-in that adds personas. Step 9
+# had these two exactly backwards, which no table check could see.
+if grep -qE '\*\*`--peer` \(the default\), sole reviewer' "$SKILL" \
+   && grep -qE '\*\*`--cross` \(personas \+ peer\)' "$SKILL"; then
+  pass "step 9 attributes sole-reviewer to --peer and personas+peer to --cross"
+else
+  fail "step 9 must attribute sole-reviewer to --peer (the default) and personas+peer to --cross" \
+       "these were labelled the other way round until 2026-09-04"
+fi
+
 report
