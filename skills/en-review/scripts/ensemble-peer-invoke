@@ -30,9 +30,9 @@
 # review. zsh sets $0 to the sourced file, bash does not, so the fallback covers
 # sourced and executed under both shells.
 _epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-# shellcheck source=bin/ensemble-cli-smoke
+# shellcheck source=$SKILL_DIR/scripts/ensemble-cli-smoke
 . "$_epi_dir/ensemble-cli-smoke"
-# shellcheck source=bin/ensemble-extract-json
+# shellcheck source=$SKILL_DIR/scripts/ensemble-extract-json
 . "$_epi_dir/ensemble-extract-json"
 
 # Split a flag fragment into argv under a CONTROLLED IFS with globbing off.

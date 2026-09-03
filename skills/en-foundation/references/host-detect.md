@@ -49,7 +49,7 @@ When a skill needs to invoke one of these, it references the variable name, not 
 
 ## Bash detection snippet
 
-The canonical bash that `bin/ensemble-detect-host` runs and that every cross-host skill loads. Sources `~/.ensemble/config.json` for the override, falls through every detection branch, and prints the resolved variables.
+The canonical bash that `$SKILL_DIR/scripts/ensemble-detect-host` runs and that every cross-host skill loads. Sources `~/.ensemble/config.json` for the override, falls through every detection branch, and prints the resolved variables.
 
 ```bash
 #!/usr/bin/env bash
@@ -159,7 +159,7 @@ See `references/recursion-guard.md` for the full contract.
 
 ## Performance: detection cache and recursion-guard short-circuit
 
-`bin/ensemble-detect-host` has two performance fast-paths so skills don't pay full detection cost on every invocation:
+`$SKILL_DIR/scripts/ensemble-detect-host` has two performance fast-paths so skills don't pay full detection cost on every invocation:
 
 1. **Recursion-guard short-circuit.** When `ENSEMBLE_PEER_REVIEW=true`, the script emits `PEER_AVAILABLE=false` and exits immediately without doing any detection work. (The calling skill would short-circuit anyway; this just avoids the wasted bash.)
 2. **Session cache.** Detection results are written to `$HOME/.ensemble/host-cache.env` with a 1-hour TTL (configurable via `ENSEMBLE_DETECT_CACHE_TTL_MIN`). The first invocation in a session populates the cache; subsequent invocations within the TTL read from it (~6× faster: ~50ms → ~8ms wall time).
@@ -174,6 +174,6 @@ Cache controls:
 | `ENSEMBLE_DETECT_CACHE_TTL_MIN=<minutes>` | Override TTL (default 60) |
 | Delete `$HOME/.ensemble/host-cache.env` | Force re-detection on next invocation |
 
-The cache is invalidated automatically when the file's mtime exceeds the TTL. Skills don't need to manage the cache themselves — they invoke `bin/ensemble-detect-host` as before, and the script handles caching transparently.
+The cache is invalidated automatically when the file's mtime exceeds the TTL. Skills don't need to manage the cache themselves — they invoke `$SKILL_DIR/scripts/ensemble-detect-host` as before, and the script handles caching transparently.
 
 **When to bypass cache:** if the user installs/uninstalls a CLI mid-session, or changes `~/.ensemble/config.json`, the cache will lag until TTL expiry. Either delete the file or pass `--no-cache` for one invocation to refresh it.

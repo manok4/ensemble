@@ -72,7 +72,7 @@ Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: security ..." }
 // Plus learnings-research in the same parallel batch
 Agent({ subagent_type: "learnings-research", ... })
 // Plus the cross-agent peer, concurrently — NOT serialized after the roster:
-bin/ensemble-peer-invoke --peer-cmd "$PEER_CMD" ...
+$SKILL_DIR/scripts/ensemble-peer-invoke --peer-cmd "$PEER_CMD" ...
 ```
 
 In Codex: equivalent `spawn_agent` calls in a batch.
@@ -81,7 +81,7 @@ In Codex: equivalent `spawn_agent` calls in a batch.
 
 The concurrency is therefore **licensed by the blind-peer invariant**, not by convenience. Any change that feeds persona findings to the peer must re-serialize this batch.
 
-**Peer failure inside the batch** does not discard persona results. The peer's own degradation path (one bounded retry, then persona-only fallback) is handled by `bin/ensemble-peer-invoke` and recorded in `peer_decision.reason`; already-returned persona findings are still synthesized and reported. A review whose peer failed is a review with `peer: "off"` and a recorded reason, never a failed review.
+**Peer failure inside the batch** does not discard persona results. The peer's own degradation path (one bounded retry, then persona-only fallback) is handled by `$SKILL_DIR/scripts/ensemble-peer-invoke` and recorded in `peer_decision.reason`; already-returned persona findings are still synthesized and reported. A review whose peer failed is a review with `peer: "off"` and a recorded reason, never a failed review.
 
 ## Synthesis
 
@@ -178,7 +178,7 @@ It does **NOT** read the host persona findings. This is a deliberate, load-beari
 - **Independence is what makes overlap mean anything.** Anchoring the peer on host findings turns independent discovery into confirmation, and the `corroborated` bucket would then measure suggestibility rather than agreement.
 - **It licenses concurrent dispatch.** Because the peer needs nothing from the persona batch, `/en-review` fires it in the *same* parallel batch as the personas instead of serializing after it.
 
-An earlier version of this file described the peer as receiving the host roster's output for confirmation. That behavior was never implemented: `bin/ensemble-build-peer-prompt` has no flag for it and `/en-review` never passed them. The **implementation was right and the prose was wrong**, so the prose was corrected rather than the feature built.
+An earlier version of this file described the peer as receiving the host roster's output for confirmation. That behavior was never implemented: `$SKILL_DIR/scripts/ensemble-build-peer-prompt` has no flag for it and `/en-review` never passed them. The **implementation was right and the prose was wrong**, so the prose was corrected rather than the feature built.
 
 Any future change that feeds persona findings to the peer must also re-serialize step 8 and re-derive the corroboration weighting, because both depend on this invariant.
 

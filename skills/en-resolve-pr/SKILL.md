@@ -7,6 +7,8 @@ disable-model-invocation: true
 
 # `/en-resolve-pr`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. A bare `scripts/<name>` resolves against the user's project, not this directory, and exits 127.
+
 Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `/en-review` (pre-PR self-review) and `/en-ship` (commit + open PR).
 
 > **Invocation model.** Manual. Run after reviewers (humans, the Anthropic Code Review action, CodeRabbit, Codex, etc.) have left comments. The skill iterates up to 2 cycles per invocation; after that, recurring issues escalate to the user as a "deeper pattern here" item rather than looping forever.
@@ -41,8 +43,8 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    - **Who invoked this run.** `--orchestrated` means another skill is driving (today, `/en-ship`'s watch loop). Absent it, a human is at the keyboard. This single fact changes four behaviours below — escalation, cycling, auto-merge, and blocking — so resolve it first and state it in the summary. Getting it wrong in the unattended direction is the expensive error: it stalls a loop nobody is watching.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit — peer subprocesses don't run this skill.
-3. **Resolve PR number.** No arg → `gh pr view --json number -q .number`. URL → parse owner/repo/PR + comment ID; use `scripts/get-thread-for-comment` to map to a thread.
-4. **Fetch comments.** Run `scripts/get-pr-comments <PR>`. Returns three buckets plus a `cross_invocation` envelope:
+3. **Resolve PR number.** No arg → `gh pr view --json number -q .number`. URL → parse owner/repo/PR + comment ID; use `$SKILL_DIR/scripts/get-thread-for-comment` to map to a thread.
+4. **Fetch comments.** Run `$SKILL_DIR/scripts/get-pr-comments <PR>`. Returns three buckets plus a `cross_invocation` envelope:
    - `review_threads` — unresolved inline threads (with `isOutdated` flag)
    - `pr_comments` — top-level PR conversation comments (excludes PR author + CI bots)
    - `review_bodies` — review submissions with non-empty body text
@@ -75,18 +77,18 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    - Commit message: `fix(review): address PR review feedback (#<PR>)` with a bullet list summarizing each addressed item.
    - `git push`.
 10. **Reply and resolve** per feedback type:
-    - **review_thread:** reply via `scripts/reply-to-pr-thread <thread-id>` (body on stdin); for verdicts other than `needs-human`, also `scripts/resolve-pr-thread <thread-id>`.
+    - **review_thread:** reply via `$SKILL_DIR/scripts/reply-to-pr-thread <thread-id>` (body on stdin); for verdicts other than `needs-human`, also `$SKILL_DIR/scripts/resolve-pr-thread <thread-id>`.
     - **pr_comment / review_body:** no resolve API; reply with `gh pr comment <PR> --body "..."`. Quote the original passage in the reply for continuity.
 
     **Reply format** is verdict-specific — see `references/resolve-pr-reply-format.md`. Every reply leads with `> [quoted excerpt]`.
-11. **Verify.** Re-fetch via `scripts/get-pr-comments`. Empty → done. Threads remain:
+11. **Verify.** Re-fetch via `$SKILL_DIR/scripts/get-pr-comments`. Empty → done. Threads remain:
     - **`--orchestrated`: do not cycle at all.** Return after one pass with whatever remains. The caller holds the retry budget, and nesting one here multiplies it: `/en-ship` allows 2 repair cycles, and three internal passes inside each would be six rounds of fix-and-push while the caller believed it had spent two. Budgets that compound are budgets nobody can reason about.
     - **Cycle 1 or 2** (this is the 2nd or 3rd run within the same `/en-resolve-pr` invocation): repeat from step 5.
     - **Convergence, not just count.** Before spending another cycle, ask whether the feedback is *converging*: are there fewer unresolved threads than last pass, and are the new ones different concerns rather than the same one restated? If the count is flat or rising, or the same area keeps producing threads, stop early and escalate **one approach-level `needs-human`** instead of fixing nit after nit. Round three on a converging PR is fine; round two on a diverging one is already waste, and the counter alone cannot tell them apart.
     - **Cycle 3** would begin: stop. Surface remaining items to the user as a recurring pattern: *"Multiple rounds of feedback on `<area>` suggest a deeper issue. Here's what's been addressed and what keeps appearing."* Use `needs-human` escalation; leave threads open.
 12. **Capture-from-synthesis (D21 reflex).** If a `declined` or `needs-human` finding exposed a real anti-pattern not yet in `docs/learnings/`, soft-prompt: *"Reviewer flagged a recurring concern in `<thread>`. Capture as a learning?"* On user accept → invoke `/en-learn capture --from-conversation`.
 13. **Tech-debt routing.** If a `replied` verdict acknowledged something legitimate but out-of-PR-scope, file as a `TD<N>` entry in `docs/plans/tech-debt-tracker.md` and reference it in the reply: *"Filing as TD<N> for follow-up — out of scope for this PR."*
-14. **Merge readiness check.** Run `scripts/check-merge-status <PR>`. The output reports:
+14. **Merge readiness check.** Run `$SKILL_DIR/scripts/check-merge-status <PR>`. The output reports:
     - `repo_allows_auto_merge` — does the repo's settings allow auto-merge?
     - `auto_merge_enabled` — is auto-merge currently enabled on this PR?
     - `merge_state_status` — `CLEAN` (ready to merge), `BLOCKED` (required review/check missing), `BEHIND` (needs rebase), `DIRTY` (conflicts), `UNKNOWN`.
@@ -178,11 +180,11 @@ This skill does **not** at v1:
 
 ## Reference files
 
-- `scripts/get-pr-comments` — GraphQL fetch of all four feedback buckets + cross-invocation context. **Fully cursor-paginated** (reviewThreads / comments / reviews) so multi-page PRs aren't silently truncated past page 1 (issue #798).
-- `scripts/get-thread-for-comment` — maps a comment node ID to its parent thread (targeted mode)
-- `scripts/reply-to-pr-thread` — GraphQL `addPullRequestReviewThreadReply` wrapper; body via stdin
-- `scripts/resolve-pr-thread` — GraphQL `resolveReviewThread` wrapper
-- `scripts/check-merge-status` — auto-merge + merge-readiness reporting (PR-level + repo-level)
+- `$SKILL_DIR/scripts/get-pr-comments` — GraphQL fetch of all four feedback buckets + cross-invocation context. **Fully cursor-paginated** (reviewThreads / comments / reviews) so multi-page PRs aren't silently truncated past page 1 (issue #798).
+- `$SKILL_DIR/scripts/get-thread-for-comment` — maps a comment node ID to its parent thread (targeted mode)
+- `$SKILL_DIR/scripts/reply-to-pr-thread` — GraphQL `addPullRequestReviewThreadReply` wrapper; body via stdin
+- `$SKILL_DIR/scripts/resolve-pr-thread` — GraphQL `resolveReviewThread` wrapper
+- `$SKILL_DIR/scripts/check-merge-status` — auto-merge + merge-readiness reporting (PR-level + repo-level)
 - `references/resolve-pr-triage.md` — new vs already-handled vs silent-drop rules
 - `references/resolve-pr-rubric.md` — 4-question rubric driving the 6 verdicts
 - `references/resolve-pr-reply-format.md` — reply templates and quoting rules

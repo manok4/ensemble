@@ -27,7 +27,7 @@ The peer's JSON response carries `peer_mode: "cross-agent" | "single-agent-fallb
 
 ## The Outside Voice prompt template
 
-Composed by the host and passed to the peer subprocess. The placeholders below use **shell-style `$VAR` syntax** so they round-trip cleanly through the helper's HEREDOC (`bin/ensemble-build-peer-prompt`) AND through `envsubst` if a caller wants to template the file directly. The helper is the canonical path because it also handles the conditional blocks (single-agent fallback note, plan-specific review dimensions); raw `envsubst` would require the caller to set those conditionals manually.
+Composed by the host and passed to the peer subprocess. The placeholders below use **shell-style `$VAR` syntax** so they round-trip cleanly through the helper's HEREDOC (`$SKILL_DIR/scripts/ensemble-build-peer-prompt`) AND through `envsubst` if a caller wants to template the file directly. The helper is the canonical path because it also handles the conditional blocks (single-agent fallback note, plan-specific review dimensions); raw `envsubst` would require the caller to set those conditionals manually.
 
 ```text
 Peer review of a $ARTIFACT_TYPE. You are the REPORTER, not the fixer:
@@ -60,7 +60,7 @@ Rules:
 
 ### Variable contract
 
-These shell variables are what `bin/ensemble-build-peer-prompt` populates inside its HEREDOC; they're also what `envsubst` would read if a caller wanted to template the file directly:
+These shell variables are what `$SKILL_DIR/scripts/ensemble-build-peer-prompt` populates inside its HEREDOC; they're also what `envsubst` would read if a caller wanted to template the file directly:
 
 | Variable | Source | Required |
 |---|---|---|
@@ -192,14 +192,14 @@ For re-review iterations (the `/en-plan` finalize loop or `/en-build`'s
 per-unit finalize loop), build the "## Previous review context" section
 into a tempfile and pass `--iteration-context-file <path>`. The helper
 inserts it between the artifact body and the JSON-shape instructions;
-see `bin/ensemble-build-peer-prompt --help` for full args.
+see `$SKILL_DIR/scripts/ensemble-build-peer-prompt --help` for full args.
 
 ### Anti-patterns (do not use)
 
 ```bash
 # WRONG — argv-inlined large prompt, produced the silent-hang failure
 # mode in the field:
-prompt=$(bin/ensemble-build-peer-prompt ...)
+prompt=$($SKILL_DIR/scripts/ensemble-build-peer-prompt ...)
 $PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"
 
 # WRONG — --bare bypasses subscription auth; fails with

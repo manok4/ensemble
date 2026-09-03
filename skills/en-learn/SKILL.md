@@ -6,6 +6,8 @@ description: "Capture durable learnings into the repo's knowledge store. Trigger
 
 # `/en-learn`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. A bare `scripts/<name>` resolves against the user's project, not this directory, and exits 127.
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -70,7 +72,7 @@ After every write:
 
    **Report the outcome even when nothing qualified.** "No new terms" is a result; silence is indistinguishable from having skipped the step. Do not invent a term to have something to report — the bar is that a new engineer would need it defined.
 
-10. **Ground every artifact this run wrote — run `scripts/ensemble-validate-claims` on each, and read `references/grounding-validation.md`.** Usually one file; a run that also accreted a term (step 10) has two, and both are checked before either is indexed. The artifact is about to become knowledge future agents act on without re-verifying. Check it before that happens, not after someone follows a dead reference.
+10. **Ground every artifact this run wrote — run `$SKILL_DIR/scripts/ensemble-validate-claims` on each, and read `references/grounding-validation.md`.** Usually one file; a run that also accreted a term (step 10) has two, and both are checked before either is indexed. The artifact is about to become knowledge future agents act on without re-verifying. Check it before that happens, not after someone follows a dead reference.
 
    Exit **0** clean, **1** findings to adjudicate, **2** the validator could not run. **Adjudicate, never auto-apply:** a solution doc legitimately cites a path the fix deleted or describes a pre-fix state.
 
@@ -107,7 +109,7 @@ After every write:
 Audit *content* staleness — distinct from `--lint`, which audits structure. Run
 periodically (~monthly) or after a big architectural shift.
 
-**1. Ground the store first.** Run `scripts/ensemble-validate-claims` over every
+**1. Ground the store first.** Run `$SKILL_DIR/scripts/ensemble-validate-claims` over every
 artifact. An entry citing three paths that no longer resolve is *evidence* of
 staleness; reading it and judging is opinion. Lead with what the validator found,
 then judge what it cannot see.

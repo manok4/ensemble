@@ -12,7 +12,7 @@
 #                       [--peer-cmd <cmd>] [--model-alias <alias>]
 #
 # Emits two shell-escaped, eval-able lines using the same contract as
-# bin/ensemble-detect-host:
+# $SKILL_DIR/scripts/ensemble-detect-host:
 #
 #   claude peer:  PEER_MODEL='--model sonnet'
 #                 PEER_EFFORT='--effort medium'
@@ -63,7 +63,7 @@ if [ -z "$PEER_CMD_IN" ]; then
 fi
 if [ -z "$PEER_CMD_IN" ]; then
   # ${BASH_SOURCE[0]:-$0}: BASH_SOURCE is bash-only; zsh sets $0 to the sourced
-  # file. Same portability contract as bin/ensemble-peer-invoke.
+  # file. Same portability contract as $SKILL_DIR/scripts/ensemble-peer-invoke.
   _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
   if [ -x "$_self_dir/ensemble-detect-host" ]; then
     PEER_CMD_IN=$("$_self_dir/ensemble-detect-host" 2>/dev/null \
@@ -71,7 +71,7 @@ if [ -z "$PEER_CMD_IN" ]; then
   fi
 fi
 
-# Same shell-escape contract as bin/ensemble-detect-host, so consumers can
+# Same shell-escape contract as $SKILL_DIR/scripts/ensemble-detect-host, so consumers can
 # `eval` both emissions identically.
 shellesc() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"
