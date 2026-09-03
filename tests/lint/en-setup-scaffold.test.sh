@@ -102,4 +102,54 @@ flat "$SKILL" | grep -qi 'do not re-prompt\|Do not re-prompt' \
   && pass "a recorded decline is not re-prompted" \
   || fail "a recorded decline is not re-prompted"
 
+# --- payload: en-setup dispatches nothing (2026-09-02) -----------------------
+# It carried repo-research, learnings-research and the dispatch matrix it has no
+# row in, and its SKILL.md named neither agent. Fifth instance of this defect.
+ES="$REPO_ROOT/skills/en-setup/SKILL.md"
+for gone in agents references/research-dispatch.md references/agent-dispatch.md \
+            references/host-detect.md scripts/ensemble-detect-host references/recursion-guard.md; do
+  [ -e "$REPO_ROOT/skills/en-setup/$gone" ] \
+    && fail "en-setup no longer carries $gone" \
+    || pass "en-setup no longer carries $gone"
+done
+
+# HOST was set at step 1 and read nowhere. If a use appears, the detection has to
+# come back with it — so this fails rather than letting the variable be used unset.
+# The sigil form only. Without it this matched the sentence explaining that the
+# variables are gone — the rule forbidding its own explanation, the same shape
+# the harness hash guard had. A use is `$PEER_AVAILABLE`; a mention is not.
+if grep -qE '\$HOST\b|\$PEER_AVAILABLE\b' "$ES"; then
+  fail "en-setup uses no host variable" "a use returned without the detection that sets it"
+else
+  pass "en-setup uses no host variable"
+fi
+grep -qF "read neither" "$ES" \
+  && pass "the skill records why it carries no host detection" \
+  || fail "the skill records why it carries no host detection"
+
+# --- step citations: the off-by-one class a general guard cannot see ---------
+# intra-file-step-citations catches a citation to a step that does not exist. It
+# cannot catch a citation naming a real but WRONG step — five of those survived
+# here because "step 13" resolves fine when 14 was meant. Each is pinned to the
+# artifact its step actually installs.
+cites() {  # $1=artifact substring  $2=expected step number
+  line=$(grep -F -- "$1" "$ES" | grep -oE 'step [0-9]+' | head -1)
+  if [ "$line" = "step $2" ]; then
+    pass "$1 cites step $2"
+  else
+    fail "$1 cites step $2" "found '$line'"
+  fi
+}
+cites "claude-code-review.yml\` (step" 14
+cites "REVIEW.md\` (step" 16
+cites "guardrail PreToolUse hook (step" 13
+cites ".ensemble/config.local.yaml\` (step" 12
+
+# The step that installs the bin scripts must not cite itself, which it did.
+if grep -qF "en-sweep workflow in step 11" "$ES"; then
+  pass "the bin-script step cites the workflow step, not itself"
+else
+  fail "the bin-script step cites the workflow step, not itself"
+fi
+
 report

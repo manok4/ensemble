@@ -10,9 +10,6 @@ disable-model-invocation: true
 > **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
 
 
-> **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
-
-
 Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./setup` script (machine-level install).
 
 > **Hard rule:** This skill is mechanical setup work. **No code review, no peer cross-review, no implementation.** Off-loads anything ambiguous to `/en-brainstorm`, `/en-foundation`, or `/en-plan`.
@@ -24,8 +21,8 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md` (in plugin) or run `$SKILL_DIR/scripts/ensemble-detect-host`. Set `HOST`, `PEER_AVAILABLE`, etc.
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note (this skill should never be peer-invoked).
+1. **Confirm this is a git repository** and resolve the repo root. Nothing here needs host detection: this skill writes the same `AGENTS.md` and `CLAUDE.md` on either host, offers the same guardrail, and invokes no peer — it set `HOST` and `PEER_AVAILABLE` for years and read neither.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with a note — this skill should never be peer-invoked. It only reads that variable; it never sets it and never invokes a peer, so it carries none of the protocol for doing so.
 3. **Detect state** per `references/setup-state-detection.md`:
    - State 1 — Greenfield (empty repo or initial-commit, no `docs/foundation.md`).
    - State 2 — Existing project, no Ensemble (source code present, foundation or learnings missing). Identify sub-variant 2a/2b/2c/2d by which of `AGENTS.md`/`CLAUDE.md` exist.
@@ -123,7 +120,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Optionally `docs/learnings/archive/` — ask the user.
 
    This step is verified again in the final-verification phase (step 18). Both checks must pass.
-10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 10 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 11 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
    - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
    - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
@@ -143,7 +140,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 11. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`.
 
     **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the workflow as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
- Depends on step 9 — the workflow won't function without those bin scripts.
+ Depends on step 10 — the workflow won't function without those bin scripts.
     1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
     2. **Map to cron.** Named values map to:
        - `daily` → `0 9 * * *`
@@ -167,6 +164,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `s` → record in the report; don't ask again this session.
 
     Idempotent — if the status check reports any scope active, skip the prompt and note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
+13a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` uses the `gnhf` CLI (an agent-agnostic autonomous-loop engine) for bounded, overnight, objective-driven loops. Detect it with `command -v gnhf`. If absent, offer (optional, never blocking):
+    > "`/en-loop` uses the `gnhf` CLI for bounded autonomous loops. Install now? (`npm i -g gnhf`) (`y` / `n`)
+    > gnhf is agent-agnostic and only needed for `/en-loop` — every other Ensemble skill works without it."
+
+    On `y` → run `npm i -g gnhf`; surface the result (and any npm error verbatim). On `n` → record in the report; skip. **Never a hard gate** — gnhf is optional, so declining (or a failed npm install) does not fail setup.
+
+    Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence and skip the prompt.
 14. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
     > "Anthropic's Claude Code Review GitHub Action isn't installed. It runs Claude on every PR and posts inline review comments — these are exactly what `/en-resolve-pr` is built to handle. Install? (`y` / `n`)
     > Auth options:
@@ -177,13 +181,6 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `n` → record in the report; skip.
 
     Idempotent — if the workflow already exists, note it and don't overwrite.
-13a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` uses the `gnhf` CLI (an agent-agnostic autonomous-loop engine) for bounded, overnight, objective-driven loops. Detect it with `command -v gnhf`. If absent, offer (optional, never blocking):
-    > "`/en-loop` uses the `gnhf` CLI for bounded autonomous loops. Install now? (`npm i -g gnhf`) (`y` / `n`)
-    > gnhf is agent-agnostic and only needed for `/en-loop` — every other Ensemble skill works without it."
-
-    On `y` → run `npm i -g gnhf`; surface the result (and any npm error verbatim). On `n` → record in the report; skip. **Never a hard gate** — gnhf is optional, so declining (or a failed npm install) does not fail setup.
-
-    Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence and skip the prompt.
 15. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
     - `true` → record 🟢 "Auto-merge enabled at repo level."
     - `false` or empty → surface advisory (not blocking):
@@ -235,10 +232,10 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     - `.github/workflows/ensemble-lint.yml` (opt-in). A PR check running `bin/ensemble-lint --scope docs/` on changes to `docs/`, `AGENTS.md` or `CLAUDE.md`. Template at `references/templates/github-workflow-ensemble-lint.yml`. Narrower than the sweep — it reports on a pull request rather than running on a schedule or opening one — so offer it separately. A decline records `lint_ci.enabled: false`.
     - `.github/workflows/en-sweep.yml` (step 11 opt-in). **A decline is recorded, never silent.** Write `sweep.enabled: false` to `.ensemble/config.local.yaml` and report the workflow as *declined*, not *missing*. Re-offering an install the operator deliberately refused is how a verification report trains them to skim it — the same reason `--no-simplify` records `not_applicable` with a reason instead of leaving a hole.
 
-    - `.github/workflows/claude-code-review.yml` (step 13 opt-in)
-    - `REVIEW.md` (step 15 opt-in)
-    - `.claude/settings.json` with guardrail PreToolUse hook (step 12 opt-in)
-    - `.ensemble/config.local.yaml` (step 11 opt-in)
+    - `.github/workflows/claude-code-review.yml` (step 14 opt-in)
+    - `REVIEW.md` (step 16 opt-in)
+    - `.claude/settings.json` with guardrail PreToolUse hook (step 13 opt-in)
+    - `.ensemble/config.local.yaml` (step 12 opt-in)
 
     **Environment dependencies** (advisory; surface 🟡 in report, do NOT block install):
 
@@ -392,7 +389,6 @@ Next step:
 - `references/templates/config-local-example.yaml` — committed config template
 - `references/learn-index-format.md` — `learnings/index.md` empty-state seed
 - `references/learn-log-format.md` — `learnings/log.md` empty-state seed
-- `references/host-detect.md` — host detection (used briefly at start)
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
 - `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
 - `scripts/check-health` — diagnostic runner (State 3)
