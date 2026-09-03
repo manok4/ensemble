@@ -291,4 +291,91 @@ else
 fi
 rm -rf "$CRTMP"
 
+# =============================================================================
+# EN09 bypass-class regression suite
+# =============================================================================
+# check-guardrail.sh's own header names six classes that bash-regex parsing
+# could not handle, and that moving the logic into guardrail_analyze.py fixed:
+#
+#   rm option ordering · compound commands · quoted redirection ·
+#   spoofable localhost substrings · quoted/aliased UPDATE tables ·
+#   SQL piped through wrappers
+#
+# Until now the suite tested canonical forms — `rm -rf /tmp/foo`,
+# `git push --force`. Those pass whether or not the parsing is real. Each class
+# below is a way to look different while doing the same thing, so each gets a
+# fixture: a refactor of the analyzer that reopened any one of them would
+# otherwise land green.
+#
+# These were confirmed passing against the analyzer as it stands. They are
+# recorded here so that stays true, not to describe a fix still to make.
+
+# --- class 1: rm option ordering ---------------------------------------------
+# A regex anchored on the literal "-rf" misses four of these five.
+check "EN09-B1 rm -rf"                    ask "rm -rf /var/data"
+check "EN09-B1 rm -fr (reversed)"         ask "rm -fr /var/data"
+check "EN09-B1 rm -r -f (split)"          ask "rm -r -f /var/data"
+check "EN09-B1 rm -f -r (split, other order)" ask "rm -f -r /var/data"
+check "EN09-B1 rm --recursive --force"    ask "rm --recursive --force /var/data"
+
+# --- class 2: compound commands ----------------------------------------------
+# The destructive verb is not the first word, so a command-prefix match misses it.
+check "EN09-B2 && chain"                  ask "ls && rm -rf /var/data"
+check "EN09-B2 ; sequence"                ask "echo hi; rm -rf /var/data"
+check "EN09-B2 || fallback"               ask "true || rm -rf /var/data"
+check "EN09-B2 cd then delete"            ask "cd /tmp && rm -rf /var/data"
+
+# --- class 3: the artifact exemption is a positive allowlist -----------------
+# The exemption is the most dangerous rule in the file: a "safe" artifact name
+# must never greenlight a delete outside the tree. Only a plain in-tree relative
+# path may pass, so every escape shape gets a fixture.
+check "EN09-B3 in-tree node_modules"      allow "rm -rf node_modules"
+check "EN09-B3 in-tree ./dist"            allow "rm -rf ./dist"
+check "EN09-B3 absolute /dist"            ask   "rm -rf /dist"
+check "EN09-B3 home ~/dist"               ask   "rm -rf ~/dist"
+check "EN09-B3 \$HOME/dist"               ask   "rm -rf \$HOME/dist"
+check "EN09-B3 \${HOME}/dist"             ask   "rm -rf \${HOME}/dist"
+check "EN09-B3 parent-escaping ../dist"   ask   "rm -rf ../dist"
+check "EN09-B3 command-substituted pwd"   ask   "rm -rf \$(pwd)/dist"
+check "EN09-B3 glob /*"                   ask   "rm -rf /*"
+
+# --- class 4: localhost cannot be spoofed from SQL text ----------------------
+# The exemption is decided from the connection target, never from the statement.
+# A remote host stays remote however the SQL is worded.
+check "EN09-B4 keywords in a trailing comment" ask \
+  "psql -h prod.example.com -d app -c \"DROP TABLE users -- localhost test\""
+check "EN09-B4 keywords in the table name"     ask \
+  "psql -h prod -d app -c 'DROP TABLE localhost_test'"
+check "EN09-B4 test db name on a remote host"  ask \
+  "psql -h staging-db -d test_app -c 'DROP TABLE users'"
+# ...and a genuinely local target still exempts, or the rule is just "always ask".
+check "EN09-B4 real localhost + test db"       allow \
+  "psql -h localhost -d test_app -c 'DROP TABLE users'"
+check "EN09-B4 real 127.0.0.1 + _test db"      allow \
+  "psql postgresql://app@127.0.0.1/myapp_test -c 'TRUNCATE orders'"
+
+# --- class 5: UPDATE scope is structural, not textual ------------------------
+# A WHERE inside a subquery does not scope the UPDATE, and a WHERE inside a
+# comment does not exist. Both need parsing; neither survives substring search.
+check "EN09-B5 unscoped UPDATE"           ask   "psql -h prod -c 'UPDATE users SET active=false'"
+# Both directions, because depth is the whole point. A WHERE at depth 0 scopes
+# the UPDATE even when a subquery sits inside it; a WHERE that exists ONLY inside
+# a subquery scopes nothing. My first draft asserted the opposite on the first of
+# these — a wrong expectation in a security test is worse than no test, since it
+# would have been "fixed" by making the analyzer over-prompt.
+check "EN09-B5 top-level WHERE, subquery inside" allow \
+  "psql -h prod -c 'UPDATE users SET a=1 WHERE id IN (SELECT id FROM t)'"
+check "EN09-B5 WHERE only inside a subquery"     ask \
+  "psql -h prod -c 'UPDATE users SET a=(SELECT x FROM t WHERE id=1)'"
+check "EN09-B5 WHERE only in a comment"   ask   "psql -h prod -c \"UPDATE users SET a=1 -- WHERE id=2\""
+check "EN09-B5 quoted + aliased table"    ask   "psql -h prod -c 'UPDATE \"users\" AS u SET a=1'"
+
+# --- class 6: the bypass is human-only ---------------------------------------
+# An agent must not be able to exempt itself from inside a command. A
+# VAR=value prefix scopes one subprocess and cannot reach the hook's own
+# environment; an export in a chained command cannot either.
+check "EN09-B6 retired inline prefix"     ask "ENSEMBLE_GUARDRAIL=off rm -rf /var/data"
+check "EN09-B6 inline bypass prefix"      ask "ENSEMBLE_GUARDRAIL_BYPASS=on rm -rf /var/data"
+check "EN09-B6 export then chain"         ask "export ENSEMBLE_GUARDRAIL_BYPASS=on && rm -rf /var/data"
+
 report
