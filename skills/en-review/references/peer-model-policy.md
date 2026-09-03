@@ -22,27 +22,27 @@ An **ordered first-match cascade**. `high` is evaluated first, so a change that 
 
 ## (b) Resolution order, and its single owner
 
-**`/en-review` is the only resolver.** It walks the chain below, produces **one final tier** and **one final model alias**, and passes them to `bin/ensemble-peer-flags`.
+**`/en-review` is the only resolver.** It walks the chain below, produces **one final tier** and **one final model alias**, and passes them to `$SKILL_DIR/scripts/ensemble-peer-flags`.
 
 | Order | Layer | How |
 |---|---|---|
 | 1 | `--effort <low\|medium\|high>` flag | Parsed by `/en-review` |
-| 2 | `<repo>/.ensemble/config.local.yaml` | Via `bin/ensemble-config-get` |
-| 3 | `~/.ensemble/config.json` | Via `bin/ensemble-config-get` |
+| 2 | `<repo>/.ensemble/config.local.yaml` | Via `$SKILL_DIR/scripts/ensemble-config-get` |
+| 3 | `~/.ensemble/config.json` | Via `$SKILL_DIR/scripts/ensemble-config-get` |
 | 4 | The ladder in (a) | Default |
 
-First hit wins. Layers 2 and 3 are read through `bin/ensemble-config-get`, which owns the repo-then-global cascade so there is one implementation of layering rather than one per consumer.
+First hit wins. Layers 2 and 3 are read through `$SKILL_DIR/scripts/ensemble-config-get`, which owns the repo-then-global cascade so there is one implementation of layering rather than one per consumer.
 
-**`bin/ensemble-peer-flags` never reads config.** It is a pure translator: tier and alias in, CLI syntax out. Precedence therefore exists in exactly one place and is testable there.
+**`$SKILL_DIR/scripts/ensemble-peer-flags` never reads config.** It is a pure translator: tier and alias in, CLI syntax out. Precedence therefore exists in exactly one place and is testable there.
 
-Config keys are **flat**, matching every existing key in `~/.ensemble/config.json` and the `jq -r '.<key>'` read pattern already used in `bin/ensemble-detect-host`:
+Config keys are **flat**, matching every existing key in `~/.ensemble/config.json` and the `jq -r '.<key>'` read pattern already used in `$SKILL_DIR/scripts/ensemble-detect-host`:
 
 | Key | Meaning |
 |---|---|
 | `review_peer_effort_override` | Pins the effort tier, bypassing the ladder |
 | `review_peer_model_alias` | Pins the Claude peer's model tier alias |
 
-Both are unset by default, so the ladder governs. `setup` writes and merges them (see `bin/ensemble-config-get` and the `setup` merge, which owns that block).
+Both are unset by default, so the ladder governs. `setup` writes and merges them (see `$SKILL_DIR/scripts/ensemble-config-get` and the `setup` merge, which owns that block).
 
 ## (c) Model binding
 
@@ -54,9 +54,9 @@ Both are unset by default, so the ladder governs. `setup` writes and merges them
 
 ## (d) Fail-soft, and its owner
 
-**Degradation is handled at the invocation layer** (`bin/ensemble-peer-invoke`, called from `/en-review`'s Outside Voice peer step), never in the translator.
+**Degradation is handled at the invocation layer** (`$SKILL_DIR/scripts/ensemble-peer-invoke`, called from `/en-review`'s Outside Voice peer step), never in the translator.
 
-When a peer invocation fails, classify it with `ensemble_smoke_classify` from `bin/ensemble-cli-smoke` (reused from D44, not duplicated):
+When a peer invocation fails, classify it with `ensemble_smoke_classify` from `$SKILL_DIR/scripts/ensemble-cli-smoke` (reused from D44, not duplicated):
 
 | Classification | Behavior |
 |---|---|

@@ -32,7 +32,7 @@ frontmatter the caller reads:
 |---|---|
 | `status` | `draft` · `open` (never `active`; that is the directory) |
 | `peer_review_verdict` | `approve` · `revise` · `reject` · null |
-| `peer_review_plan_hash` | from `bin/ensemble-plan-hash`, never hand-computed |
+| `peer_review_plan_hash` | canonical, machine-computed by en-plan; never hand-written or re-derived by a caller |
 | `peer_review_resolutions[]` | each `status` is `applied` · `deferred` · `disagreed` · `superseded` |
 
 **Branch on these exact spellings.** A plan left at `draft` is not buildable;

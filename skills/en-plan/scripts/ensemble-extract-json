@@ -23,7 +23,7 @@
 # backslash escapes are honoured, so {"a": "}"} and {"a": "\""} both survive.
 #
 # Sourceable (pure function, no top-level side effects, safe under set -eu) and
-# directly executable. Same convention as bin/ensemble-peer-invoke.
+# directly executable. Same convention as $SKILL_DIR/scripts/ensemble-peer-invoke.
 #
 # Usage:
 #   ensemble_extract_json < raw_response          # -> stdout, exit 0

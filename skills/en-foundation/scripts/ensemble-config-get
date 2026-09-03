@@ -15,7 +15,7 @@
 #
 # Keys are FLAT (review_peer_effort_override, not review.peer.effort_override),
 # matching every existing key in config.json and the `jq -r '.<key>'` read
-# pattern in bin/ensemble-detect-host.
+# pattern in $SKILL_DIR/scripts/ensemble-detect-host.
 #
 # FAIL-SOFT BY CONSTRUCTION: a missing file, unreadable file, malformed
 # JSON/YAML, absent jq, null/empty value, or a value outside --allowed all
