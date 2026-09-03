@@ -83,7 +83,7 @@ Sweep's findings are grouped into batches; one PR per batch. Naming convention:
 
 | Batch | Branch | PR title |
 |---|---|---|
-| Lint fixes | `en-sweep/<sha>/lint-fixes` | `chore(docs): fix N lint findings` |
+| Lint fixes | `en-sweep/<sha>/lint-fixes` | `chore(sweep): fix N lint findings` |
 | Wiki cross-refs | `en-sweep/<sha>/learnings-back-refs` | `chore(learnings): add N missing back-refs` |
 | Architecture | `en-sweep/<sha>/architecture-update` | `chore(arch): document <X>` |
 | Plans | `en-sweep/<sha>/plan-lifecycle` | `chore(plans): move N plans to completed/` |

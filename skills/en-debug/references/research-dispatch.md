@@ -24,6 +24,12 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | `en-learn` | (any) | never | on a genuinely broad overlap search only | never |
 | `en-debug` | (any) | fallback only, when span-to-source cannot anchor | never | never |
 | `en-setup` | (any) | never | never | never |
+| `en-sweep` | (any) | **always**, for architecture drift | never | never |
+| `en-review` | (any) | never | **always** | never |
+
+**`en-sweep` dispatches only `repo-research`.** Its architecture-drift check is the one place it needs the codebase read, and it has no other use for a scout. It never dispatches `learnings-research`: its wiki-graph check runs `/en-learn --lint`, a skill invocation, and a lint wants the whole graph rather than the handful of entries a scout returns. It carried a `learnings-research` definition until 2026-09-03 with no row here, reachable only through the tier table in `references/agent-dispatch.md`, which lists all three scouts generically and so vouches for every one of them in every skill that carries it.
+
+**`en-review` dispatches only `learnings-research`,** in the same parallel batch as the dimension reviewers, to surface prior decisions a finding may already be settled by. It never dispatches `repo-research`: a review is anchored in the diff in front of it, and the persona reviewers read whatever surrounding code they need directly. It carried this matrix with no row here until 2026-09-03.
 
 **`en-learn` dispatches only `learnings-research`, and only on a broad search.** It never scouts the codebase: its whole subject is what reading the code cannot recover, so a repo scan answers a question it is not asking. It carried a `repo-research` definition until 2026-09-01 anyway — left behind when the one-time pattern-seeding mode that justified it was retired, and kept reachable by two carried references describing what *other* skills do with that agent.
 

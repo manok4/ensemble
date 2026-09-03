@@ -26,6 +26,11 @@ TEST_NAME="learn reference parity"
 # Expected carrier counts. A drop here is a deletion nobody meant; a rise is a
 # new carrier that must be added deliberately, with its declaration.
 #
+# 4 -> 3 on 2026-09-03: en-sweep carried a copy nothing dispatched. Its one
+# scout is repo-research, for the architecture-drift check; the wiki-graph
+# check runs /en-learn --lint, a skill, not an agent. The copy was reachable
+# only through agent-dispatch.md's tier table, which names all three scouts
+# generically and so vouches for each of them in every skill carrying it.
 # 6 -> 4 on 2026-09-02: two skills carried a copy nothing dispatched.
 # en-debug — a telemetry hypothesis is anchored in the log line in front of it,
 # not in prior write-ups. en-setup — alongside repo-research and the dispatch
@@ -66,7 +71,7 @@ done <<'CARRIERS'
 references/learn-lint.md|2
 references/learning-frontmatter-schema.md|2
 references/learn-index-format.md|2
-agents/learnings-research.md|4
+agents/learnings-research.md|3
 CARRIERS
 
 # The retired taxonomy must not creep back in through any carrier. Character

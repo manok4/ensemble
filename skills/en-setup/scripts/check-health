@@ -101,15 +101,20 @@ if [ -n "$guardrail_bin" ]; then
   fi
 fi
 
-# Lint
-if [ -x skills/en-setup/references/templates/ensemble-lint ] || [ -f skills/en-setup/references/templates/ensemble-lint ]; then
-  if (cd "$repo_root" && skills/en-setup/references/templates/ensemble-lint --quiet --scope docs/ 2>/dev/null); then
-    check "skills/en-setup/references/templates/ensemble-lint --scope docs/ runs clean" green
+# Lint. Anchored on this script's own directory: check-health runs against a
+# consuming project, which has no copy of this skill's own source tree. The
+# repo-rooted path used here until 2026-09-03 resolved only from the root of the
+# ensemble checkout, so everywhere else it took the "Reinstall the plugin"
+# branch and reported the lint missing when it was sitting two directories up.
+_ch_lint="$_ch_dir/../references/templates/ensemble-lint"
+if [ -f "$_ch_lint" ]; then
+  if (cd "$repo_root" && "$_ch_lint" --quiet --scope docs/ 2>/dev/null); then
+    check "ensemble-lint --scope docs/ runs clean" green
   else
-    check "skills/en-setup/references/templates/ensemble-lint --scope docs/ runs clean" yellow "Run skills/en-setup/references/templates/ensemble-lint --scope docs/ for details"
+    check "ensemble-lint --scope docs/ runs clean" yellow "Run $_ch_lint --scope docs/ for details"
   fi
 else
-  check "skills/en-setup/references/templates/ensemble-lint available" red "Reinstall the plugin"
+  check "ensemble-lint available" red "Reinstall the plugin"
 fi
 
 echo ""
