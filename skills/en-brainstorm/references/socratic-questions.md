@@ -1,6 +1,6 @@
 # Socratic questions — `en-brainstorm` Q&A library
 
-A pool of well-formed questions for the brainstorm skill to draw from. Asking cadence is owned by the frontier rounds in `skills/en-brainstorm/SKILL.md` — **frontier rounds** on Standard/Deep, one-per-turn on Lightweight and for rigor probes. This file supplies the questions, not the cadence.
+A pool of well-formed questions for the brainstorm skill to draw from. Asking cadence is owned by the frontier rounds in `SKILL.md` — **frontier rounds** on Standard/Deep, one-per-turn on Lightweight and for rigor probes. This file supplies the questions, not the cadence.
 
 ## Scope and ambition
 
@@ -98,6 +98,6 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 
 ## Depth scaling
 
-The question budget per depth is canonical in `skills/en-brainstorm/SKILL.md` → "Depth scaling". Don't restate the numbers here — they drifted once already.
+The question budget per depth is canonical in `SKILL.md` → "Depth scaling". Don't restate the numbers here — they drifted once already.
 
 Budget note: the Product pressure test and integration check draw from the same budget rather than adding to it, so a rigor-heavy opening spends its questions on probes instead of scope questions. That is the intended trade, not an overrun.
