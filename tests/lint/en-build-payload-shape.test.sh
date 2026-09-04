@@ -15,11 +15,11 @@
 # What en-build keeps, and why each one survives a "does it still do this?" test:
 #   severity + peer-contract    it consumes P0-P3 graded findings from /en-review
 #   finding-schema              the envelope shape it parses
-#   stable-ids                  U-ID rules
-#   recursion-guard             step 2
 #   plan-hash                   step 4a and the phase boundaries
 #   verify-peer-evidence        the step 10.5 audit
-#   script-invocation           it calls two scripts
+#   script-invocation           it calls three scripts
+# stable-ids and recursion-guard left on 2026-09-04: en-build never assigns or
+# renumbers an ID, and step 2 states the whole recursion-guard behaviour inline.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"

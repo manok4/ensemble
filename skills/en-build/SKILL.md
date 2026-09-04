@@ -324,8 +324,6 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 
 - `references/finding-schema.md` — shape of the findings envelope `/en-review` returns
 - `references/severity.md` — apply / defer / disagree routing
-- `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
-- `references/stable-ids.md` — U-ID stability rules
 - `references/build-legacy-plans.md` — **gated**: read only for a plan with no `peer_review_verdict` field or a unit with no `risk:` (pre-D37 plans); owns the legacy inference table and the ordered risk classifier
 - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 10.6's audit. Run with `--branch-coverage <range> --require-simplify`: it enumerates the U-IDs covered by the branch's `review-verdict:` trailers and derives `simplify_pass` / `branch_review_pass`. Its `--require-peer-resolution` mode reads the per-unit trailers of branches built before D52 and is not used here.
 
