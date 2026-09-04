@@ -201,6 +201,11 @@ ensemble_peer_invoke() {
   # `timeout` exits 124 when it fires, which maps to the published
   # peer-failed:timeout reason.
   local _tb; _tb=$(_epi_timeout_bin)
+  # outside-voice.md promised a fail-fast here for years while this helper ran
+  # the peer unwrapped. Refusing would turn a missing coreutils into a skipped
+  # review on every macOS host without it, so the call proceeds, bounded only
+  # by the run marker; but it says so, once, where the operator can see it.
+  [ -n "$_tb" ] || echo "ensemble-peer-invoke: neither 'timeout' nor 'gtimeout' on PATH; the peer runs unbounded (macOS: brew install coreutils)" >&2
 
   # --- attempt 1 ---------------------------------------------------------
   # Marker first: if this tool call is killed mid-flight, the marker is the only
