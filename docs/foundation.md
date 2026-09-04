@@ -210,6 +210,7 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 - **D91. `/en-loop` runs the detection script instead of reading about it (closes the D75 deferral; amends D67).** en-loop needs one fact from host detection, `HOST`, to pick the worker agent. It sourced `references/host-detect.md` for it, which since D78 carries no snippet to source, only prose that describes `scripts/ensemble-detect-host`; and through that reference it carried `recursion-guard.md`, a contract for a variable this skill neither sets nor branches on. Step 1 now runs the script and reads `HOST`; both references are gone, and the guard that required the prose reference by name requires the script instead. Two dated history notes, the missing anchor convention and the `--max-iterations` pass-through D67 records, are gone; the review model is cited to D52. Foundation §5.2.15 still named the checkpoint review `--peer-only`, a flag D72 renamed; corrected. **Measured:** read set about 26KB → about 16KB.
 - **D92. `/en-setup`'s citations resolve, and its config template promises only keys something reads (amends D63).** Four internal citations had drifted again since D63 renumbered the flow: the diagnostic mode offered to re-run the bin install as step 9 (it is 10), the guardrail prompt as step 12 (13), the review-action prompt as step 13 (14), and the failure message blamed steps 8–9 for artifacts steps 9–10 install; the reference list placed the `REVIEW.md` template at step 14 (16). The bin-install step still copied from `<plugin>/bin/`, a path that stopped existing when skills became self-contained, and cited the workflow template by line number. The `timeout` advisory described `/en-build`'s peer subprocess, which since D52 is `/en-review`'s, and the top-of-file severity note said this skill emits P0–P3 findings when it is the lint it installs that does. All corrected. **The config template.** A consumer audit of every key found seven with no reader anywhere: two concrete peer model IDs citing a deleted `cli-wrappers.md` and breaking the no-model-ID rule, `peer_reject_behavior`, `learnings_cross_project`, `learn_ingest_off_topic_threshold` (EN14 removed ingest), the two logging-lint keys D89 retired, and a `fitness` block whose reference does not exist. Gone; the `protected_branches` extension point stays, since it is labelled not-yet-implemented and a guard holds it to that label. The header claimed repo-level keys override `~/.ensemble/config.json`, which is true of the review keys read through `ensemble-config-get` and false of the peer keys, which host detection reads from the global file only; the template now says which file reads which, and the peer keys are listed for discovery rather than as live settings. Foundation §5.2.11 still described the retired `learnings/{bugs,patterns,decisions,sources}` skeleton, a `host-detect.md` D63 removed and a `bin/` script path D68 fixed; rewritten.
 - **D93. `/en-guardrail`'s installer writes the path it actually sits at (amends D64).** The installer's hook command was the literal `bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"`, one developer's checkout path as the default, in the settings file of every project and global install. On any other machine, or under the per-skill install layout where no `skills/` parent exists, that command names nothing, and Claude Code treats a hook command that fails as a non-blocking error: the guardrail was registered, reported `yes`, and guarded nothing. D64 verified 28 adversarial probes against the live hook and never asked whether the hook was reachable. The installer now resolves `check-guardrail.sh` beside itself and writes that absolute path; `status` reports a registered hook whose path no longer exists as `broken` rather than `yes`; the printed global one-liner uses the resolved paths; and the skill's JSON example shows a placeholder instead of a machine path. The test installs under an empty `HOME` from a foreign directory and asserts the written path exists and carries no developer path; the pre-D93 installer turned both clauses red. **What this costs:** moving the checkout requires re-running the installer, which `status` now tells you.
+- **D94. `/en-sweep`'s foundation entry describes the scheduled sweep, and its config keys are all in the template (amends D27, D65).** Foundation §5.2.10 was twelve kilobytes describing the sweep D27 replaced on 2026-05-05: triggered by `push` to `main`, five loop guards including author and label checks, host detection inside the skill, a CI wrapper passing `--skill` flags that no CLI has, an `EN_REVIEW_MODE` variable nothing sets, `bin/` and `references/sweep-trigger-workflow.yml` paths that D66 and D68 corrected elsewhere. Rewritten to the scheduled model with its gate, wrapper and guards. The skill carried four dated history notes for defects D27 and D65 record; each is a clause now. `sweep.enabled`, which `/en-setup` writes on a declined install, and `sweep.auto_merge_enabled`, which the skill documents, were absent from the config template; both are in it. **Measured:** SKILL.md 15.0KB → 14.6KB; the foundation entry 12.3KB → 3.5KB.
 ---
 
 ## 5. Skill Catalog
@@ -397,121 +398,13 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
 
 #### 5.2.10 `en-sweep`
 
-- **Purpose.** Doc-drift cleanup that runs *automatically after every PR merge to `main`*. Scans the merged code against documentation artifacts, identifies what drifted, opens *doc-only* fix-up PRs, and auto-merges them after `en-review` clears them. Pays down doc debt continuously without ever modifying code.
-- **Strict scope: doc-only.** `en-sweep` **never** modifies source code, configuration, tests, or any non-doc artifact. If it notices a code-level pattern that should be refactored (a duplicated helper, a layer-rule violation, a hand-rolled util that has a shared equivalent), it files the observation as an entry in `docs/plans/tech-debt-tracker.md` for `en-plan` / `en-build` to handle later. This separation is non-negotiable: `en-sweep` running unattended (auto-triggered, auto-merged) means it must touch only artifacts where the blast radius is bounded to documentation.
-- **Trigger model — scheduled with activity gate.** Default trigger: **cron schedule** (default `0 9 * * 1` — Monday 9am UTC; configurable via `sweep.schedule` in `.ensemble/config.local.yaml`: `daily` / `weekly` / `monthly` named values, or a literal cron expression). Manual invocation also supported via `workflow_dispatch` (Actions UI) or `/en-sweep` slash command. Implemented as `.github/workflows/en-sweep.yml` installed by `/en-setup`.
-
-  **Activity gate.** Before the sweep job runs, `bin/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the same `chore(sweep|arch|plans|learnings|maps|docs):` patterns sweep produces) and counts non-sweep commits since then. Zero → skip silently (no LLM calls, no PRs, no comments). Non-zero → run. Manual `workflow_dispatch` always bypasses the gate.
-- **Why scheduled-with-gate beats every-merge.** Every-merge fires sweep on commits that introduce no detectable drift (typo fixes, test renames, peripheral changes). The activity gate alone wouldn't help in that model because there's always activity per-merge by construction. A scheduled cadence with the activity gate gives predictable cost (one sweep per cadence) while the gate skips quiet weeks entirely. Drift detection latency (up to one cadence cycle) is the trade-off; for most projects, weekly is fine.
-- **Why a separate skill from `en-learn`.** `en-learn` captures lessons in conversation, in real time, in the user's working session. `en-sweep` runs unattended in CI. Different cadence (event-driven vs invocation-driven), different scope (doc drift vs lesson capture), different blast radius (auto-merge vs human-confirmed).
-- **Process (high-level).**
-  1. Triggered by `push` to `main`. CI checks out the repo and runs `/en-sweep`.
-  2. Detect host (CI runner). Resolve peer for any `en-review` invocations within sweep's PRs.
-  3. Run doc lints (`bin/ensemble-lint`) — file-shape checks. Capture violations.
-  4. Run `en-learn --lint` — wiki-graph checks (orphans, missing back-refs, etc.). Capture violations.
-  5. Compare `docs/architecture.md` against current code via `repo-research` agent: are documented components still present? Are dependency rules still honored? Are layer boundaries still clean?
-  6. Cross-check `docs/plans/active/` for plans whose work has shipped on `main` — they should be moved to `completed/`. (`en-learn` handles the move during normal flow, but if the user shipped without invoking `en-learn`, sweep catches it.)
-  7. Cross-check `AGENTS.md` and `CLAUDE.md` against current `docs/` structure — pointer-map drift.
-  8. Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`:
-     - `chore(docs): fix broken cross-refs in foundation.md`
-     - `chore(arch): document new ProvidersV2 boundary in docs/architecture.md`
-     - `chore(plans): move EN03 to completed/`
-     - `chore(learnings): add missing back-refs in patterns/`
-     - `chore(learnings): archive 4 superseded entries`
-     - `chore(maps): update AGENTS.md pointer to new docs/references/ entry`
-  8a. **Continuous monitoring (opt-in).** When `.ensemble/config.local.yaml` declares `sweep.continuous_monitoring.dead_code: true` or `dep_audit: true`, run `skills/en-sweep/scripts/continuous-monitor` (wraps `ts-prune` / `vulture` / Go `deadcode` / `npm audit` / `pip-audit` / `cargo audit`) and pipe through `skills/en-sweep/scripts/triage-findings`. Output is partitioned by **size**:
-     - Trivial / mechanical (single dead function; dep-vuln with auto-fix; `loc_estimate` < `sweep.auto_plan_threshold_loc`) → append to `tech-debt-tracker.md` with marker `Filed by /en-sweep (continuous-monitor)`.
-     - Pattern / structural / decision-required (≥ `sweep.auto_plan_threshold_locations` dead-code findings clustered in same area; severe CVE without auto-fix) → write a draft plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`, `generator: en-sweep`, `generator_run: <merge-sha>`, `generator_checks: [dead-code|dep-audit]`, `area: <subtree>`. Capped at `sweep.max_drafts_per_run` (default 3); overflow rolls to TD with a "would have been a plan" note.
-     - Idempotency: skip if an existing plan with `generator: en-sweep` and matching `area:` is still open. Per `references/sweep-checks.md`.
-  9. For each batch, open a focused PR with a single conventional commit.
-  10. Each PR runs `en-review` automatically. If `en-review` returns clean (no P0/P1 findings), the PR auto-merges.
-  11. If `en-review` finds anything, the PR stays open for human resolution.
-  12. Summary report posted as a comment on the original triggering PR: what was fixed, what was deferred to `tech-debt-tracker.md`, what was filed as a draft plan, what needs human judgment.
-- **What goes to `tech-debt-tracker.md` instead of a sweep PR.** Anything that requires modifying source code, config, or tests. Examples: "this helper duplicates `formatDate` in `src/utils/`", "Routes module imports from Config layer — violates layer rule", "test coverage gap on payment retry path." These get appended with category, severity, file paths, and date. `en-plan` reads `tech-debt-tracker.md` when planning new work.
-- **Cross-review.** Off by default. Each sweep PR goes through `en-review` (in `mode:report-only`), which is the quality gate.
-
-##### CI execution model
-
-A slash command is an interactive-host concept, not a CI executable. The GitHub Action workflow doesn't invoke `/en-sweep` literally — it runs a wrapper command that maps to the host CLI's headless mode.
-
-**Wrapper resolution (in CI runner):**
-
-```bash
-# bin/en-sweep-ci  (installed by ./setup; lives in the plugin's bin/)
-# Resolves which CLI is available in the runner and invokes it headlessly.
-
-if command -v claude >/dev/null 2>&1; then
-  claude -p --output-format json \
-    --max-turns 50 \
-    --skill en-sweep \
-    "$@"
-elif command -v codex >/dev/null 2>&1; then
-  codex exec --json --skill en-sweep "$@"
-else
-  echo "ERROR: en-sweep requires claude or codex CLI in the CI runner. Install one." >&2
-  exit 1
-fi
-```
-
-**Required runner environment:**
-- One of `claude` or `codex` on PATH.
-- LLM provider auth: `ANTHROPIC_API_KEY` (or OAuth via `claude` setup) for Claude; equivalent for Codex.
-- `GITHUB_TOKEN` (auto-provided by GitHub Actions) for opening PRs.
-- Default timeout: **30 minutes**. Hard cap, configurable via workflow input.
-- Non-interactive — the wrapper passes `-p` (Claude) or `exec` (Codex), and the skill operates without `AskUserQuestion`/`request_user_input` calls.
-
-**Branch naming for sweep PRs:** `en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-doc-update`).
-
-**Fallback if no CLI is available:** the workflow fails with a clear error and posts a comment on the source PR. Does not block the source PR; just notifies the user that sweep is non-operational until a CLI is installed in the runner.
-
-##### Loop guards (preventing self-trigger cascades)
-
-Sweep runs on `push` to `main`. Its auto-merging PRs are themselves pushes to `main`. Without guards, this creates an infinite loop. Five guards in place:
-
-1. **Skip sweep-authored commits.** The workflow's first step inspects `${{ github.event.head_commit.author.name }}` and `${{ github.event.head_commit.message }}`. If the author is `ensemble-sweep[bot]` *or* the message starts with `chore(en-sweep):`, exit immediately (status: skipped).
-2. **Concurrency group.** GitHub Actions `concurrency:` keyed on `en-sweep-${{ github.ref }}` with `cancel-in-progress: false` — only one sweep run per branch at a time. Subsequent triggers queue, not stack.
-3. **Sweep PR labeling.** Every sweep-opened PR carries the label `en-sweep`. The workflow's first step also exits immediately if the merge that just happened was a PR carrying this label (detected via `gh pr view --json labels`).
-4. **No-material-diff termination.** After running all checks, if no fix-PR batches were generated, exit silently. No notification, no commit, no PR.
-5. **Recursion depth cap.** The workflow checks `${{ env.ENSEMBLE_SWEEP_DEPTH }}`; defaults to `0`, increments on each spawn. Hard cap at depth 1 — sweep never spawns sweep. (Defense-in-depth; guards 1+3 should already prevent this.)
-
-##### Doc-only enforcement at runtime
-
-Sweep is contractually doc-only (D27). Implementation enforces this with a runtime guard:
-
-- After staging files for a PR, the workflow runs `git diff --cached --name-only` and verifies every changed path is under `docs/`, `AGENTS.md`, `CLAUDE.md`, or `.github/workflows/en-sweep.yml`. Any path outside this allowlist → abort the PR creation, fail loudly with the offending path, and post to source PR.
-- The allowlist is enforced in `bin/ensemble-doc-only-check`, called as a workflow step before `gh pr create`.
-
-##### When `en-sweep` invokes `en-review`
-
-In CI, `en-sweep` invokes `en-review` in `mode:report-only` (not the default interactive mode). Why:
-
-- `en-review` in interactive/headless mode auto-applies `safe_auto` fixes, which would push another commit to the sweep PR's branch. That's tolerable but adds noise.
-- More importantly, allowing mutation in CI risks the gate making changes that then need re-review — recursive ambiguity.
-- `mode:report-only` makes `en-review` strictly a verifier: it returns findings as JSON, no file edits. Sweep parses the JSON and decides whether to auto-merge (clean) or leave open (P0/P1 findings).
-
-This is documented in `en-review` (§5.2.5) and reinforced by `en-sweep`'s wrapper passing `EN_REVIEW_MODE=report-only` when invoking it.
-
-##### Auto-merge security model
-
-Default-safe configuration:
-
-- **Use `GITHUB_TOKEN` (auto-provided), not a PAT.** Least-privilege.
-- **Workflow permissions** (declared in workflow YAML): `contents: write`, `pull-requests: write`, `issues: write` (for comments). No `actions: write`, no admin.
-- **No fork-triggered runs.** Workflow uses `on: push: branches: [main]` only — never `pull_request_target` from forks (which would expose credentials to attacker-controlled code).
-- **Branch protection respected.** If the repo's branch protection requires N reviews on PRs to `main`, sweep PRs queue for review rather than auto-merge. Sweep detects this via `gh api /repos/.../branches/main/protection` and exits gracefully if its PRs can't be auto-merged. Surfaces in the source-PR comment.
-- **Doc-only enforcement** (above) prevents any source-file edit even if a finding mistakenly suggested one.
-- **Auto-merge disabled on detection failure.** If any guard check errors out (rate-limited GitHub API, auth failure, allowlist check throws), sweep leaves all PRs open for human review and does not auto-merge.
-
-- **Reference files.**
-  - `references/host-detect.md`
-  - `references/sweep-checks.md` (the catalog of doc drift checks)
-  - `references/sweep-trigger-workflow.yml` (template `.github/workflows/en-sweep.yml` installed by setup)
-  - `references/sweep-loop-guards.md` (the five guards above)
-  - `references/sweep-security-model.md` (permission model + fork policy)
-  - `references/tech-debt-tracker-format.md` (entry schema for code-level findings)
-  - `references/doc-lints.md` (shared with `en-review`)
-  - `bin/en-sweep-ci` (the CLI wrapper)
-  - `bin/ensemble-doc-only-check` (runtime allowlist enforcement)
+- **Purpose.** Scheduled doc-drift cleanup (D14, D27). Runs from `.github/workflows/en-sweep.yml` on a cron (default weekly, Monday 09:00 UTC; `daily` / `weekly` / `monthly` or a literal cron chosen at `/en-setup`) plus `workflow_dispatch`, and by hand as `/en-sweep`. Strictly doc-only: code-level findings file as TD entries, never as PRs.
+- **Activity gate.** `ensemble-sweep-activity-check` finds the last sweep-authored commit on `main` by the scopes `chore(sweep|arch|plans|learnings|maps):` and counts non-sweep commits since; zero skips the cycle silently. Every scope in that list must be one a human would not type; `docs` was one and silenced the gate (D65). Manual dispatch bypasses the gate.
+- **CI execution.** The workflow runs the CI wrapper (`scripts/en-sweep-ci`), preferring the freshly cloned plugin's copy, which resolves `claude -p` or `codex exec`, registers the plugin directory so the skill resolves, and fails loudly on a no-op envelope (the green-but-inert failure of FR01 U11). No host detection and no peer inside the skill; the wrapper picked the CLI.
+- **Process (high-level).** (`skills/en-sweep/SKILL.md` is canonical.) Recursion guard; loop guards (concurrency group and depth cap in the workflow, no-material-diff inside the skill); `bin/ensemble-lint` over `docs/`; `/en-learn --lint`; architecture drift via `repo-research`; plan-lifecycle and pointer-map drift; opt-in continuous monitoring (dead code, dependency audit) triaged into TD entries or draft plans; categorize into doc batches; stage each batch and verify it with `ensemble-doc-only-check`; one PR per batch on `en-sweep/<sha>/<batch>`, capped by `sweep.max_prs_per_run`; `/en-review --mode report-only` per PR, never mutating; auto-merge when review finds no P0/P1 and branch protection allows; a summary comment on the source PR.
+- **Security.** `GITHUB_TOKEN` least-privilege, no fork-triggered runs, branch protection respected, doc-only allowlist enforced at runtime, fail-closed on any guard error (`references/sweep-security-model.md`).
+- **Configuration.** `.ensemble/config.local.yaml` `sweep:` block: `enabled`, `schedule`, `max_prs_per_run`, `auto_merge_enabled`, `continuous_monitoring.*`, the triage thresholds and `max_drafts_per_run`. The CI timeout is `timeout-minutes:` in the workflow, not a key.
+- **Reference files.** `references/sweep-checks.md`, `references/sweep-loop-guards.md`, `references/sweep-security-model.md`, `references/tech-debt-tracker-format.md`, `references/doc-lints.md`, `references/learn-lint.md` (shared with `/en-learn`), `references/architecture-update-rules.md`, the workflow template; scripts `scripts/en-sweep-ci`, `ensemble-sweep-activity-check`, `ensemble-doc-only-check`, `continuous-monitor`, `triage-findings`.
 
 #### 5.2.11 `en-setup`
 

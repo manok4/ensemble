@@ -99,6 +99,8 @@ default_branch_fallback: main
 #   # tweak after install — re-running /en-setup respects the schedule already
 #   # in the workflow unless you explicitly opt to regenerate.
 #   schedule: weekly                     # daily | weekly | monthly | <cron expression>
+#   enabled: true                        # /en-setup records false here when the workflow install is declined
+#   auto_merge_enabled: true             # false leaves every sweep PR open for manual approval
 #   # The CI timeout is NOT set here. It is `timeout-minutes:` in
 #   # .github/workflows/en-sweep.yml. A `ci_timeout_minutes` key sat in this
 #   # block until 2026-09-03 with nothing substituting it into the workflow.
