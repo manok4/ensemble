@@ -7,9 +7,13 @@ page, never on `SKILL.md` internals and never on a file inside this directory.
 
 | Form | Caller |
 |---|---|
-| `/en-review --peer --mode headless --base <merge-base>` | `en-build`, post-build branch review |
-| `/en-review --mode report-only` | CI (`en-sweep`); mandatory there |
-| `/en-review --no-peer` | any caller deliberately skipping the peer |
+| `/en-review --cross --mode headless --base <merge-base>` | `en-build`, post-build branch review (peer plus personas, D46) |
+| `/en-review --peer --mode headless --base <merge-base>` | `en-loop` checkpoints (peer alone) |
+| `/en-review --mode report-only` | CI (`en-sweep`); mandatory there, and it never runs a peer |
+| `/en-review --host` | any caller wanting the persona roster and no peer subprocess |
+
+`--peer` (default), `--cross` and `--host` are mutually exclusive. There is no
+`--no-peer` on this skill; `--host` is how a caller declines the peer.
 
 `--mode` takes exactly `interactive`, `headless`, `report-only`. A caller that
 omits `--mode` gets `interactive`, which blocks; skills must pass one.
@@ -55,8 +59,9 @@ pushes, opens PRs or files tickets.
 
 `report-only` never runs a peer, deliberately: `en-sweep` invokes it inside CI,
 where API secrets and repo-write are kept off (D38), so defaulting a peer on
-would silently require peer credentials there. `--no-peer` records the branch as
-review-skipped rather than passing quietly.
+would silently require peer credentials there. Every run emits one
+`peer_decision:` line, so a peer that did not run (`--host`, `report-only`,
+recursion guard, unavailable) is recorded rather than passing quietly.
 
 ## Recursion
 
