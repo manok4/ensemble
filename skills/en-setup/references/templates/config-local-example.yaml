@@ -1,34 +1,28 @@
 # Per-developer per-repo Ensemble configuration.
 # Copy to .ensemble/config.local.yaml (gitignored) and edit for your preferences.
-# Repo-level overrides take precedence over the global ~/.ensemble/config.json.
+#
+# Two files, two readers. Skills that read config through ensemble-config-get
+# (the review keys below) layer this file over ~/.ensemble/config.json. Host
+# detection reads ~/.ensemble/config.json ONLY, so the peer keys under
+# "Cross-review behavior" belong there, not here; they are listed for discovery.
 
-# --- Cross-review behavior ---
+# --- Cross-review behavior (read from ~/.ensemble/config.json by host detection) ---
 
 # How peer cross-review is performed. One of:
 #   auto                 - use cross-agent if both CLIs are installed; else fall back to single-agent
 #   cross-agent-only     - require cross-agent; fail (don't fall back) if other CLI not installed
 #   single-agent-only    - always use single-agent fallback even if both CLIs are installed
 #   off                  - disable cross-review across all skills
-peer_mode_override: auto
+# peer_mode_override: auto
 
-# Models the peer subprocess uses (passed to the peer CLI; verify these are valid in your install).
-# These are config defaults — see references/cli-wrappers.md.
-# peer_model_codex: gpt-5-codex-mini
-# peer_model_claude: claude-sonnet-4-6
-
-# What to do when peer review returns verdict: reject.
-#   pause - pause and ask the user (default)
-#   apply - apply findings the host agrees with anyway, surface the rejection in the progress report
-peer_reject_behavior: pause
-
-# Hard timeout per peer-review subprocess.
-peer_timeout_seconds: 600
+# Hard timeout per peer-review subprocess (the read-tree access mode defaults to 1200).
+# peer_timeout_seconds: 600
 
 # Skip peer review on artifacts smaller than this (line count).
-skip_peer_below_lines: 50
+# skip_peer_below_lines: 50
 
 # Skip peer review on Lightweight depth.
-skip_peer_on_lightweight: true
+# skip_peer_on_lightweight: true
 
 # --- en-ship watch loop ---
 
@@ -67,15 +61,6 @@ default_branch_fallback: main
 #   pause_between_phases: false  # prompt between phases instead of auto-rolling
 #   learning_checkpoint: true    # run the structured learning checkpoint at step 10.6
 
-# --- Learnings ---
-
-# Whether to share learnings across projects (default: false; per-project store).
-learnings_cross_project: false
-
-# Off-topic threshold for `/en-learn ingest` (0–1; LLM-judged relevance against foundation.md).
-# Below this, the source is silently skipped unless --force.
-# learn_ingest_off_topic_threshold: 0.3
-
 # --- Lint ---
 
 # lint:
@@ -83,7 +68,7 @@ learnings_cross_project: false
 #   scope_default: docs/
 #   fix_skip_rules: []
 
-# --- Review ---
+# --- Review (layered over ~/.ensemble/config.json via ensemble-config-get) ---
 
 # Confidence gate for /en-review. Findings rated below this threshold are
 # filtered out of the surfaced output and filed as TD entries in
@@ -103,20 +88,6 @@ learnings_cross_project: false
 #   log_command: 'docker logs app'       # used when log_source: command
 #   allowed_log_commands: []             # extends the default allowlist (docker, kubectl, journalctl, gh run view, datadog-cli, aws logs, gcloud logging)
 #   max_log_lines: 5000                  # cap on fetched lines per run
-#   structured_logging_required: true    # if true, ensemble-lint flags console.log/print
-#   logging_dev_paths:                   # paths exempt from the logging.unstructured rule
-#     - "**/*.dev.{ts,js}"
-#     - "scripts/**"
-#     - "tests/**"
-
-# --- Architecture fitness ---
-
-# When present and bin/check-fitness exists in the repo root, ensemble-lint
-# invokes it to check architectural rules (layer boundaries, dependency
-# direction, etc.). Contract documented in references/architecture-fitness.md.
-# fitness:
-#   enabled: true
-#   check_command: bin/check-fitness     # default; override if your project uses a different name
 
 # --- Sweep ---
 
@@ -145,15 +116,12 @@ learnings_cross_project: false
 
 # --- Plan branching ---
 
-# Future enhancement (not yet implemented in /en-plan or /en-foundation):
+# Future extension (not yet implemented in /en-plan or /en-foundation):
 # Extend the default-branch auto-branch checkpoint to additional long-lived
 # integration branches (gitflow develop, release branches, etc.). When set,
 # any branch in this list triggers the SAME prompt as the default branch.
-#
 # In v1, /en-plan's default-branch checkpoint fires ONLY on the repo's literal
-# default branch (per three-source detection: gh defaultBranchRef → git
-# symbolic-ref refs/remotes/origin/HEAD → hardcoded fallback). This config
-# extension is documented so the extension point is discoverable.
+# default branch. Documented so the extension point is discoverable.
 #
 # protected_branches:
 #   - develop
