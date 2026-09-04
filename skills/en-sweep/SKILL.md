@@ -38,7 +38,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. CI runner determines which CLI is available.
+1. **No host detection.** In CI, `$SKILL_DIR/scripts/en-sweep-ci` has already picked the CLI; interactively, the host's own tools apply. The skill reads no host or peer variable and carries no detection files.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The workflow enforces Guard 1 (concurrency group) and Guard 3 (recursion depth cap) before the skill runs. Guard 2 (no-material-diff) fires inside the skill, at step 10.
 4. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
@@ -131,7 +131,6 @@ Otherwise: PR stays open for human resolution.
 
 ## Reference files
 
-- `references/host-detect.md` — host detection
 - `references/sweep-checks.md` — full check catalog (file-shape, wiki-graph, architecture, plan lifecycle, pointer maps, continuous monitoring)
 - `$SKILL_DIR/scripts/continuous-monitor` — dead-code + dep-audit scanner; outputs JSON-lines findings
 - `$SKILL_DIR/scripts/triage-findings` — partitions findings into TD entries vs draft plans

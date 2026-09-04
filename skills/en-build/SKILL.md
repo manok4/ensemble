@@ -21,11 +21,10 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. en-build needs exactly one thing from it: `$QUESTION_TOOL`, for the confirmation prompts at 9a. It resolves no peer variables — since D52 it dispatches no peer, and `/en-review` resolves its own at step 10.3.
+1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex; it is used for the confirmation prompts at 9a. That is all en-build needs from the host: it resolves no peer variables and runs no host-detection script, since D52 it dispatches no peer, and `/en-review` resolves its own at step 10.3.
 
    **Plugin-install preflight (fail-fast).** Verify the skill's referenced files are accessible — observed failure mode: a partial plugin install that has only `SKILL.md` leaves the agent without the dispatch recipe, and peer review silently degrades to "skipped without recording why." For each of these reference paths, confirm the file exists:
 
-   - `references/host-detect.md`
    - `references/severity.md`
    - `references/finding-schema.md`
    - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence`
@@ -33,7 +32,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
    If any are missing, **fail at start with a clear error** — do not proceed with a degraded build. Surface the exact paths missing and tell the user to re-run `/en-setup` or sync the plugin.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip step 10.3's review. The host still implements and commits every unit; only step 10.3's branch-level review is skipped, and the branch records `review-verdict: {"verdict":"skipped","reviewer":"recursion-guard-active",...}` so the step 10.5 audit reads a reason rather than an absence.
-3. **Confirm the implementer.** The host implements. There is no flavor choice and no worker dispatch: `/en-build` never hands authoring to another agent, on any host. `PEER_AVAILABLE` from step 1 decides only whether step 10's branch-level review is cross-agent, single-agent fallback, or skipped — it never changes who writes the code.
+3. **Confirm the implementer.** The host implements. There is no flavor choice and no worker dispatch: `/en-build` never hands authoring to another agent, on any host. `/en-review` decides at step 10.3 whether the branch-level review is cross-agent, single-agent fallback, or skipped; nothing about that changes who writes the code.
 4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios, **Risk, Gated** (or fall back to inference for legacy plans without `risk:`).
 
     **Pre-flight sub-state matrix** — read `peer_review_verdict` and the count of unresolved entries in `peer_review_resolutions:` (an entry is "unresolved" when its `status` is absent or anything other than `applied | deferred | disagreed | superseded`):
@@ -396,7 +395,6 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 
 ## Reference files
 
-- `references/host-detect.md` — `$QUESTION_TOOL` for the confirmation prompts
 - `references/finding-schema.md` — shape of the findings envelope `/en-review` returns
 - `references/severity.md` — apply / defer / disagree routing
 - `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
