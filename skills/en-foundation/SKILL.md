@@ -93,9 +93,9 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
     - Build the Outside Voice prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
     - Set `ENSEMBLE_PEER_REVIEW=true` env var.
-    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
+    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one. A document review runs at the peer's default tier; this skill passes no effort flag.
     - Parse the JSON response (per `references/finding-schema.md`).
-    - Apply, defer, or disagree per `references/severity.md`.
+    - Apply, defer, or disagree per the routing table in `references/peer-brief.md`.
     - Surface the verdict + applied changes to the user.
 12. **Seed `docs/architecture.md`** using `references/templates/architecture-template.md`. Pull components from §9, layer rules from §9.2, data flows from §9 / §8. Set `status: seed`. For retrofits, dispatch `repo-research` to populate components from the actual codebase.
 13. **Write `AGENTS.md`** using `references/templates/agents-md-template.md`. Substitute `{{BUILD_CMD}}`, `{{TEST_CMD}}`, etc. detected from the project (or `<unset>` if not detectable).
@@ -126,7 +126,7 @@ Used by `/en-setup` State 2 to back-fill the foundation for an existing project.
 When peer is available:
 
 - Cross-agent (both CLIs installed) → peer is the *other* agent (per D23).
-- Single-agent fallback → fresh subprocess of host's CLI (per D31). Prompt augmented per `references/single-agent-fallback.md`.
+- Single-agent fallback → fresh subprocess of host's CLI (per D31). The prompt builder adds the fallback framing itself when `--peer-mode single-agent-fallback` is passed.
 
 ## Capture-from-synthesis (D21)
 
@@ -167,9 +167,9 @@ Next: Run /en-build docs/plans/active/EN01-feature_project-setup.md to bootstrap
 - `references/templates/plan-template.md` — for the bootstrap `<PREFIX>01-feature_project-setup` plan
 - `references/host-detect.md` — host detection
 - `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/single-agent-fallback.md` — fallback mode contract
+- `references/peer-brief.md` — what the peer is asked, and how its findings route
+- `references/peer-contract.md` — severity, confidence and the `peer_decision` object, shared
 - `references/finding-schema.md` — peer JSON shape
-- `references/severity.md` — apply/defer/disagree routing
 - `references/research-dispatch.md` — when to dispatch `repo-research`, and why this skill reads learnings inline instead of scouting
 - `references/stable-ids.md` — R-IDs / A-IDs / F-IDs / AE-IDs / D-IDs / Q-IDs
 
