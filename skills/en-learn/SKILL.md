@@ -26,7 +26,17 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 
 After every write:
 
-1. **Active cross-reference maintenance — solutions only.** Walk the new entry's `related: []` and add reciprocal back-refs to each cited page. Terms and ADRs carry no frontmatter and so no `related:` field; they are cross-referenced by being cited in prose, which needs no reciprocal bookkeeping. Per `references/learn-cross-ref-maintenance.md`.
+1. **Active cross-reference maintenance — solutions only.** Terms and ADRs carry no frontmatter and so no `related:` field; they are cross-referenced by being cited in prose, which needs no reciprocal bookkeeping. For a solution: for each path in the new entry's `related: []`, open that file, and if its own `related:` does not already contain the new entry's path, append it. Forward references without back-references leave the graph one-directional, and orphans accumulate. When the new entry contradicts or strengthens a claim in a related page, say so in one line and let the user decide whether to reconcile now.
+
+   | Case | Behavior |
+   |---|---|
+   | Related file does not exist | Warn; skip; `--lint` reports the broken link |
+   | Related file is in `archive/` | Add the back-ref; note in the new entry that the target is archived |
+   | Related file's frontmatter is malformed | Warn; skip; `--lint` reports it |
+   | `related:` is empty | Nothing to walk |
+   | A relates to B and B already relates to A | Idempotent; the containment check above prevents duplicates |
+
+   The primary write stays even when this walk fails partway: surface the files that did not update, log `capture-with-partial-back-ref-failure`, and let `--lint --fix` heal the rest.
 2. **Index update** — append a one-line entry to `docs/learnings/index.md` under the appropriate category. Per `references/learn-index-format.md`.
 3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>` for most ops; **`capture` mode appends `| <head-sha>` from `git rev-parse --short HEAD`** as the baseline marker `/en-build`'s learning checkpoint reads (D26). Per `references/learn-log-format.md`. Other ops (`refresh`, `lint-fix`, `migrate`, `capture-from-conversation`) don't write SHA — only `capture` resets the baseline.
 
@@ -190,7 +200,6 @@ collision, and anything left for classification.
 - `references/capture-gate.md` — whether to write a learning at all; the default is not to
 - `references/templates/learning-template.md` — body structure for a solution entry
 - `references/learning-frontmatter-schema.md` — frontmatter rules + examples
-- `references/learn-cross-ref-maintenance.md` — always-on back-ref behavior
 - `references/learn-index-format.md` — `index.md` structure
 - `references/learn-log-format.md` — `log.md` structure
 - `references/learn-lint.md` — check catalog and auto-fix rules

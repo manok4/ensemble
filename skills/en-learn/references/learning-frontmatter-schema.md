@@ -86,16 +86,4 @@ status: active
 ---
 ```
 
-### Decision
-
-```yaml
----
-title: "Chose Drizzle over Prisma for edge-runtime support"
-applies_when: "Choosing an ORM for a project that targets edge runtimes (Cloudflare Workers, Vercel Edge)"
-date: 2026-02-10
-tags: [database, orm, edge-runtime]
-related:
-status: active
----
-```
-
+A decision is not a solution: it routes to `docs/decisions/NNNN-<slug>.md` with no frontmatter (`artifact-types.md`).
