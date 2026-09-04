@@ -97,7 +97,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - **Goal:** one line.
    - **Requirements covered:** R-IDs and AE-IDs from foundation. (For State-2 retrofit projects without a foundation yet, leave `covers_requirements: []` and set `requirements_pending: true`.)
    - **Dependencies:** other U-IDs that must complete first.
-   - **Interfaces:** *(only when a later unit calls something this one creates)* **Produces** the exact names and signatures later units rely on; **Consumes** the ones it calls from earlier units. `/en-build` dispatches a worker per unit with that unit's block and nothing else, so the U7 worker never sees U3 — this block is how it learns what to call. Omit it entirely when no unit depends on another's surface; most units have no interface with a neighbour and inventing one is noise.
+   - **Interfaces:** *(only when a later unit calls something this one creates)* **Produces** the exact names and signatures later units rely on; **Consumes** the ones it calls from earlier units. `/en-build` implements units one at a time from each unit's block, and a name U3 invents that U7 calls has to match exactly; this block pins both to the same signature, so the implementer of U7 never guesses what U3 produced. Omit it entirely when no unit depends on another's surface; most units have no interface with a neighbour and inventing one is noise.
    - **Files:** repo-relative paths.
    - **Approach:** how the unit will be implemented.
    - **Risk:** `low | medium | high | destructive`. Drives `/en-build` phase placement and safety gates. Ask if unclear; default `medium` only when the unit is genuinely additive and reversible. Mark `destructive` for any DROP TABLE / DROP SCHEMA / mass DELETE / TRUNCATE / recursive removal of persistent data.
@@ -119,7 +119,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - **Test-scenario completeness.** For every **feature-bearing** unit, confirm the `Test scenarios:` enumerate real scenarios across the applicable categories (happy path / edge cases / error-failure paths / integration) with concrete inputs/actions/outcomes. A feature unit with blank or fewer-than-two scenarios is **incomplete** — strengthen it before finalizing (or, if genuinely non-feature, switch it to `**Test expectation:** none — <reason>`). This mirrors the `unit.test-scenarios` lint (P2 advisory) so plans arrive at peer review already clean.
     - **Decisions / assumptions / risks capture.** If research (repo/learnings/web) or the planning discussion surfaced a **non-obvious decision, a rejected alternative, an inferred assumption the plan bets on, or a genuine risk**, capture it in the optional `## Decisions, assumptions & risks` section (per `references/templates/plan-template.md`) rather than burying it in unit `Approach:` fields. **Omit the section entirely** when nothing substantive surfaced — do not add it as empty boilerplate on trivial plans.
     - **Name and signature consistency.** Walk the `Interfaces:` blocks and every name one unit's `Approach:` gives another. A function called `clearLayers()` in U3 and `clearFullLayers()` in U7 is a defect the plan hands straight to the worker, which implements what the plan says and produces a call to something that does not exist. Same for parameter order, return shapes, and field names. Fix in place; this costs one read of the plan and catches the whole class.
-    - **No placeholders.** These are plan failures, not shorthand, because a worker cannot resolve them: "TBD", "handle edge cases", "add appropriate error handling", "similar to U3" (the worker sees only its own unit and cannot look at U3), "write tests for the above" with no scenarios, or a reference to a type or function no unit defines.
+    - **No placeholders.** These are plan failures, not shorthand, because a worker cannot resolve them: "TBD", "handle edge cases", "add appropriate error handling", "similar to U3" (the implementer works from its own unit block and should not have to reconstruct U3), "write tests for the above" with no scenarios, or a reference to a type or function no unit defines.
     - **Technical-design load-bearing audit (self-gating).** Count the **architecture-complexity triggers** the plan fires: **≥3 new/changed components**, a **≥3-step protocol/handshake**, a **state machine**, **≥3 data-flow stages**, or **DSL / public-API design**. If **any** trigger fires (typically Deep / high-risk plans), the plan MUST carry a plan-level `## Technical design` section — a **directional** high-level sketch of the cross-cutting architecture (component boundaries, data flow, key interfaces), not a spec. Verify the section is present when a trigger fired; a missing section with a fired trigger is **incomplete** — add it before finalizing. **Self-gating:** if no trigger fires (simple plans), the section is not required and must not be added as boilerplate.
 
 13. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`).
@@ -148,7 +148,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     **The host authors; the peer only reviews.** Whoever `/en-plan` was invoked in is the host, and the host writes every plan — the units, the metadata, the applied findings. The peer returns structured findings and nothing else: it does not draft units, edit the plan file, run commands, or commit. This is D30, stated in full in `references/outside-voice.md`, and it is why the peer runs as a subprocess with its own prompt rather than as a collaborator on the file.
 
-    Do not confuse a peer with a **worker**. `/en-build` dispatches the other agent as a worker that implements and edits files; that is a different role with a different prompt. `/en-plan` has no worker and never delegates authorship.
+    Do not confuse a peer with a **worker**. Since D52 no Ensemble skill dispatches one: `/en-build`'s host implements every unit itself, and `/en-plan` has no worker and never delegates authorship.
 
     If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
@@ -232,7 +232,7 @@ The cap is 1 at every depth because a single-shot peer re-reviewing a whole arti
 |---|---|
 | `--no-peer` | Skip peer review entirely. Plan is left at `status: open` with `peer_review_verdict: null` (legacy/no-peer mode). |
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
-| `--max-iterations <N>` | Override the depth-aware iteration cap. |
+| `--max-iterations <N>` | Raise the re-loop cap above 1. |
 | `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
 | `--resume <plan-path>` | See the resume-or-create step. |
 | `--from-legacy <path>` | See the resume-or-create step. |
@@ -303,7 +303,7 @@ Gated — read only when its step's gate fires, never up front:
 | Failure | Behavior |
 |---|---|
 | User declines the plan file, then asks to `/en-build` it | There is no file to build. Offer to write the plan now; do not synthesize one silently from the conversation, because it would carry no peer verdict and no hash. |
-| Plan touches > 30 files | Surface size warning; offer to split into multiple FRs |
+| Plan touches > 30 files | Surface size warning; offer to split into multiple plans |
 | Design doc matching the topic is `superseded` | Do not carry its decisions; treat the request as unexplored and apply the brainstorm soft-nudge. |
 | Two units claim the same file with conflicting changes | Flag as a planning bug; don't write the plan |
 | User accepts plan but peer review hasn't returned yet | Wait for peer (with timeout); if peer times out, plan is written without peer verdict; surface "peer review timed out" in the report |
