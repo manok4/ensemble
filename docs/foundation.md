@@ -377,7 +377,7 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
   5. Per bug: reproduce, root cause, fix, regression test that exercises a real interface, atomic `fix(qa):` commit, re-verify. Capped per run.
   6. Report: every selected flow ends Pass, Fail or Skip with reason; screenshots under `.test-output/qa/`.
 - **Cross-review.** Off; bug fixes are mechanical. **Learning capture.** Not here; `/en-build`'s checkpoint owns it (D26).
-- **Reference files.** `references/browser-driver.md` (selection and per-driver patterns), `references/diff-signal-detection.md` (`needs_browser`), `references/qa-flows.md` (edge cases, regression-test rule, budgets; folded into the skill by D85).
+- **Reference files.** `references/browser-driver.md` (selection, per-driver patterns, auth, token cost), `references/diff-signal-detection.md` (`needs_browser`).
 
 #### 5.2.7 `en-learn`
 

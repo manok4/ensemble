@@ -39,6 +39,19 @@ skip_peer_on_lightweight: true
 # ship:
 #   watch_max_cycles: 2
 
+# --- en-qa ---
+
+# Browser QA is the expensive part of a run. The per-flow cap asks a person to
+# continue or skip and gives a caller a Skip; the bug cap fixes the first N and
+# lists the rest. Test accounts reference env vars, never the secret itself.
+# qa:
+#   browser_flow_timeout_minutes: 15
+#   max_bugs_to_fix_per_run: 5
+#   test_accounts:
+#     primary:
+#       email: qa-primary@example.com
+#       password: $QA_PRIMARY_PASSWORD
+
 # --- Build behavior ---
 
 # Default branch (used when the repo doesn't have a clear default).
