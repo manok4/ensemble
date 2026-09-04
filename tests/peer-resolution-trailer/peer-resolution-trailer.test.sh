@@ -255,6 +255,11 @@ fi
 # CANNOT use --bare; we use weaker isolation flags that are auth-compatible.
 
 OUTSIDE_VOICE="${REPO_ROOT}/skills/en-review/references/outside-voice.md"
+# Since 2026-09-04 outside-voice.md states the contract and the two helpers own
+# the command line, so the timeout and gating rules are asserted where they now
+# execute: the invoke helper and en-plan's peer brief.
+INVOKE_HELPER="${REPO_ROOT}/skills/en-review/scripts/ensemble-peer-invoke"
+PLAN_BRIEF="${REPO_ROOT}/skills/en-plan/references/peer-brief.md"
 HELPER="${REPO_ROOT}/skills/en-review/scripts/ensemble-build-peer-prompt"
 
 # 1. Both build-handoff and outside-voice document piping helper-stdout
@@ -393,16 +398,17 @@ EN_SETUP="${REPO_ROOT}/skills/en-setup/SKILL.md"
 # 29. All three surfaces fail fast on missing timeout (mention exit 1 / ERROR:).
 
 # 30. outside-voice.md anti-pattern block lists the new wrong forms.
-if grep -qF "timeout 600 claude" "$OUTSIDE_VOICE"; then
-  pass "outside-voice.md anti-pattern flags bare 'timeout 600 claude'"
+if grep -qF 'command -v timeout 2>/dev/null || command -v gtimeout' "$INVOKE_HELPER" \
+   && ! grep -qE '^[[:space:]]*timeout [0-9]' "$INVOKE_HELPER"; then
+  pass "ensemble-peer-invoke resolves timeout with the gtimeout fallback; no bare 'timeout N' call"
 else
-  fail "outside-voice.md anti-pattern block should flag bare 'timeout 600 claude' (fails on macOS without coreutils)"
+  fail "ensemble-peer-invoke must resolve timeout via command -v with a gtimeout fallback (bare timeout fails on macOS without coreutils)"
 fi
 
-if grep -qE "dropping the timeout|drop.*timeout.*regress|timeout silently|silently.*re-enables.*PR #9" "$OUTSIDE_VOICE"; then
-  pass "outside-voice.md anti-pattern flags dropped-timeout"
+if grep -qF '_epi_argv+=("$_tb" "$timeout_secs")' "$INVOKE_HELPER"; then
+  pass "ensemble-peer-invoke wraps every peer call in the resolved timeout"
 else
-  fail "outside-voice.md anti-pattern block should flag dropped-timeout (silently regresses hang protection)"
+  fail "ensemble-peer-invoke must wrap the peer call in the resolved timeout (dropping it silently regresses hang protection)"
 fi
 
 # 31. /en-setup checks for timeout binary in BOTH State-2 verification AND
@@ -495,18 +501,18 @@ else
 fi
 
 # G. The Outside Voice peer prompt challenges over-gating.
-if grep -qiE "challenge gated|flag.*gated:true.*just an internal|over-gating" "$OUTSIDE_VOICE"; then
-  pass "outside-voice.md peer prompt instructs the peer to challenge over-gating"
+if grep -qiE "challenge gated|flag gated:true on an internal|over-gating" "$PLAN_BRIEF"; then
+  pass "en-plan's peer brief instructs the peer to challenge over-gating"
 else
-  fail "outside-voice.md should instruct the peer to challenge over-gating in plan reviews"
+  fail "en-plan's peer brief should instruct the peer to challenge over-gating in plan reviews"
 fi
 
 # H. Peer prompt also flags MISSING gated on production-state-changing units
 #    (the symmetric case — under-gating is also a real risk).
-if grep -qiE "missing gated|under-gating|gated:false on units that DO change production" "$OUTSIDE_VOICE"; then
-  pass "outside-voice.md peer prompt flags under-gating (missing gated:true on production-state changes)"
+if grep -qiE "missing gated|under-gating|units that DO change production state" "$PLAN_BRIEF"; then
+  pass "en-plan's peer brief flags under-gating (missing gated:true on production-state changes)"
 else
-  fail "outside-voice.md should also flag under-gating, not just over-gating"
+  fail "en-plan's peer brief should also flag under-gating, not just over-gating"
 fi
 
 # I. The helper script's PLAN_REVIEW_DIMENSIONS substitution carries the
