@@ -86,7 +86,7 @@ What's wrong with the recommendation? Honest stress-test:
 
 ## Generation notes
 
-- One question per turn during the conversation; multiple-choice preferred where natural.
+- Asking cadence belongs to SKILL.md: frontier rounds on Standard/Deep, one question per turn on Lightweight and for rigor probes.
 - Web research via `web-research` agent is **optional** — only when the user explicitly wants it or when prior art would materially change the recommendation.
 - The `related_plan:` frontmatter field is filled in later by `en-plan` when a plan is created from this design.
 - The design doc is informational, not load-bearing. `en-foundation` and `en-plan` consume it; nothing else does. Once the work ships, the design can be archived (move to `docs/designs/archive/`) — the durable insight should have moved into a learning by then.
@@ -109,6 +109,7 @@ If the user declines → no-op. The design doc stays.
 - `status:` value in `{open, accepted, superseded}`.
 - `related_plan:` resolves to a plan if non-empty (`cross-link.broken-fr`, P1).
 - `status: accepted` or `superseded` requires a non-empty `related_plan:` (P2) — `/en-plan` writes both together, so one without the other is a half-applied close-out.
+- `replaced_by:` is optional and appears only on `superseded`; `/en-plan` adds it at close-out, so the template body omits it (foundation Appendix C.2).
 - No-absolute-paths.
 
 ## Close-out: how the design stops being `open`
