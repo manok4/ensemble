@@ -57,12 +57,6 @@ skip_peer_on_lightweight: true
 # Default branch (used when the repo doesn't have a clear default).
 default_branch_fallback: main
 
-# Whether the code-simplifier agent runs per unit during en-build.
-# simplifier:
-#   enabled_default: true
-#   skip_on_trivial: true
-#   max_lines_to_run: 2000
-
 # --- en-build standing policy ---
 # These are project preferences rather than per-run choices, so they live here
 # instead of as flags. Anything that changes run to run — which units to build,

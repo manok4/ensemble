@@ -39,9 +39,10 @@ the original implementation.
 
 ## Cost bounds
 
-Skipped on a docs-only branch, on a trivial diff (under roughly 10 changed
-lines), and above `simplifier.max_lines_to_run` (default 2000). Each skip is
-recorded as `not_applicable` with the reason, never as silence.
+The caller skips it on a docs-only branch, on a trivial diff (under roughly 10
+changed lines), or with `--no-simplify`; each skip is recorded as
+`not_applicable` with the reason, never as silence. There is no size cap here:
+the preflight is a kind gate, and size belongs to the caller.
 
 ## Recursion
 
