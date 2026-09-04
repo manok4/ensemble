@@ -12,7 +12,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="host-detect"
 
-DETECT="$REPO_ROOT/skills/en-brainstorm/scripts/ensemble-detect-host"
+# en-review's copy: it resolves a peer on every run, so it is the carrier that
+# cannot drop this script. (en-brainstorm's copy was the target until
+# 2026-09-03, when that skill stopped carrying host detection.)
+DETECT="$REPO_ROOT/skills/en-review/scripts/ensemble-detect-host"
 
 # Helper: set up a mocked environment and run detect.
 # $1 = scenario label (for failure diagnostics)

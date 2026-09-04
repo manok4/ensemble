@@ -11,13 +11,14 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
-# Repointed from en-build: D52 left it dispatching no peer and delegating
-# simplification to /en-simplify, so it carries none of this machinery. The
-# path now names the skill that owns it.
+# Repointed twice. From en-build, when D52 left it dispatching no peer; then
+# from en-brainstorm on 2026-09-03, when that skill dropped host detection
+# outright (it has no peer and only ever needed the question-tool name). The
+# path now names en-review, which resolves a peer on every run.
 TEST_NAME="en-codex flag drift"
 
-DETECT="$REPO_ROOT/skills/en-brainstorm/scripts/ensemble-detect-host"
-HOSTDOC="$REPO_ROOT/skills/en-brainstorm/references/host-detect.md"
+DETECT="$REPO_ROOT/skills/en-review/scripts/ensemble-detect-host"
+HOSTDOC="$REPO_ROOT/skills/en-review/references/host-detect.md"
 OUTVOICE="$REPO_ROOT/skills/en-review/references/outside-voice.md"
 # D52 removed en-build's two flavors, so build-handoff.md and
 # build-orchestration.md now live only with /en-cross-review, which names

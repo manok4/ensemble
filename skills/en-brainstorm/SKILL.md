@@ -6,9 +6,6 @@ description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-awa
 
 # `/en-brainstorm`
 
-> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
-
-
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -20,8 +17,8 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Brainstorm needs exactly two things from it: `$QUESTION_TOOL` (the Q&A step) and path conventions. No peer resolution — cross-review is off here.
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit with note.
+1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex. That is all this skill needs from the host: it has no peer, dispatches no CLI subprocess, and runs no host-detection script.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, this is a peer subprocess; exit with a one-line note.
 3. **Resume or start fresh.** Glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
    On resume: read it, summarize its settled decisions and still-open questions, treat those decisions as **already answered** (they never re-enter the frontier), and **update that file** rather than minting a duplicate. Preserve its `created:` and `topic:`. On start-fresh, leave the old doc untouched — the user may want both.
@@ -51,7 +48,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
    - **Conflict gate: challenge terms against the glossary.** If the user uses a term that conflicts with an entry in `docs/CONTEXT.md`, or uses one of its terms to mean something else, put the conflict to them before treating their wording as settled: *"CONTEXT.md defines <term> as A; you seem to mean B. Which is it?"* Then use the canonical name in the dialogue, the approaches, and the design doc, so `/en-plan` inherits one vocabulary rather than two.
    - **Never write the glossary here.** `/en-learn` owns `docs/CONTEXT.md`. Capturing a term mid-dialogue captures the wrong name often enough to matter: the canonical term is frequently the thing the recommendation renames. Surface the conflict, settle it in conversation, and let the capture reflex file it after the doc is written.
    - **Stress-test boundaries with an invented scenario.** When the dialogue turns on how two concepts relate, asking about the relationship in the abstract gets an abstract answer back. Invent a specific case sitting on the boundary and ask what happens to it: *"a rule is muted, then deleted, then recreated with the same filter — is it muted?"* A scenario does work a definition request cannot, because the user answers it from how they think about the product rather than from vocabulary they may not have yet. Reach for it where the concepts are new or where a boundary is where the design would leak, not on every relationship.
-   - **Default to the host's blocking question tool** — `$QUESTION_TOOL` from host-detect (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), with its built-in free-text fallback — for narrowing / single-select questions; well-chosen options scaffold the answer without confining it.
+   - **Default to the host's blocking question tool** — `$QUESTION_TOOL` as resolved at the start (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), with its built-in free-text fallback — for narrowing / single-select questions; well-chosen options scaffold the answer without confining it.
    - **Open-vs-closed discipline:** use an **open-ended** question only when the answer is inherently narrative, OR when you genuinely cannot write 3–4 distinct, plausibly-correct options without padding. The test: *if you'd be straining to fill the option slots, the question is open — ask it open-ended.*
    - **Harness fallback:** when no blocking question tool exists in the harness, fall back to numbered options in chat; never silently skip the question.
    - **Stop when the frontier is empty** — every branch visited, nothing left silently assumed — or when the depth budget is spent, whichever comes first. If the budget runs out with a live frontier, record the unasked decisions as **explicit assumptions** in the design doc rather than dropping them.
@@ -170,7 +167,6 @@ Next: /en-foundation if this is a new product, /en-plan for a feature in an exis
 - `references/socratic-questions.md` — Q&A pool and the Product rigor gaps catalogue
 - `references/research-dispatch.md` — when to use `web-research`
 - `references/templates/design-doc-template.md` — output template
-- `references/host-detect.md` — `$QUESTION_TOOL` and path conventions
 
 Gated — read only when their step's gate fires, never up front:
 
