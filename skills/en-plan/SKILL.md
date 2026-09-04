@@ -29,12 +29,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
    - **`--resume <plan-path>`** (explicit) — load the named plan; preserve its `plan_id`, `plan_type`, `created`, `generator` (if present); apply the rest of the planning flow (research, questions, U-IDs, peer review) to flesh it out. Used to promote auto-generated draft plans (from `/en-sweep`'s continuous monitoring) into full peer-reviewed plans. Status remains `draft` until the status-flip step; only the user can flip to `open`.
-   - **`--from-legacy <path>`** (explicit) — read content from a legacy plan (typically `docs/plans/legacy/<file>.md` archived during `/en-setup` retrofit). The legacy file is **not modified** and **not moved**; this flag uses it as input to mint a *new* Ensemble plan. Steps:
-     - Read the legacy file's full content (no frontmatter assumed; treat all of it as narrative).
-     - Pass it to the user as initial context; ask: *"Migrate this legacy plan into Ensemble. I'll run the normal plan flow (research → questions → U-IDs → peer review). The legacy file stays in `docs/plans/legacy/` untouched. Confirm? (y/n)"*.
-     - On `y`, treat the legacy content as the **rough description** input (per the source-the-request step) and proceed normally — agent runs research, asks planning questions, breaks into U-IDs, mints a fresh `<PREFIX><NN>` ID, writes a new plan in `docs/plans/active/`.
-     - The new plan's frontmatter carries `migrated_from: docs/plans/legacy/<file>.md` for traceability. The legacy README's "list of archived files" gets a back-reference: *"Migrated to <new plan path> on <date>."* — written alongside the plan file so the auto-commit picks it up.
-     - Use this to bring meaningful legacy plans into the active flow with proper R-ID/U-ID assignment and peer review — never an in-place auto-conversion.
+   - **`--from-legacy <path>`** (explicit) — mint a *new* plan from an archived legacy plan, which is never modified or moved. **Read `references/plan-from-legacy.md` when this flag is passed**; it owns the confirmation, the `migrated_from:` frontmatter and the legacy README back-reference.
    - **Auto-resume** (heuristic) — if a plan in `docs/plans/active/` already matches the user's request by title or `related_design`, offer to resume rather than create a new one.
    - **Create** — no match; mint a new plan.
 4. **Source the request.** Identify input:
@@ -108,7 +103,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - **Risk:** `low | medium | high | destructive`. Drives `/en-build` phase placement and safety gates. Ask if unclear; default `medium` only when the unit is genuinely additive and reversible. Mark `destructive` for any DROP TABLE / DROP SCHEMA / mass DELETE / TRUNCATE / recursive removal of persistent data.
    - **Category:** one of `feature | observability | diagnostics | api-additive | migration-additive | migration | backfill | schema-evolution | deletion | drop | removal | other`. Metadata only; does not override `risk:`.
    - **Reversibility:** `trivial | reversible | rollback-required | irreversible`. Informational; helps the user judge risk.
-   - **Gated:** `true | false`. **Default `false`.** Set `true` ONLY when running this unit at build time changes **production user state** or **external system state** beyond what tests / lint / peer review can verify. Concrete cases that qualify: customer-facing feature flag flips that change real-user behavior on deploy; production data backfills; third-party APIs with real side effects (email/SMS/payment/Slack against non-test endpoints); API contract breaks (renaming/removing public response fields, breaking generated-client signatures); production config changes with behavior impact. **Do NOT gate**: refactors, internal renames, UI text/copy renames, new code behind an off flag, test additions, lint fixes, doc updates, or schema additions (those are handled by `risk:`). Default `false` and only flip to `true` when one of the qualifying cases clearly applies — see `references/templates/plan-template.md` for the full criteria. Over-gating trains users to autopilot through y/skip/abort prompts and erodes the signal value of the gates that matter.
+   - **Gated:** `true | false`, **default `false`.** `true` ONLY when running the unit at build time changes **production user state** or **external system state** beyond what tests, lint and peer review can verify: customer-facing flag flips, production backfills, third-party calls with real side effects, API contract breaks, production config with behavior impact. Never for refactors, renames, copy changes, tests, docs, schema additions (`risk:` covers those), or new code behind an off flag. Full criteria in `references/templates/plan-template.md`. Over-gating trains users to autopilot through y/skip/abort prompts and erodes the gates that matter.
    - **Execution note:** `test-first` / `characterization-first` / `pragmatic`.
    - **Patterns to follow:** citations to `docs/learnings/` if relevant.
    - **Test scenarios:** for a **feature-bearing** unit, enumerate **actual** scenarios across the applicable categories — **happy path, edge cases, error/failure paths, integration** — each with concrete inputs/actions/expected outcomes (not a single vague "tests pass" line). **Non-feature-bearing** units (pure config, scaffolding, styling, docs) use `**Test expectation:** none — <reason>` instead. See `references/templates/plan-template.md`.
@@ -187,9 +182,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     This lives here, in the promotion block, rather than on the peer-approve path, because six conditions above reach `open` and a Lightweight plan commonly reaches it without a peer pass at all. Hooking the flip to peer-approve would silently skip those.
 
-    What this buys: `/en-brainstorm`'s resume scan globs `status: open` designs, so without the flip every design ever written stays a resume candidate forever and the disambiguation prompt grows with every brainstorm. A design that never produces a plan **does** stay `open`, correctly — an unplanned exploration is still open.
-
-    Not universal: `/en-foundation` mints the bootstrap `<PREFIX>01-feature_project-setup` plan directly, without passing through this skill, so a design consumed on that path is not flipped. That plan is repo-init scaffolding rather than a design's recommendation, so the case is documented rather than duplicated into a second skill.
+    Without the flip every design ever written stays in `/en-brainstorm`'s resume pool; a design that never produces a plan stays `open`, correctly. `/en-foundation`'s bootstrap `<PREFIX>01-feature_project-setup` plan bypasses this skill and does not flip a design, which is documented rather than duplicated there.
 
     The plan stays in `status: draft` ONLY when:
     - Peer returned `verdict: reject` AND the user did NOT override.
@@ -231,9 +224,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 | `revise`, any finding `P0`/`P1` | 2 |
 | `reject` | 1 — pause, stay `draft`, no re-loop |
 
-The iteration cap is **1 at every depth**. Raise it with `--max-iterations <N>` when a plan genuinely warrants more; disable re-looping entirely with `--no-reloop`. The rationale for capping at one: a single-shot peer re-reviewing a whole artifact mostly resamples its first pass, which is why the "do not re-flag" suppression list exists at all — repeat findings were already being observed and worked around.
-
-When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` computes `peer_review_plan_hash`, flips `status: draft → open`, and auto-commits the plan file (per the status-flip and auto-commit steps).
+The cap is 1 at every depth because a single-shot peer re-reviewing a whole artifact mostly resamples its first pass (D49). `--max-iterations <N>` raises it; `--no-reloop` disables re-looping.
 
 ## Flags
 
@@ -305,6 +296,7 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 Gated — read only when its step's gate fires, never up front:
 
 - `references/plan-default-branch-checkpoint.md` — the default-branch checkpoint (skipped whenever the run is already on a feature branch)
+- `references/plan-from-legacy.md` — the `--from-legacy` migration path
 
 ## Failure protocol
 
@@ -312,7 +304,6 @@ Gated — read only when its step's gate fires, never up front:
 |---|---|
 | User declines the plan file, then asks to `/en-build` it | There is no file to build. Offer to write the plan now; do not synthesize one silently from the conversation, because it would carry no peer verdict and no hash. |
 | Plan touches > 30 files | Surface size warning; offer to split into multiple FRs |
-| `docs/foundation.md` too large to scan cheaply | Section-index read only (source-the-request step); never fall back to reading it whole. |
 | Design doc matching the topic is `superseded` | Do not carry its decisions; treat the request as unexplored and apply the brainstorm soft-nudge. |
 | Two units claim the same file with conflicting changes | Flag as a planning bug; don't write the plan |
 | User accepts plan but peer review hasn't returned yet | Wait for peer (with timeout); if peer times out, plan is written without peer verdict; surface "peer review timed out" in the report |
