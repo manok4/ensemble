@@ -191,4 +191,36 @@ else
   fail "uninstall left a guardrail matcher behind" "$(cat "$F6")"
 fi
 
+
+# --- D93: the hook command points at a file that exists, on any machine --------
+# The installer wrote ${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/..., one
+# developer's path. With HOME pointed at an empty directory that default
+# resolves to nothing, and a hook whose command fails is a non-blocking error:
+# the guardrail is silently off. Negative control at authoring: the pre-D93
+# installer turned both clauses red under this HOME.
+D93=$(mktemp -d)
+GUARDRAIL_SETTINGS_FILE="$D93/settings.json" HOME="$D93" bash "$INSTALLER" install-project >/dev/null 2>&1
+cmd=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["hooks"]["PreToolUse"][0]["hooks"][0]["command"])' "$D93/settings.json")
+hook_path=$(printf '%s' "$cmd" | cut -d'"' -f2)
+resolved=$(HOME="$D93" bash -c "printf '%s' \"$hook_path\"")
+if [ -f "$resolved" ]; then
+  pass "the installed hook command names a check-guardrail.sh that exists (HOME irrelevant)"
+else
+  fail "the installed hook command names a check-guardrail.sh that exists" "cmd=$cmd resolved=$resolved"
+fi
+# Resolved at install time: no ${ENSEMBLE_HOME:-...} or $HOME indirection may remain.
+printf '%s' "$cmd" | grep -qE 'ENSEMBLE_HOME|\$HOME|\$\{' && fail "the hook command is a resolved path, not a shell default" "$cmd" || pass "the hook command is a resolved path, not a shell default"
+st=$(GUARDRAIL_SETTINGS_FILE="$D93/settings.json" HOME="$D93" bash "$INSTALLER" status 2>/dev/null | grep "project" )
+printf '%s' "$st" | grep -q ": yes" && pass "status reports the fresh install as yes" || fail "status reports the fresh install as yes" "$st"
+# a registered hook whose path is gone reports broken, not yes
+python3 - "$D93/settings.json" <<'PY'
+import json,sys
+p=sys.argv[1]; d=json.load(open(p))
+d["hooks"]["PreToolUse"][0]["hooks"][0]["command"]='bash "/nonexistent/en-guardrail/bin/check-guardrail.sh"'
+json.dump(d, open(p,"w"))
+PY
+st=$(GUARDRAIL_SETTINGS_FILE="$D93/settings.json" HOME="$D93" bash "$INSTALLER" status 2>/dev/null | grep "project")
+printf '%s' "$st" | grep -q ": broken" && pass "status reports a dangling hook path as broken" || fail "status reports a dangling hook path as broken" "$st"
+rm -rf "$D93"
+
 report

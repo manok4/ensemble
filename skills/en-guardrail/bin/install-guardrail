@@ -18,6 +18,16 @@ set -euo pipefail
 
 CMD="${1:-help}"
 
+# The hook command names THIS checkout's check-guardrail.sh by absolute path,
+# resolved from where this installer sits. It used to write a literal
+# ${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/... default, one developer's
+# machine path, so on any other machine the hook command pointed at nothing
+# and a failing hook is a non-blocking error: the guardrail was silently off
+# (D93). If the checkout moves, re-run the installer.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+HOOK_SCRIPT="$SELF_DIR/check-guardrail.sh"
+[ -f "$HOOK_SCRIPT" ] || { echo "error: $HOOK_SCRIPT not found beside the installer" >&2; exit 1; }
+
 require_python() {
   command -v python3 >/dev/null 2>&1 || { echo "error: python3 required" >&2; exit 1; }
 }
@@ -28,6 +38,7 @@ import json, os, sys
 
 path = sys.argv[1]
 mode = sys.argv[2]  # install | uninstall | status
+hook_script = sys.argv[3]
 
 try:
     with open(path) as f:
@@ -43,7 +54,7 @@ hooks = data.get("hooks", {}).get("PreToolUse", [])
 def is_guardrail_command(cmd):
     return "en-guardrail" in cmd and "check-guardrail.sh" in cmd
 
-HOOK_CMD = 'bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"'
+HOOK_CMD = 'bash "%s"' % hook_script
 # EN09 U4/B2: a second matcher routes DB-writing MCP tools to the same hook.
 # Action-specific families are server-agnostic (run_sql, apply_migration, ...);
 # the ambiguous generic-named tools (query/execute) are server-QUALIFIED so the
@@ -62,6 +73,16 @@ def matcher_installed(matcher):
                 return True
     return False
 
+def registered_script_path():
+    # The path inside: bash "<path>"  -- expand $HOME/${HOME} for the check only.
+    for entry in hooks:
+        for h in entry.get("hooks", []):
+            cmd = h.get("command", "")
+            if is_guardrail_command(cmd) and '"' in cmd:
+                p = cmd.split('"')[1]
+                return os.path.expandvars(p.replace("${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}", os.environ.get("ENSEMBLE_HOME", os.path.expanduser("~/CodeRepo/ensemble"))))
+    return None
+
 def already_installed():
     # "Installed" for status purposes = the primary Bash matcher is present.
     return matcher_installed("Bash")
@@ -73,7 +94,11 @@ def make_hook(matcher, msg):
     }
 
 if mode == "status":
-    print("yes" if already_installed() else "no")
+    if not already_installed():
+        print("no")
+    else:
+        p = registered_script_path()
+        print("yes" if p and os.path.isfile(p) else "broken")
     sys.exit(0)
 
 if mode == "install":
@@ -124,7 +149,7 @@ PY
 run_py() {
   local file="$1" mode="$2"
   require_python
-  python3 -c "$HOOK_PY" "$file" "$mode"
+  python3 -c "$HOOK_PY" "$file" "$mode" "$HOOK_SCRIPT"
 }
 
 backup_if_exists() {
@@ -152,6 +177,7 @@ case "$CMD" in
     echo "guardrail status:"
     echo "  project (${proj}): ${p}"
     echo "  global  (${glob}): ${g}"
+    [ "$p" = "broken" ] || [ "$g" = "broken" ] && echo "  broken = registered, but the command points at a check-guardrail.sh that does not exist; re-run the installer"
     if [ "$p" = "yes" ] || [ "$g" = "yes" ]; then exit 0; else exit 1; fi
     ;;
 
@@ -178,29 +204,14 @@ case "$CMD" in
         echo "guardrail: installed at $file"
       fi
     else
-      cat <<'EOF'
+      sed -e "s|__INSTALLER__|$SELF_DIR/install-guardrail|" -e "s|__HOOK__|$HOOK_SCRIPT|" <<'EOF'
 The agent cannot modify ~/.claude/settings.json directly (self-modification guardrail).
 To install the guardrail hook globally, run this from your terminal:
 
-  bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/install-guardrail" install-global --apply
+  bash "__INSTALLER__" install-global --apply
 
-Or, equivalent one-liner you can paste:
-
-  python3 - <<'PY'
-  import json, os
-  p = os.path.expanduser("~/.claude/settings.json")
-  d = json.load(open(p)) if os.path.exists(p) else {}
-  hook = {"matcher":"Bash","hooks":[{"type":"command","command":'bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"',"statusMessage":"Checking for destructive commands..."}]}
-  pre = d.setdefault("hooks", {}).setdefault("PreToolUse", [])
-  for e in pre:
-      if e.get("matcher") == "Bash":
-          for h in e.get("hooks", []):
-              if "en-guardrail" in h.get("command",""):
-                  print("already installed"); raise SystemExit(0)
-  pre.append(hook)
-  json.dump(d, open(p, "w"), indent=2); open(p, "a").write("\n")
-  print("installed")
-  PY
+It registers both matchers (Bash and the DB-writing MCP tools) and points them at
+__HOOK__ by absolute path. If you move the checkout, run it again.
 EOF
     fi
     ;;

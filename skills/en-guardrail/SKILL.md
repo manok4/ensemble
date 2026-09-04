@@ -14,7 +14,7 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 
 1. **Resolve the skill directory** so the bundled scripts can be run and the installed hook compared against them. Nothing else here needs resolving: the guardrail has no modes, no peer, and no host branch — the same three scripts do the same thing wherever it runs.
 
-2. **Status check.** Verify the hook is registered in `~/.claude/settings.json` (`PreToolUse` → `Bash` matcher → `bin/check-guardrail.sh`). If missing, surface the install snippet (see "Installation" below) and stop.
+2. **Status check.** Run `bash "$SKILL_DIR/bin/install-guardrail" status`. It reports both scopes, and whether the registered command still points at a `check-guardrail.sh` that exists; a registered hook whose path no longer resolves is reported as **broken**, not installed. If nothing is active, surface the installer commands (see "Installation" below) and stop.
 3. **Show protected patterns** — render the table from "What's protected" below.
 4. **Show recent fires** if `~/.ensemble/analytics/guardrail.jsonl` exists — last 10 lines, summarized as `pattern × count × repo`.
 5. **Optional dry-run.** If user passes a sample command (`/en-guardrail "rm -rf /tmp/foo"`), pipe a synthetic tool-input JSON through `bin/check-guardrail.sh` and show the verdict (`ask` vs `allow`).
@@ -97,7 +97,7 @@ bash "$SKILL_DIR/bin/install-guardrail" install-global   # prints the one-liner 
 
 Global scope is print-only on purpose: an agent must not write `~/.claude/`, so the installer hands you the command and you run it.
 
-For reference, the hook is registered in `~/.claude/settings.json` under `hooks.PreToolUse`. The canonical Bash entry:
+For reference, the hook is registered in `~/.claude/settings.json` under `hooks.PreToolUse`. The canonical Bash entry, with the path the installer resolves from its own location:
 
 ```json
 {
@@ -108,7 +108,7 @@ For reference, the hook is registered in `~/.claude/settings.json` under `hooks.
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh\"",
+            "command": "bash \"<absolute path of this skill's bin>/check-guardrail.sh\"",
             "statusMessage": "Checking for destructive commands..."
           }
         ]
@@ -118,7 +118,7 @@ For reference, the hook is registered in `~/.claude/settings.json` under `hooks.
 }
 ```
 
-The `${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}` expansion lets you move the Ensemble checkout — set `ENSEMBLE_HOME` in your shell profile to override.
+The path is absolute and written at install time. A hook whose command does not resolve is a non-blocking error in Claude Code, which means a guardrail pointing at a moved checkout is silently off; if you move the checkout, run the installer again. The installer used to write a default path from one developer's machine (D93).
 
 ## How it works
 
