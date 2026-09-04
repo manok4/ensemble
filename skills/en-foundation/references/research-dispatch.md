@@ -39,7 +39,7 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 
 **`en-foundation` dispatches only `repo-research`.** It reads `docs/learnings/index.md` inline during its orient step, for the same reason `en-brainstorm` does: a scout costs a dispatch round-trip to summarise a file the skill can just read. This row said **always** for `learnings-research` until 2026-09-01, while the flow had never dispatched it — the contradiction is what kept 297 lines of agent definition alive in a skill that never called them.
 
-**`en-brainstorm` dispatches no scouts.** It reads `docs/learnings/index.md` and the foundation section-index inline (its bounded existing-context scan) rather than spawning `repo-research` or `learnings-research`. A scout would return a gist for less context, but it costs a dispatch round-trip in a skill whose entire cost profile is round-trips. Only `web-research` is ever dispatched here, and only on request.
+**`en-brainstorm` dispatches no scouts.** It reads `docs/learnings/index.md` and the foundation section-index inline (its bounded existing-context scan) rather than spawning `repo-research` or `learnings-research`. A scout would return a gist for less context, but it costs a dispatch round-trip in a skill whose entire cost profile is round-trips. Its only dispatches are `web-research`, on request, and `repo-fact-lookup`, a retrieval agent that answers the specific questions the frontier rounds raise and verifies the design doc's absence-claims. That is not a scout: it is given the question, never the topic.
 
 ## Parallelism
 
