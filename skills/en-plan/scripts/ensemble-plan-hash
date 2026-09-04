@@ -3,7 +3,7 @@
 #
 # /en-plan writes this value at promotion; /en-build adopts it as the build's
 # baseline and re-computes at every phase boundary, refusing to advance on
-# mismatch (skills/en-build/SKILL.md steps 4a and 215).
+# mismatch (SKILL.md, step 4a and the phase-boundary check).
 #
 # It exists because the contract was previously prose only
 # (rationale in the Ensemble repo's scope-aware-slicing spec, which does not ship

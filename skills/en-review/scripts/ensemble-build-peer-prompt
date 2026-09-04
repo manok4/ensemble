@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ensemble-build-peer-prompt \
-#     --artifact-type <code|plan|markdown artifact|mixed> \
+#     --brief <path to the skill's references/peer-brief.md> \
 #     --project-context <one-line> \
 #     --goal <one-line> \
 #     --artifact-file <path>           # OR --artifact-stdin (read from stdin)

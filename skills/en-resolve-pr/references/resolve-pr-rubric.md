@@ -63,17 +63,6 @@ Rare. Use it for:
 
 Most feedback has a clear right answer. `needs-human` should be a small minority of verdicts. **Do the investigation before escalating** — if the user can read your `decision_context` and decide in under 30 seconds, that's the bar. Punting with "this is complex" is not enough.
 
-## Default-to-fix philosophy
-
-> Agent time is cheap. Tech debt is expensive.
-
-When in doubt, fix it — including nits. The cost is borne by the agent, not the human reviewer. The only legitimate reasons to skip are:
-
-- The reviewer is **factually wrong** about the code (`not-addressing` with evidence).
-- The suggested fix would **actively harm** the code (`declined` with cited harm).
-
-"This is low priority" or "this isn't important enough" are **not** valid reasons. If the reviewer left it, you're already paying the attention cost; fixing it is cheap.
-
 ## After the rubric
 
 Each item produces:
@@ -90,4 +79,4 @@ Each item produces:
 }
 ```
 
-The SKILL aggregates these and runs combined validation in step 8.
+The SKILL aggregates these and runs one combined validation for the whole set.
