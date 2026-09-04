@@ -47,94 +47,9 @@ Skills do not hard-code Claude Code tool names. Where a built-in differs across 
 
 When a skill needs to invoke one of these, it references the variable name, not the literal tool name.
 
-## Bash detection snippet
+## Running the detection
 
-The canonical bash that `$SKILL_DIR/scripts/ensemble-detect-host` runs and that every cross-host skill loads. Sources `~/.ensemble/config.json` for the override, falls through every detection branch, and prints the resolved variables.
-
-```bash
-#!/usr/bin/env bash
-# Host detection for Ensemble skills. Source this at the start of any cross-host skill.
-# Outputs HOST, PEER, PEER_MODE, PEER_CMD, PEER_FORMAT, PEER_AVAILABLE on stdout as `KEY=VALUE` lines.
-
-set -u
-
-# 1. Identify HOST
-if [ -n "${CLAUDE_CODE_VERSION:-}" ] || [ -n "${CLAUDE_AGENT_NAME:-}" ]; then
-  HOST="claude-code"
-  HOST_CMD="claude -p"
-  HOST_FORMAT="--output-format json"
-  OTHER="codex"
-  OTHER_CMD="codex exec"
-  OTHER_FORMAT="--json"
-elif [ -n "${CODEX_HOME:-}" ] || [ -n "${CODEX_VERSION:-}" ]; then
-  HOST="codex"
-  HOST_CMD="codex exec"
-  HOST_FORMAT="--json"
-  OTHER="claude"
-  OTHER_CMD="claude -p"
-  OTHER_FORMAT="--output-format json"
-elif [ -n "${ENSEMBLE_HOST:-}" ]; then
-  HOST="${ENSEMBLE_HOST}"
-  case "$HOST" in
-    claude-code|claude) HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"; OTHER="codex"; OTHER_CMD="codex exec"; OTHER_FORMAT="--json" ;;
-    codex)              HOST_CMD="codex exec"; HOST_FORMAT="--json"; OTHER="claude"; OTHER_CMD="claude -p"; OTHER_FORMAT="--output-format json" ;;
-    *)                  echo "ENSEMBLE_HOST=$HOST not recognized; falling back to claude-code" >&2; HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"; OTHER="codex"; OTHER_CMD="codex exec"; OTHER_FORMAT="--json" ;;
-  esac
-else
-  if command -v codex >/dev/null 2>&1 && ! command -v claude >/dev/null 2>&1; then
-    HOST="codex";       HOST_CMD="codex exec"; HOST_FORMAT="--json"
-    OTHER="claude";     OTHER_CMD="claude -p"; OTHER_FORMAT="--output-format json"
-  else
-    HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"
-    OTHER="codex";      OTHER_CMD="codex exec"; OTHER_FORMAT="--json"
-  fi
-fi
-
-# 2. Read user override
-if command -v jq >/dev/null 2>&1 && [ -f "$HOME/.ensemble/config.json" ]; then
-  PEER_OVERRIDE=$(jq -r '.peer_mode_override // "auto"' "$HOME/.ensemble/config.json" 2>/dev/null || echo "auto")
-else
-  PEER_OVERRIDE="auto"
-fi
-
-# 3. Resolve peer mode
-PEER=""; PEER_CMD=""; PEER_FORMAT=""
-case "$PEER_OVERRIDE" in
-  off)
-    PEER_MODE="off"
-    PEER_AVAILABLE="false"
-    ;;
-  *)
-    if command -v "${OTHER_CMD%% *}" >/dev/null 2>&1 && [ "$PEER_OVERRIDE" != "single-agent-only" ]; then
-      PEER_MODE="cross-agent"
-      PEER="$OTHER"
-      PEER_CMD="$OTHER_CMD"
-      PEER_FORMAT="$OTHER_FORMAT"
-      PEER_AVAILABLE="true"
-    elif [ "$PEER_OVERRIDE" = "cross-agent-only" ]; then
-      PEER_MODE="off"
-      PEER_AVAILABLE="false"
-      echo "WARNING: peer_mode_override=cross-agent-only but $OTHER CLI is not installed. Skipping cross-review." >&2
-    else
-      PEER_MODE="single-agent-fallback"
-      PEER="$HOST"
-      PEER_CMD="$HOST_CMD"
-      PEER_FORMAT="$HOST_FORMAT"
-      PEER_AVAILABLE="true"
-    fi
-    ;;
-esac
-
-# Emit machine-readable variables
-cat <<EOF
-HOST=$HOST
-PEER=$PEER
-PEER_MODE=$PEER_MODE
-PEER_CMD=$PEER_CMD
-PEER_FORMAT=$PEER_FORMAT
-PEER_AVAILABLE=$PEER_AVAILABLE
-EOF
-```
+`$SKILL_DIR/scripts/ensemble-detect-host` is the implementation. Run it and `eval` its `KEY=VALUE` output: it reads `~/.ensemble/config.json` for the override, walks every detection branch above, applies the recursion-guard short-circuit and the session cache described below, and prints the resolved variables. The script is canonical. This file carried an inline copy of its logic until 2026-09-04; the copy lacked the short-circuit and the cache, and every carrier paid ~900 tokens per read for it.
 
 ## Setup-script behavior
 
@@ -155,7 +70,7 @@ if [ "${ENSEMBLE_PEER_REVIEW:-false}" = "true" ]; then
 fi
 ```
 
-See `references/recursion-guard.md` for the full contract.
+Every peer entry point checks the variable first and skips the peer when it is set; the peer subprocess itself can still read files and return findings.
 
 ## Performance: detection cache and recursion-guard short-circuit
 
