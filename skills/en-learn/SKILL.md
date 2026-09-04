@@ -13,11 +13,6 @@ description: "Capture durable learnings into the repo's knowledge store as a ter
 
 Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat folder. Adopts Karpathy's LLM Wiki pattern: agent-maintained, with `index.md` + `log.md` for navigation and `--lint` for graph health.
 
-> **Severity vocabulary.** This skill emits findings graded P0-P3. Those levels,
-> and the confidence scale beside them, are defined in
-> `references/peer-contract.md` and mean the same thing to every skill that
-> reads them.
-
 ## Modes
 
 | Mode | Trigger | Output |
@@ -33,12 +28,12 @@ After every write:
 
 1. **Active cross-reference maintenance — solutions only.** Walk the new entry's `related: []` and add reciprocal back-refs to each cited page. Terms and ADRs carry no frontmatter and so no `related:` field; they are cross-referenced by being cited in prose, which needs no reciprocal bookkeeping. Per `references/learn-cross-ref-maintenance.md`.
 2. **Index update** — append a one-line entry to `docs/learnings/index.md` under the appropriate category. Per `references/learn-index-format.md`.
-3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>` for most ops; **`capture` mode appends `| <head-sha>` from `git rev-parse --short HEAD`** as the baseline marker for `/en-ship`'s learning checkpoint. Per `references/learn-log-format.md`. Other ops (`refresh`, `ingest-url`, `lint-fix`, `pack`, `capture-from-conversation`) don't write SHA — only `capture` resets the baseline.
+3. **Log append** — single line to `docs/learnings/log.md`: `## [YYYY-MM-DD] <op> | <subject>` for most ops; **`capture` mode appends `| <head-sha>` from `git rev-parse --short HEAD`** as the baseline marker `/en-build`'s learning checkpoint reads (D26). Per `references/learn-log-format.md`. Other ops (`refresh`, `lint-fix`, `migrate`, `capture-from-conversation`) don't write SHA — only `capture` resets the baseline.
 
 ## Process — Mode A: `capture` (default)
 
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip (no peer review on capture).
-2a. **Legacy-layout check.** If `docs/learnings/bugs/`, `patterns/`, `decisions/`, or `sources/` exists, this repo predates the artifact-type layout. Surface it and offer the migration — **read `references/layout-migration.md` and follow it**. Until it runs, entries under those directories are invisible to the new paths without being deleted, which is the failure mode that loses a knowledge base quietly. Do not capture into a half-migrated store.
+1. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip (no peer review on capture).
+2. **Legacy-layout check.** If `docs/learnings/bugs/`, `patterns/`, `decisions/`, or `sources/` exists, this repo predates the artifact-type layout. Surface it and offer the migration — **read `references/layout-migration.md` and follow it**. Until it runs, entries under those directories are invisible to the new paths without being deleted, which is the failure mode that loses a knowledge base quietly. Do not capture into a half-migrated store.
 
 3. **Detect input source.**
    - **Default** (post-build / post-qa) — read recent commits + branch summary.
@@ -48,7 +43,7 @@ After every write:
 
    Coding agents reconstruct *what* and *how* from the tree without help. Capture only what reading cannot recover: constraints living outside the code, paths tried and abandoned, deliberate deviations from the obvious, failure modes that do not announce themselves.
 
-   **On failure, write nothing and report which condition failed and what could not be named** (format in the reference). A reported skip is a normal successful outcome. Then continue to step 8 — the always-on behaviors and the plan-lifecycle flip in step 11 still run, because bookkeeping is not conditional on filing content.
+   **On failure, write nothing and report which condition failed and what could not be named** (format in the reference). A reported skip is a normal successful outcome. Then skip to step 11: the plan-lifecycle flip and the always-on behaviors still run, because bookkeeping is not conditional on filing content.
 
    **One learning per run.** A session holding two distinct durable lessons gets two runs; batching pushes the weaker through on the stronger one's merit.
 
@@ -72,16 +67,13 @@ After every write:
 
    **Report the outcome even when nothing qualified.** "No new terms" is a result; silence is indistinguishable from having skipped the step. Do not invent a term to have something to report — the bar is that a new engineer would need it defined.
 
-10. **Ground every artifact this run wrote — run `$SKILL_DIR/scripts/ensemble-validate-claims` on each, and read `references/grounding-validation.md`.** Usually one file; a run that also accreted a term (step 10) has two, and both are checked before either is indexed. The artifact is about to become knowledge future agents act on without re-verifying. Check it before that happens, not after someone follows a dead reference.
+10. **Ground every artifact this run wrote — run `$SKILL_DIR/scripts/ensemble-validate-claims` on each, and read `references/grounding-validation.md`.** Usually one file; a run that also accreted a term (step 9) has two, and both are checked before either is indexed. The artifact is about to become knowledge future agents act on without re-verifying. Check it before that happens, not after someone follows a dead reference.
 
    Exit **0** clean, **1** findings to adjudicate, **2** the validator could not run. **Adjudicate, never auto-apply:** a solution doc legitimately cites a path the fix deleted or describes a pre-fix state.
 
    **Exit 2 means the artifact is unverified.** Record degraded verification and say so in the report — a run whose grounding could not execute must not be reported as grounded. That is the case which otherwise looks identical to clean.
 
-11. **Apply always-on behaviors** (cross-refs, index update, log append).
-12. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
-13. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-14. **Plan-lifecycle handling.** Step 14 splits into two sub-steps that separate **lifecycle bookkeeping** (always runs) from **documentation-tense rewrites** (only runs on actual capture). Rationale: previously this step was bundled — if the user opened `/en-learn` and said "skip — no learnings to capture," the lifecycle flip was collateral damage and the plan got orphaned at `status: in_progress`. The unbundle ensures the lifecycle flip happens whenever `/en-learn capture` is invoked, regardless of whether a learning was actually filed. The en-ship plan-completion checkpoint (per the EN04 plan-completion spec in the Ensemble repo) is the backstop for cases where `/en-learn` isn't invoked at all.
+11. **Plan-lifecycle handling.** Step 11 splits into two sub-steps: **lifecycle bookkeeping**, which always runs, and **documentation-tense rewrites**, which run only on an actual capture. Bundled, a user's "skip — no learnings to capture" once orphaned plans at `status: in_progress`. `/en-ship`'s plan-completion checkpoint is the backstop when `/en-learn` is never invoked (D34).
 
    **11a. Lifecycle flip (always runs when a plan_id is in context).** If `/en-learn capture` was invoked within the context of a specific plan (derivable from the current branch name per `<plan_id>-<slug>` convention, or passed via `--plan <plan-path>`), perform the lifecycle flip:
    - Read frontmatter; check `status:`.
@@ -93,13 +85,16 @@ After every write:
 
    **11a always runs**, even when the user picked "skip — no learnings worth filing" earlier in the capture flow. The flip is lifecycle bookkeeping; it shouldn't be tied to whether wiki content was filed.
 
-   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (i.e. step 7's compose-entry produced a real file in `docs/learnings/`), AND 11a ran (plan was moved), also:
+   **11b. Documentation-tense updates (only runs when a learning was actually captured).** If a learning was captured during this `/en-learn capture` invocation (step 8 wrote a real file), AND 11a ran (plan was moved), also:
    - Replace plan-tense ("we will", "this should") with documentation-tense ("we did", "this does").
    - Note any deviations from the plan (sections of the plan that didn't ship as written, or that landed differently).
 
    **11b is skipped when the user said "skip — no learnings worth capturing"** earlier in the flow; lifecycle flip (11a) still happens, just without the documentation-tense rewrite.
 
    **Edge case: no plan_id in context.** If `/en-learn capture` is invoked outside any plan context (no plan branch, no `--plan` argument), step 11 is a silent no-op — there's nothing to flip.
+12. **Apply always-on behaviors** (cross-refs, index update, log append).
+13. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
+14. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
 15. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
 16. **Update `docs/README.md` index** if it exists.
 17. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
@@ -155,7 +150,7 @@ drifted).
 
 ## Process — Mode C: `--lint` / `--lint --fix`
 
-Per `references/learn-lint.md`. Audits the wiki *graph*:
+Per `references/learn-lint.md`. Findings are graded P0-P3 with the confidence scale beside them, both defined in `references/peer-contract.md` and meaning the same thing to every skill that reads them. Audits the wiki *graph*:
 
 - Orphans, missing back-refs, broken links, contradictions, missing pages, stale references, index drift, log drift, data gaps.
 - `--fix` auto-applies mechanical fixes (back-refs, broken-link repair, index regen, log append).
@@ -167,10 +162,10 @@ Output: JSON-lines + markdown summary.
 
 Runs the layout migration directly, for a project that predates the artifact-type
 layout. **Read `references/layout-migration.md` and follow it** — the same
-procedure capture's step 2a invokes. One procedure, two entry points; two
+procedure capture's legacy-layout check invokes. One procedure, two entry points; two
 descriptions would drift and the drift would only be discovered mid-migration.
 
-Use this when upgrading an existing project. Capture's step 2a is a safety net
+Use this when upgrading an existing project. Capture's legacy-layout check is a safety net
 for someone who reaches for capture first, not the intended route: a project
 holding a hundred entries should not have to start writing a new learning to be
 told the old ones are about to stop being read.
@@ -179,19 +174,16 @@ Reports what moved, what converted to an ADR, what was renamed to avoid a
 collision, and anything left for classification.
 
 
-## Auto-invoke triggers (per A3 / D26)
+## Who invokes it
 
-`/en-learn` auto-runs after `/en-build` and `/en-qa`. Soft prompt:
-
-> "Capture learnings from this build? (yes / skip)"
-
-User accepts → invoke `capture` mode. User declines → no-op.
-
-Also fires on D21 (capture-from-synthesis) when `/en-plan`, `/en-review`, or `/en-brainstorm` ends with a synthesis worth filing.
+- `/en-build`'s learning checkpoint, the **sole** capture prompt in the lifecycle (D26, D38), and `/en-loop` at loop end, invoke `capture`. `/en-qa` never prompts for learnings.
+- `/en-brainstorm`, `/en-foundation` and `/en-resolve-pr` invoke `capture --from-conversation` when a synthesis clears the gate (D21).
+- `/en-sweep` invokes `--lint` in CI.
+- A person runs any mode. When a caller drives `capture`, the gate decides and nothing is asked.
 
 ## Cross-review
 
-**Off by default in all modes.** `--peer` enables Outside Voice on the entry before write (rare; usually unnecessary for learnings).
+**Off.** This skill invokes no peer and carries no peer machinery; its severity vocabulary is the shared contract's, nothing more.
 
 ## Reference files
 

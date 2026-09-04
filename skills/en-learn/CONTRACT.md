@@ -8,14 +8,17 @@ Owned by `en-learn`. Callers depend on this page, not on `SKILL.md`.
 |---|---|
 | `/en-learn capture` | `en-build`'s learning checkpoint |
 | `/en-learn capture --from-conversation` | `en-brainstorm`, with a design doc as input |
+| `/en-learn capture` | `en-loop`, at loop end |
 | `/en-learn --lint` | `en-sweep`, wiki-graph health |
 | `--fix` | with `--lint`, auto-applies mechanical repairs |
+| `/en-learn --migrate` | a person, once, on a store still on the retired layout |
 
 ## Non-interactive guarantee
 
-`--lint` is fully unattended and is the mode CI uses. `capture` is
-conversational by default; a skill invoking it should expect interaction unless
-it supplies the subject itself.
+`--lint` is fully unattended and is the mode CI uses. When a caller drives
+`capture`, the capture gate decides and nothing is asked; a failed gate is a
+reported skip, not a question. `--refresh` confirms each disposition with a
+person unless `--auto` is passed.
 
 ## Return
 
