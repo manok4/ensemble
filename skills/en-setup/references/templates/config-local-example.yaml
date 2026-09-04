@@ -101,6 +101,8 @@ learnings_cross_project: false
 #   log_source: stdout                   # one of: stdout | file | command
 #   log_path: ./logs/app.jsonl           # used when log_source: file
 #   log_command: 'docker logs app'       # used when log_source: command
+#   allowed_log_commands: []             # extends the default allowlist (docker, kubectl, journalctl, gh run view, datadog-cli, aws logs, gcloud logging)
+#   max_log_lines: 5000                  # cap on fetched lines per run
 #   structured_logging_required: true    # if true, ensemble-lint flags console.log/print
 #   logging_dev_paths:                   # paths exempt from the logging.unstructured rule
 #     - "**/*.dev.{ts,js}"
