@@ -137,7 +137,9 @@ Canonical. The right-size-depth and probe-budget steps both resolve against this
 |---|---|---|---|---|---|
 | Lightweight | 2–4 | one per turn | 2 (inline) | skip unless asked | Short design doc (<100 lines) |
 | Standard | 5–8 | frontier rounds (~2–3 rounds) | 2–3 (divergent if 3+ live directions) | round-1 item; default skip | Standard design doc (100–250 lines) |
-| Deep | 9–14 | frontier rounds (~3–4 rounds) | 3 (divergent) | round-1 item; default skip | Long design doc (250–500 lines) |
+| Deep | 9–14 | frontier rounds (~3–4 rounds) | 3 (divergent) | round-1 item; default skip | Long design doc (150–300 lines) |
+
+Length comes from decisions and assumptions, not narrative. `/en-plan` reads the doc whole to inherit its settled decisions, so every line here is paid for again downstream; bulk evidence stays in the dossier and is cited by path.
 
 ## Output format
 
