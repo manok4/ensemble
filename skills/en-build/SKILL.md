@@ -64,7 +64,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
    - If on a feature branch → use it.
    - If working tree is dirty → ask user: stash, commit, or abort.
    - **Worktree** (D28): if user passed `--worktree`, create one at `../<repo>-<plan_id>/` and build in there.
-6. **Read context.** Foundation, related plan files (deps from this plan's `related:`), `CLAUDE.md`, `AGENTS.md`, project conventions.
+6. **Read context, bounded.** `AGENTS.md`, `CLAUDE.md`, project conventions, and the plans this plan names in `related:`. From `docs/foundation.md` read the frontmatter, then `grep -n '^#' docs/foundation.md` for the section index, then only the Functional Requirements entries for the R-IDs in the plan's `covers_requirements`. **Never read it whole**: it routinely runs past 2,000 lines, and the plan already carries the approach and file list the build needs.
 7. **Plan review with user.** Surface concerns: "Plan touches 12 files; some intersect with EN05 (in-flight). Continue, pause, or split?" Address before starting.
 8. **Determine batch size.** Per A2 / D25 — derive from the plan:
    - Independent units → larger batch (3–5).
