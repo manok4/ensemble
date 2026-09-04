@@ -1,7 +1,6 @@
 ---
 name: en-qa
 description: "Test the work like a real user: lint, typecheck, tests, then Playwright browser end-to-end on the golden path and edge cases; each bug gets a fix, a regression test and a commit. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
-disable-model-invocation: true
 ---
 
 
@@ -11,7 +10,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
 ## Process
 
-1. **Resolve context.** Establish once: the branch and its base, the changed files, and **whether a human is driving**. A caller (`/en-build`, `/en-loop`) drives this unattended; a person invoking it directly does not. That single fact changes what happens at every prompt below, so resolve it first and state it in the report.
+1. **Resolve context.** Establish once: the branch and its base, the changed files, and **whether a human is driving**. A caller (`/en-build`, `/en-loop`) drives this unattended; a person invoking it directly does not. This skill is model-invocable on purpose: a `disable-model-invocation: true` flag would let only a person run it and leave those callers with nothing to invoke. That single fact changes what happens at every prompt below, so resolve it first and state it in the report.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocess shouldn't QA in CI).
 3. **Phase 1 — system checks.** Run in this order; stop on first failure:

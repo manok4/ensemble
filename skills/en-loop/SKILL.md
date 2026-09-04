@@ -80,7 +80,7 @@ git log --oneline --decorate --max-count=20
 pgrep -fl 'gnhf|claude|codex' || true
 ```
 
-Then run **independent** verification: `/en-review` over the branch diff plus `/en-qa`, comparing the result to the stop condition and the user's latest feedback. Decide: **Mergeable**, **Needs follow-up loop**, or **Do not merge**. If it needs follow-up, continue in Companion mode instead of presenting the run as complete. Hand off to `/en-ship` only when Mergeable and only with explicit authorization. Never auto-merge.
+Then invoke `/en-review` over the branch diff and invoke `/en-qa`, as **independent** verification, comparing the result to the stop condition and the user's latest feedback. Decide: **Mergeable**, **Needs follow-up loop**, or **Do not merge**. If it needs follow-up, continue in Companion mode instead of presenting the run as complete. Hand off to `/en-ship` only when Mergeable and only with explicit authorization. Never auto-merge.
 
 ## Per-iteration worker-prompt contract (fed to gnhf)
 
