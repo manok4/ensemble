@@ -73,12 +73,10 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
-6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` and `bin/ensemble-lint` on changed `docs/` paths. Surface lint failures as P1 findings before persona dispatch.
+6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` on the changed `docs/` paths and surface its failures as P1 findings before any dispatch.
 7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
 
    **Peer-sole short-circuit (`--peer`, the default).** Unless `--cross` or `--host` was passed, **skip persona detection and dispatch entirely (steps 7, 7a, 8)** and proceed directly to step 9, where the cross-agent Outside Voice peer is the sole reviewer. This is also what `/en-build`'s post-build phase relies on: the host implemented the code, so the review must come from the *other* agent.
-
-   This block said `--peer-only` until 2026-09-03. That flag was renamed to `--peer` on 2026-09-01 and made the default; the short-circuit is therefore the ordinary path, not an opt-in, and the sentence describing it as one read as though the persona roster ran by default. It does not.
 
    **`--lite` does nothing under `--peer`.** It collapses the *host persona roster*, and this mode runs no personas. That used to be a rare collision between two opt-ins; with `--peer` as the default it is what happens to anyone who passes `--lite` alone. Do not silently ignore it: report `lite_gate: overridden (no-persona-roster)` so the run says the flag had no effect, and pair `--lite` with `--host` or `--cross` to get the collapsed roster. The reason id is the existing `overridden` shape rather than a fourth outcome, so the three-value enum and the JSON envelope are unchanged.
 
@@ -120,7 +118,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - Translate the tier resolved in step 2b: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. **Do not restate the retry algorithm here** — the helper owns invocation, classification, the single bounded retry that drops only the rejected fragment, and the fallback, so the behavior is executable and testable rather than prose (EN11-PR-006). It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
    - **`--peer` (the default), sole reviewer:** the peer's findings ARE the envelope; no reconciliation is needed.
-   - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. This bullet was labelled "Default" until 2026-09-03, which had the two modes exactly backwards: `--cross` is the thorough opt-in, and the default is peer-sole. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
+   - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
 9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
@@ -162,14 +160,11 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 ## Flags
 
-| Flag | Effect |
-|---|---|
-| `--mode interactive\|headless\|report-only` | Override default mode |
-
 **`--peer`, `--cross` and `--host` are mutually exclusive review modes**; passing two is an error, not a merge. `--peer` is the default, so a bare `/en-review` is a peer-only pass.
 
 | Flag | Effect |
 |---|---|
+| `--mode interactive\|headless\|report-only` | Override the default mode (caller-selected; see step 3) |
 | `--peer` | **Default.** The peer is the sole reviewer; host personas do not run. Fastest and cheapest of the three. Where no peer CLI exists, the peer role runs on the host model in a **fresh subprocess** rather than being skipped — see the fallback note in step 2a. |
 | `--cross` | Host personas **and** the peer, reconciled into the four buckets, **corroborated findings reported first**. The thorough mode: it is the only one that produces standards / testing / maintainability findings with project context alongside an independent read. Used by `/en-build` (D46). |
 | `--host` | Host personas only, in fresh-context sub-agents. No peer subprocess. Use when no peer is wanted or reachable and you do not want the same-model fallback. |
