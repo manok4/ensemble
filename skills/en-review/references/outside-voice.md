@@ -13,7 +13,7 @@ The contract every peer pass follows. Carried by the skills that run one: `en-fo
 | `en-foundation` | After the draft is synthesized | On; `--no-peer` disables |
 | `en-plan` | After the plan is fully drafted with U-IDs | On; `--no-peer` disables |
 | `en-build` | Once, over the branch diff after `/en-simplify`, through `/en-review --peer` (D52) | On |
-| `en-review` | Alongside the host personas | On; `--no-peer` disables |
+| `en-review` | Sole reviewer by default (`--peer`); beside the personas under `--cross` | On; `--host` runs personas only |
 
 ## Single-agent fallback (D31)
 
@@ -52,5 +52,5 @@ When a skill re-runs the peer after applying findings, the prompt carries a `## 
 
 Notes:
 
-- `ENSEMBLE_PEER_REVIEW=true` is the recursion guard (`references/recursion-guard.md`).
+- `ENSEMBLE_PEER_REVIEW=true` is the recursion guard: every peer entry point checks it first and skips the peer when it is set.
 - `$PEER_TURNS` is `--max-turns 1` for a `claude -p` peer and empty for `codex exec`, which is single-shot.

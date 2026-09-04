@@ -118,7 +118,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - Translate the tier resolved in step 2b: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. **Do not restate the retry algorithm here** — the helper owns invocation, classification, the single bounded retry that drops only the rejected fragment, and the fallback, so the behavior is executable and testable rather than prose (EN11-PR-006). It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
    - **`--peer` (the default), sole reviewer:** the peer's findings ARE the envelope; no reconciliation is needed.
-   - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → fresh-subprocess per `references/single-agent-fallback.md`), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
+   - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → a fresh subprocess of the host's own CLI), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
 9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
@@ -259,15 +259,9 @@ review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto
 
 ## Reference files
 
-- `references/host-detect.md`
-- `references/persona-dispatch.md` — which personas fire and how
-- `references/finding-schema.md` — JSON shape
-- `references/severity.md` — autofix routing
-- `references/severity-and-routing.md` — alias
-- `references/outside-voice.md` — peer-review prompt (used by `--peer` and `--cross`)
-- `$SKILL_DIR/scripts/ensemble-build-peer-prompt` — assembles the Outside Voice prompt for `--peer` and `--cross`
-- `references/single-agent-fallback.md` — fallback when only one CLI is installed
-- `references/recursion-guard.md`
+Every run: `references/host-detect.md` (`PEER_*`), `references/peer-brief.md` (dimensions; the prompt builder reads them), `references/peer-contract.md`, `references/severity.md` (routing), `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md` (effort), `references/diff-signal-detection.md` (`is_small_and_safe`, lite-gate reason ids), `references/review-confidence-gating.md` and `references/tech-debt-tracker-format.md` (filing sub-threshold findings), `$SKILL_DIR/scripts/ensemble-build-peer-prompt`.
+
+Gated, read only under `--cross` or `--host`: `references/persona-dispatch.md` (roster, batch, reconciliation) and `references/research-dispatch.md` (`learnings-research`).
 
 ## Failure protocol
 
