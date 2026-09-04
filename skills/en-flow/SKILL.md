@@ -1,6 +1,6 @@
 ---
 name: en-flow
-description: "Run the full hands-off Ensemble pipeline from plan through a ready-for-review PR: en-plan → en-build → en-learn (model-decided) → en-ship (with watch loop). Manual-invoke only (never auto-triggered). Flags: --plan <path> (skip planning), --no-ship (stop after build), --no-watch (pass through to en-ship). Trigger phrases: 'run the full pipeline', 'plan build and ship', 'take this end to end', 'en-flow'."
+description: "Run the hands-off pipeline from plan to a ready-for-review PR: en-plan, en-build, en-learn, then en-ship with its watch loop. Manual-invoke only. Trigger phrases: 'run the full pipeline', 'plan build and ship', 'take this end to end', 'en-flow'."
 disable-model-invocation: true
 ---
 

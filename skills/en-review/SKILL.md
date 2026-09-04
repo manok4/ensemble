@@ -1,6 +1,6 @@
 ---
 name: en-review
-description: "Multi-persona code review of the current branch, with a cross-agent peer on by default. Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'. Always-on dimensions are correctness, testing, maintainability and standards; security, performance and migrations fire when the diff matches. Host and peer findings reconcile, and low-confidence ones file as tech debt rather than cluttering the output."
+description: "Multi-persona code review of the current branch with a cross-agent peer on by default: correctness, testing, maintainability and standards always; security, performance and migrations when the diff matches. Trigger phrases: 'review my changes', 'review this branch', 'code review', 'check this PR'."
 ---
 
 

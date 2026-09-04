@@ -1,6 +1,6 @@
 ---
 name: en-brainstorm
-description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-aware approaches with a recommendation and devil's-advocate pass. Outputs a design doc to docs/designs/. Use before committing to a plan. Trigger phrases: 'brainstorm', 'explore options', 'think through', 'help me decide', 'what would it look like if', 'design doc for'."
+description: "Explore an idea via Q&A and 2-3 approaches with trade-offs, a recommendation and a devil's-advocate pass; writes a design doc to docs/designs/. Trigger phrases: 'brainstorm', 'explore options', 'think through', 'help me decide', 'what would it look like if', 'design doc for'."
 ---
 
 

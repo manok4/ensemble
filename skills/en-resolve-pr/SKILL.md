@@ -1,6 +1,6 @@
 ---
 name: en-resolve-pr
-description: "Address review comments on the current PR. Fetches inline review threads + top-level PR comments + review-submission bodies; triages new vs already-handled, silent-drops bot wrappers; per comment applies a 6-verdict rubric (fixed / fixed-differently / replied / not-addressing / declined / needs-human); applies fixes, replies, resolves threads (except needs-human). Up to 2 cycles interactively; exactly one pass under --orchestrated, where the caller owns the retry budget and needs-human returns as a result rather than blocking. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
+description: "Address review comments on the current PR: fetch threads and PR comments, triage, apply a six-verdict rubric per comment, then fix, reply and resolve; needs-human items are surfaced, never guessed. Trigger phrases: 'address PR feedback', 'resolve PR comments', 'handle review comments', 'resolve PR'."
 disable-model-invocation: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'. Detects greenfield, existing-without-Ensemble, or already-integrated, then creates the docs skeleton, seeds docs/CONTEXT.md from the declared domain model, generates AGENTS.md and CLAUDE.md, and offers the optional integrations. Runs health checks on an integrated project."
+description: "Ensemble bootstrap and diagnostics for a project: detects its state, creates the docs skeleton, generates AGENTS.md and CLAUDE.md, offers optional integrations and health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 disable-model-invocation: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: en-ship
-description: "Push clean changes to the remote with a meaningful commit and PR. Pre-flight (lint + typecheck + targeted tests + secret scan + merge-conflict check), conventional-commit message, push, gh pr create. Optional --auto-merge enables gh pr merge --auto --squash. Trigger phrases: 'ship it', 'push and PR', 'open a PR', 'commit and push', 'send for review'."
+description: "Push clean changes with a conventional commit and a PR: preflight (lint, typecheck, targeted tests, secret scan, merge check), push, gh pr create, optional --auto-merge. Trigger phrases: 'ship it', 'push and PR', 'open a PR', 'commit and push', 'send for review'."
 ---
 
 

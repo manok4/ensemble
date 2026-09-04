@@ -1,6 +1,6 @@
 ---
 name: en-qa
-description: "Test the work like a real user. Phase 1: lint + typecheck + test suite. Phase 2: Playwright browser end-to-end (golden path + edge cases — empty/error states, slow network, double-click, navigate-mid-action, keyboard, mobile). Per bug: reproduce → root cause → fix → regression test → atomic commit → re-verify. Outputs a QA report with screenshots. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
+description: "Test the work like a real user: lint, typecheck, tests, then Playwright browser end-to-end on the golden path and edge cases; each bug gets a fix, a regression test and a commit. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
 disable-model-invocation: true
 ---
 

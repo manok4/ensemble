@@ -1,6 +1,6 @@
 ---
 name: en-loop
-description: "Run a bounded, objective-driven autonomous loop until an evidence-based stop condition. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'. One committed, test-gated slice per iteration, with cross-agent review at checkpoints. Wraps the gnhf CLI. Manual-invoke only; bounded by --stop-when, --max-iterations, --max-tokens and --max-runtime."
+description: "Run a bounded autonomous loop until an evidence-based stop condition: one committed, test-gated slice per iteration, cross-agent review at checkpoints. Wraps the gnhf CLI. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'."
 disable-model-invocation: true
 ---
 

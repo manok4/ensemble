@@ -1,6 +1,6 @@
 ---
 name: en-guardrail
-description: "Always-on safety guardrail against destructive commands. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'. PreToolUse hooks inspect Bash commands and DB-writing MCP tools for destructive patterns (recursive rm, DROP TABLE, TRUNCATE, force-push, terraform destroy, and similar) and force a permission prompt. Build artifacts and local test databases pass without prompting."
+description: "Always-on safety guardrail: PreToolUse hooks inspect Bash commands and DB-writing MCP calls for destructive patterns (recursive rm, DROP TABLE, force-push, terraform destroy) and force a permission prompt. Trigger phrases: 'guardrail', 'safety mode', 'check guardrail', 'what's protected'."
 ---
 
 
