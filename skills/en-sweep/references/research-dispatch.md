@@ -14,9 +14,9 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 
 | Skill | Depth | repo-research | learnings-research | web-research |
 |---|---|---|---|---|
-| `en-brainstorm` | Lightweight | never | never | optional |
-| `en-brainstorm` | Standard | never | never | on-request |
-| `en-brainstorm` | Deep | never | never | on-request |
+| `en-brainstorm` | Lightweight | never | never | skip unless asked |
+| `en-brainstorm` | Standard | never | never | round-1 item; default skip |
+| `en-brainstorm` | Deep | never | never | round-1 item; default skip |
 | `en-plan` | Lightweight | optional | **always** | optional |
 | `en-plan` | Standard | **always** | **always** | conditional |
 | `en-plan` | Deep | **always** | **always** | conditional |

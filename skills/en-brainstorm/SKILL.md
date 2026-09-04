@@ -56,7 +56,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 9. **Integration check.** Still before approaches: **combine** what the user has said with your own defaults and surface any non-obvious downstream consequence the one-question-at-a-time dialogue hasn't probed (*"if mute lives on the rule AND we don't warn on delete, then rule-delete silently loses pause state"*). Fire **one open-ended probe per genuine combination effect**, not a blanket audit.
 
    **Probe budget** (governs all three probe steps: the blindspot walk-through, the pressure test, and this one). They **count toward the depth question budget**; they add no separate quota. On **Lightweight**, fire **at most one** rigor/integration probe, the single highest-signal gap, and skip the rest: a Lightweight brainstorm must not become a rigor interrogation. Standard/Deep have room for one probe per genuine gap within the budget.
-10. **Optional research.** Dispatch the `web-research` agent only if the user wants prior art OR external best practice would materially change the recommendation. Per `references/research-dispatch.md` this is `optional` for brainstorm; default skip on Lightweight, ask on Standard/Deep.
+10. **Optional research.** Dispatch the `web-research` agent only when the user wants prior art or external best practice would materially change the recommendation. It never gets a turn of its own: on Standard/Deep it is one numbered item in the first frontier round, recommended answer **skip** unless a trigger in `references/research-dispatch.md` holds (a library the repo does not already use; the user on the fence between two approaches). On Lightweight, skip unless asked.
 11. **Propose 2–3 approaches** with trade-offs. Each: sketch, pros, cons. Keep sketches short (one paragraph each). Approaches name mechanism or product shape, never implementation specifics — those belong to `/en-plan`.
     - **Divergent generation gate.** On **Deep**, or on **Standard with 3+ genuinely live directions**, generate the approaches through parallel constraint-diverged sub-agents rather than serially in this context — serial generation anchors, and B and C come back as variants of A. **Read `references/brainstorm-approaches.md` when this fires**; it owns the constraint table, the acceptance bar, and the no-sub-agent fallback.
     - Otherwise generate inline. When one approach is clearly best, skip the menu and say so.
@@ -144,9 +144,9 @@ Canonical. The right-size-depth and probe-budget steps both resolve against this
 
 | Depth | Q budget | Asking cadence | Approaches | Web research | Output |
 |---|---|---|---|---|---|
-| Lightweight | 2–4 | one per turn | 2 (inline) | skip default | Short design doc (<100 lines) |
-| Standard | 5–8 | frontier rounds (~2–3 rounds) | 2–3 (divergent if 3+ live directions) | ask | Standard design doc (100–250 lines) |
-| Deep | 9–14 | frontier rounds (~3–4 rounds) | 3 (divergent) | ask | Long design doc (250–500 lines) |
+| Lightweight | 2–4 | one per turn | 2 (inline) | skip unless asked | Short design doc (<100 lines) |
+| Standard | 5–8 | frontier rounds (~2–3 rounds) | 2–3 (divergent if 3+ live directions) | round-1 item; default skip | Standard design doc (100–250 lines) |
+| Deep | 9–14 | frontier rounds (~3–4 rounds) | 3 (divergent) | round-1 item; default skip | Long design doc (250–500 lines) |
 
 ## Output format
 

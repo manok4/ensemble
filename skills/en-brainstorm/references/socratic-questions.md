@@ -65,7 +65,7 @@ Rules: probe **open-ended**, never as a multiple-choice menu (a menu signals whi
 
 | Q | Use when |
 |---|---|
-| Should I research how others solved this? (yes/no) | Before invoking `web-research` |
+| Should I research how others solved this? | One item in the first frontier round on Standard/Deep, recommended answer skip unless a trigger holds; never a turn of its own |
 | Any specific tools or libraries to check? | When research would benefit from a starting point |
 | Is there a learning in our store relevant to this? | Always — brainstorm reads `docs/learnings/index.md` directly in its bounded existing-context scan |
 
