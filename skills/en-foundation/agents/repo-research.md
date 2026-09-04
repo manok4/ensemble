@@ -94,48 +94,6 @@ When in doubt, narrow your scope. The dispatcher can re-invoke you for follow-up
 - **You do not run user-facing commands.** Read tool only; no `npm install`, no `git checkout` that changes state.
 - **JSON only.** No commentary outside JSON.
 
-## Worked example
-
-Dispatched by `/en-plan` for "FR07 — refresh-token rotation":
-
-```json
-{
-  "summary": "Auth code lives in src/auth/; token rotation already exists in middleware.ts but is not serialized per-user. Test framework is Bun's built-in test runner.",
-  "patterns": [
-    {
-      "name": "Async middleware shape",
-      "description": "All middleware in src/middleware/ is `async (req, res, next) => { ... }` returning unit, calling next() explicitly.",
-      "examples": ["src/middleware/auth.ts:12", "src/middleware/logging.ts:8"]
-    },
-    {
-      "name": "Test colocated with source",
-      "description": "Tests live alongside source as `<name>.test.ts`. No separate __tests__/ directory.",
-      "examples": ["src/auth/refresh.test.ts", "src/billing/charge.test.ts"]
-    }
-  ],
-  "conventions": [
-    {
-      "topic": "Naming",
-      "rule": "kebab-case for files, camelCase for symbols, PascalCase for types/classes",
-      "evidence": ["src/auth/refresh-token.ts", "src/types/user.ts"]
-    }
-  ],
-  "prior_art": [
-    {
-      "what": "Existing rotateRefreshToken() called inline from middleware",
-      "where": "src/auth/refresh-token.ts:34",
-      "relevance": "FR07 will wrap this in a singleFlight cache; the existing function should not need signature changes."
-    }
-  ],
-  "structure": {
-    "src/auth/": "Authentication: middleware, token rotation, session management",
-    "src/billing/": "Billing: subscription, charge, webhook handlers",
-    "src/db/": "Drizzle schema and migrations"
-  },
-  "questions_for_user": []
-}
-```
-
 ## Evidence dossier
 
 For large result sets, follow the evidence-dossier protocol in `references/research-dispatch.md`: write verbatim quotes + source pointers to a scratch dossier at `/tmp/ensemble/<skill>/<run-id>/<this-agent>.md` (line-capped ~150), and return only a 3–5 line **gist** plus `dossier_path` instead of inlining every quote. The orchestrator and downstream agents read the dossier from disk on demand. **Degraded fallback:** if the scratch write fails, return findings inline and set `dossier_path: null` — never drop evidence.

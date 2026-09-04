@@ -65,7 +65,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    Depth is asked or inferred; default Standard.
 6. **Phase 1 research (parallel).** Per `references/research-dispatch.md`:
    - `repo-research` — patterns, conventions, file paths, prior art (Standard/Deep always).
-   - `learnings-research` — relevant entries from `docs/learnings/` via `index.md` (Lightweight optional, Standard/Deep always).
+   - `docs/learnings/index.md` — read it inline first; it is an index and rarely more than a screen. Dispatch `learnings-research` only when the index lists more than ~5 candidate entries touching the topic, so the drill-down is worth a round trip; it then runs in the same parallel batch as `repo-research`.
    - `web-research` — only if a 3rd-party library not used elsewhere AND the library has known footguns AND the user hasn't said "skip web research".
 7. **Resolve planning questions — frontier rounds.** Ask every question whose prerequisites are settled in **one numbered round**, each carrying your **recommended answer**, so a round is "confirm these, correct what I got wrong" rather than "answer these". A question that depends on another still open **in this round** waits for the next round — that dependency rule is what keeps batching from producing diluted answers. Skip outright anything the design doc already settled (the source-the-request step) or that research already answered; facts in the repo are looked up, never asked.
 

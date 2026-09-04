@@ -7,7 +7,7 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | Agent | Purpose | Latency | When to dispatch |
 |---|---|---|---|
 | `repo-research` | Scan the codebase for patterns, conventions, file paths, existing implementations | Medium (file reads + grep) | Always for Standard/Deep `en-plan`; always for State-2 `en-foundation` retrofits |
-| `learnings-research` | Query `docs/learnings/` for relevant past terms, decisions, and solutions via `index.md` | Fast | Always for Standard/Deep `en-plan` |
+| `learnings-research` | Query `docs/learnings/` for relevant past terms, decisions, and solutions via `index.md` | Fast | Always for `en-review`; for `en-plan` only when an inline read of `index.md` turns up more candidates (~5+) than it can drill into itself |
 | `web-research` | External docs (Context7) and best-practice search (WebSearch); URL fetch for ingest | High (network) | Only when local context is thin and external prior art would change the recommendation |
 
 ## Dispatch matrix
@@ -17,9 +17,9 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | `en-brainstorm` | Lightweight | never | never | skip unless asked |
 | `en-brainstorm` | Standard | never | never | round-1 item; default skip |
 | `en-brainstorm` | Deep | never | never | round-1 item; default skip |
-| `en-plan` | Lightweight | optional | **always** | optional |
-| `en-plan` | Standard | **always** | **always** | conditional |
-| `en-plan` | Deep | **always** | **always** | conditional |
+| `en-plan` | Lightweight | optional | index inline | optional |
+| `en-plan` | Standard | **always** | index inline; agent when ~5+ candidates | conditional |
+| `en-plan` | Deep | **always** | index inline; agent when ~5+ candidates | conditional |
 | `en-foundation` | (any) | **always** for retrofits, optional for greenfield | never | optional |
 | `en-learn` | (any) | never | on a genuinely broad overlap search only | never |
 | `en-debug` | (any) | fallback only, when span-to-source cannot anchor | never | never |
