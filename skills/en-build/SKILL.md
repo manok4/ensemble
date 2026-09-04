@@ -132,41 +132,25 @@ The contract governs **the inter-unit main loop** — specifically, the window f
 
 **Steps 1–8 are NOT governed by this contract.** Preflight, sub-state matrix decisions (untracked-but-approved → offer auto-commit; draft + revise with cleared findings → offer finalize-and-build; unresolved draft findings → refuse and ask for `/en-plan --resume`), host detection, branch setup, plan-review concerns, and batch sizing all have their own documented prompts and protocols. Those are *pre-execution* prompts about whether the build can sensibly start; they're orthogonal to the *during-execution* autonomy this contract enforces.
 
-Why scope this way: the field-observed bug ("Working tree is clean. I stopped at a clean checkpoint before U4") is specifically a post-commit, inter-unit pause inserted by agent judgment. Scoping the contract to that window catches exactly that bug class. Scoping wider would either invalidate legitimate preflight prompts or require an unmaintainable enumeration of every prompt-emitting code path.
-
 ### Legitimate pause cases within the contract window (exhaustive within scope, no others permitted)
 
-1. **Working tree dirty at branch setup** (step 5) — stash / commit / abort prompt. *(Out of contract window; listed for completeness — see Scope above.)*
-2. **Plan-review concerns surfaced at start** (step 7) — continue / pause / split prompt. *(Out of contract window; listed for completeness.)*
+1. **Working tree dirty at branch setup** (step 5) — stash / commit / abort prompt. *(outside the window)*
+2. **Plan-review concerns surfaced at start** (step 7) — continue / pause / split prompt. *(outside the window)*
 3. **`risk: destructive` unit at step 9a** — typed `"run unit U<N>"` literal-string gate.
 4. **`gated: true` unit at step 9a** — y/skip/abort prompt.
 5. **P4 phase-level confirmation** (step 9, phasing-on path) — typed `"run phase 4"` literal-string.
 6. **`build.pause_between_phases` set** (step 9, opt-in) — between-phase y/pause/n prompt.
 7. **Failure protocol fires** (failure-protocol table) — gate failure, peer reject, malformed evidence, hash mismatch, after-phase verification failure, plan-hash drift, etc. Each has its own documented handler.
 
-Cases 3–7 are inside the contract window (steps 9 and 10). Cases 1 and 2 are listed for completeness so the reader sees the full pause-emitting universe of /en-build; they're already in their own documented handlers and are not subject to this contract.
-
 ### Anti-patterns (explicitly forbidden)
 
-- **Agent-initiated "checkpoint before bigger unit" pauses.** The plan was authored and peer-reviewed; the agent does not re-evaluate unit complexity at execution time.
-- **"Working tree is clean, paused for confirmation" between non-gated units.** Working-tree-clean is the *expected* state between units, not a reason to pause.
-- **"Should I continue?" preambles outside the seven cases.** Continuing is the default; stopping requires a specific authorized reason.
-- **"Let me verify with the user before [implementing/committing/running tests/anything]"** when none of the seven cases apply. The user already authorized the plan; per-unit pauses bypass that authorization.
-- **"This next unit has [X characteristic that's not in the seven cases]; pausing here."** No characteristic outside the seven cases is grounds for an inserted pause.
+- **Agent-initiated "checkpoint before bigger unit" pauses.** The plan was authored and peer-reviewed; unit complexity is not re-evaluated at execution time.
+- **"Working tree is clean, paused for confirmation" between non-gated units.** A clean tree is the *expected* state between units.
+- **"Should I continue?" preambles and "Let me verify with the user before …"** outside the seven cases. The user authorized the plan; a per-unit pause bypasses that authorization.
 
 ### Right response to LLM uncertainty: advance, not ask
 
-If the agent feels uncertain about advancing, the correct action is to **continue per the contract**. The failure protocols are the safety net:
-
-- Tests fail → step 9d / 9j catches it.
-- Lint fails → step 9d catches it.
-- The branch-level review fails → step 10's review and audit handle it.
-- Implementation goes wrong → 9d's verification gate catches it.
-- After-phase regression → after-phase verification catches it.
-
-Agent-self-paused checkpoints add no protection on top of these mechanisms — they just add friction that the autonomous-execution design exists to avoid.
-
-If the agent has a real concern that's outside the seven cases AND not caught by failure protocols, the right place to surface it is in the **per-unit progress report after committing** (the commit step's report). The report is informational — it doesn't pause the loop. Example:
+Uncertainty is not a pause case: **continue per the contract**; the verification gates and failure protocols are the safety net, and a self-inserted checkpoint adds friction, not protection. A real concern outside the seven cases goes in the **per-unit progress report after committing**. The report is informational — it doesn't pause the loop. Example:
 
 ```
 ✓ U3 — feat(api): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
@@ -184,14 +168,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
      - If `build.strict_destructive` AND phase == P3: require literal-string `"run phase 3"`. Same group-cover semantics.
    - **Opt-in per-phase pause** (`build.pause_between_phases`, default off): ask y/pause/n. Default behavior is auto-roll into the next phase.
    - For each unit in the phase (dependency order):
-     - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Before doing ANY work on this unit:
-       1. **Classify the unit.** Read its `risk:` field; if absent, run the ordered classifier from step 8a's inference fallback to assign one. Read its `gated:` field (default `false`).
-       2. **If `risk: destructive`** AND the active phase has not already been group-confirmed (no `"run phase 4"` accepted for this phase): surface the unit's goal, files, and approach; require typed `"run unit U<N>"` (literal string, verbatim). Any other input → record the unit as `skipped` and advance to the next unit; if the user types `abort`, stop the build per the abort protocol.
-       3. **If `gated: true`** (regardless of risk class): surface the unit's goal and approach; require y/skip/abort. **This gate fires even when a phase-level `"run phase 4"` or `"run phase 3"` has been accepted** — gating is per-unit-only and never group-covered. On `skip`: record as `skipped` and continue. On `abort`: stop per the abort protocol.
-       4. **If `build.strict_destructive` is set AND `risk: high`** AND the active phase has not been group-confirmed (no `"run phase 3"` accepted): same as step 2 with `"run unit U<N>"`.
-       5. Otherwise: proceed to 9b.
-       
-       This entire sequence runs identically on every code path — phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase`, manual resume. **No flag suppresses it.** The phase-level prompts above (P4 `"run phase 4"`, P3 under `build.strict_destructive`) only group-confirm the *destructive* and *high-risk* gates inside their phase; they never cover `gated: true`, and they never apply on phasing-off paths.
+     - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Classify the unit (`risk:`, or the ordered classifier when absent; `gated:` defaults to `false`) and apply the 8b table before doing any work: `risk: destructive` requires the typed `"run unit U<N>"` unless this phase was already group-confirmed with `"run phase 4"`; `gated: true` requires y/skip/abort **every time**, never group-covered; `risk: high` under `build.strict_destructive` requires `"run unit U<N>"` unless `"run phase 3"` covered it. Surface goal, files and approach first. Any other input at a typed gate records the unit `skipped` and advances; `abort` stops the build per the abort protocol. This runs identically on the phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase` and manual resume; **no flag suppresses it**.
      - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
      - **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent.
 
@@ -220,17 +197,15 @@ If the agent has a real concern that's outside the seven cases AND not caught by
    - Surface phase summary (units, commits, any gate confirmations the phase required).
    - If `build.pause_between_phases` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
 
-   **Phasing-off path** (phasing disabled by triggers, `--no-phasing`, `--unit U<N>`, `--from U<N>`): same per-unit loop (9a–9e), no phase grouping, no phase-level prompts. Critically, **step 9a runs verbatim** on every selected unit — `--unit U8` against a destructive unit still requires `"run unit U8"` typed literally; `--from U3` against a plan that contains a gated unit still pauses for y/skip/abort on that unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent across phasing-on and phasing-off runs). **Note:** when phasing is off and `--unit`/`--from` builds a subset, the post-build branch-level review (step 10) still runs over the resulting branch diff so ordinary units get their `review-verdict:` coverage.
+   **Phasing-off path** (no trigger fired, `--no-phasing`, `--unit U<N>`, `--from U<N>`): the same per-unit loop 9a–9e with no phase grouping or phase-level prompts. **Step 9a runs verbatim** on every selected unit, the `phase: P<N>` trailer is still written from the unit's classification, and the post-build phase still runs over the resulting branch diff.
 
 10. **Post-build phase (branch-level simplify → review → audit → learn).** Runs ONCE after all units commit. This is where every unit gets its code-simplifier and Outside Voice review — at the branch level, not per-unit (D52).
 
     1. **Cheap gate: lint + typecheck only.** Seconds, not minutes. It catches syntax and type breakage before simplify and review spend time on code that cannot compile. **The full suite does not run here** — it runs once, at 10.4, after review findings have been applied. Running it first is how a build pays for the full suite three times: once now, once after simplify, once after remediation, on an implementation that was still changing (D53).
     2. **Code-simplification pass** — invoke `/en-simplify` on the branch diff (`git diff <merge-base>..HEAD`). Skip on docs-only or trivial (<~10 changed lines) branches, or with `--no-simplify`. It leaves changes in the working tree (does not commit).
-    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`** over the branch diff — or `--peer` in place of `--cross` when `--review peer` was passed. `--cross` is the default and the reason is D46: the personas are where project context and plan alignment show up, and a review whose subject is "did this branch implement this plan" is a strange place to drop them.
+    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`** over the branch diff, or `--peer` in place of `--cross` when `--review peer` was passed. The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every unit, so the other architecture reviews it (D23). The host personas run alongside as fresh-context sub-agents (D46): they never saw the implementing reasoning, and they are where the standards, testing and maintainability findings come from.
 
-       The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
-
-       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. **`reviewer` still records whether the CROSS-AGENT property held**, not how many personas contributed — that is what the step 10.6 audit gates on, so its meaning is unchanged. **Host applies** eligible findings per `references/severity.md` (the P0-P3 grades and the wire shape they arrive in are the shared contract in `references/peer-contract.md`) (auto-apply `safe_auto`; surface P0-disagreements / high-confidence security or architecture findings); **`conflicting` findings are never auto-applied**. Prefer `corroborated` findings when triaging: host and peer agreeing independently is the strongest signal available. **Apply every finding in one batch, then verify once.** Fix-verify-fix-verify is what turns a 30-minute review into a two-hour one: each cycle pays a full suite for a partial fix. Collect the applications, make them together, and let 10.4's single suite prove them. Skip entirely with `--review none` (records the branch as review-skipped). The flag is named for what it does: it skips this step, personas included. It is **not** "run the review without the peer" — that case needs no flag, because when `PEER_AVAILABLE=false` en-review runs its host personas anyway and records `reviewer: single-agent-fallback` or `en-review-host-fallback`, which the audit accepts as `branch_review_pass: fallback_completed`. The peer machinery lives in en-review (one implementation), not duplicated here.
+       en-review returns the findings envelope with a `reviewer` field (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when no peer) plus `reconciliation[]` buckets. `reviewer` records whether the cross-agent property held, which is what the step 10.6 audit gates on. **Host applies** eligible findings per `references/severity.md` (grades and wire shape per `references/peer-contract.md`): auto-apply `safe_auto`; surface P0 disagreements and high-confidence security or architecture findings; **`conflicting` findings are never auto-applied**; triage `corroborated` first. **Apply every finding in one batch, then verify once**: fix-verify-fix-verify pays a full suite per partial fix, so collect the applications and let 10.4's single suite prove them. `--review none` skips this step entirely, personas included, and records the branch as review-skipped. It is not "run the review without the peer": when `PEER_AVAILABLE=false` en-review runs its host personas anyway and records `reviewer: single-agent-fallback` or `en-review-host-fallback`, which the audit accepts as `branch_review_pass: fallback_completed`.
     4. **The full suite, once.** Now that simplify and review have both landed and their findings are applied, run the project's full test suite, lint and typecheck. **This is the only full-suite run in the post-build phase**, and on a build with phasing it is the only one after the last phase boundary. On failure: stop; surface; offer investigate / `--commit-wip` / abort.
 
        **On success, write a verification receipt.** `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check full_suite=passed --check lint=passed --check typecheck=passed --base origin/<default-branch> --by en-build`, plus a `--dep <path>` for each lockfile the project has. This is the layer that just paid for the expensive run, so it is the layer that records it: `/en-ship` and a project's pre-push hook can then skip what this proved, instead of re-running it minutes later on the identical tree.
@@ -273,23 +248,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
       **The two gate lines are mandatory in every build summary** (the human-visible echo of the durable `simplify-verdict:` / `review-verdict:` trailers). A `simplify_pass`/`branch_review_pass` of `missing` or `failed` makes the audit verdict `failed` even when every U-ID is covered - a skipped simplify or an unrecorded review is a build defect, not a clean finish.
 
-      A unit fails verification when it is not in `covered_units`. Then the audit verdict is `failed`:
-
-      ```
-      ⚠️  Evidence audit FAILED. The following units lack valid evidence:
-        ✗ U10 — not in branch-level coverage
-        ✗ U13 — not in branch-level coverage
-
-      simplify_pass: missing        ← no simplify-verdict trailer on the branch
-      branch_review_pass: completed
-
-      The branch-level review did not cover these units, or the simplify/review
-      gate failed (simplify_pass / branch_review_pass is missing or failed).
-      Do NOT merge until resolved: re-run the post-build simplify + review
-      (`/en-build --from <U-ID>`), or `/en-review --peer <sha>` on them.
-      ```
-
-      The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails **for any reason** (uncovered unit, or a `missing`/`failed` `simplify_pass` / `branch_review_pass`), the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-review --peer <sha>` on the failing units, then re-audit - the success path is **blocked** until the audit passes.
+      A unit not in `covered_units`, or a `missing`/`failed` gate line, makes the audit verdict `failed`; the same table then marks the uncovered units `✗` and names the gate that failed (`simplify_pass: missing` reads "no simplify-verdict trailer on the branch"). The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails **for any reason** (uncovered unit, or a `missing`/`failed` `simplify_pass` / `branch_review_pass`), the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-review --peer <sha>` on the failing units, then re-audit - the success path is **blocked** until the audit passes.
 
     - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict. Per-phase summary if phasing was on.
     - **Learning checkpoint** (structured, non-droppable - A3, D26). **The SOLE learning-capture point in the lifecycle** — it fires here, at the very end of the post-build phase (after the branch-level simplify + Outside Voice review + evidence audit above), so capture reflects the *fully reviewed* build. `/en-qa` and `/en-ship` no longer prompt for learnings (removed by the EN04 follow-up); if you don't run `/en-build`, there is no learning checkpoint. It emits a visible `learning_checkpoint:` outcome line in the build summary, so the capture decision can never be silently dropped under context pressure.
@@ -328,25 +287,15 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 | `--commit-wip` | After a stopped run (Ctrl-C, gate-failure, etc.), create a `wip/<plan_id>-phase<N>` branch and commit current state. Explicit user invocation only — never automatic. |
 | `--re-baseline` | After reviewing an external plan-file diff, accept the new state as the build's baseline `peer_review_plan_hash`. |
 
-**One decision, one flag.** The review decision has three answers, so it is one flag with three values rather than `--review` plus a separate `--no-review` — two flags for one question leave `--review peer --no-review` with no defined meaning. `--no-simplify` is not the same shape: simplify and review are separate passes, and a `--simplify none` would imply a `--simplify` variant that does not exist.
+**One decision, one flag.** The review decision has three answers, so it is one flag with three values; there is no `--no-review`.
 
 **Standing policy lives in `.ensemble/config.local.yaml`, not here** — `build.worktree`, `build.strict_destructive`, `build.pause_between_phases`, `build.learning_checkpoint`. A flag is for what changes run to run; a project either works in worktrees or it doesn't. Config-set skips are surfaced in the step 10.6 audit exactly like flag-set ones, so a policy set once and forgotten is as visible in the build summary as a flag typed today.
 
 **No flag disables universal safety gates.** Every flag changes phasing, pacing, or selection; none turn off destructive / gated confirmations.
 
-## Cross-review
+## Cross-review and simplification
 
-**Once per build, at step 10.3, after `/en-simplify`.** The peer never reviews a unit in flight and never implements one. `/en-build` invokes `/en-review --cross --mode headless` over the branch diff; the resulting `review-verdict:` trailer is the evidence for every unit on the branch.
-
-Skipped only by `--review none`, which records the branch as review-skipped and makes the step 10.6 audit report `branch_review_pass: missing`. There is no per-unit skip enum any more, because there is no per-unit pass to skip.
-
-Which reviewer ran is `/en-review`'s resolution, not en-build's; it comes back in the envelope's `reviewer` field and lands in the `review-verdict:` trailer.
-
-## Code simplification
-
-**Once per build, at step 10.2, over the branch diff** — not per unit. `/en-build` invokes `/en-simplify`; it owns the dimensions, the revert protocol, and its own agent. en-build owns only the outcome: a `simplify-verdict:` trailer on the post-build commit.
-
-Skipped on a docs-only or trivial branch, or by `--no-simplify`. Either way the skip is recorded as `outcome: not_applicable` with a reason, so the audit reads a decision rather than an absence.
+Both run **once per build, over the branch diff**: `/en-simplify` at step 10.2, then `/en-review --cross --mode headless` at step 10.3. The peer never reviews a unit in flight and never implements one; which reviewer ran is `/en-review`'s resolution and lands in the `review-verdict:` trailer. en-build owns only the two trailers and the audit that reads them.
 
 ## Per-unit progress report
 
