@@ -53,7 +53,7 @@ The toolkit has five design pillars:
 2. **Map, not encyclopedia.** Top-level `AGENTS.md` and `CLAUDE.md` are short pointer indexes (~100 lines) that lead the agent into deeper sources of truth in `docs/`. SKILL.md files follow the same principle — process logic in the file, templates and long checklists in `references/`.
 3. **Cross-agent peer review.** Claude Code and Codex review each other's work via CLI subprocess at high-leverage gates: end of `en-plan`, per unit during `en-build`, and on demand via `/en-review --peer`.
 4. **Compounding knowledge.** Every solved problem, pattern, and decision is captured in `docs/learnings/` with frontmatter, queryable by future runs. `en-learn` updates `docs/architecture.md` after material changes; `en-sweep` runs event-driven drift cleanup (on every PR merge to `main`) so doc debt gets paid down continuously.
-5. **Lean by design.** SKILL.md files target 150–400 lines; agents are short specialist prompts (~40–120 lines). Conditional dispatch, depth-scaled questioning, mid-tier model defaults for peer review.
+5. **Lean by design.** A SKILL.md fits in 24KB (about 6K tokens; lines are not a measure, since they run 70–130 characters here); agents are short specialist prompts (~40–120 lines). Conditional dispatch, depth-scaled questioning, mid-tier model defaults for peer review.
 
 Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from Superpowers (TDD discipline, worktree isolation, two-stage review), Gstack (live browser QA, confidence-calibrated findings), Compound Engineering (persona-driven review, autofix-class routing, learnings store, stable IDs), and OpenAI's harness-engineering essay (map-not-encyclopedia AGENTS.md, plans split by lifecycle, doc lints, recurring drift cleanup, failure-→-capability-gap operating principle).
 
@@ -1270,7 +1270,7 @@ Mechanical findings auto-fix via `--lint --fix`. Judgment-required findings (con
 
 | Principle | Mechanism |
 |---|---|
-| **Lean SKILL.md** | Target 150–400 lines. Process and decision logic only. |
+| **Lean SKILL.md** | Budget 24KB per SKILL.md, enforced by `tests/lint/skill-size.test.sh` with a per-skill baseline that only tightens. Process and decision logic only. |
 | **External templates** | Templates and long checklists in `references/`. Loaded on demand. |
 | **No bash preambles** | Brief mode/host-detection block (~10 lines), no telemetry, no auto-update. |
 | **Light AskUserQuestion** | Recommendation + 2–4 options + one-line rationale. No heavy decision-brief format. |
