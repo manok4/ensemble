@@ -147,7 +147,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     3. **Cancel a stale tick.** Re-check the head SHA captured at step 0. If it moved — a delegate pushed, or someone else did — **this tick's CI results are dead**: discard them and re-poll rather than acting on a status that describes a commit that is no longer the head.
 
     4. **When trusted findings appear, fix locally. Feedback before CI, in that order.**
-       - **Review-thread / comment findings first** — `/en-resolve-pr --orchestrated` addresses each per its 6-verdict rubric.
+       - **Review-thread / comment findings first** — invoke `/en-resolve-pr --orchestrated`; it addresses each per its 6-verdict rubric.
        - **Failing checks second** — fetch the failed-job logs (`gh run view --log-failed`) and pass them into `/en-resolve-pr --orchestrated` so it has the actual failure, not just "a check is red."
 
        **Always pass `--orchestrated`.** It is what tells the delegate a human is not watching: it returns `needs-human` as a result instead of asking a question this loop cannot answer, runs one pass instead of cycling inside a cycle, and refuses to arm auto-merge. Omitting it is how an unattended loop stalls on a question, or spends six rounds while this step counts two.

@@ -47,6 +47,20 @@ for s in en-setup en-qa en-cross-review; do
   fi
 done
 
+# --- a programmatically invoked skill must be invocable by the model ---
+# `disable-model-invocation: true` lets only a person run a skill and keeps its
+# description out of context (Claude Code docs, "Control who invokes a skill").
+# en-resolve-pr carried it while en-ship's watch loop invoked it unattended, so
+# on a Claude Code host the D59 delegate could not be reached at all (D84).
+for skill in $derived; do
+  if sed -n '1,/^---$/p' "skills/$skill/SKILL.md" | sed '1d' | grep -qE '^disable-model-invocation: *true'; then
+    fail "$skill is invoked by another skill, so it must not be disable-model-invocation: true" \
+         "the flag makes the skill user-only; the calling skill's invocation would be refused"
+  else
+    pass "$skill stays model-invocable for its callers"
+  fi
+done
+
 # --- shape: every contract carries all six sections ---
 for f in skills/*/CONTRACT.md; do
   skill=$(basename "$(dirname "$f")")
@@ -82,6 +96,20 @@ for v in approve revise reject; do
     && pass "en-plan verdict value '$v' is in both" \
     || fail "en-plan verdict value '$v' is in both"
 done
+
+for v in fixed fixed-differently replied not-addressing declined needs-human; do
+  grep -qF "\`$v\`" skills/en-resolve-pr/CONTRACT.md && grep -qF "\`$v\`" skills/en-resolve-pr/SKILL.md \
+    && pass "en-resolve-pr verdict '$v' is in both contract and skill" \
+    || fail "en-resolve-pr verdict '$v' is in both contract and skill"
+done
+for fl in --orchestrated --yes --enable-auto-merge; do
+  grep -qF -- "$fl" skills/en-resolve-pr/CONTRACT.md && grep -qF -- "$fl" skills/en-resolve-pr/SKILL.md \
+    && pass "en-resolve-pr flag '$fl' is in both contract and skill" \
+    || fail "en-resolve-pr flag '$fl' is in both contract and skill"
+done
+grep -qE 'exactly one pass' skills/en-resolve-pr/CONTRACT.md && grep -qiE 'do not cycle at all|exactly one pass' skills/en-resolve-pr/SKILL.md \
+  && pass "en-resolve-pr's one-pass promise under --orchestrated matches the skill" \
+  || fail "en-resolve-pr's one-pass promise under --orchestrated matches the skill"
 
 # --- truth: behavioral promises must match documented behavior ---
 grep -qE 'report-only.*(read-only|none)' skills/en-review/CONTRACT.md \
