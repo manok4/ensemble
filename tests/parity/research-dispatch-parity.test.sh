@@ -32,7 +32,7 @@ TEST_NAME="research dispatch parity"
 # repo-research.md 4: en-debug, en-foundation, en-plan, en-sweep. en-review
 #   is not among them: it dispatches only learnings-research, and carries the
 #   matrix for that row and for the dossier protocol.
-# web-research.md 2: en-learn, en-plan.
+# web-research.md 2: en-brainstorm, en-plan.
 # agent-dispatch.md 8: every skill that dispatches any agent at all.
 while IFS='|' read -r rel expected; do
   [ -n "$rel" ] || continue
