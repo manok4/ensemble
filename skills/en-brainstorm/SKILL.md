@@ -9,11 +9,11 @@ description: "Explore an idea via Q&A, prior-art research, and 2-3 trade-off-awa
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
-Lightweight idea-exploration skill. **No code written; no implementation; no peer review.** The point is to leave with clarity, not artifacts.
+Lightweight idea-exploration skill. The point is to leave with clarity, not artifacts.
 
 > **Priority principle (D39): performance > speed ≥ cost.** Optimize first for the quality of the brainstorm→plan outcome, then for speed, then for token/tool cost. The rigor steps below are self-gating, so simple work stays fast.
 
-> Hard gate: this skill never edits source code, runs tests, opens PRs, or invokes implementation skills. Output is a design doc and a recommendation.
+> Hard gate: this skill never edits source code, runs tests, opens PRs, or invokes implementation skills. It assigns no R-IDs (`/en-foundation` does) or U-IDs (`/en-plan` does), and runs no cross-agent peer review (D4: brainstorm is exploratory). Output is a design doc and a recommendation.
 
 ## Process
 
@@ -23,7 +23,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
    On resume: read it, summarize its settled decisions and still-open questions, treat those decisions as **already answered** (they never re-enter the frontier), and **update that file** rather than minting a duplicate. Preserve its `created:` and `topic:`. On start-fresh, leave the old doc untouched — the user may want both.
 
-   **The candidate pool is self-pruning; don't work around it.** `/en-plan` closes a design out to `accepted` or `superseded` when a plan built from it opens, so designs already acted on drop out of this glob on their own. What stays `open` is what genuinely is: explorations no plan was ever built from. If this scan starts returning a large ambiguous set, the close-out has stopped running somewhere upstream — say so rather than narrowing the glob here.
+   **The candidate pool is self-pruning; don't work around it.** `/en-plan` closes a design out to `accepted` or `superseded` when a plan built from it opens, so what stays `open` is what no plan was built from. If this scan starts returning a large ambiguous set, the close-out has stopped running upstream; say so rather than narrowing the glob here.
 4. **Right-size depth.** Per the depth table below. Default **Standard**; when the framing is genuinely ambiguous, ask one question rather than guessing.
 5. **Existing-context scan (bounded).** Read each source's *shape* first, then only the parts that match the topic. Never read a large artifact whole:
    - `docs/foundation.md` (if present) — read the frontmatter, then `grep -n '^#' docs/foundation.md` for the section index, then `sed -n '<start>,<end>p'` on the 1–2 sections matching the topic. **Never `cat` it whole**; it routinely runs past 2,000 lines.
@@ -45,8 +45,8 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
    - **Facts are yours to find, never the user's to supply.** A question whose answer sits in the environment, the repo, git history, a config file, a lockfile, is not put to the user. Look it up: a one-file fact directly, anything wider by dispatching the `repo-fact-lookup` agent with the specific questions. It owns the read budget and the `file:line`-or-`absent` return, so the dialogue carries the answer and the evidence stays on disk. Decisions stay with the user.
    - **Don't block on it.** A running lookup is an unsettled prerequisite, so only the questions *downstream of that fact* wait for it. Ask the rest of the frontier now, and read the answer when it lands.
    - **Conflict gate: challenge terms against the glossary.** If the user uses a term that conflicts with an entry in `docs/CONTEXT.md`, or uses one of its terms to mean something else, put the conflict to them before treating their wording as settled: *"CONTEXT.md defines <term> as A; you seem to mean B. Which is it?"* Then use the canonical name in the dialogue, the approaches, and the design doc, so `/en-plan` inherits one vocabulary rather than two.
-   - **Never write the glossary here.** `/en-learn` owns `docs/CONTEXT.md`. Capturing a term mid-dialogue captures the wrong name often enough to matter: the canonical term is frequently the thing the recommendation renames. Surface the conflict, settle it in conversation, and let the capture reflex file it after the doc is written.
-   - **Stress-test boundaries with an invented scenario.** When the dialogue turns on how two concepts relate, asking about the relationship in the abstract gets an abstract answer back. Invent a specific case sitting on the boundary and ask what happens to it: *"a rule is muted, then deleted, then recreated with the same filter — is it muted?"* A scenario does work a definition request cannot, because the user answers it from how they think about the product rather than from vocabulary they may not have yet. Reach for it where the concepts are new or where a boundary is where the design would leak, not on every relationship.
+   - **Never write the glossary here.** `/en-learn` owns `docs/CONTEXT.md`, and the canonical term is often the thing the recommendation renames, so a term filed mid-dialogue is filed under the wrong name. Settle it in conversation; the capture reflex files it after the doc is written.
+   - **Stress-test boundaries with an invented scenario.** Asking how two concepts relate in the abstract gets an abstract answer back. Put a specific case on the boundary instead: *"a rule is muted, then deleted, then recreated with the same filter — is it muted?"* The user answers from how they think about the product, not from vocabulary they may not have yet. Use it where concepts are new or a boundary would leak, not on every relationship.
    - **Default to the host's blocking question tool** — `$QUESTION_TOOL` as resolved at the start (`AskUserQuestion` on Claude Code, `request_user_input` on Codex), with its built-in free-text fallback — for narrowing / single-select questions; well-chosen options scaffold the answer without confining it.
    - **Open-vs-closed discipline:** use an **open-ended** question only when the answer is inherently narrative, OR when you genuinely cannot write 3–4 distinct, plausibly-correct options without padding. The test: *if you'd be straining to fill the option slots, the question is open — ask it open-ended.*
    - **Harness fallback:** when no blocking question tool exists in the harness, fall back to numbered options in chat; never silently skip the question.
@@ -64,7 +64,7 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
 13. **Devil's advocate.** Stress-test the recommendation. What would a senior engineer poke at? What changes in 6 months? What's the failure mode at 3am? What if the problem framing is wrong?
 14. **Show synthesis to the user.** They agreed to many things one at a time and have never seen the whole. This is their last chance to correct scope before the doc lands, so it is a **shape-confirmation checkpoint, not a preview of the document**.
 
-    **Draft internally, present selectively.** First list, for yourself, everything the dialogue settled: what the user stated, what you inferred to fill gaps, and what you deliberately excluded. That draft is for your completeness. Do not paste it. A comprehensive audit is too much for anyone to actually weigh in on, which is the failure this two-stage split exists to prevent.
+    **Draft internally, present selectively.** List for yourself everything the dialogue settled: stated, inferred, and deliberately excluded. Do not paste it. A full audit is more than anyone can weigh in on, and that is the failure this split prevents.
 
     **Present up to four sections. Omit any section with nothing to say; never pad one to fill it.**
 
@@ -81,13 +81,13 @@ Lightweight idea-exploration skill. **No code written; no implementation; no pee
     | Standard | 2–4 | 5 |
     | Deep | 3–6 | 8 |
 
-    Over the ceiling the synthesis is misshapen: **do not raise the cap, re-cut at a higher level.** Related bullets are usually sub-decisions of one decision the user actually weighs. Read them aloud; two that sound like "and also" extensions of each other are one bullet. A bullet is one line, two at most — meeting the count by writing paragraphs defeats the point of the count.
+    Over the ceiling the synthesis is misshapen: **do not raise the cap, re-cut at a higher level.** Two bullets that read as "and also" extensions of each other are sub-decisions of one decision; merge them. A bullet is one line, two at most.
 
     **Cut** anything that restates a Q&A turn, re-states the approach they already picked, or names a choice that had no real alternative.
 
     **Lightweight with no blocking questions announces; everything else confirms.** On that one path, state what we're building and continue in the same turn. Otherwise ask for confirmation explicitly, even when no call-outs survived.
 
-    **A revision is not a confirmation.** When the user changes something, integrate it, re-present the revised synthesis, and wait again. Writing straight after a revision because the change felt small is how an unconfirmed synthesis reaches the file.
+    **A revision is not a confirmation.** When the user changes something, integrate it, re-present the revised synthesis, and wait again. Writing straight after a revision is how an unconfirmed synthesis reaches the file.
 
     **Soft-cut on circularity, not on round count.** Revising different things across rounds is the mechanism working: keep going. When the **same decision** is revised twice, stop and ask whether to proceed and write or keep discussing. Track it by decision, not by wording or section — the same call often returns rephrased, merged, or moved.
 
@@ -128,15 +128,6 @@ right column is what is actually true.
 | "They said 'you decide', that's the blindspot signal" | Once is undecided. The gate needs two consecutive can't-evaluate answers on questions needing domain judgment. Firing on an undecided user turns the interview into a lecture. |
 | "They're busy, I'll ask the whole list this round" | Batching the *frontier* is cheap; batching dependents is what dilutes answers. A question whose answer depends on another still open this round belongs to the next one. |
 | "It's a small choice, writing the doc is easier than asking" | The offer costs one line; the file costs a review and joins the resume pool. Make the offer. |
-| "The design doc is nearly right, lint can wait" | `/en-plan` consumes this file. A malformed one propagates into the plan, and the person who finds it is downstream of everyone who could have fixed it cheaply. |
-
-## What never happens here
-
-- No implementation.
-- No PRD-style requirements (R-IDs are assigned by `/en-foundation`, not here).
-- No detailed plan units (U-IDs are assigned by `/en-plan`).
-- No code-touching commits.
-- No cross-agent peer review (D4 — brainstorm is exploratory).
 
 ## Depth scaling
 
@@ -182,8 +173,6 @@ Gated — read only when their step's gate fires, never up front:
 | Two approach sub-agents converge on the same shape | Report one approach, and say they converged independently — that is evidence, not a wasted slot. |
 | Blindspot gate fires in a non-interactive run | Never offer; treat the territory as a declined offer (recommended defaults recorded as explicit assumptions). |
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
-| `docs/foundation.md` too large to scan cheaply | Section-index read only (the bounded existing-context scan); never fall back to reading it whole. |
-| `bin/ensemble-lint` reports violations on the new design doc | Fix and re-run (the validate step); hand off only when clean. |
 | User's response to the synthesis says they are in the wrong skill ("this is too small, just build it") | Stop. Name the skill they seem to want and offer the hand-off. Do not argue: the synthesis is an honest checkpoint, and discovering the wrong skill by reading it is the mechanism working. |
 | Same synthesis item revised a third time after the soft-cut | Treat the soft-cut's "keep discussing" as spent; surface that the scope is not converging and ask what is actually unresolved. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |
