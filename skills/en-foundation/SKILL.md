@@ -88,11 +88,10 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
     - **No placeholder text survives.** A section is written with real content or removed. `[TODO]` must not appear in the output; an unresolved item is a Q-ID in §14, where it is visible as open rather than disguised as answered.
     - **Use the user's terminology.** Mirror their words for their domain; do not translate them into generic product vocabulary. The glossary the project inherits is the one written here.
 
-    Apply the depth-scaled trim, and drop any template section this run has no real content for. Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
+    Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant), and drop any template section this run has no real content for. Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
 10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
 11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
     - Build the Outside Voice prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
-    - Set `ENSEMBLE_PEER_REVIEW=true` env var.
     - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one. A document review runs at the peer's default tier; this skill passes no effort flag.
     - Parse the JSON response (per `references/finding-schema.md`).
     - Apply, defer, or disagree per the routing table in `references/peer-brief.md`.
@@ -107,6 +106,13 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 17. **Hand off.** Suggest next step:
     - New project: "Run `/en-build docs/plans/active/<PREFIX>01-feature_project-setup.md` to bootstrap the repo."
     - Existing project: "Run `/en-plan` for the first feature."
+
+## Flags
+
+| Flag | Effect |
+|---|---|
+| `--retrofit` | Back-fill the foundation for an existing project from its code; see below. Also implied when `docs/foundation.md` exists with `status: draft`. |
+| `--no-peer` | Skip the Outside Voice review of the draft. |
 
 ## Retrofit mode (`--retrofit`)
 
@@ -134,7 +140,7 @@ If the discovery surfaced a non-obvious decision (e.g., "we picked Drizzle over 
 
 > "Section 4 captured a decision worth filing as a learning. Capture?"
 
-User accepts → `/en-learn capture --from-conversation` files it as `decisions/`.
+User accepts → invoke `/en-learn capture --from-conversation`; it routes to a decision (an ADR under `docs/decisions/`).
 
 ## Output
 
@@ -146,7 +152,7 @@ Depth: standard
 Mode: fresh
 
 Created:
-  - docs/foundation.md (1850 lines, 7 R-IDs, 4 D-IDs)
+  - docs/foundation.md (310 lines, 7 R-IDs, 4 D-IDs)
   - docs/architecture.md (status: seed)
   - AGENTS.md (98 lines)
   - CLAUDE.md (52 lines)
@@ -178,7 +184,7 @@ Next: Run /en-build docs/plans/active/EN01-feature_project-setup.md to bootstrap
 | Failure | Behavior |
 |---|---|
 | User abandons mid-discovery | Save partial draft as `docs/foundation.md` with `status: draft`; user can resume |
-| Peer review subprocess fails or times out | Note in foundation: "Peer review skipped due to subprocess failure"; continue without |
+| Peer review subprocess fails or times out | The helper's `peer_decision` records it (`peer-failed:<class>`); report it in the run output and continue. The document itself carries no note. |
 | `repo-research` returns malformed output (retrofit mode) | Surface; ask user to fill in §7 / §8 / §9 manually |
 | User declines peer's findings on a P0 → host disagrees | Pause and surface to user; do not proceed without explicit user judgment |
 | Concurrent `docs/foundation.md` edit detected (file changed since orient step) | Stop and ask user — don't overwrite |
