@@ -67,9 +67,13 @@ while IFS='|' read -r rel expected; do
     [ "$sum" = "$ref" ] || skew=$((skew+1))
   done
   assert_eq "$skew" "0" "$rel: all carried copies are byte-identical"
+# learning-frontmatter-schema.md 2 -> 1 on 2026-09-04 (D78): en-review's
+# standards dimension named it in one table cell and now defers to the
+# pre-flight bin/ensemble-lint run, which enforces the same schema. en-learn,
+# which writes the frontmatter, is the one carrier that reads it.
 done <<'CARRIERS'
 references/learn-lint.md|2
-references/learning-frontmatter-schema.md|2
+references/learning-frontmatter-schema.md|1
 references/learn-index-format.md|2
 agents/learnings-research.md|3
 CARRIERS
