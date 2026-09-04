@@ -16,8 +16,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 
 > **Universal safety gates** (apply on EVERY code path — phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See "Universal safety gates" section below.
 
-> **Peer contract.** Severity, confidence, autofix class, the `peer_decision`
-
+> **Peer contract.** Severity, confidence, autofix class and the `peer_decision` object are defined once in `references/peer-contract.md`, byte-identical across every skill that exchanges findings. What this skill does with a finding is its own policy.
 
 ## Process
 
@@ -69,12 +68,12 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 
    **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 5. **Set up branch.**
-   - If on default branch → create `<fr-id>-<slug>` feature branch.
+   - If on default branch → create `<plan_id>-<slug>` feature branch.
    - If on a feature branch → use it.
    - If working tree is dirty → ask user: stash, commit, or abort.
-   - **Worktree** (D28): if user passed `--worktree`, create one at `../<repo>-<fr-id>/` and dispatch in there.
+   - **Worktree** (D28): if user passed `--worktree`, create one at `../<repo>-<plan_id>/` and build in there.
 6. **Read context.** Foundation, related plan files (deps from this plan's `related:`), `CLAUDE.md`, `AGENTS.md`, project conventions.
-7. **Plan review with user.** Surface concerns: "Plan touches 12 files; some intersect with FR05 (in-flight). Continue, pause, or split?" Address before starting.
+7. **Plan review with user.** Surface concerns: "Plan touches 12 files; some intersect with EN05 (in-flight). Continue, pause, or split?" Address before starting.
 8. **Determine batch size.** Per A2 / D25 — derive from the plan:
    - Independent units → larger batch (3–5).
    - Tightly-coupled units → smaller batch (1–2).
@@ -143,7 +142,7 @@ Why scope this way: the field-observed bug ("Working tree is clean. I stopped at
 4. **`gated: true` unit at step 9a** — y/skip/abort prompt.
 5. **P4 phase-level confirmation** (step 9, phasing-on path) — typed `"run phase 4"` literal-string.
 6. **`build.pause_between_phases` set** (step 9, opt-in) — between-phase y/pause/n prompt.
-7. **Failure protocol fires** (failure-protocol table) — gate failure, peer reject, malformed evidence, hash mismatch, after-phase verification failure, plan-hash drift, worker malformed diff, etc. Each has its own documented handler.
+7. **Failure protocol fires** (failure-protocol table) — gate failure, peer reject, malformed evidence, hash mismatch, after-phase verification failure, plan-hash drift, etc. Each has its own documented handler.
 
 Cases 3–7 are inside the contract window (steps 9 and 10). Cases 1 and 2 are listed for completeness so the reader sees the full pause-emitting universe of /en-build; they're already in their own documented handlers and are not subject to this contract.
 
@@ -171,8 +170,7 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
 ```
 ✓ U3 — feat(api): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
-  Implementer: host | Simplifier: 2 changes | Peer: applied 1, deferred 1
-  Tests: 7 added, 7 passing | Commit: a3f1b9c
+  Tests: 7 added, 7 passing | Commit: a3f1b9c (phase: P2)
   Note: U4 touches more files than U3 (12 vs 3). No pause; advancing.
 ```
 
@@ -224,10 +222,10 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
    **Phasing-off path** (phasing disabled by triggers, `--no-phasing`, `--unit U<N>`, `--from U<N>`): same per-unit loop (9a–9e), no phase grouping, no phase-level prompts. Critically, **step 9a runs verbatim** on every selected unit — `--unit U8` against a destructive unit still requires `"run unit U8"` typed literally; `--from U3` against a plan that contains a gated unit still pauses for y/skip/abort on that unit. Commit trailer `phase: P<N>` is still appended based on the unit's classification (so logs stay consistent across phasing-on and phasing-off runs). **Note:** when phasing is off and `--unit`/`--from` builds a subset, the post-build branch-level review (step 10) still runs over the resulting branch diff so ordinary units get their `review-verdict:` coverage.
 
-10. **Post-build phase (branch-level simplify → review → audit → learn).** Runs ONCE after all units commit. This is where ordinary units get their code-simplifier and Outside Voice review — at the branch level, not per-unit (D29).
+10. **Post-build phase (branch-level simplify → review → audit → learn).** Runs ONCE after all units commit. This is where every unit gets its code-simplifier and Outside Voice review — at the branch level, not per-unit (D52).
 
     1. **Cheap gate: lint + typecheck only.** Seconds, not minutes. It catches syntax and type breakage before simplify and review spend time on code that cannot compile. **The full suite does not run here** — it runs once, at 10.5, after review findings have been applied. Running it first is how a build pays for the full suite three times: once now, once after simplify, once after remediation, on an implementation that was still changing (D53).
-    2. **Code-simplification pass** — invoke `/en-simplify` on the branch diff (`git diff <merge-base>..HEAD`). Skip on docs-only or trivial (<~10 changed lines) branches, or with `--no-simplify`. It leaves changes in the working tree (does not commit). Skipped for the rare branch composed entirely of destructive/gated units already reviewed per-unit.
+    2. **Code-simplification pass** — invoke `/en-simplify` on the branch diff (`git diff <merge-base>..HEAD`). Skip on docs-only or trivial (<~10 changed lines) branches, or with `--no-simplify`. It leaves changes in the working tree (does not commit).
     3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`** over the branch diff — or `--peer` in place of `--cross` when `--review peer` was passed. `--cross` is the default and the reason is D46: the personas are where project context and plan alignment show up, and a review whose subject is "did this branch implement this plan" is a strange place to drop them.
 
        The cross-agent peer is **mandatory** here and carries the implementer ≠ reviewer property: the host just implemented every ordinary unit, so an independent architecture must review it (Claude host → Codex reviews; Codex host → Claude reviews — D23). The **host personas run alongside it** (D46, superseding this step's former `--peer-only`): they are *fresh-context* sub-agents that never saw the implementing reasoning, so they do not weaken the cross-agent property, and `--peer-only` was discarding every **host-only** finding — precisely the standards / testing / maintainability categories where project context and plan alignment matter most in a build.
@@ -247,8 +245,8 @@ If the agent has a real concern that's outside the seven cases AND not caught by
 
        **Trailer schemas.** These two are the branch's whole evidence record, so they live here rather than in a reference:
 
-       - **`review-verdict:`** — one per post-build review commit. Required keys: `verdict` (`approve`/`revise`/`reject`), `reviewer` (`cross-agent` / `single-agent-fallback` / `en-review-host-fallback`), `mode`, `units_covered` (JSON array of U-IDs the pass covered), `findings_count`. A unit counts as reviewed when its U-ID appears in some `review-verdict.units_covered` on the branch. A fallback `reviewer` maps to `branch_review_pass: fallback_completed` — valid, because the field records why the cross-agent peer was not used.
-       - **`simplify-verdict:`** (EN07) — emitted on the **same** commit, so the `/en-simplify` pass is auditable rather than prose. Required keys: `outcome` (`completed` / `not_applicable` / `failed`), `reason` (non-empty and REQUIRED when `not_applicable` or `failed` — e.g. `docs-only`, `--no-simplify`), `findings_count`, `units_covered`.
+       - **`review-verdict:`** — one per post-build review commit. Required keys: `verdict` (`approve`/`revise`/`reject`), `reviewer` (`cross-agent` normally; `single-agent-fallback` / `en-review-host-fallback` when the cross-agent peer was unavailable — the value IS the recorded reason a fallback was used, and it records which fallback), `mode`, `units_covered` (JSON array of **every U-ID built this run**), `findings_count`. A unit counts as reviewed when its U-ID appears in some `review-verdict.units_covered` on the branch. A fallback `reviewer` maps to `branch_review_pass: fallback_completed` — valid, because the field records why the cross-agent peer was not used.
+       - **`simplify-verdict:`** (EN07) — emitted on the **same** commit, so the `/en-simplify` pass is auditable rather than prose. Required keys: `outcome` (`completed` / `not_applicable` / `failed`), `reason` (non-empty and REQUIRED when `not_applicable` or `failed`: `docs-only`, `trivial:<10-lines`, `--no-simplify`, or the gate regression that reverted it), `findings_count`, `units_covered`. **`--no-simplify` records `{"outcome":"not_applicable","reason":"--no-simplify",...}` explicitly — a visible, recorded opt-out, never silence.** A **missing** `simplify-verdict:` trailer is NOT a legitimate skip; the audit treats it as `missing` and fails. **`--review none`** likewise records the branch review as a loud, recorded skip (`branch_review_pass: missing`, and the audit fails) — never a silent pass.
 
        ```
        review-verdict: {"verdict":"approve","reviewer":"cross-agent","mode":"headless","units_covered":["U1","U2","U3"],"findings_count":1}
@@ -256,8 +254,6 @@ If the agent has a real concern that's outside the seven cases AND not caught by
        ```
 
        `ensemble-verify-peer-evidence --branch-coverage <range> --require-simplify` derives `simplify_pass` and `branch_review_pass` from these and fails when either is `missing`/`failed`. Trailers rather than sidecar files because `git interpret-trailers --parse` and `git log --grep` are stable and scriptable.
-       - **`review-verdict:`** carries `{verdict, reviewer, mode, units_covered, findings_count}`. **`reviewer` records who reviewed:** `cross-agent` (peer ran — the normal case), `single-agent-fallback`, or `en-review-host-fallback` (peer unavailable). The `reviewer` value IS the recorded reason a fallback was used - the single-agent peer path is ONLY a fallback for `/en-review` when the cross-agent peer is unavailable, and it must record which fallback it was. `mode` is the peer mode / review mode. `units_covered` lists **every ordinary U-ID built this run** (destructive/gated units already carry their own per-unit evidence and don't need branch-level coverage).
-       - **`simplify-verdict:`** carries `{outcome, reason, findings_count, units_covered}`. `outcome` is `completed` (the `/en-simplify` pass ran), `not_applicable` (legitimately skipped - `reason` REQUIRED: `docs-only`, `trivial:<10-lines`, `--no-simplify`, or `all-destructive-gated`), or `failed` (`reason` REQUIRED - e.g. a gate-2 regression reverted it). **`--no-simplify` records `{"outcome":"not_applicable","reason":"--no-simplify",...}` explicitly - a visible, recorded opt-out, never silence.** A **missing** `simplify-verdict:` trailer is NOT a legitimate skip; the audit treats it as `missing` and fails. **`--review none`** likewise records the branch review as a loud, recorded skip (the audit reports `branch_review_pass: missing` and, under `--require-simplify`, fails) - never a silent pass.
     6. **End-of-build evidence audit (mandatory, mechanical).** Compute branch-level coverage once, **with the simplify+review gate**: `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify --json` → `covered_units`, plus the two derived outcome fields **`simplify_pass`** (`completed | not_applicable | failed | missing`) and **`branch_review_pass`** (`completed | fallback_completed | failed | missing`). The `--require-simplify` flag makes the command **exit non-zero** when `simplify_pass` is `missing`/`failed` or `branch_review_pass` is `missing`/`failed` - so a skipped `/en-simplify` (with no recorded `not_applicable`) or an unrun/unrecorded branch review fails the audit here, not silently. Then confirm every plan U-ID appears in `covered_units`. There is no per-unit evidence path any more: the host implements every unit and one branch-level review covers all of them, so a U-ID missing from `covered_units` is a genuine gap rather than a unit that took the other route. **Surface a per-unit table plus the two gate lines in the summary**:
 
       ```
@@ -287,18 +283,17 @@ If the agent has a real concern that's outside the seven cases AND not caught by
       simplify_pass: missing        ← no simplify-verdict trailer on the branch
       branch_review_pass: completed
 
-      The branch-level review didn't cover these units, a gated unit's
-      dedicated peer pass didn't run, OR the simplify/review gate failed
-      (simplify_pass / branch_review_pass is missing or failed). Do NOT merge
-      until resolved (run `/en-review --peer <sha>` on them, or re-run /en-build's post-build
-      simplify + review / --from <U-ID>).
+      The branch-level review did not cover these units, or the simplify/review
+      gate failed (simplify_pass / branch_review_pass is missing or failed).
+      Do NOT merge until resolved: re-run the post-build simplify + review
+      (`/en-build --from <U-ID>`), or `/en-review --peer <sha>` on them.
       ```
 
       The audit surfaces, but does NOT auto-revert — the user decides. If the audit fails **for any reason** (uncovered unit, or a `missing`/`failed` `simplify_pass` / `branch_review_pass`), the suggested next step changes from `/en-review → /en-qa → /en-ship` to `/en-review --peer <sha>` on the failing units, then re-audit - the success path is **blocked** until the audit passes.
 
-    - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict, any per-unit (destructive/gated) peer verdicts. Per-phase summary if phasing was on.
+    - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict. Per-phase summary if phasing was on.
     - **Learning checkpoint** (structured, non-droppable - A3, D26). **The SOLE learning-capture point in the lifecycle** — it fires here, at the very end of the post-build phase (after the branch-level simplify + Outside Voice review + evidence audit above), so capture reflects the *fully reviewed* build. `/en-qa` and `/en-ship` no longer prompt for learnings (removed by the EN04 follow-up); if you don't run `/en-build`, there is no learning checkpoint. It emits a visible `learning_checkpoint:` outcome line in the build summary, so the capture decision can never be silently dropped under context pressure.
-      1. **Deferral guard.** **Defer** the checkpoint whenever the peer-evidence audit failed (the end-of-build audit at step 10.5) - do not fire it on a build with missing evidence. This covers an uncovered unit, a gated unit without per-unit evidence, **and (EN07) a `simplify_pass` or `branch_review_pass` of `missing`/`failed`** - a skipped `/en-simplify` or an unrun/unrecorded branch review blocks the learning checkpoint exactly as a missing review-verdict does. Surface a one-line note that the learning checkpoint is deferred (name which gate failed) and skip the rest. This emits **no** `learning_checkpoint:` outcome value - the checkpoint did not run, so none of the four canonical outcomes applies.
+      1. **Deferral guard.** **Defer** the checkpoint whenever the peer-evidence audit failed (the end-of-build audit at step 10.5) - do not fire it on a build with missing evidence. This covers an uncovered unit **and (EN07) a `simplify_pass` or `branch_review_pass` of `missing`/`failed`** - a skipped `/en-simplify` or an unrun/unrecorded branch review blocks the learning checkpoint exactly as a missing review-verdict does. Surface a one-line note that the learning checkpoint is deferred (name which gate failed) and skip the rest. This emits **no** `learning_checkpoint:` outcome value - the checkpoint did not run, so none of the four canonical outcomes applies.
       2. **CI short-circuit.** If `CI=true`, record `learning_checkpoint: ci_environment` in the build summary; skip the prompt (no interactive prompt in CI).
       3. **Determine the capture baseline.** Read `docs/learnings/log.md`; find the latest `## [YYYY-MM-DD] capture | <subject> | <head-sha>` entry. If a `<head-sha>` is present, baseline = that SHA (`git log <sha>..HEAD`). Legacy entry without a SHA → one-line imprecise-baseline notice + `git log --since=<date>` fallback. No capture entries at all → baseline = `git merge-base HEAD <default-branch>` (since branch creation).
       4. **Idempotency check.** If the scope is zero commits since the last capture, record `learning_checkpoint: up_to_date` and skip the prompt silently.
@@ -359,11 +354,10 @@ After each unit commits, surface a one-line summary:
 
 ```
 ✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
-  Implementer: host | Simplifier: 2 changes | Peer: 2 iterations, applied 1, deferred 1
   Tests: 7 added, 7 passing | Commit: a3f1b9c (trailer: phase: P2)
 ```
 
-(Iteration count >1 means the per-unit finalize loop ran. `2 iterations` = initial peer pass + 1 re-review pass.)
+Simplify and review results appear once, in the final summary: they run over the branch, not per unit.
 
 ## Final summary
 
@@ -399,7 +393,7 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - `references/severity.md` — apply / defer / disagree routing
 - `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
 - `references/stable-ids.md` — U-ID stability rules
-- `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 10.5's audit. Run with `--branch-coverage <range> --require-simplify`: it enumerates the U-IDs covered by the branch's `review-verdict:` trailers and derives `simplify_pass` / `branch_review_pass`. Its `--require-peer-resolution` mode is for skills that run per-unit peer passes; `/en-build` does not (D52).
+- `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 10.5's audit. Run with `--branch-coverage <range> --require-simplify`: it enumerates the U-IDs covered by the branch's `review-verdict:` trailers and derives `simplify_pass` / `branch_review_pass`. Its `--require-peer-resolution` mode reads the per-unit trailers of branches built before D52 and is not used here.
 
 ## Failure protocol
 
@@ -415,7 +409,7 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 | Plan-hash mismatch at phase boundary | Refuse to advance; surface that immutable plan-input fields changed during build; ask user to re-baseline (`--re-baseline`) or abort. |
 | Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the test output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
 | After-phase verification fails (targeted tests / lint / typecheck) | Stop. Do not advance to next phase. Surface failing tests; offer investigate / `--commit-wip` / abort. |
-| Peer review verdict = `reject` | Pause and surface to user before commit |
+| Branch-level review verdict = `reject` | Pause and surface to the user before the post-build commit; never proceed to the audit as if approved |
 | Peer subprocess attempts to modify files (D30 violation) | Detect via git status; revert; do not trust this round of findings; log violation |
 | `git restore` fails on a revert | Surface; abort the build; do not leave the working tree corrupted |
 | User Ctrl-C mid-phase / mid-unit | **Stop cleanly. No signal-time git operations.** Surface: current branch, current unit (with completion state), dirty files, last successful commit. Provide explicit resume instructions (`/en-build --from U<N>` or `--from-phase P<M>`). User invokes `/en-build --commit-wip` separately if a WIP commit is desired. |
