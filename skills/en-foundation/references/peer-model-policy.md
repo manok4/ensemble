@@ -11,12 +11,12 @@ An **ordered first-match cascade**. `high` is evaluated first, so a change that 
 | Order | Tier | Condition |
 |---|---|---|
 | 1 | `high` | `security-reviewer` or `migrations-reviewer` fired, OR an architectural trigger is present, OR the unit is `risk: destructive` or `gated: true` |
-| 2 | `low` | `is_small_and_safe` is `true` per diff-signal-detection, carried by the skills that review a diff |
+| 2 | `low` | `/en-review`'s `lite_gate` is `applied`, or `is_small_and_safe` is `true` per diff-signal-detection, carried by the skills that review a diff |
 | 3 | `medium` | otherwise (the floor) |
 
-**Rung 2 is unevaluable for a skill that reviews a document.** `is_small_and_safe` is computed from a diff and is scoped to `/en-review`'s `--lite` eligibility. A skill that ships a document it just wrote has no diff to classify, so the fail-closed default applies and the cascade lands on the rung-3 floor. Those skills therefore do not carry diff-signal-detection; the path above is deliberately unlinked so it is not billed to them.
+**Rung 2 is unevaluable for a skill that reviews a document.** Both rung-2 inputs come from a diff: `lite_gate` from `/en-review`'s flag and risk gate, `is_small_and_safe` from diff-signal-detection. A skill that ships a document it just wrote has no diff to classify, so the fail-closed default applies and the cascade lands on the rung-3 floor. Those skills therefore do not carry diff-signal-detection; the path above is deliberately unlinked so it is not billed to them.
 
-**Why `high` is tested first even though it looks redundant.** `is_small_and_safe` already requires `RISK_SIGNALS` to be empty and no conditional persona to have fired, so security and migrations can never collide with `low`. But the **architectural**, **destructive**, and **gated** conditions are *not* inputs to `is_small_and_safe`, and genuinely can co-occur with it. A small, signal-free diff on a `gated: true` unit must still resolve `high`. Ordering the cascade makes that true by construction rather than by coincidence.
+**Why `high` is tested first even though it looks redundant.** Both rung-2 inputs already require `RISK_SIGNALS` to be empty (and `lite_gate: applied` requires no conditional persona to have fired), so security and migrations can never collide with `low`. But the **architectural**, **destructive**, and **gated** conditions are *not* inputs to `is_small_and_safe`, and genuinely can co-occur with it. A small, signal-free diff on a `gated: true` unit must still resolve `high`. Ordering the cascade makes that true by construction rather than by coincidence.
 
 **Why the floor is `medium` and not `low`.** Review is a recall problem, and the findings that justify running a peer at all are the subtle ones. Bottoming out at `low` would erode the capability being paid for. `low` is an explicit cost opt-in for diffs that have earned it.
 

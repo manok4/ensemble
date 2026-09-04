@@ -62,4 +62,22 @@ for skill in en-plan en-review en-foundation; do
 done
 [ "$checked" -eq 3 ] && pass "all three peer skills were checked" || fail "all three peer skills were checked" "checked=$checked"
 
+# --- en-review --lite: the same documented command with the lite brief (D79) ---
+dir="$REPO_ROOT/skills/en-review"
+cmd=$(grep -oE '`\$SKILL_DIR/scripts/ensemble-build-peer-prompt [^`]*`' "$dir/SKILL.md" | head -1 | tr -d '`')
+filled=$(printf '%s' "$cmd" \
+  | sed -e "s|\$SKILL_DIR|$dir|g" \
+        -e "s|references/peer-brief.md|references/peer-brief-lite.md|g" \
+        -e "s|<diff>|$T/artifact.diff|g" \
+        -e 's|"<one-line[^"]*>"|"context"|g' \
+        -e 's|"\$PEER_MODE"|cross-agent|g')
+out=$(cd "$T/elsewhere" && eval "$filled" 2>"$T/err.lite"); rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "REPORTER" \
+   && printf '%s' "$out" | grep -q "lite review" && ! printf '%s' "$out" | grep -q '^### testing'; then
+  pass "en-review --lite: the documented command runs with the lite brief and carries its dimensions"
+else
+  fail "en-review --lite: the documented command runs with the lite brief and carries its dimensions" \
+       "rc=$rc stderr=$(head -c 160 "$T/err.lite" | tr '\n' ' ')"
+fi
+
 report

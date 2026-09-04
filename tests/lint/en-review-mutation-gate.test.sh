@@ -42,7 +42,8 @@ fi
 
 # --- canonical reason enum present in BOTH files ---
 enum_ok=1
-for rid in "unknown-line-count" "exec-lines-out-of-range" "uncounted-files" "risk-signal" "conditional-persona:"; do
+# D79 narrowed the gate to risk: size and uncounted files no longer override.
+for rid in "risk-signal" "conditional-persona:"; do
   grep -qF "$rid" "$SKILL" || enum_ok=0
   grep -qF "$rid" "$DIFFSIG" || enum_ok=0
 done

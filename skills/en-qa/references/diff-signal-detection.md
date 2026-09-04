@@ -1,6 +1,6 @@
 # Diff-signal detection
 
-Shared classification of a change's size and risk surface, consumed by `/en-review` (`--lite` roster) and `/en-qa` (browser-phase detector). One definition so the two skills can't drift apart.
+Shared classification of a change's size and risk surface, consumed by `/en-review` (`--lite` gate, effort ladder) and `/en-qa` (browser-phase detector). One definition so the two skills can't drift apart.
 
 > **Fail-closed is the contract.** Every classification below defaults to the *safe, do-more* answer when any input is unknown. "Small" and "no-frontend" are privileges a diff earns by being unambiguous; ambiguity revokes them.
 
@@ -38,29 +38,27 @@ A diff has a **risk signal** when paths or content touch any of:
 
 ## Classifications
 
-### `is_small_and_safe` (en-review `--lite` eligibility)
+### `is_low_risk` (en-review `--lite` eligibility)
 
-`true` only when **all** hold:
+`true` only when **both** hold:
 
-- `EXEC_LINES` is known AND `1 <= EXEC_LINES <= 39`
-- `UNCOUNTED_FILES == 0`
 - `RISK_SIGNALS` is empty
 - (caller adds: no conditional review personas were independently triggered)
 
-Otherwise `false` — **fail closed**. Specifically, any of these forces `false`: unknown line count, ANY uncounted file (a 5-line code change plus one `.md` → not small), any risk signal. A `--lite` request does not override a `false` result; the gate wins.
+Otherwise `false` — **fail closed**. Size is deliberately not an input: `--lite` is the user saying "this is a quick fix", and a fix with its regression test and a changelog line is still quick. What the user cannot waive is the risk surface, so any risk signal forces `false`. A `--lite` request does not override a `false` result; the gate wins.
 
 **Canonical override-reason identifiers.** When a `--lite` request is overridden, the caller reports WHY using these stable enum values (one per failed condition; `/en-review`'s `lite_gate:` outcome line consumes them verbatim):
 
 | Reason ID | Failed condition |
 |---|---|
-| `unknown-line-count` | `EXEC_LINES` could not be computed |
-| `exec-lines-out-of-range` | `EXEC_LINES` outside `1..39` |
-| `uncounted-files` | `UNCOUNTED_FILES > 0` |
 | `risk-signal` | `RISK_SIGNALS` non-empty |
 | `conditional-persona:<names>` | (caller-added, en-review) a conditional review persona fired independently; `<names>` is the alphabetically-sorted `+`-joined persona list, e.g. `conditional-persona:performance+security` |
-| `no-persona-roster` | (caller-added, en-review) the run has no host persona roster to collapse, because `--peer` (the default) dispatches the peer alone. Reported rather than ignored so a `--lite` that did nothing says so |
 
 When multiple conditions fail, report all of them, deduplicated, in the fixed table order above, comma+space separated — one deterministic encoding so equivalent runs produce identical output.
+
+### `is_small_and_safe` (en-review effort ladder, rung 2)
+
+`true` only when **all** hold: `EXEC_LINES` is known AND `1 <= EXEC_LINES <= 39`; `UNCOUNTED_FILES == 0`; `RISK_SIGNALS` is empty. Otherwise `false` — **fail closed**: an unknown line count, ANY uncounted file (a 5-line code change plus one `.md` → not small), or any risk signal. `/en-review`'s effort ladder resolves `low` on it without a `--lite` flag; it is the diff earning the cheap tier on its own.
 
 ### `needs_browser` (en-qa Phase 2 eligibility)
 
@@ -68,4 +66,4 @@ When multiple conditions fail, report all of them, deduplicated, in the fixed ta
 
 ## Why fail-closed
 
-The cost asymmetry is the whole point. A false "small/safe" skips review that a change needed; a false "no-frontend" skips QA that a change needed. Both ship a regression. A false "not-small" / "needs-browser" only spends a few extra minutes. When unsure, spend the minutes.
+The cost asymmetry is the whole point. A false "low-risk" gives a lite read to a change that needed the full one; a false "no-frontend" skips QA that a change needed. Both ship a regression. A false "not-small" / "needs-browser" only spends a few extra minutes. When unsure, spend the minutes.

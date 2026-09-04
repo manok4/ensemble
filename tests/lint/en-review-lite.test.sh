@@ -40,6 +40,42 @@ else
   fail "en-review --lite must state fail-closed override"
 fi
 
+# --- D79: lite is a depth setting in every mode; size does not gate ---
+LITE_BRIEF="$REPO_ROOT/skills/en-review/references/peer-brief-lite.md"
+DIFFSIG="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
+if [ -f "$LITE_BRIEF" ] && grep -qF "references/peer-brief-lite.md" "$EN_REVIEW"; then
+  pass "en-review hands the peer a lite brief under --lite"
+else
+  fail "en-review must carry and cite references/peer-brief-lite.md"
+fi
+# The builder extracts the block between these two headings; a lite brief
+# without them produces "no review dimensions" and exit 2.
+if grep -qxF "## What the peer is asked" "$LITE_BRIEF" && grep -qxF "## Where a finding points" "$LITE_BRIEF"; then
+  pass "lite brief carries the section markers the prompt builder extracts"
+else
+  fail "lite brief must carry '## What the peer is asked' and '## Where a finding points'"
+fi
+# Lite means fewer dimensions. Negative control at authoring: appending a
+# '### testing' heading to the lite brief turned this red.
+lite_dims=$(sed -n '/^## What the peer is asked$/,/^## Where a finding points$/p' "$LITE_BRIEF")
+if printf '%s' "$lite_dims" | grep -q '^### correctness' \
+   && ! printf '%s' "$lite_dims" | grep -qE '^### (testing|maintainability|performance|migrations|security)'; then
+  pass "lite brief asks for correctness and none of the full brief's other tables"
+else
+  fail "lite brief must keep correctness and drop testing/maintainability/performance/migrations/security"
+fi
+if grep -qF "is_low_risk" "$DIFFSIG" && grep -qF "is_low_risk" "$EN_REVIEW" \
+   && ! grep -qE "exec-lines-out-of-range|uncounted-files|unknown-line-count|no-persona-roster" "$EN_REVIEW" "$DIFFSIG"; then
+  pass "lite gate is is_low_risk; size and uncounted-file reasons are gone"
+else
+  fail "lite gate must be is_low_risk with only risk-signal and conditional-persona override reasons"
+fi
+if grep -qF "no-persona-roster" -r "$REPO_ROOT/skills"; then
+  fail "no-persona-roster must not survive anywhere: --lite now applies under --peer"
+else
+  pass "no-persona-roster reason is gone from every skill"
+fi
+
 # --- persona-dispatch documents the lite roster ---
 if grep -qiE "Lite roster" "$PERSONA"; then
   pass "persona-dispatch documents the lite roster"
