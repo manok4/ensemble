@@ -114,7 +114,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 10. **Resolve `plan_id_prefix`.** Read `plan_id_prefix:` from `docs/foundation.md` frontmatter. If absent (older project, retrofit, or `/en-foundation` not yet run), default to `FR`. Plans inherit the prefix in force at the time they are minted; the prefix is part of the plan's stable ID and never rewritten.
 11. **Auto-increment plan number.** Scan `docs/plans/active/` and `docs/plans/completed/` for the highest existing plan number under the *current* `plan_id_prefix`. Legacy `FR` plans count toward `FR`'s numbering only; a new `EN` project starts at `EN01` even if `FR99` already exists. Zero-pad to 2 digits (3 once `99` is reached).
 
-12. **Pre-write plan-quality review** (before writing the plan file). A lightweight self-check that catches the two most common quality gaps before peer review sees them:
+12. **Confidence check.** Name the sections you are least sure of (typically integrations or unfamiliar libraries) and offer to deepen them with one more research dispatch, or to leave each as a stated assumption in `## Decisions, assumptions & risks`. This runs before the write, not after: `peer_review_plan_hash` covers Approach and Files, so a deepening edit made after promotion fails `/en-build`'s first phase-boundary check and looks like tampering.
+13. **Pre-write plan-quality review** (before writing the plan file). A lightweight self-check that catches the two most common quality gaps before peer review sees them:
 
     - **Test-scenario completeness.** For every **feature-bearing** unit, confirm the `Test scenarios:` enumerate real scenarios across the applicable categories (happy path / edge cases / error-failure paths / integration) with concrete inputs/actions/outcomes. A feature unit with blank or fewer-than-two scenarios is **incomplete** — strengthen it before finalizing (or, if genuinely non-feature, switch it to `**Test expectation:** none — <reason>`). This mirrors the `unit.test-scenarios` lint (P2 advisory) so plans arrive at peer review already clean.
     - **Decisions / assumptions / risks capture.** If research (repo/learnings/web) or the planning discussion surfaced a **non-obvious decision, a rejected alternative, an inferred assumption the plan bets on, or a genuine risk**, capture it in the optional `## Decisions, assumptions & risks` section (per `references/templates/plan-template.md`) rather than burying it in unit `Approach:` fields. **Omit the section entirely** when nothing substantive surfaced — do not add it as empty boilerplate on trivial plans.
@@ -122,7 +123,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - **No placeholders.** These are plan failures, not shorthand, because a worker cannot resolve them: "TBD", "handle edge cases", "add appropriate error handling", "similar to U3" (the implementer works from its own unit block and should not have to reconstruct U3), "write tests for the above" with no scenarios, or a reference to a type or function no unit defines.
     - **Technical-design load-bearing audit (self-gating).** Count the **architecture-complexity triggers** the plan fires: **≥3 new/changed components**, a **≥3-step protocol/handshake**, a **state machine**, **≥3 data-flow stages**, or **DSL / public-API design**. If **any** trigger fires (typically Deep / high-risk plans), the plan MUST carry a plan-level `## Technical design` section — a **directional** high-level sketch of the cross-cutting architecture (component boundaries, data flow, key interfaces), not a spec. Verify the section is present when a trigger fired; a missing section with a fired trigger is **incomplete** — add it before finalizing. **Self-gating:** if no trigger fires (simple plans), the section is not required and must not be added as boilerplate.
 
-13. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`).
+14. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`).
 
     | Condition | Action |
     |---|---|
@@ -131,7 +132,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     Record the outcome as `default_branch_checkpoint: <auto_branched | no_commit_requested | committed_to_default_branch>` in the `/en-plan` report.
 
-14. **Write the plan.** One precondition first, and it can end the step.
+15. **Write the plan.** One precondition first, and it can end the step.
 
     **Is a plan file warranted?** Not every planning request earns one. Offer to skip when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, **no design doc was consumed**, and the user did not ask for a plan file in so many words.
 
@@ -144,7 +145,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     **Never offer the skip** when the work touches a risk surface — authentication, payments, migrations, external contracts — regardless of how small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.
 
     Then write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` using `references/templates/plan-template.md`. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
-15. **Outside Voice review with finalize loop.**
+16. **Outside Voice review with finalize loop.**
 
     **The host authors; the peer only reviews.** Whoever `/en-plan` was invoked in is the host, and the host writes every plan — the units, the metadata, the applied findings. The peer returns structured findings and nothing else: it does not draft units, edit the plan file, run commands, or commit. This is D30, stated in full in `references/outside-voice.md`, and it is why the peer runs as a subprocess with its own prompt rather than as a collaborator on the file.
 
@@ -165,7 +166,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
         - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
       - On `verdict: reject` → pause, surface to user, leave `status: draft`. Do not re-loop.
       - **Failure handling:** Peer timeout → surface, leave `status: draft`, no re-loop. Malformed JSON after one retry → same behavior.
-16. **Promote to `open` (status flip).** The plan moves from `status: draft` to `status: open` in **every** path that produces a buildable plan, not just peer-approve. Specifically, flip to `open` when any of these is true:
+17. **Promote to `open` (status flip).** The plan moves from `status: draft` to `status: open` in **every** path that produces a buildable plan, not just peer-approve. Specifically, flip to `open` when any of these is true:
     - Peer ran and the loop exited with `verdict: approve`.
     - `--no-peer` was passed (peer was deliberately skipped).
     - `PEER_AVAILABLE=false` from host detection (peer unavailable; no flag needed).
@@ -189,7 +190,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - Peer subprocess timed out or returned malformed JSON (after one retry) AND the user has not yet decided.
 
     In those `draft`-stuck cases, do not advance to the auto-commit step or the hand-off to `/en-build`; surface state and stop. `/en-build`'s pre-flight will offer the recovery path on the next attempt if findings get resolved later.
-17. **Auto-commit the plan file.**
+18. **Auto-commit the plan file.**
     - Branch policy: commit on the current branch (default `main` / `master` / `develop`, or whatever feature branch the user is on). Skip auto-commit on detached HEAD or unusual states; surface and ask.
     - Working-tree safety: refuse auto-commit if `git diff --cached` has unrelated staged changes; surface and ask the user to commit the plan manually. Untracked or unstaged changes to *other* files are fine — `git add` is invoked with the plan file path only, never `git add -A`.
     - Commit message (HEREDOC):
@@ -200,7 +201,6 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       Verdict: approve. Generated by /en-plan.
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
-18. **Confidence check.** Identify low-confidence sections (typically integrations or unfamiliar libraries); offer to deepen with a research dispatch or to leave as-is and resolve during build.
 19. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
 20. **Hand off to `/en-build`.** Suggest the build command:
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build docs/plans/active/EN07-feature_auth-rotation.md`?"
