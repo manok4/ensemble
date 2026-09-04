@@ -9,6 +9,7 @@ page, never on `SKILL.md` internals and never on a file inside this directory.
 |---|---|
 | `/en-review --cross --mode headless --base <merge-base>` | `en-build`, post-build branch review (peer plus personas, D46) |
 | `/en-review --peer --mode headless --base <merge-base>` | `en-loop` checkpoints (peer alone) |
+| `/en-review --verify <envelope-path> --mode headless` | `en-build`, after applying a batch that addressed a P0/P1: the verification pass alone (D80) |
 | `/en-review --mode report-only` | CI (`en-sweep`); mandatory there, and it never runs a peer |
 | `/en-review --host` | any caller wanting the persona roster and no peer subprocess |
 
@@ -34,6 +35,7 @@ A findings envelope. Callers branch on these fields:
 | `reconciliation[]` | buckets `corroborated` · `peer-only` · `host-only` · `conflicting` |
 | `peer_decision` | `{peer, reason, peer_mode, effort, model_alias}`; `reason` is a closed enum |
 | `sub_threshold_findings[]` | present in `report-only`; filed as TD entries in other modes |
+| `verification_pass` | `{outcome, reason, finding_ids}`; `outcome` is `clean` · `new-findings` · `not-run`; when it ran, `verdict` is the verification pass's |
 
 **Branch on these exact spellings.** Never rename, abbreviate or add to them. A
 caller that matches on anything else is relying on an internal detail.

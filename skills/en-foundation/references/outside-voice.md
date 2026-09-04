@@ -34,7 +34,7 @@ Two helpers own the whole path. A skill never assembles the prompt or the comman
 
 ## Re-review iterations
 
-When a skill re-runs the peer after applying findings, the prompt carries a `## Previous review context (iteration N)` section listing applied findings (the peer verifies the fix landed), deferred ones (do not re-flag) and disagreed-with ones (do not re-flag without new evidence), each by `finding_id`. The host assembles it from the artifact's structured resolution log (`peer_review_resolutions:` on a plan), never from the human-readable iteration prose. The peer must reuse the original `finding_id` when re-raising a point; a re-minted id defeats the suppression.
+When a skill re-runs the peer after applying findings (`/en-plan`'s finalize loop, `/en-review`'s verification pass), the prompt carries a `## Previous review context (iteration N)` section listing applied findings (the peer verifies the fix landed), deferred ones (do not re-flag) and disagreed-with ones (do not re-flag without new evidence), each by `finding_id`. The host assembles it from the artifact's structured resolution log (`peer_review_resolutions:` on a plan), never from the human-readable iteration prose. The peer must reuse the original `finding_id` when re-raising a point; a re-minted id defeats the suppression.
 
 ## Verdict handling
 
