@@ -29,11 +29,9 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
    **This is a kind gate, never a size gate.** A three-line change the user explicitly named still runs; a thousand-line lockfile diff does not. Size thresholds belong to the caller, and applying one here would silently decline work someone asked for. The cost of getting this wrong is three agents reading a lockfile.
 
-4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex), each passed the full diff or resolved file set. Use the existing `agents/code-simplifier.md` agent for each dimension, seeded with the dimension's checklist below. Omit any model override so the user's configured settings apply.
+4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex): `agents/code-simplifier.md` once per dimension. Each receives the resolved scope (the full diff or the file set); its dimension's rubric below, **passed verbatim**, since a rubric re-rendered from memory loses the gating rules that keep the pass behaviour-preserving; the project's `CLAUDE.md` and `AGENTS.md`; and the read-only constraint with the exact-functionality requirement. Omit any model override so the agent's declared tier applies.
 
-   **The reviewers are read-only in this skill.** Each returns findings; **step 5 applies them, in the parent**. `code-simplifier`'s own description says it may modify files — that is true of it elsewhere and must not be true here, because three of them run **concurrently on one working tree** and three writers editing the same files is a race whose outcome depends on scheduling. Say so in every dispatch prompt rather than relying on the reader inferring it.
-
-   Because they only find and never write, this is evidence-tier work rather than ceiling: the judgement that becomes an edit is made by the parent at step 5.
+   **The reviewers are read-only in this skill,** by the agent's own definition (D86) and restated in the prompt. State the read-only constraint in each dispatch prompt: three run **concurrently on one working tree**, and three writers on the same files is a race whose losing edits vanish without an error. Each returns findings; **step 5 applies them, in the parent**. Because they only find and never write, this is evidence-tier work rather than ceiling: the judgement that becomes an edit is made by the parent at step 5.
 
    - **Dimension 1 — Reuse:** existing utilities/helpers that could replace new code; new functions duplicating existing functionality; inline logic that could use an existing utility; diff code reimplementing a stdlib/runtime primitive (suggest the built-in only when behavior-equivalent — never swap native UI controls, locale/`Intl` formatting, sort-stability, or serialization edge cases).
    - **Dimension 2 — Quality:** redundant/derivable state; parameter sprawl; copy-paste-with-variation; leaky abstractions; stringly-typed code where constants/enums exist; unnecessary wrapper elements (component-tree frameworks only); nested conditionals 3+ deep (flatten with guards/early returns/lookup tables); unnecessary comments (keep only non-obvious WHY); dead code / unused imports / unused exports (prefer the project's dead-code linter or `ast-grep` over text grep; account for re-exports, dynamic imports, framework exports).
@@ -50,7 +48,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 6. **Verify behavior preserved.**
    - Run typecheck + lint over the project (fast; catches broken imports, dropped narrowings, dead code other modules reference).
    - Run tests scoped to the changed paths; broaden when the change has obvious wide reach (heavily-imported utility rewritten, shared code consolidated). If the runner has no scoping, run the full suite.
-   - **Do not** relax assertions, weaken types, or skip tests to make checks pass — fix the break or revert the specific change that caused it.
+   - On a break: identify which applied fix caused it, **revert that specific change**, not the whole pass, continue with the rest, and surface the reverted finding in the summary. **Do not** relax assertions, weaken types, or skip tests to make checks pass. A simplification that cannot survive the project's own checks is not a simplification.
    - If no test/lint/typecheck is configured, state that explicitly; don't silently skip verification.
 7. **Summarize by dimension.** Report what was applied per dimension (reuse / quality / efficiency), how many findings were skipped as false-positive, and the behavior-preservation result (checks run + outcome). Example: *"Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass."* Do not headline a net-lines-removed figure — the measure is what improved and that behavior held, not how much code shrank. If there were no findings, confirm the code didn't need changes.
 
@@ -67,8 +65,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 ## Reference files
 
-- `references/code-simplifier-dispatch.md` — dispatch + revert protocol
-- `agents/code-simplifier.md` — the reviewer agent
+- `agents/code-simplifier.md` — the reviewer agent: one dimension per dispatch, read-only, evidence tier
 
 ## Failure protocol
 

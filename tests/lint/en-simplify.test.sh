@@ -76,7 +76,7 @@ fi
 
 # --- what the pass carries, and what it stopped carrying (2026-09-02) --------
 S="$REPO_ROOT/skills/en-simplify/SKILL.md"
-D="$REPO_ROOT/skills/en-simplify/references/code-simplifier-dispatch.md"
+A="$REPO_ROOT/skills/en-simplify/agents/code-simplifier.md"
 
 hasf() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "not in $(basename "$1")"; }
 
@@ -92,9 +92,15 @@ hasf "$S" "it invokes no peer" "the skill says why it carries no peer machinery"
 # --- read-only reviewers: the race this prevents is silent -------------------
 hasf "$S" "read-only in this skill"        "the reviewers are declared read-only"
 hasf "$S" "concurrently on one working tree" "the reason names the concurrent tree"
-hasf "$D" "State the read-only constraint in each dispatch prompt" \
+hasf "$S" "State the read-only constraint in each dispatch prompt" \
                                             "the constraint goes in the prompt, not just the doc"
-hasf "$D" "losing edits vanish"             "the dispatch doc names the failure mode"
+hasf "$S" "losing edits vanish"             "the skill names the failure mode"
+# D86: the agent itself is the read-only reviewer; the skill no longer works around a writer.
+hasf "$A" "You do not edit"                 "the agent is defined read-only"
+hasf "$A" "\"findings\""                    "the agent returns findings, not edits"
+grep -qE "^model: *sonnet$" "$A" && pass "the agent declares the evidence tier" || fail "the agent must declare model: sonnet (evidence tier, D86)"
+grep -qE "changes_made|You modify files|MAY modify" "$A" && fail "the agent no longer describes itself as a writer" || pass "the agent no longer describes itself as a writer"
+[ -e "$REPO_ROOT/skills/en-simplify/references/code-simplifier-dispatch.md" ] && fail "code-simplifier-dispatch.md is folded into the skill (D86)" || pass "code-simplifier-dispatch.md is folded into the skill (D86)"
 
 # --- the orchestrated seam ---------------------------------------------------
 hasf "$S" "When a caller passed an explicit scope, never ask" \
@@ -111,14 +117,14 @@ hasf "$S" "Inspect widely, edit narrowly"   "the inspect boundary is wider than 
 hasf "$S" "mutation boundary"               "the edit boundary is named"
 hasf "$S" "is not behavior"                 "an unshipped-only interface is not protected"
 
-# --- the dispatch doc must match the model en-build actually runs ------------
-# It described a per-unit pass that D52 abolished, with the real one appended as a
-# footnote. This is the third D52 desync found in this campaign, so it is asserted
-# from both sides rather than trusted.
-if grep -qE 'per unit|per-unit dispatch|verify gate 2|Verification gate 2' "$D"; then
-  fail "the dispatch doc describes the branch-level pass, not the retired per-unit one"
+# --- the agent must match the model en-build actually runs -------------------
+# The dispatch doc described a per-unit pass that D52 abolished; D60 rewrote it and
+# D86 folded it into the skill. The agent file kept the per-unit two-gate writer
+# until D86. Asserted from both sides rather than trusted.
+if grep -qE 'per unit|per-unit|gate 1|gate 2|Verification gate' "$A"; then
+  fail "the agent describes the branch-level read-only pass, not the retired per-unit writer"
 else
-  pass "the dispatch doc describes the branch-level pass, not the retired per-unit one"
+  pass "the agent describes the branch-level read-only pass, not the retired per-unit writer"
 fi
 grep -qF "branch level, not per-unit" "$REPO_ROOT/skills/en-build/SKILL.md" \
   && pass "en-build still describes the pass as branch-level" \
