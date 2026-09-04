@@ -175,6 +175,7 @@ Gated — read only when their step's gate fires, never up front:
 | Two approach sub-agents converge on the same shape | Report one approach, and say they converged independently — that is evidence, not a wasted slot. |
 | Blindspot gate fires in a non-interactive run | Never offer; treat the territory as a declined offer (recommended defaults recorded as explicit assumptions). |
 | `web-research` agent fails | Note in design doc: "External research truncated due to fetch failure"; continue with internal context. |
+| `bin/ensemble-lint` is not present in the project | Check the design frontmatter by hand (`type`, `created`, `topic`, `status`, `related_plan`; `status` in `open`/`accepted`/`superseded`) and continue. Say that the lint is missing and that `/en-setup` installs it. |
 | User's response to the synthesis says they are in the wrong skill ("this is too small, just build it") | Stop. Name the skill they seem to want and offer the hand-off. Do not argue: the synthesis is an honest checkpoint, and discovering the wrong skill by reading it is the mechanism working. |
 | Same synthesis item revised a third time after the soft-cut | Treat the soft-cut's "keep discussing" as spent; surface that the scope is not converging and ask what is actually unresolved. |
 | User asks for code | Decline politely: "Brainstorm doesn't write code. Ready to hand off to `/en-plan`?" |
