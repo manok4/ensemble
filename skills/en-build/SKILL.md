@@ -48,15 +48,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
     | `draft` | `reject` | any | any | Refuse; user must take over. Surface `peer_review_resolutions:` for context. |
     | `completed` / `abandoned` | any | any | any | Refuse |
 
-    **Legacy inference** (plans drafted before the new frontmatter exists, i.e. no `peer_review_verdict` field):
-
-    | Legacy signal | Inferred state |
-    |---|---|
-    | `status: draft` AND a parseable iteration log shows applied/deferred/disagreed entries | Treat as `peer_review_verdict: revise` + reconstructed `peer_review_resolutions` (best-effort, flagged `inferred: true`); offer finalize-and-build with a legacy notice |
-    | `status: draft` AND no iteration log | Treat as `peer_review_verdict: null`; refuse |
-    | `status: open` AND no peer-review fields | Treat as `peer_review_verdict: null` AND `/en-plan --no-peer` was the path; accept |
-    | `status: open` AND iteration log shows final `verdict: approve` | Treat as `peer_review_verdict: approve`; accept |
-    | Any other ambiguous combination | Refuse with a clear instruction to re-run `/en-plan --resume <plan-path>` |
+    **Legacy inference** (a plan with no `peer_review_verdict` field at all): read `references/build-legacy-plans.md`, which owns the inference table; it maps the old iteration-log signals onto the matrix above or refuses.
 
     Recovery prompt (when offering finalize-and-build):
 
@@ -91,15 +83,7 @@ Execute a plan, unit by unit. **The host implements every unit** — whichever a
 
     **Phase classification** (when phasing is on): each unit maps to one of P1 (Measurement, `risk: low`), P2 (Additive, `risk: medium` except migration/backfill/schema-evolution categories), P3 (Migration / Backfill, `risk: high` OR `risk: medium` + migration/backfill/schema-evolution category), P4 (Destructive, `risk: destructive`). `risk:` is the single source of truth for phase placement; `category:` only carves out the `medium → P3` case for migrations. **Empty phases are collapsed silently.**
 
-    **Inference fallback** (legacy plans without `risk:`): single ordered classifier, **first match wins**:
-    1. **Destructive patterns** (highest priority): approach mentions `DROP TABLE`, `DROP SCHEMA`, `DROP DATABASE`, mass `DELETE` without `WHERE`, `TRUNCATE`, `rm -rf` against data dirs, `aws s3 rm --recursive`, `kubectl delete` against persistent resources, `terraform destroy` → `risk: destructive`.
-    2. **Destructive migrations**: `migrations/` or `alembic/` paths AND `ALTER COLUMN` (drop/rename/type-change), `DROP COLUMN`, `DROP INDEX` on populated index, destructive data transforms → `risk: high`, `category: migration`.
-    3. **Additive migrations**: `migrations/` paths AND additive only (`CREATE TABLE`, `ADD COLUMN` with default, `CREATE INDEX CONCURRENTLY`) → `risk: medium`, `category: migration-additive`.
-    4. **Backfill**: approach mentions iterating existing rows (UPDATE batch loop, ETL backfill) → `risk: high`, `category: backfill`.
-    5. **Observability/read-only**: files entirely under `tests/`, `docs/`, or configured observability paths → `risk: low`, `category: observability`.
-    6. **Fallback**: → `risk: medium`, `category: feature`.
-
-    When inference fires, surface a confirmation: *"Plan has no `risk:` metadata. Inferred classification: P1 (3), P2 (5), P3 (2), P4 (1). Review before continuing? (y/n)"*.
+    **Inference fallback** (a legacy plan whose units lack `risk:`): read `references/build-legacy-plans.md`, which owns the ordered classifier (destructive patterns first, then migrations, backfills, read-only paths, then `medium`) and the confirmation it surfaces before the build proceeds on inferred classes.
 
     **Dependency-vs-phase invariant.** For every dependency edge `U → V`, verify `phase(V) <= phase(U)`. If a low-risk unit depends on a higher-risk unit (so `phase(V) > phase(U)`), **reject the plan as a structural error** with three remediation options (remove the dependency, promote `U.risk:`, or split `U`). Never silently bury the unit in a higher phase — that would violate the "phase contains only its own risk class" invariant and let the unit land after a confirmation typed for destructive work.
 
@@ -342,6 +326,7 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - `references/severity.md` — apply / defer / disagree routing
 - `references/recursion-guard.md` — ENSEMBLE_PEER_REVIEW env var
 - `references/stable-ids.md` — U-ID stability rules
+- `references/build-legacy-plans.md` — **gated**: read only for a plan with no `peer_review_verdict` field or a unit with no `risk:` (pre-D37 plans); owns the legacy inference table and the ordered risk classifier
 - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 10.6's audit. Run with `--branch-coverage <range> --require-simplify`: it enumerates the U-IDs covered by the branch's `review-verdict:` trailers and derives `simplify_pass` / `branch_review_pass`. Its `--require-peer-resolution` mode reads the per-unit trailers of branches built before D52 and is not used here.
 
 ## Failure protocol
