@@ -383,7 +383,7 @@ rm -rf "$IT"
 # Every reason the helper can emit must be a member of the published enum
 # (EN11-PR-008), so helper and policy cannot drift apart.
 missing_reasons=""
-for reason in default-on explicit-flag no-peer-flag single-agent-fallback \
+for reason in default-on explicit-flag no-peer-flag host-only-mode single-agent-fallback \
               report-only-mode recursion-guard peer-unavailable \
               peer-failed:auth peer-failed:unknown peer-failed:retry-exhausted \
               dropped-model-fragment dropped-effort-fragment dropped-isolation-fragment; do
