@@ -16,9 +16,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # --- 2026-09-01: the emitter side of this protocol is now legacy ---
 # D52 stopped /en-build emitting peer-verdict: / peer-resolution: trailers, and
 # merging en-cross-review into /en-review removed the last other producer. No
-# skill emits them today; /en-ship still READS them on a documented legacy path
-# for branches built before D52, and ensemble-verify-peer-evidence still parses
-# them, so the helper-side assertions below test live behaviour.
+# skill emits them today, and D83 retired the verifier's single-commit mode
+# that parsed them; the helper-side assertions below cover what survives
+# (the helper exists, and en-build cites it for the branch-coverage audit).
 #
 # The clauses that asserted build-handoff.md / build-orchestration.md documented
 # the schema are gone with those files, which were deleted alongside
