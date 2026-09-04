@@ -16,7 +16,7 @@
 #                        [--peer-mode <mode>] [--effort <tier>]
 #                        [--model-alias <alias>] [--reason-on <reason>]
 #
-# Prints ONE peer_decision JSON object (references/peer-model-policy.md (e)) on
+# Prints ONE peer_decision JSON object (references/peer-contract.md) on
 # stdout. The peer's own stdout goes to --out-file.
 
 # Locate and load the shared classifier (reused from EN10, never duplicated).
@@ -58,6 +58,33 @@ _epi_attribute() {
     echo model; return 0
   fi
   echo ""
+}
+
+# --- Claude-only isolation for the peer subprocess --------------------------
+# The peer is a reporter (D30). It gets no MCP servers, no skills, no session
+# state, no user-level settings (a loaded LSP once spent the single --max-turns
+# on a tool call before any JSON came back), and no tools at all, which is the
+# mechanical guarantee that one turn is one model response. `codex exec` is
+# single-shot and rejects every one of these flags, so they are keyed on the
+# command, never on the host. Documented in references/outside-voice.md since
+# PR #9 and applied here since 2026-09-04; before that, every caller of this
+# helper ran the peer unisolated while the prose said otherwise.
+# ENSEMBLE_PEER_ISOLATION=off disables the set for one session (debugging).
+_EPI_ISOLATION=(--strict-mcp-config --mcp-config '{"mcpServers":{}}'
+                --disable-slash-commands --no-session-persistence
+                --setting-sources project --tools '')
+
+_epi_isolation_applies() {  # $1=peer_cmd
+  [ "${ENSEMBLE_PEER_ISOLATION:-on}" != "off" ] || return 1
+  case "${1%% *}" in claude|*/claude) return 0 ;; esac
+  return 1
+}
+
+# A rejection of one of the isolation flags, as opposed to the model or effort
+# fragment. Anchored on the rejection phrasing so a usage dump that merely
+# lists --tools is not mistaken for one.
+_epi_is_isolation_rejection() {  # $1=stderr
+  printf '%s' "${1:-}" | grep -qiE '(unexpected|unrecognized|unknown|invalid) (argument|option)[^[:cntrl:]]*(strict-mcp-config|mcp-config|disable-slash-commands|no-session-persistence|setting-sources|--tools)'
 }
 
 # Escape a value for embedding in a JSON string. Without this a configured
@@ -181,9 +208,10 @@ ensemble_peer_invoke() {
   _epi_marker_write "$out_file" "$peer_cmd" "$peer_mode"
   _epi_marker_out="$out_file"
   local _t0; _t0=$(date +%s)
-  local _epi_argv=() _err _rc _class
+  local _epi_argv=() _err _rc _class _iso_on=0
   [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
   _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
+  if _epi_isolation_applies "$peer_cmd"; then _epi_argv+=("${_EPI_ISOLATION[@]}"); _iso_on=1; fi
   _epi_push "$peer_model"; _epi_push "$peer_effort"
 
   # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
@@ -210,7 +238,14 @@ ensemble_peer_invoke() {
 
   # --- flagdrift: ONE bounded retry, dropping ONLY the rejected fragment ---
   local _target _dropped
-  _target=$(_epi_attribute "$_err")
+  if [ "$_iso_on" -eq 1 ] && _epi_is_isolation_rejection "$_err"; then
+    # An isolation flag the installed CLI no longer knows. Drop the whole
+    # isolation set (it is one fragment for this purpose) and keep the model
+    # and effort fragments; the review still runs, and the decision says so.
+    _target="isolation"
+  else
+    _target=$(_epi_attribute "$_err")
+  fi
 
   # An attributed-but-empty fragment cannot be the cause; prefer a fragment
   # that is actually present. Ambiguous attribution drops the model fragment
@@ -230,14 +265,20 @@ ensemble_peer_invoke() {
   _epi_argv=()
   [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
   _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
-  # Drop ONLY the rejected fragment; the other one is retained deliberately.
-  if [ "$_target" = "model" ]; then
-    _dropped="dropped-model-fragment"
-    _epi_push "$peer_effort"
-  else
-    _dropped="dropped-effort-fragment"
-    _epi_push "$peer_model"
-  fi
+  # Drop ONLY the rejected fragment; the others are retained deliberately.
+  case "$_target" in
+    isolation)
+      _dropped="dropped-isolation-fragment"
+      _epi_push "$peer_model"; _epi_push "$peer_effort" ;;
+    model)
+      _dropped="dropped-model-fragment"
+      [ "$_iso_on" -eq 0 ] || _epi_argv+=("${_EPI_ISOLATION[@]}")
+      _epi_push "$peer_effort" ;;
+    *)
+      _dropped="dropped-effort-fragment"
+      [ "$_iso_on" -eq 0 ] || _epi_argv+=("${_EPI_ISOLATION[@]}")
+      _epi_push "$peer_model" ;;
+  esac
 
   # Capture the retry's exit code in an `else`, exactly as attempt 1 does. A
   # bare `$?` after a completed `if` reads the IF STATEMENT's status (always 0

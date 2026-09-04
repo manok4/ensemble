@@ -87,7 +87,7 @@ Published here once, and consumed verbatim by `/en-review` and the drift tests, 
 |---|---|
 | `on` | `default-on` , `explicit-flag` |
 | `off` | `no-peer-flag` , `single-agent-fallback` , `report-only-mode` , `recursion-guard` , `peer-unavailable` , `auto-skip:diff-below-threshold` , `auto-skip:lightweight-depth` , `peer-failed:auth` , `peer-failed:timeout` , `peer-failed:unknown` , `peer-failed:retry-exhausted` |
-| `degraded` | `dropped-model-fragment` , `dropped-effort-fragment` |
+| `degraded` | `dropped-model-fragment` , `dropped-effort-fragment` , `dropped-isolation-fragment` (a Claude isolation flag the installed CLI rejected; the set is dropped as one fragment) |
 
 Anything outside this enum is a contract violation, the same standard the build flavors apply to `peer-skipped:`.
 

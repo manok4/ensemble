@@ -65,7 +65,7 @@ the three states mean the same thing everywhere.
 |---|---|
 | `on` | `default-on`, `explicit-flag` |
 | `off` | `no-peer-flag`, `single-agent-fallback`, `report-only-mode`, `recursion-guard`, `peer-unavailable`, `auto-skip:diff-below-threshold`, `auto-skip:lightweight-depth`, `peer-failed:auth`, `peer-failed:timeout`, `peer-failed:unknown`, `peer-failed:retry-exhausted` |
-| `degraded` | `dropped-model-fragment`, `dropped-effort-fragment` |
+| `degraded` | `dropped-model-fragment`, `dropped-effort-fragment`, `dropped-isolation-fragment` |
 
 **Anything outside this enum is a contract violation.** Callers branch on these
 exact spellings, so never rename, abbreviate or add to them without changing

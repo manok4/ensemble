@@ -386,7 +386,7 @@ missing_reasons=""
 for reason in default-on explicit-flag no-peer-flag single-agent-fallback \
               report-only-mode recursion-guard peer-unavailable \
               peer-failed:auth peer-failed:unknown peer-failed:retry-exhausted \
-              dropped-model-fragment dropped-effort-fragment; do
+              dropped-model-fragment dropped-effort-fragment dropped-isolation-fragment; do
   grep -qF -- "$reason" "$POLICY" || missing_reasons="$missing_reasons $reason"
 done
 if [ -z "$missing_reasons" ]; then
@@ -394,7 +394,7 @@ if [ -z "$missing_reasons" ]; then
 else
   fail "reasons emitted but not in the policy enum" "$missing_reasons"
 fi
-for reason in default-on dropped-model-fragment dropped-effort-fragment \
+for reason in default-on dropped-model-fragment dropped-effort-fragment dropped-isolation-fragment \
               peer-failed:auth peer-failed:unknown peer-failed:retry-exhausted; do
   grep -qF -- "$reason" "$INVOKE" || fail "helper cannot emit documented reason: $reason"
 done
