@@ -55,8 +55,11 @@ degraded peer can never read as a normal one.
  "reason": "<enum below>",
  "peer_mode": "cross-agent" | "single-agent-fallback" | "off",
  "effort": "low" | "medium" | "high",
- "model_alias": "<alias>" | null}
+ "model_alias": "<alias>" | null,
+ "model_actual": "<served model, from the CLI's own receipt>" | null}
 ```
+
+`model_actual` is what the CLI reported serving (Claude's `modelUsage` key), not what was asked for; `null` where the route gives no receipt. It is evidence for a degraded or fallback run, never an input to any decision.
 
 `degraded` is the canonical representation of a successful-but-reduced run, so
 the three states mean the same thing everywhere.

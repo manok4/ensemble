@@ -13,7 +13,7 @@ Single source of truth for cross-host portability across every Ensemble skill. L
 | `PEER_MODE` | `cross-agent` \| `single-agent-fallback` \| `off` | Determines prompt augmentation; surfaced to user |
 | `PEER_CMD` | `codex exec` \| `claude -p` \| `<host's own CLI>` | Subprocess invocation for peer review |
 | `PEER_FORMAT` | `--json` \| `--output-format json` | Structured output flag |
-| `PEER_TURNS` | `--max-turns 1` (claude peer) \| `` empty (codex peer) | Per-agent turn cap — `claude -p` supports `--max-turns`; `codex exec` removed it and is single-shot, so it needs none. Consumers write `$PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"` (empty collapses for Codex). |
+| `PEER_TURNS` | `--max-turns 1` (claude peer) \| `` empty (codex peer) | Per-agent turn cap — `claude -p` supports `--max-turns`; `codex exec` removed it and is single-shot, so it needs none. Consumers write `$PEER_CMD $PEER_FORMAT $PEER_TURNS "$prompt"` (empty collapses for Codex). `ensemble-peer-invoke --access read-tree` overrides it with its own cap. |
 | `PEER_AVAILABLE` | `true` \| `false` | Skip cross-review entirely if false |
 | `QUESTION_TOOL` | `AskUserQuestion` \| `request_user_input` | Blocking prompts |
 | `BLOCKING_QUESTION_AVAILABLE` | `true` \| `false` | Fall back to numbered prose options if false |

@@ -78,7 +78,8 @@ Published here once, and consumed verbatim by `/en-review` and the drift tests, 
  "reason": "<enum>",
  "peer_mode": "cross-agent" | "single-agent-fallback" | "off",
  "effort": "low" | "medium" | "high",
- "model_alias": "<alias>" | null}
+ "model_alias": "<alias>" | null,
+ "model_actual": "<served model>" | null}
 ```
 
 `peer: "degraded"` is the canonical representation of a successful-but-reduced peer run, so the three states are the same everywhere.
@@ -87,7 +88,7 @@ Published here once, and consumed verbatim by `/en-review` and the drift tests, 
 |---|---|
 | `on` | `default-on` , `explicit-flag` |
 | `off` | `no-peer-flag` , `host-only-mode` , `single-agent-fallback` , `report-only-mode` , `recursion-guard` , `peer-unavailable` , `auto-skip:diff-below-threshold` , `auto-skip:lightweight-depth` , `peer-failed:auth` , `peer-failed:timeout` , `peer-failed:unknown` , `peer-failed:retry-exhausted` |
-| `degraded` | `dropped-model-fragment` , `dropped-effort-fragment` , `dropped-isolation-fragment` (a Claude isolation flag the installed CLI rejected; the set is dropped as one fragment) |
+| `degraded` | `dropped-model-fragment` , `dropped-effort-fragment` , `dropped-isolation-fragment` (an isolation, access or schema flag the installed CLI rejected; the set is dropped as one fragment) |
 
 Anything outside this enum is a contract violation, the same standard the build flavors apply to `peer-skipped:`.
 

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ensemble peer review findings",
+  "description": "The object ensemble-build-peer-prompt asks the peer for. Passed to the peer CLI as its output schema so a malformed answer is refused at the source instead of recovered after the fact (D81). Field semantics: references/peer-contract.md.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["verdict", "peer_mode", "summary", "findings", "coverage"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["approve", "revise", "reject"]},
+    "peer_mode": {"type": "string", "enum": ["cross-agent", "single-agent-fallback"]},
+    "summary": {"type": "string"},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["finding_id", "severity", "confidence", "title", "location", "why_it_matters", "suggested_fix"],
+        "properties": {
+          "finding_id": {"type": "string", "pattern": "^[0-9]+-[0-9]+$"},
+          "severity": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+          "confidence": {"type": "integer", "minimum": 1, "maximum": 10},
+          "title": {"type": "string"},
+          "location": {"type": "string"},
+          "why_it_matters": {"type": "string"},
+          "suggested_fix": {"type": "string"},
+          "u_id": {"type": "string"}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["reviewed", "not_reviewed"],
+      "properties": {"reviewed": {"type": "string"}, "not_reviewed": {"type": "string"}}
+    }
+  }
+}

@@ -15,9 +15,19 @@
 #                        --prompt-file <path> [--out-file <path>]
 #                        [--peer-mode <mode>] [--effort <tier>]
 #                        [--model-alias <alias>] [--reason-on <reason>]
+#                        [--access none|read-tree] [--schema <file>]
 #
 # Prints ONE peer_decision JSON object (references/peer-contract.md) on
-# stdout. The peer's own stdout goes to --out-file.
+# stdout. The peer's own stdout goes to --out-file, unwrapped to the peer's
+# findings object when the CLI returned a transport envelope.
+#
+# Detached form (D81), for a peer that may run for minutes: no tool call has
+# to stay open for its lifetime, and host personas can run alongside it.
+#   ensemble_peer_start  --job-dir <dir> <every ensemble_peer_invoke flag>
+#                        -> prints <dir>; returns at once
+#   ensemble_peer_wait   <dir> [--max-secs <n>]  -> prints running|done; 0 done, 3 running
+#   ensemble_peer_result <dir>  -> prints the decision; returns the invoke's exit code
+#   ensemble_peer_reap   <dir>  -> kills a still-running peer and records peer-failed:timeout
 
 # Locate and load the shared classifier (reused from EN10, never duplicated).
 #
@@ -60,31 +70,60 @@ _epi_attribute() {
   echo ""
 }
 
-# --- Claude-only isolation for the peer subprocess --------------------------
-# The peer is a reporter (D30). It gets no MCP servers, no skills, no session
-# state, no user-level settings (a loaded LSP once spent the single --max-turns
-# on a tool call before any JSON came back), and no tools at all, which is the
-# mechanical guarantee that one turn is one model response. `codex exec` is
-# single-shot and rejects every one of these flags, so they are keyed on the
-# command, never on the host. Documented in references/outside-voice.md since
-# PR #9 and applied here since 2026-09-04; before that, every caller of this
-# helper ran the peer unisolated while the prose said otherwise.
+# --- Isolation for the peer subprocess, in two access modes -------------------
+# The peer is a reporter (D30): it never writes. Every Claude peer gets no MCP
+# servers, no skills, no session state and no user-level settings (a loaded
+# LSP once spent the single --max-turns on a tool call before any JSON came
+# back). What differs is whether it may READ the tree (D81):
+#   none       --tools '' and the caller's turn cap (one turn). For a document
+#              review, or a lite code review: the artifact is the whole input.
+#   read-tree  --tools Read,Grep,Glob, --permission-mode dontAsk so a denied
+#              tool fails fast instead of waiting for an answer, and a turn cap
+#              of ENSEMBLE_PEER_MAX_TURNS (25) so the peer can open the caller
+#              of a changed function and the test beside it. A turn is one
+#              model-to-tool round trip inside the peer; the host sees one
+#              report either way. No Bash, Edit, Write, Agent, web or MCP.
+# `codex exec` gets `-s read-only` in both modes and none of the Claude flags.
+# Flags are keyed on the command, never on the host.
 # ENSEMBLE_PEER_ISOLATION=off disables the set for one session (debugging).
-_EPI_ISOLATION=(--strict-mcp-config --mcp-config '{"mcpServers":{}}'
-                --disable-slash-commands --no-session-persistence
-                --setting-sources project --tools '')
+_EPI_ISOLATION_BASE=(--strict-mcp-config --mcp-config '{"mcpServers":{}}'
+                     --disable-slash-commands --no-session-persistence
+                     --setting-sources project)
+_EPI_ACCESS_NONE=(--tools '')
+_EPI_ACCESS_READ_TREE=(--tools Read,Grep,Glob --permission-mode dontAsk)
+_EPI_CODEX_SANDBOX=(-s read-only)
+
+_epi_is_claude() { case "${1%% *}" in claude|*/claude) return 0 ;; esac; return 1; }
+_epi_is_codex()  { case "${1%% *}" in codex|*/codex)   return 0 ;; esac; return 1; }
 
 _epi_isolation_applies() {  # $1=peer_cmd
   [ "${ENSEMBLE_PEER_ISOLATION:-on}" != "off" ] || return 1
-  case "${1%% *}" in claude|*/claude) return 0 ;; esac
-  return 1
+  _epi_is_claude "$1" || _epi_is_codex "$1"
+}
+
+# Push the isolation set for this command and access mode, plus the schema
+# flag when a schema was given. One place, so attempt 1 and the retry agree.
+#   $1=peer_cmd $2=access $3=schema_file
+_epi_push_isolation() {
+  if _epi_is_claude "$1"; then
+    _epi_argv+=("${_EPI_ISOLATION_BASE[@]}")
+    if [ "$2" = "read-tree" ]; then
+      _epi_argv+=("${_EPI_ACCESS_READ_TREE[@]}" --max-turns "${ENSEMBLE_PEER_MAX_TURNS:-25}")
+    else
+      _epi_argv+=("${_EPI_ACCESS_NONE[@]}")
+    fi
+    [ -z "$3" ] || _epi_argv+=(--json-schema "$(cat "$3")")
+  elif _epi_is_codex "$1"; then
+    _epi_argv+=("${_EPI_CODEX_SANDBOX[@]}")
+    [ -z "$3" ] || _epi_argv+=(--output-schema "$3")
+  fi
 }
 
 # A rejection of one of the isolation flags, as opposed to the model or effort
 # fragment. Anchored on the rejection phrasing so a usage dump that merely
 # lists --tools is not mistaken for one.
 _epi_is_isolation_rejection() {  # $1=stderr
-  printf '%s' "${1:-}" | grep -qiE '(unexpected|unrecognized|unknown|invalid) (argument|option)[^[:cntrl:]]*(strict-mcp-config|mcp-config|disable-slash-commands|no-session-persistence|setting-sources|--tools)'
+  printf '%s' "${1:-}" | grep -qiE "(unexpected|unrecognized|unknown|invalid) (argument|option)[^[:cntrl:]]*(strict-mcp-config|mcp-config|disable-slash-commands|no-session-persistence|setting-sources|--tools|permission-mode|json-schema|output-schema|--sandbox|'-s')"
 }
 
 # Escape a value for embedding in a JSON string. Without this a configured
@@ -99,7 +138,7 @@ _epi_json_escape() {
 
 # Emit the peer_decision object. Values come from the caller's resolved state,
 # so this helper never re-derives policy.
-_epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6=elapsed_s]
+_epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6=elapsed_s] [$7=model_actual]
   # Emitting a decision IS the terminal event, so the marker is cleared here
   # rather than at each exit path. Clearing per-path meant an exit added later
   # would leave a false orphan behind, and a false orphan is worse than none: it
@@ -109,9 +148,11 @@ _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6
   local _alias
   if [ -n "${5:-}" ]; then _alias="\"$(_epi_json_escape "$5")\""; else _alias="null"; fi
   local _el; if [ -n "${6:-}" ]; then _el="$6"; else _el="null"; fi
-  printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"elapsed_s":%s}\n' \
+  local _actual
+  if [ -n "${7:-}" ]; then _actual="\"$(_epi_json_escape "$7")\""; else _actual="null"; fi
+  printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"elapsed_s":%s,"model_actual":%s}\n' \
     "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
-    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_el"
+    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_el" "$_actual"
 }
 
 # Recover the JSON envelope from a response wrapped in fences or prose. Applied
@@ -122,8 +163,43 @@ _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6
 _epi_normalize_out() {
   local _f="${1:-}" _clean
   [ -n "$_f" ] && [ "$_f" != "/dev/null" ] && [ -s "$_f" ] || return 0
+  _epi_unwrap_envelope "$_f"
   _clean=$(ensemble_extract_json "$_f") || return 0
   printf '%s' "$_clean" > "$_f"
+}
+
+# `claude -p --output-format json` returns a transport envelope
+# {"type":"result","result":"<text>","structured_output":{...},"modelUsage":{...}}.
+# The findings are the structured_output when a schema was given, else the
+# result text; the served model is the modelUsage key (canonicalModel when
+# present), which becomes the decision's model_actual so a degraded or
+# fallback run records what actually served it (D81). Leaves anything that is
+# not that envelope untouched, so codex streams and plain JSON pass through.
+_epi_model_actual=""
+_epi_unwrap_envelope() {  # $1=out_file
+  local _f="$1" _res
+  command -v python3 >/dev/null 2>&1 || return 0
+  _res=$(python3 - "$_f" <<'PY' 2>/dev/null
+import json, sys
+p = sys.argv[1]
+try:
+    d = json.load(open(p, encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+if not isinstance(d, dict) or d.get("type") != "result":
+    sys.exit(0)
+mu = d.get("modelUsage") or {}
+actual = ""
+for k, v in mu.items():
+    actual = (v or {}).get("canonicalModel") or k
+    break
+so = d.get("structured_output")
+body = json.dumps(so) if isinstance(so, dict) else (d.get("result") or "")
+open(p, "w", encoding="utf-8").write(body)
+print(actual)
+PY
+) || true
+  _epi_model_actual="${_res:-}"
 }
 
 # --- run marker: make a killed host call visible -----------------------------
@@ -172,7 +248,7 @@ ensemble_peer_invoke() {
   local peer_cmd="" peer_format="" peer_turns="" peer_model="" peer_effort=""
   local prompt_file="" out_file="/dev/null" peer_mode="cross-agent"
   local effort="medium" model_alias="" reason_on="default-on"
-  local timeout_secs="${peer_timeout_seconds:-600}"
+  local access="none" schema_file="" timeout_secs=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -188,6 +264,8 @@ ensemble_peer_invoke() {
       --model-alias)  model_alias="$2";  shift 2 ;;
       --reason-on)    reason_on="$2";    shift 2 ;;
       --timeout)      timeout_secs="$2"; shift 2 ;;
+      --access)       access="$2";       shift 2 ;;
+      --schema)       schema_file="$2";  shift 2 ;;
       *) echo "ensemble_peer_invoke: unknown flag $1" >&2; return 2 ;;
     esac
   done
@@ -196,6 +274,24 @@ ensemble_peer_invoke() {
     echo "ensemble_peer_invoke: --peer-cmd and --prompt-file are required" >&2
     return 2
   fi
+  case "$access" in none|read-tree) ;; *) echo "ensemble_peer_invoke: --access must be none or read-tree" >&2; return 2 ;; esac
+  if [ -n "$schema_file" ] && [ ! -f "$schema_file" ]; then
+    echo "ensemble_peer_invoke: --schema file not found: $schema_file" >&2; return 2
+  fi
+  # A one-shot peer answers in minutes; a peer reading the tree may take
+  # longer, so its ceiling is doubled. peer_timeout_seconds still overrides
+  # both, and --timeout overrides everything.
+  if [ -z "$timeout_secs" ]; then
+    if [ -n "${peer_timeout_seconds:-}" ]; then timeout_secs="$peer_timeout_seconds"
+    elif [ "$access" = "read-tree" ]; then timeout_secs=1200
+    else timeout_secs=600; fi
+  fi
+  # In read-tree the access mode owns the Claude turn cap; the caller's
+  # --max-turns 1 would defeat the reads it was granted.
+  if [ "$access" = "read-tree" ] && _epi_is_claude "$peer_cmd" && _epi_isolation_applies "$peer_cmd"; then
+    peer_turns=""
+  fi
+  _epi_model_actual=""
 
   # A stuck peer must not block a default-on review forever (EN11-CR-002).
   # `timeout` exits 124 when it fires, which maps to the published
@@ -216,14 +312,14 @@ ensemble_peer_invoke() {
   local _epi_argv=() _err _rc _class _iso_on=0
   [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
   _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
-  if _epi_isolation_applies "$peer_cmd"; then _epi_argv+=("${_EPI_ISOLATION[@]}"); _iso_on=1; fi
+  if _epi_isolation_applies "$peer_cmd"; then _epi_push_isolation "$peer_cmd" "$access" "$schema_file"; _iso_on=1; fi
   _epi_push "$peer_model"; _epi_push "$peer_effort"
 
   # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
   # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_normalize_out "$out_file"
-    _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
+    _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
     return 0
   else
     _rc=$?
@@ -277,11 +373,11 @@ ensemble_peer_invoke() {
       _epi_push "$peer_model"; _epi_push "$peer_effort" ;;
     model)
       _dropped="dropped-model-fragment"
-      [ "$_iso_on" -eq 0 ] || _epi_argv+=("${_EPI_ISOLATION[@]}")
+      [ "$_iso_on" -eq 0 ] || _epi_push_isolation "$peer_cmd" "$access" "$schema_file"
       _epi_push "$peer_effort" ;;
     *)
       _dropped="dropped-effort-fragment"
-      [ "$_iso_on" -eq 0 ] || _epi_argv+=("${_EPI_ISOLATION[@]}")
+      [ "$_iso_on" -eq 0 ] || _epi_push_isolation "$peer_cmd" "$access" "$schema_file"
       _epi_push "$peer_model" ;;
   esac
 
@@ -291,7 +387,7 @@ ensemble_peer_invoke() {
   # a timed-out retry as retry-exhausted.
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_normalize_out "$out_file"
-    _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
+    _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
     return 0
   else
     _rc=$?
@@ -303,4 +399,89 @@ ensemble_peer_invoke() {
 
   _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
   return 1
+}
+
+# --- detached form (D81) --------------------------------------------------------
+# A read-tree peer can run for minutes. Holding a host tool call open for that
+# long is how a pass silently vanishes when the harness kills the call, and it
+# serialises the peer behind nothing. So: start it in its own process with every
+# descriptor on a file, return the job dir, and let the host collect later in
+# bounded slices. Durable state is the job dir; a missing exit file means the
+# peer is still running (or died with the host, which the run marker records).
+#   <dir>/decision.json  the peer_decision the invoke printed
+#   <dir>/exit           the invoke's exit code; its presence means terminal
+#   <dir>/pid            the detached process id
+#   <dir>/started        epoch seconds at start
+ensemble_peer_start() {
+  local job_dir=""
+  local -a rest=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --job-dir) job_dir="$2"; shift 2 ;;
+      *) rest+=("$1"); shift ;;
+    esac
+  done
+  [ -n "$job_dir" ] || { echo "ensemble_peer_start: --job-dir is required" >&2; return 2; }
+  mkdir -p "$job_dir" || return 2
+  rm -f "$job_dir/exit" "$job_dir/decision.json" "$job_dir/stderr"
+  date +%s > "$job_dir/started"
+  (
+    trap '' HUP
+    set +e
+    ensemble_peer_invoke "${rest[@]}" > "$job_dir/decision.json" 2> "$job_dir/stderr"
+    printf '%s\n' "$?" > "$job_dir/exit.tmp" && mv -f "$job_dir/exit.tmp" "$job_dir/exit"
+  ) </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" > "$job_dir/pid"
+  disown "$!" 2>/dev/null || true
+  printf '%s\n' "$job_dir"
+}
+
+ensemble_peer_wait() {  # <dir> [--max-secs <n>]
+  local job_dir="${1:-}"; shift || true
+  local max_secs=60
+  while [ $# -gt 0 ]; do
+    case "$1" in --max-secs) max_secs="$2"; shift 2 ;; *) shift ;; esac
+  done
+  [ -d "$job_dir" ] || { echo "ensemble_peer_wait: no such job dir: $job_dir" >&2; return 2; }
+  local _t0; _t0=$(date +%s)
+  while [ ! -f "$job_dir/exit" ]; do
+    if [ $(( $(date +%s) - _t0 )) -ge "$max_secs" ]; then echo running; return 3; fi
+    sleep 1
+  done
+  echo done; return 0
+}
+
+ensemble_peer_result() {  # <dir> -> prints decision.json; returns the invoke's exit
+  local job_dir="${1:-}"
+  [ -f "$job_dir/exit" ] || { echo "ensemble_peer_result: job not terminal: $job_dir" >&2; return 3; }
+  cat "$job_dir/decision.json" 2>/dev/null
+  return "$(cat "$job_dir/exit")"
+}
+
+ensemble_peer_reap() {  # <dir> [--peer-mode m] [--effort t] [--model-alias a]
+  local job_dir="${1:-}"; shift || true
+  local peer_mode="cross-agent" effort="medium" model_alias=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --peer-mode) peer_mode="$2"; shift 2 ;;
+      --effort) effort="$2"; shift 2 ;;
+      --model-alias) model_alias="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ -d "$job_dir" ] || { echo "ensemble_peer_reap: no such job dir: $job_dir" >&2; return 2; }
+  [ -f "$job_dir/exit" ] && return 0   # already terminal: a safe no-op
+  local _pid; _pid=$(cat "$job_dir/pid" 2>/dev/null || true)
+  if [ -n "$_pid" ]; then
+    # Children first (the CLI under `timeout`), then the subshell itself.
+    pkill -TERM -P "$_pid" 2>/dev/null || true
+    kill -TERM "$_pid" 2>/dev/null || true
+    sleep 1
+    pkill -KILL -P "$_pid" 2>/dev/null || true
+    kill -KILL "$_pid" 2>/dev/null || true
+  fi
+  local _t0; _t0=$(cat "$job_dir/started" 2>/dev/null || date +%s)
+  _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" > "$job_dir/decision.json"
+  printf '1\n' > "$job_dir/exit"
+  return 0
 }

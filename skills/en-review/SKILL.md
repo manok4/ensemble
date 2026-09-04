@@ -49,7 +49,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    | **`<path>` to a file** | **the file's contents, reviewed as they stand** — not a diff |
    | `--scope <path>` | narrows any of the above to that path |
 
-   **The file case is not a diff, and the difference matters.** A diff review asks "is this change sound"; a file review asks "is this code sound". Findings from a file target carry no base ref, the spec axis (step 7c) does not apply because there is no plan unit to check against, and Coverage says which target shape produced the findings so nobody reads a file review as a branch review.
+   **A file target is not a diff.** Its findings carry no base ref, the spec axis (step 7c) does not apply, and Coverage names the target shape so a file review is never read as a branch review.
 5. **Read context.**
    - `git diff <base>...HEAD` — the full diff under review.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
@@ -82,17 +82,17 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 8. **Dispatch, per review mode.** `--peer` (default) dispatches the peer alone: step 7's detection fed the effort tier and nothing else, and no persona roster runs. `--host` dispatches the persona roster alone. Only `--cross` dispatches both, and only `--cross` reaches the reconciliation in step 10.
 
-    **`--cross`: personas AND the peer in ONE batch.** Single message, multiple `Agent` tool calls, **plus the peer subprocess from step 9 launched in the same batch**. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the persona roster, so serializing it would add its latency to every review for no benefit (`peer_timeout_seconds` defaults to 600). Wait for all to return.
+    **`--cross`: the peer first, then the personas in ONE batch.** Start the peer detached (step 9), then one message with multiple `Agent` tool calls for the roster. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the roster, so serializing it would add its latency to every review for no benefit. Collect the personas, then wait for the peer.
 9. **Outside Voice peer (runs in `--peer` and `--cross`; `--peer` is the default and makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
-   - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid. Any change that feeds persona findings to the peer must also re-serialize step 8 and invalidate the corroboration weighting in step 10.
+   - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid.
    - Build the prompt: `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"` (the brief supplies the review dimensions; pass `references/peer-brief-lite.md` instead when `lite_gate` is `applied`).
    - Translate the tier resolved in step 2b: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <alias>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
-   - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, and the prompt file. The helper owns invocation, classification, the bounded retry and the fallback (EN11-PR-006); this text does not restate them. It returns the updated `peer_decision`; merge its `peer`/`reason` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
+   - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, the prompt file, `--schema "$SKILL_DIR/scripts/peer-findings.schema.json"`, and the access mode: **`--access read-tree` with the full brief** (the peer may open callers and tests; 25 turns, 1200s), **`--access none` with the lite brief and on the verification pass** (one turn, diff only, 600s). Run it detached: `ensemble_peer_start --job-dir /tmp/ensemble/en-review/<run-id>/peer …` returns at once; after the personas return (`--cross`) or immediately (`--peer`), `ensemble_peer_wait <dir> --max-secs 480` in slices until `done` or the ceiling, then `ensemble_peer_result`; past the ceiling, `ensemble_peer_reap`. The helper owns invocation, isolation, classification, the bounded retry and the fallback (EN11-PR-006, D81); this text does not restate them. Merge the returned `peer_decision`'s `peer`/`reason`/`model_actual` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
    - **`--peer` (the default), sole reviewer:** the peer's findings ARE the envelope; no reconciliation is needed.
    - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → a fresh subprocess of the host's own CLI), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
-9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: on (default-on, effort=medium)` / `peer_decision: off (report-only-mode, effort=medium)` / `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
+9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or a degradation can never read as a normal peer run — the same fail-closed discipline as `lite_gate:` (D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The JSON envelope carries the structured `peer_decision` object; the markdown line is DERIVED from it, never composed independently.
 10. **Synthesize.** With one source — `--peer` or `--host` — there is nothing to reconcile: validate, collect, and report. Say which single source produced the findings so nobody reads a one-source pass as a corroborated one.
 
     **Under `--cross`, reconcile the two sources** and **report the `corroborated` bucket first**: two independent reads agreeing is the strongest signal available, so it leads. The other three buckets are still reported below it, never dropped — `peer-only` is what the host missed and is usually the reason to run a peer at all, and `host-only` is where project context lives. Per `references/persona-dispatch.md`:
@@ -161,13 +161,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | `headless` | Yes (silent) | No (returns JSON) | N/A | No |
 | `report-only` | **No** | No | N/A | No |
 
-`report-only` is the **mandatory** mode when `/en-sweep` invokes `/en-review` in CI. Why that is mandatory, and what sweep does with the findings, belongs to `/en-sweep`; from this side the mode is simply read-only.
-
-**Auditable boundary (EN08).** Every application is recorded in `applied_fixes[]` (each entry `{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` outcome line (see step 12). Tier definitions live in `references/severity.md` — referenced, not duplicated.
-
-## Re-verification
-
-If the skill applies any code edits in `interactive` or `headless` mode, run unit tests + lint after. On failure: revert the applied edits; surface the regression.
+Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` line (step 12). Tier definitions live in `references/severity.md`, referenced, not duplicated. After any edit, run unit tests + lint; on failure revert the applied edits and surface the regression.
 
 ## JSON envelope shape
 
@@ -239,7 +233,7 @@ verification_pass: not-run (no-p0-p1-addressed)
 
 ## Reference files
 
-Every run: `references/host-detect.md` (`PEER_*`), `references/peer-brief.md` (dimensions; the prompt builder reads them), `references/peer-contract.md`, `references/severity.md` (routing), `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md` (effort), `references/diff-signal-detection.md` (`is_low_risk`, `is_small_and_safe`, lite-gate reason ids), `references/review-confidence-gating.md` and `references/tech-debt-tracker-format.md` (filing sub-threshold findings), `$SKILL_DIR/scripts/ensemble-build-peer-prompt`.
+Every run: `references/host-detect.md` (`PEER_*`), `references/peer-brief.md` (dimensions; the prompt builder reads them), `references/peer-contract.md`, `references/severity.md` (routing), `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md` (effort), `references/diff-signal-detection.md` (`is_low_risk`, `is_small_and_safe`, lite-gate reason ids), `references/review-confidence-gating.md` and `references/tech-debt-tracker-format.md` (filing sub-threshold findings), `$SKILL_DIR/scripts/ensemble-build-peer-prompt`, `$SKILL_DIR/scripts/ensemble-peer-invoke` with `$SKILL_DIR/scripts/peer-findings.schema.json`.
 
 Gated, read only under `--cross` or `--host`: `references/persona-dispatch.md` (roster, batch, reconciliation) and `references/research-dispatch.md` (`learnings-research`). Under `--lite`, and on the verification pass: `references/peer-brief-lite.md`.
 
