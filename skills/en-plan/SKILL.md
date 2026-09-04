@@ -158,13 +158,13 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief references/peer-brief.md --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
-    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-model-policy.md` (e); surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
+    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
     - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
       - On `verdict: approve` → exit the loop. Proceed to the status-flip step.
-      - On `verdict: revise` → walk findings, apply / defer / disagree per `references/severity.md`. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$SKILL_DIR/scripts/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
-        - **Severity gate on the re-loop.** Re-invoke the peer **only if at least one finding this pass was `P0` or `P1`** (per `references/severity.md`). When the pass returned **only `P2`/`P3`** findings — naming inconsistencies, style preferences, "consider X later" — apply what's cheap, record the rest in `peer_review_resolutions:`, and **exit the loop**; a second full peer pass to confirm a typo fix is not worth its latency. Record `reloop_skipped: advisory-only` alongside the resolutions so the exit is auditable.
+      - On `verdict: revise` → walk findings, apply / defer / disagree per `references/peer-brief.md` (en-plan's own policy). Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$SKILL_DIR/scripts/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
+        - **Severity gate on the re-loop.** Re-invoke the peer **only if at least one finding this pass was `P0` or `P1`** (`references/peer-contract.md`). When the pass returned **only `P2`/`P3`** findings — naming inconsistencies, style preferences, "consider X later" — apply what's cheap, record the rest in `peer_review_resolutions:`, and **exit the loop**; a second full peer pass to confirm a typo fix is not worth its latency. Record `reloop_skipped: advisory-only` alongside the resolutions so the exit is auditable.
         - **Iteration cap: 1 at every depth** — at most **two** peer passes total (the initial pass plus one verification pass). `--max-iterations <N>` raises it when a plan genuinely warrants more; `--no-reloop` runs the initial pass only and never re-invokes.
         - **Cap-hit behavior:** Surface the latest findings; ask the user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control.
         - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
@@ -220,7 +220,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 - The plan has < 50 lines (`skip_peer_below_lines` config).
 - Depth is Lightweight AND `skip_peer_on_lightweight: true`.
 
-**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `references/severity.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `references/outside-voice.md`).
+**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `references/peer-brief.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `references/outside-voice.md`).
 
 **Two passes, not three.** The shape is: review → apply → **one** verification pass → done.
 
@@ -249,7 +249,7 @@ When the loop exits with `approve` (or `--no-peer` was used), `/en-plan` compute
 When peer is available:
 
 - Cross-agent (both CLIs installed) → peer is the other agent.
-- Single-agent fallback → fresh subprocess of host's CLI; prompt augmented per `references/single-agent-fallback.md`.
+- Single-agent fallback → fresh subprocess of the host's CLI; the prompt builder adds the fallback note for that mode.
 
 ## Tech-debt resolution
 
@@ -295,10 +295,10 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 
 - `references/templates/plan-template.md` — body template
 - `references/host-detect.md` — host detection
-- `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/single-agent-fallback.md` — fallback mode contract
+- `references/outside-voice.md` — the peer contract and verdict handling
+- `references/peer-brief.md` — review dimensions and en-plan's routing policy
+- `references/peer-contract.md` — severity, confidence, autofix, `peer_decision`
 - `references/finding-schema.md` — peer JSON shape
-- `references/severity.md` — apply / defer / disagree routing
 - `references/research-dispatch.md` — when to dispatch which research agent
 - `references/stable-ids.md` — U-ID stability rules
 

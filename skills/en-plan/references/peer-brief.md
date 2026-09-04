@@ -58,13 +58,14 @@ previous-review context from the iteration-log prose.
 
 ## The re-review loop
 
-Cap by depth: lightweight 1, standard 2, deep 2. Re-invoke only when the pass
-returned at least one P0 or P1 — a second full round to confirm a typo fix is not
-worth its latency. On cap-hit with findings outstanding, ask the user to accept
+One verification pass at every depth (D49): review, apply, one re-review, done.
+Re-invoke only when the pass returned at least one P0 or P1 — a second full round
+to confirm a typo fix is not worth its latency. On cap-hit with findings outstanding, ask the user to accept
 or stay in draft; never flip to `open` on the skill's own judgement.
 
 ## Effort
 
 A plan review is a reading task on a bounded document, so it does not need the
-diff-shaped effort ladder `/en-review` uses. Ask for the default tier and let the
-operator's configuration override it.
+diff-shaped effort ladder `/en-review` uses. It runs at the peer's default tier.
+en-plan carries no effort resolver: that chain (`--effort`, the config keys, the
+ladder) is `/en-review`'s, and `review_peer_effort_override` does not apply here.
