@@ -25,7 +25,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-flow gate contracts"
 
 FLOW="$REPO_ROOT/skills/en-flow/SKILL.md"
-PIPE="$REPO_ROOT/skills/en-flow/references/en-flow-pipeline.md"
+# The pipeline reference was folded into SKILL.md (D90); the skill is the one file.
 
 # A value en-flow gates on must appear in the contract of the skill that
 # produces it. The contracts state these as table rows, `| `status` | `draft` ·
@@ -53,15 +53,13 @@ while IFS='|' read -r producer field value quoted meaning; do
          "/en-flow gates on it for $meaning; update the gate or the contract"
   fi
 
-  # And en-flow must actually be quoting it, in both of its files.
-  in_skill=0; in_pipe=0
+  # And en-flow must actually be quoting it.
+  in_skill=0
   grep -qF -- "$quoted" "$FLOW" && in_skill=1
-  grep -qF -- "$quoted" "$PIPE" && in_pipe=1
-  if [ "$in_skill" -eq 1 ] && [ "$in_pipe" -eq 1 ]; then
-    pass "/en-flow quotes '$quoted' in both SKILL.md and the pipeline reference"
+  if [ "$in_skill" -eq 1 ]; then
+    pass "/en-flow quotes '$quoted' in SKILL.md"
   else
-    fail "/en-flow must quote '$quoted' in both of its files" \
-         "SKILL.md:$in_skill pipeline:$in_pipe"
+    fail "/en-flow must quote '$quoted' in SKILL.md" "SKILL.md:$in_skill"
   fi
 done <<'GATES'
 en-plan|status|open|status: open|the plan gate at step 3

@@ -13,6 +13,27 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 
 > **CRITICAL: execute stages IN ORDER. Do not skip the plan stage and jump to coding.** Each stage has a GATE that must pass before the next begins. Resolve each sub-skill name against the host's available-skills list (some platforms namespace them, e.g. `ensemble:en-build`); match a listed entry verbatim before invoking.
 
+## Stage graph
+
+```
+[--plan? ]── en-plan ──▶ plan file (status: open)        GATE: plan exists & buildable
+                 │
+                 ▼
+            en-build ──▶ branch w/ unit commits +        GATE: evidence audit verdict: ok
+                         post-build review-verdict
+                 │       (en-build internally runs
+                 │        en-simplify → /en-review --cross)
+                 ▼
+        en-learn (model-decided) ─▶ optional learning    acts only on ci_environment / missing
+                 │
+                 ▼
+     [local-only? / --no-ship? ]── en-ship ──▶ PR +      no auto-merge; watch loop → en-resolve-pr
+                                    watch loop            (bounded 2 repair cycles, then escalate)
+                 │
+                 ▼
+              terminal report
+```
+
 ## Process
 
 1. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (pipeline never runs inside a peer subprocess).
@@ -20,13 +41,13 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 
 ### 3. Plan
 
-- If `--plan <path>` was passed, use that plan; otherwise invoke `/en-plan` with the request the user gave `/en-flow`, passed through verbatim. This read `$ARGUMENTS` until 2026-09-03: that is a Claude Code slash-command substitution, not a skill one, and it is the same shape as `${CLAUDE_SKILL_DIR}`, which expands to empty on Codex. An empty expansion here plans nothing and the failure is silent.
+- If `--plan <path>` was passed, use that plan; otherwise invoke `/en-plan` with the request the user gave `/en-flow`, passed through verbatim. Pass the words, not a host substitution such as `$ARGUMENTS`, which expands to empty on Codex and plans nothing silently (D70).
 - **GATE:** a plan file exists at `docs/plans/active/<PREFIX><NN>-*.md` with `status: open` (or the `--no-peer` finalize path). Read its frontmatter; stop the pipeline if the request was non-software / not implementation-ready, or if the plan is stuck in `draft` (surface and stop). **Record the plan path** — it threads through steps 4 to 6.
 
 ### 4. Build
 
 - Invoke `/en-build <plan-path>`. en-build internally runs its post-build phase before handing off, and en-flow does **not** re-run simplify or review at the top level: cheap gate → `/en-simplify` on the branch diff → **`/en-review --cross`** → apply → `review-verdict:`.
-- **The review is peer *and* host personas, not peer alone.** `--cross` means the cross-agent peer is mandatory and the persona roster is additive, so the build gate does produce standards, testing and maintainability findings. This stage described a peer-only review cited to D35 until 2026-09-03. **D46 amended D35 on exactly that point** (peer-only discarded every host-only finding) and **D52 then amended D46**, so the live authority is D52 and the flag is the one en-build actually invokes.
+- **The review is peer *and* host personas, not peer alone.** `--cross` means the cross-agent peer is mandatory and the persona roster is additive, so the build gate does produce standards, testing and maintainability findings (D46, D52; the flag is the one en-build invokes).
 - **GATE:** build completed and the end-of-build evidence audit passed (`verdict: ok`). If the audit failed, **stop** and surface the failing units (suggest `/en-review --peer <sha>` on the failing commits per en-build's failure path); do not proceed to ship.
 
 ### 5. Learn (model-decided)
@@ -42,7 +63,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
   | `ci_environment` | **Consider a capture.** Nobody was there to ask, so no decision was made. |
 
   If the value is missing entirely, the hand-off never ran, and this step considers a capture as it would in `ci_environment`.
-- **The backstop covers an unasked question, not an answered one.** This step read "acts if the build's hand-off was skipped/**declined**" until 2026-09-03, which captured over the top of a user who had just been asked "Worth filing learnings from this build?" and answered `skip`. en-build spends four distinct outcome values distinguishing *nobody was asked* from *someone said no*; collapsing them threw that away.
+- **The backstop covers an unasked question, not an answered one.** en-build's four values distinguish *nobody was asked* from *someone said no*; a step that acted on both would capture over a user who answered `skip` (D70).
 
 ### 6. Ship
 
@@ -51,13 +72,13 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 - Otherwise invoke `/en-ship`. Per its default, en-ship opens the PR then enters the **bounded watch loop** (poll CI + reviews → `/en-resolve-pr`, capped at 2 cycles, then escalate needs-human). Pass `--no-watch` through when en-flow was invoked with `--no-watch`.
 - **No auto-merge.** en-flow never merges; en-ship is invoked without `--auto-merge`. The user merges when the PR is ready.
 
-7. **Terminal report.** Emit a completion summary: plan path, units built, audit verdict, whether a learning was captured, PR URL (or local-only summary). End with an explicit done marker: the last line is `en-flow: done` or `en-flow: stopped at <step> — <reason>`, so a reader can tell a finished run from one that stopped at a gate. The stage graph specified `<promise>DONE</promise>` until 2026-09-03, inherited from the compound-engineering skill this pipeline was adapted from; nothing in Ensemble emitted or read that tag.
+7. **Terminal report.** Emit a completion summary: plan path, units built, audit verdict, whether a learning was captured, PR URL (or local-only summary). End with an explicit done marker: the last line is `en-flow: done` or `en-flow: stopped at <step> — <reason>`, so a reader can tell a finished run from one that stopped at a gate.
 
 ## Flags
 
 | Flag | Effect |
 |---|---|
-| `--plan <path>` | Skip Stage 1 planning; build the named existing plan. |
+| `--plan <path>` | Skip the plan stage (step 3); build the named existing plan. |
 | `--no-ship` | Run plan + build + learn, then stop (no push / PR). |
 | `--no-watch` | Pass through to `/en-ship` — open the PR but skip the watch loop. |
 
@@ -67,12 +88,8 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 - **Never skips the plan stage.** Plan first, always — building without a finalized plan is the failure mode this pipeline exists to prevent.
 - **Never auto-merges.** Shipping opens a ready-for-review PR; merging is the user's call.
 - **Never double-captures learnings, and never overrides a decline.** Step 5 reads en-build's `learning_checkpoint:` and acts only on `ci_environment` or a missing value.
-- **Never re-runs simplify/review at the top level.** Those live inside en-build's post-build phase (D35).
+- **Never re-runs simplify/review at the top level.** Those live inside en-build's post-build phase (D52).
 - **Never pushes when there is no remote.** Local-only is a terminal success state, not an error to retry.
-
-## Reference files
-
-- `references/en-flow-pipeline.md` — stage contracts and gates
 
 ## Failure protocol
 
