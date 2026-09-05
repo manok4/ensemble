@@ -13,7 +13,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
 ## Process
 
-1. **Resolve context.** Establish, once, what this run is operating on — every later step reads these rather than re-deriving them:
+1. **Resolve context.** Establish, once, what this run is operating on, with the three reads below issued in one message since none depends on another; every later step reads these rather than re-deriving them:
    - **Repo and branch** — `git rev-parse --abbrev-ref HEAD`, and refuse a detached HEAD here rather than at push time.
    - **Base** — `--base` if passed, else the repo's default branch.
    - **Existing PR** — `gh pr list --head <branch> --state open`. **If one exists, this run updates it**: step 12 pushes to it and the watch loop resumes on it, and `gh pr create` is never called a second time. Re-running `/en-ship` on a branch that already has a PR is an ordinary, safe operation, not a new ship.
@@ -135,7 +135,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
        - Local `HEAD` still matches the PR head; `gh auth status` valid; push access to the branch.
        - A doctor failure stops the loop and says which check failed. It does not consume a repair cycle: nothing was repaired.
 
-    1. **Poll the PR.** Back off between polls — **15s, then 30s, then 60s** — rather than at a fixed cadence; the checks you are waiting on take minutes, not seconds.
+    1. **Poll the PR.** Back off between polls — **15s, then 30s, then 60s** — rather than at a fixed cadence; the checks you are waiting on take minutes, not seconds. Print one line when the state changes (a check started or finished, a review landed, a repair cycle began), never per poll: a fifteen-minute CI run with no output reads as a hung loop.
        - **CI status** — `gh pr checks`. Capture the per-check conclusion, not just the roll-up.
        - **Review findings** — fetch the COMPLETE set via `scripts/get-pr-comments` (the same paginated fetch `/en-resolve-pr` uses): unresolved **inline review threads** + **review bodies** + top-level PR comments. Do **not** rely on `gh pr view --json comments` alone — it misses inline threads and review-submission bodies, which would mark the PR clean while findings are still open.
        - Fetch comments **when the review check completes**, and once more at final verification — not on every poll. Carry only unresolved findings forward; a bot's progress chatter re-read each tick is pure context cost.
