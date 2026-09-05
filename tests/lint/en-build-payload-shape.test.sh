@@ -37,7 +37,7 @@ for f in references/outside-voice.md references/peer-brief.md references/peer-mo
          references/diff-signal-detection.md scripts/ensemble-peer-invoke \
          scripts/ensemble-build-peer-prompt scripts/ensemble-peer-flags \
          scripts/ensemble-cli-smoke scripts/ensemble-config-get scripts/ensemble-extract-json \
-         scripts/en-sweep-ci; do
+         scripts/ensemble-sweep-runner; do
   [ -e "$D/$f" ] && back="$back $(basename "$f")"
 done
 [ -z "$back" ] \

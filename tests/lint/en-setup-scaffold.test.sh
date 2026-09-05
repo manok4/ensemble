@@ -86,9 +86,13 @@ else
   pass "en-sweep.yml is not a required artifact"
 fi
 
-printf '%s' "$OPT" | grep -q 'en-sweep.yml' \
-  && pass "en-sweep.yml is listed as an opt-in" \
-  || fail "en-sweep.yml is listed as an opt-in"
+printf '%s' "$OPT" | grep -q 'sweep.schedule' \
+  && pass "the sweep schedule is listed as an opt-in" \
+  || fail "the sweep schedule is listed as an opt-in"
+# D101: no GitHub sweep workflow anywhere in the artifact tables.
+printf '%s%s' "$REQ" "$OPT" | grep -q 'workflows/en-sweep.yml' \
+  && fail "the artifact tables no longer name the retired workflow" \
+  || pass "the artifact tables no longer name the retired workflow"
 
 flat "$SKILL" | grep -qi 'decline is recorded, never silent' \
   && pass "a declined install is recorded rather than left as a hole" \
@@ -168,11 +172,12 @@ cites "REVIEW.md\` (step" 16
 cites "guardrail PreToolUse hook (step" 13
 cites ".ensemble/config.local.yaml\` (step" 12
 
-# The step that installs the bin scripts must not cite itself, which it did.
-if grep -qF "en-sweep workflow in step 11" "$ES"; then
-  pass "the bin-script step cites the workflow step, not itself"
+# D101: the bin step installs only ensemble-lint, and the sweep step writes no
+# workflow; it records the cadence and prints the sweep machine's commands.
+if grep -qF "Install project-local \`bin/ensemble-lint\`" "$ES" && grep -qF "install-sweep-schedule add-repo" "$ES"; then
+  pass "the bin step installs the lint only, and the sweep step points at the machine installer"
 else
-  fail "the bin-script step cites the workflow step, not itself"
+  fail "the bin step installs the lint only, and the sweep step points at the machine installer"
 fi
 
 report

@@ -169,6 +169,6 @@ The `generator` field is informational; lint is lenient on `covers_requirements:
 - `references/sweep-loop-guards.md` — preventing self-trigger cascades
 - `references/sweep-security-model.md` — auto-merge safety
 - `references/tech-debt-tracker-format.md` — TD entry schema
-- `bin/ensemble-doc-only-check` — runtime allowlist enforcement
+- `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
 - `continuous-monitor` (carried by `/en-sweep`) — dead-code + dep-audit scanner
 - `triage-findings` (carried by `/en-sweep`) — partitions findings into TD vs draft plan

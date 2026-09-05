@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# install-sweep-schedule — put ensemble-sweep-runner on a launchd schedule on
+# this Mac (D101). Run by a person on the sweep machine; /en-setup prints the
+# command, it does not run it, for the same reason the guardrail's global
+# install is print-only: an agent must not write under ~/Library.
+#
+# Usage:
+#   install-sweep-schedule add-repo <path>          append a checkout to the repo list
+#   install-sweep-schedule list-repos
+#   install-sweep-schedule print   [cadence flags]  render the plist to stdout
+#   install-sweep-schedule install [cadence flags]  write ~/Library/LaunchAgents/com.ensemble.sweep.plist and load it
+#   install-sweep-schedule status
+#   install-sweep-schedule run-now                  kick the job immediately
+#   install-sweep-schedule uninstall
+#
+# Cadence flags (local time; launchd runs a missed slot at the next wake):
+#   --cadence daily|weekly|monthly   default weekly
+#   --hour <0-23>                    default 9
+#   --minute <0-59>                  default 0
+#   --weekday <0-6>                  weekly only; 0 = Sunday, default 1
+#   --day <1-28>                     monthly only; default 1
+#   --model <alias-or-id>            machine-wide default model for the runner
+#   --effort <tier>                  machine-wide default effort (minimal|low|medium|high|xhigh)
+#   --timeout <seconds>              per-repo Codex cap, default 2700
+#
+# Env for tests and unusual layouts: ENSEMBLE_SWEEP_REPOS (repo list path),
+# ENSEMBLE_LAUNCH_AGENTS (plist directory), ENSEMBLE_NO_LAUNCHCTL=1 (write the
+# plist, do not call launchctl).
+
+set -u
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+RUNNER="$SELF_DIR/ensemble-sweep-runner"
+LABEL="com.ensemble.sweep"
+ENSEMBLE_DIR="${ENSEMBLE_HOME_DIR:-$HOME/.ensemble}"
+REPOS_FILE="${ENSEMBLE_SWEEP_REPOS:-$ENSEMBLE_DIR/sweep-repos}"
+AGENTS_DIR="${ENSEMBLE_LAUNCH_AGENTS:-$HOME/Library/LaunchAgents}"
+PLIST="$AGENTS_DIR/$LABEL.plist"
+LOG_DIR="$ENSEMBLE_DIR/logs"
+
+CADENCE=weekly; HOUR=9; MINUTE=0; WEEKDAY=1; DAY=1; MODEL=""; EFFORT=""; TIMEOUT=2700
+
+usage() { sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' >&2; }
+die() { echo "install-sweep-schedule: $*" >&2; exit 2; }
+
+CMD="${1:-}"; [ $# -gt 0 ] && shift
+[ -n "$CMD" ] || { usage; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --cadence) CADENCE="$2"; shift 2 ;;
+    --hour)    HOUR="$2";    shift 2 ;;
+    --minute)  MINUTE="$2";  shift 2 ;;
+    --weekday) WEEKDAY="$2"; shift 2 ;;
+    --day)     DAY="$2";     shift 2 ;;
+    --model)   MODEL="$2";   shift 2 ;;
+    --effort)  EFFORT="$2";  shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) break ;;
+  esac
+done
+
+is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+validate() {
+  case "$CADENCE" in daily|weekly|monthly) ;; *) die "--cadence must be daily, weekly or monthly" ;; esac
+  is_int "$HOUR"    && [ "$HOUR" -le 23 ]   || die "--hour must be 0-23"
+  is_int "$MINUTE"  && [ "$MINUTE" -le 59 ] || die "--minute must be 0-59"
+  is_int "$WEEKDAY" && [ "$WEEKDAY" -le 6 ] || die "--weekday must be 0-6"
+  is_int "$DAY"     && [ "$DAY" -ge 1 ] && [ "$DAY" -le 28 ] || die "--day must be 1-28"
+  is_int "$TIMEOUT" || die "--timeout must be an integer"
+  case "$MODEL" in ''|*[!A-Za-z0-9._-]*) [ -z "$MODEL" ] || die "--model has characters that would not survive argv" ;; esac
+  case "$EFFORT" in ''|minimal|low|medium|high|xhigh) ;; *) die "--effort must be minimal, low, medium, high or xhigh" ;; esac
+  [ -x "$RUNNER" ] || die "runner not found beside this script: $RUNNER"
+}
+
+# PATH for the job: launchd gives agents a bare PATH, and codex, gh and node
+# live under Homebrew, npm or a user prefix. Resolve what is on PATH now and
+# pin those directories, so the schedule runs with what the operator tested.
+job_path() {
+  local p="/usr/bin:/bin:/usr/sbin:/sbin" d
+  for tool in codex gh git jq node timeout gtimeout; do
+    d="$(command -v "$tool" 2>/dev/null)" || continue
+    d="$(cd "$(dirname "$d")" && pwd -P)"
+    case ":$p:" in *":$d:"*) ;; *) p="$d:$p" ;; esac
+  done
+  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    [ -d "$d" ] || continue
+    case ":$p:" in *":$d:"*) ;; *) p="$p:$d" ;; esac
+  done
+  printf '%s' "$p"
+}
+
+xml_escape() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+
+render_plist() {
+  local interval
+  case "$CADENCE" in
+    daily)   interval="      <key>Hour</key><integer>$HOUR</integer>
+      <key>Minute</key><integer>$MINUTE</integer>" ;;
+    weekly)  interval="      <key>Weekday</key><integer>$WEEKDAY</integer>
+      <key>Hour</key><integer>$HOUR</integer>
+      <key>Minute</key><integer>$MINUTE</integer>" ;;
+    monthly) interval="      <key>Day</key><integer>$DAY</integer>
+      <key>Hour</key><integer>$HOUR</integer>
+      <key>Minute</key><integer>$MINUTE</integer>" ;;
+  esac
+  local envs="      <key>PATH</key><string>$(xml_escape "$(job_path)")</string>
+      <key>HOME</key><string>$(xml_escape "$HOME")</string>
+      <key>ENSEMBLE_SWEEP_REPOS</key><string>$(xml_escape "$REPOS_FILE")</string>
+      <key>ENSEMBLE_SWEEP_TIMEOUT</key><string>$TIMEOUT</string>"
+  [ -n "$MODEL" ]  && envs="$envs
+      <key>ENSEMBLE_SWEEP_MODEL</key><string>$(xml_escape "$MODEL")</string>"
+  [ -n "$EFFORT" ] && envs="$envs
+      <key>ENSEMBLE_SWEEP_EFFORT</key><string>$EFFORT</string>"
+  cat <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$(xml_escape "$RUNNER")</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+$interval
+  </dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+$envs
+  </dict>
+  <key>StandardOutPath</key><string>$(xml_escape "$LOG_DIR/sweep-launchd.log")</string>
+  <key>StandardErrorPath</key><string>$(xml_escape "$LOG_DIR/sweep-launchd.log")</string>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>
+PLIST
+}
+
+launchctl_ok() { [ "${ENSEMBLE_NO_LAUNCHCTL:-0}" != "1" ] && command -v launchctl >/dev/null 2>&1; }
+domain() { printf 'gui/%s' "$(id -u)"; }
+
+case "$CMD" in
+  add-repo)
+    path="${1:-}"; [ -n "$path" ] || die "add-repo needs a checkout path"
+    path="$(cd "$path" 2>/dev/null && pwd -P)" || die "not a directory: ${1}"
+    git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git checkout: $path"
+    mkdir -p "$(dirname "$REPOS_FILE")"; touch "$REPOS_FILE"
+    if grep -qxF "$path" "$REPOS_FILE"; then echo "already listed: $path"; else printf '%s\n' "$path" >> "$REPOS_FILE"; echo "added: $path"; fi
+    echo "repo list: $REPOS_FILE"
+    ;;
+  list-repos)
+    [ -r "$REPOS_FILE" ] && cat "$REPOS_FILE" || echo "(no repo list at $REPOS_FILE)"
+    ;;
+  print)
+    validate; render_plist
+    ;;
+  install)
+    validate
+    [ -s "$REPOS_FILE" ] || echo "note: repo list $REPOS_FILE is empty; add-repo before the first run" >&2
+    mkdir -p "$AGENTS_DIR" "$LOG_DIR"
+    render_plist > "$PLIST"
+    echo "wrote $PLIST ($CADENCE, hour $HOUR, minute $MINUTE$([ "$CADENCE" = weekly ] && echo ", weekday $WEEKDAY")$([ "$CADENCE" = monthly ] && echo ", day $DAY"))"
+    if launchctl_ok; then
+      launchctl bootout "$(domain)/$LABEL" >/dev/null 2>&1 || true
+      launchctl bootstrap "$(domain)" "$PLIST" && echo "loaded $LABEL into $(domain)" || die "launchctl bootstrap failed; see the plist above"
+    else
+      echo "launchctl not invoked (not macOS, or ENSEMBLE_NO_LAUNCHCTL=1)"
+    fi
+    echo "logs: $LOG_DIR/sweep.log and $LOG_DIR/sweep-launchd.log"
+    ;;
+  status)
+    if [ -f "$PLIST" ]; then echo "plist: $PLIST"; else echo "plist: not installed ($PLIST)"; fi
+    if launchctl_ok; then
+      if launchctl print "$(domain)/$LABEL" >/dev/null 2>&1; then echo "launchd: loaded ($LABEL)"; else echo "launchd: not loaded"; fi
+    else
+      echo "launchd: unavailable here"
+    fi
+    if [ -s "$REPOS_FILE" ]; then echo "repos ($REPOS_FILE):"; sed 's/^/  /' "$REPOS_FILE"; else echo "repos: none listed ($REPOS_FILE)"; fi
+    [ -f "$LOG_DIR/sweep.log" ] && { echo "last run:"; grep -E '^[0-9T:Z-]+ (== |done:)' "$LOG_DIR/sweep.log" | tail -4 | sed 's/^/  /'; }
+    ;;
+  run-now)
+    launchctl_ok || die "launchctl unavailable; run the runner directly: bash $RUNNER"
+    launchctl kickstart -k "$(domain)/$LABEL" && echo "kicked $LABEL; follow $LOG_DIR/sweep.log"
+    ;;
+  uninstall)
+    if launchctl_ok; then launchctl bootout "$(domain)/$LABEL" >/dev/null 2>&1 && echo "unloaded $LABEL" || echo "$LABEL was not loaded"; fi
+    if [ -f "$PLIST" ]; then rm -f "$PLIST"; echo "removed $PLIST"; else echo "no plist at $PLIST"; fi
+    echo "repo list left in place: $REPOS_FILE"
+    ;;
+  *) usage; exit 2 ;;
+esac

@@ -44,8 +44,13 @@ fi
 [ -f docs/learnings/log.md ]     && check "docs/learnings/log.md present" green     || check "docs/learnings/log.md present" yellow "Run /en-setup"
 [ -d docs/generated ]            && check "docs/generated/ present" green           || check "docs/generated/ present" yellow "Run /en-setup"
 
-# Sweep workflow
-[ -f .github/workflows/en-sweep.yml ] && check ".github/workflows/en-sweep.yml installed" green || check ".github/workflows/en-sweep.yml installed" yellow "Install via /en-setup"
+# Sweep schedule (D101: runs on a dedicated machine, not in this repo's CI)
+if [ -f .ensemble/config.local.yaml ] && grep -qE '^  schedule:' .ensemble/config.local.yaml 2>/dev/null; then
+  check "sweep.schedule recorded" green
+else
+  check "sweep.schedule recorded" yellow "Run /en-setup; the schedule itself is install-sweep-schedule on the sweep machine"
+fi
+[ -f .github/workflows/en-sweep.yml ] && check ".github/workflows/en-sweep.yml retired" yellow "Delete it; the sweep runs from the dedicated machine (D101)"
 
 # Config
 [ -f .ensemble/config.local.example.yaml ] && check ".ensemble/config.local.example.yaml present" green || check ".ensemble/config.local.example.yaml present" yellow "Run /en-setup"

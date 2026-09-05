@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/lint/bin-template-sync.test.sh
 #
-# The four bin/ scripts are COPIES of skill-bundled sources, installed per project
+# bin/ensemble-lint is a COPY of a skill-bundled source, installed per project
 # so .github/workflows can invoke them by relative path. en-setup documents the
 # drift risk; nothing enforced it.
 #
@@ -29,9 +29,11 @@ check() {  # $1=bin name  $2=source path
 }
 
 check ensemble-lint                 skills/en-setup/references/templates/ensemble-lint
-check en-sweep-ci                   skills/en-sweep/scripts/en-sweep-ci
-check ensemble-sweep-activity-check skills/en-sweep/scripts/ensemble-sweep-activity-check
-check ensemble-doc-only-check       skills/en-sweep/scripts/ensemble-doc-only-check
+# D101: the three sweep scripts are no longer installed project-local; a copy
+# left in a consuming repo's bin/ is stale by definition.
+for gone in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check; do
+  [ -e "$REPO_ROOT/bin/$gone" ] && fail "bin/$gone is retired (D101); remove it" || pass "bin/$gone is not installed here"
+done
 
 # No dangling calls: a function invoked but never defined prints to stderr and
 # keeps going, so it fails quietly. U15 deleted check_bootstrap_unvalidated and

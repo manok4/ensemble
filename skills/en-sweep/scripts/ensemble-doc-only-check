@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ensemble-doc-only-check — runtime allowlist enforcement for en-sweep PRs.
-# Verifies that every staged path is under docs/, AGENTS.md, CLAUDE.md, or .github/workflows/en-sweep.yml.
+# Verifies that every staged path is under docs/, AGENTS.md, CLAUDE.md, or .ensemble/sweep-summary.md.
 # Exits non-zero (and lists offenders) if any path falls outside the allowlist.
 
 set -eu
@@ -12,7 +12,7 @@ if [ -z "$CHANGED_PATHS" ]; then
   exit 0
 fi
 
-ALLOW_REGEX='^(docs/|AGENTS\.md$|CLAUDE\.md$|\.github/workflows/en-sweep\.yml$|\.ensemble/sweep-summary\.md$)'
+ALLOW_REGEX='^(docs/|AGENTS\.md$|CLAUDE\.md$|\.ensemble/sweep-summary\.md$)'
 
 OFFENDERS=$(printf '%s\n' "$CHANGED_PATHS" | grep -vE "$ALLOW_REGEX" || true)
 

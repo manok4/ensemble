@@ -116,7 +116,8 @@ assert_exit_code 1 "$rc" "test-file stage exits non-zero (tests are not doc-only
 assert_contains "$output" "tests/auth/refresh.test.ts" "rejection cites the test path"
 rm -rf "$TMP"
 
-# --- Scenario 8: .github/workflows/en-sweep.yml staged → ACCEPTED (allowlisted) ---
+# --- Scenario 8: .github/workflows/en-sweep.yml staged → REJECTED (D101: the
+#     workflow is retired, and a workflow file is not a doc) ---
 TMP=$(mktemp -d)
 setup_temp_repo "$TMP"
 pushd "$TMP" >/dev/null
@@ -125,7 +126,7 @@ echo "name: en-sweep" > .github/workflows/en-sweep.yml
 git add .github/workflows/en-sweep.yml
 output=$("$CHECK" 2>&1); rc=$?
 popd >/dev/null
-assert_exit_code 0 "$rc" ".github/workflows/en-sweep.yml is allowlisted"
+assert_exit_code 1 "$rc" ".github/workflows/en-sweep.yml is no longer allowlisted"
 rm -rf "$TMP"
 
 # --- Scenario 9: empty stage → exit 0 with note ---
