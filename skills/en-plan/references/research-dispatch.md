@@ -43,7 +43,7 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 
 ## Parallelism
 
-When two agents are dispatched in the same phase, fire them **in parallel**. Each returns independently; the orchestrating skill awaits both before proceeding.
+When two agents are dispatched in the same phase, fire them **in parallel**. Each returns independently; the orchestrating skill carries on with whatever does not depend on them, and collects each result at the step that needs it.
 
 In Claude Code:
 
@@ -113,7 +113,7 @@ Output:
 
 Standard/Deep plans dispatch `web-research` when **all** of these hold:
 1. The plan touches a 3rd-party library not used elsewhere in the codebase.
-2. The library has known footguns (auth, payments, migrations, infra-level concerns).
+2. The library has known footguns (auth, payments, migrations, infra-level concerns). Recognising the name is not knowing its current state; a library from a fast-moving area counts here even when the model has background on it.
 3. The user hasn't said "skip web research".
 
 Otherwise, skip.
