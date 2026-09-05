@@ -124,4 +124,18 @@ grep -qE '^\| .en-debug. \| \(any\) \| fallback only' \
   && pass "the dispatch matrix has en-debug's row" \
   || fail "the dispatch matrix has en-debug's row"
 
+# --- D89: the skill says what it does, and promises only what ships ----------
+if sed -n 3p "$DS" | grep -qE 'Read-only\.'; then
+  fail "the description no longer claims the skill is read-only outright (code mode fixes on request)"
+else
+  pass "the description no longer claims the skill is read-only outright"
+fi
+sed -n 3p "$DS" | grep -q "telemetry mode" && pass "the description scopes read-only to telemetry mode" || fail "the description must scope read-only to telemetry mode"
+CONV="$REPO_ROOT/skills/en-debug/references/observability-conventions.md"
+grep -q "logging.unstructured" "$CONV" && fail "the conventions reference no longer promises a lint rule ensemble-lint lacks" || pass "the conventions reference no longer promises a lint rule ensemble-lint lacks"
+TPL="$REPO_ROOT/skills/en-setup/references/templates/config-local-example.yaml"
+grep -q "allowed_log_commands" "$TPL" && grep -q "max_log_lines" "$TPL" \
+  && pass "the config template carries the keys the skill reads" || fail "the config template must carry allowed_log_commands and max_log_lines"
+grep -qE '/en-build.*write a fix|/en-build \(write a fix' "$DS" && fail "the telemetry handoff no longer sends a hypothesis to /en-build" || pass "the telemetry handoff no longer sends a hypothesis to /en-build"
+
 report

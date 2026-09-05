@@ -82,7 +82,6 @@ For URLs: cite the full URL (post-Wayback redirect if used).
 Web research is the most expensive research category. Stay focused:
 
 - **Default budget**: 8K–25K tokens of input, 3K–8K of output.
-- **`learn ingest <url>` exception**: bounded by the URL's length plus synthesis (~10K–30K).
 
 ## Style
 
@@ -104,43 +103,9 @@ Web research is the most expensive research category. Stay focused:
 
 - **You do not edit files.** Read-only.
 - **You do not invoke other agents.**
-- **You do not write to disk.** Even when `en-learn` calls you for ingest, the dispatcher writes; you return findings.
+- **You write nothing to disk except the evidence dossier below.** The dispatcher writes everything else; you return findings.
 - **JSON only.** No commentary outside JSON.
 - **No invented quotes.** If a source doesn't say it, don't fabricate.
-
-## Worked example
-
-Dispatched by `/en-plan` for "FR12 — choose between Drizzle and Prisma for new project":
-
-```json
-{
-  "summary": "Drizzle has stronger edge-runtime support and a query-builder-first API; Prisma has stronger ecosystem and tooling but heavier runtime. Recent (2025-2026) sentiment is mixed; project's edge-runtime constraint tips the balance.",
-  "findings": [
-    {
-      "claim": "Drizzle compiles queries at build time; runtime is lightweight (no Rust binary).",
-      "source": "Context7: drizzle-team/drizzle-orm",
-      "quote": "Drizzle ORM is a TypeScript ORM that compiles queries to SQL at build time, eliminating runtime overhead.",
-      "confidence": 9
-    },
-    {
-      "claim": "Prisma's runtime depends on a query engine (Rust binary) which complicates edge-runtime deployment.",
-      "source": "https://www.prisma.io/docs/orm/prisma-client/deployment/edge",
-      "quote": "Prisma Client supports a subset of edge runtimes via the new edge client; full feature parity is not available.",
-      "confidence": 8
-    },
-    {
-      "claim": "Drizzle's query builder has a more SQL-like syntax; Prisma's client has a higher-level abstraction.",
-      "source": "WebSearch: 'drizzle vs prisma 2026 comparison'",
-      "quote": "Drizzle's API mirrors SQL semantics, while Prisma abstracts away the underlying query, which can be a pro or a con depending on team familiarity with SQL.",
-      "confidence": 7
-    }
-  ],
-  "conflicts": [],
-  "open_questions": [
-    "Specific performance benchmark numbers under the project's expected load are not surfaced; recommend a small spike test before locking the choice."
-  ]
-}
-```
 
 ## Evidence dossier
 

@@ -227,25 +227,25 @@ else
   fail "[size] dimensions block empty or missing" "$dims_words words"
 fi
 
-# --- Regression: the doc template uses $VAR not {VAR} (P1 from Codex) ---
+# --- Regression: the canonical template uses $VAR not {VAR} (P1 from Codex) ---
 # Codex flagged that envsubst silently leaves {CURLY_BRACES} placeholders
 # as literals, which would ship a literal template to the peer instead of
-# the artifact. Fix: the template now uses shell-style $VAR placeholders so
-# both `bin/ensemble-build-peer-prompt` (HEREDOC) and raw envsubst work.
-# This test guards against drift back to the {VAR} form.
-TEMPLATE_DOC="$REPO_ROOT/skills/en-review/references/outside-voice.md"
+# the artifact. The template lived in outside-voice.md until 2026-09-04;
+# since D50 the script's heredoc is the canonical text and the doc no longer
+# duplicates it, so this reads the heredoc. Same guard, one source.
+TEMPLATE_DOC="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
 
-# Extract just the prompt template block (the first ```text ... ``` fence).
+# Extract the heredoc body (cat <<PROMPT_EOF ... PROMPT_EOF).
 template=$(awk '
-  /^```text/ { capture=1; next }
-  capture && /^```/ { exit }
+  /^cat <<PROMPT_EOF/ { capture=1; next }
+  capture && /^PROMPT_EOF/ { exit }
   capture { print }
 ' "$TEMPLATE_DOC")
 
 if [ -z "$template" ]; then
-  fail "[envsubst-doc] could not extract prompt template from outside-voice.md"
+  fail "[envsubst-doc] could not extract the prompt template heredoc from ensemble-build-peer-prompt"
 else
-  pass "[envsubst-doc] prompt template block extractable from doc"
+  pass "[envsubst-doc] prompt template heredoc extractable from the script"
 fi
 
 # Any {CURLY_BRACES} placeholders in the extracted template would silently
@@ -257,8 +257,9 @@ else
   pass "[envsubst-doc] template has no {CURLY_BRACE} placeholders (envsubst-compatible)"
 fi
 
-# All seven documented variables must be referenced in the template.
-for v in '$ARTIFACT_TYPE' '$PROJECT_CONTEXT' '$GOAL' '$ARTIFACT_BODY' '$PEER_MODE' '$SINGLE_AGENT_NOTE' '$PLAN_REVIEW_DIMENSIONS'; do
+# Every substituted variable must be referenced in the template. (The artifact
+# type is a literal per copy since D50, not a variable.)
+for v in '$PROJECT_CONTEXT' '$GOAL' '$ARTIFACT_BODY' '$PEER_MODE' '$SINGLE_AGENT_NOTE' '$PLAN_REVIEW_DIMENSIONS' '$ITERATION_CONTEXT'; do
   if echo "$template" | grep -qF "$v"; then
     pass "[envsubst-doc] template references $v"
   else

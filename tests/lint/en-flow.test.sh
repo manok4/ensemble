@@ -76,10 +76,17 @@ else
 fi
 
 # --- reference exists ---
-if [ -f "$REF" ] && grep -qF "en-flow-pipeline.md" "$FLOW"; then
-  pass "en-flow-pipeline reference exists and is wired"
+# D90 folded the stage graph into SKILL.md and dropped the reference: it restated
+# the artifact table, the gates and local-only mode the skill already states.
+if [ -e "$REPO_ROOT/skills/en-flow/references/en-flow-pipeline.md" ]; then
+  fail "en-flow-pipeline.md is folded into the skill (D90)"
 else
-  fail "en-flow-pipeline reference must exist and be wired"
+  pass "en-flow-pipeline.md is folded into the skill (D90)"
+fi
+if grep -qF "## Stage graph" "$FLOW"; then
+  pass "the stage graph lives in the skill"
+else
+  fail "the skill must carry the stage graph"
 fi
 
 report

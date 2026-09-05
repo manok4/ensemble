@@ -17,7 +17,6 @@ updated: YYYY-MM-DD
 > Append-only. One line per `en-learn` operation. Grep with: `grep "^## \[" docs/learnings/log.md | tail -10`
 
 ## [2026-04-28] capture | Single-flight cache for per-user side-effecting operations | 4b0424d
-## [2026-04-27] ingest-url | OpenAI harness-engineering essay summary
 ## [2026-04-26] capture | Refresh token race when two requests arrive within rotation window | 7caca49
 ## [2026-04-24] lint-fix | Repaired 3 missing back-refs
 ## [2026-04-23] refresh | Archived 2 entries; updated 4
@@ -31,7 +30,7 @@ updated: YYYY-MM-DD
 ## [YYYY-MM-DD] capture | <subject> | <head-sha>    # for capture mode only (baseline reset)
 ```
 
-`capture` mode writes an additional `| <head-sha>` field carrying the git short-SHA of HEAD at the moment of capture. This is the **baseline** that `/en-ship`'s learning checkpoint reads to compute "commits since last capture" via `git log <head-sha>..HEAD`. Other operations (`refresh`, `ingest-url`, `lint-fix`, `pack`, `capture-from-conversation`) don't carry a SHA — they don't reset the baseline; only explicit `capture` does.
+`capture` mode writes an additional `| <head-sha>` field carrying the git short-SHA of HEAD at the moment of capture. This is the **baseline** that `/en-build`'s learning checkpoint reads to compute "commits since last capture" via `git log <head-sha>..HEAD`. Other operations (`refresh`, `lint-fix`, `migrate`, `capture-from-conversation`) don't carry a SHA — they don't reset the baseline; only explicit `capture` does.
 
 Legacy entries without `| <head-sha>` continue to parse. The en-ship checkpoint falls back to a date-based baseline scan with a one-line "imprecise baseline" notice. The next `capture` operation re-establishes the precise baseline on the new entry.
 
@@ -48,32 +47,18 @@ Legacy entries without `| <head-sha>` continue to parse. The en-ship checkpoint 
 |---|---|
 | `capture` | `en-learn capture` (default mode) |
 | `capture-from-conversation` | `en-learn capture --from-conversation` (synthesis-driven) |
-| `ingest-file` | `en-learn ingest <path>` |
-| `ingest-url` | `en-learn ingest <url>` |
 | `refresh` | `en-learn --refresh` (audit pass) |
+| `migrate` | `en-learn --migrate` (layout migration) |
 | `lint-fix` | `en-learn --lint --fix` (auto-repair pass) |
 | `archive` | Page moved to `archive/` (during refresh) |
 | `supersede` | Page marked superseded with `replaced_by:` |
 | `sweep-update` | `en-sweep` invoked `en-learn` for drift cleanup |
-
-## Why this format
-
-- **Grep-friendly.** `grep "^## \[" log.md | tail -10` shows the last 10 ops without scanning the whole file.
-- **One line per op.** No multi-line entries; no nested headings; consistent shape.
-- **Append-only.** No edits; no deletes. If something was wrong, the next op corrects forward.
-- **Human-readable.** Renders as a clean H2 list when viewed as markdown.
 
 ## When log entries are written
 
 - Every `en-learn` mode appends one line at the **end** of its run.
 - Multiple ops in a single run (e.g., `--lint --fix` repairs 3 things) → one entry, with the count in the subject (`Repaired 3 missing back-refs`).
 - `en-sweep` invocations of `en-learn --lint` → entry includes `sweep-update` op.
-
-## Used by
-
-- `en-learn --lint` checks for **log drift**: every page's most-recent op (per its `updated:` frontmatter) should have a corresponding line in the log. Mismatches surface as P2 advisories. Auto-fix appends the missing line.
-- `en-sweep` reads the last 30 days of log entries to summarize "what's happened recently" without re-scanning the whole wiki.
-- Future `en-learn --refresh` may read the log to identify pages overdue for re-evaluation.
 
 ## Empty-state
 

@@ -13,14 +13,13 @@
 # needed, and after a design change the difference is where the dead weight is.
 #
 # What en-build keeps, and why each one survives a "does it still do this?" test:
-#   host-detect + detect-host   $QUESTION_TOOL, for the 9a confirmations
 #   severity + peer-contract    it consumes P0-P3 graded findings from /en-review
 #   finding-schema              the envelope shape it parses
-#   stable-ids                  U-ID rules
-#   recursion-guard             step 2
 #   plan-hash                   step 4a and the phase boundaries
 #   verify-peer-evidence        the step 10.5 audit
-#   script-invocation           it calls two scripts
+#   script-invocation           it calls three scripts
+# stable-ids and recursion-guard left on 2026-09-04: en-build never assigns or
+# renumbers an ID, and step 2 states the whole recursion-guard behaviour inline.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -58,21 +57,26 @@ sback=""
 # The inverse failure: cutting so far that it cannot read what /en-review returns.
 missing=""
 for f in references/severity.md references/finding-schema.md references/peer-contract.md \
-         references/host-detect.md scripts/ensemble-verify-peer-evidence scripts/ensemble-plan-hash; do
+         scripts/ensemble-verify-peer-evidence scripts/ensemble-plan-hash; do
   [ -e "$D/$f" ] || missing="$missing $(basename "$f")"
 done
 [ -z "$missing" ] \
   && pass "en-build keeps what it consumes: graded findings, the envelope, the audit" \
   || fail "en-build lost something it consumes" "$missing"
 
-# --- 4. host detection is kept for the one thing it still needs ---
-# Keeping it "because skills detect hosts" would be cargo cult; it is here for
-# the blocking prompts at 9a and nothing else.
-if grep -qF 'QUESTION_TOOL' "$D/SKILL.md" && grep -qiE 'resolves no peer variables' "$D/SKILL.md"; then
-  pass "host detection is scoped to \$QUESTION_TOOL, not peer resolution"
+# --- 4. the question tool is named inline; host detection is gone ---
+# Until 2026-09-03 en-build sourced host-detect.md for one variable, the
+# question tool, which the detection script never emitted (it resolves PEER_*).
+# The mapping is now stated inline, the same change en-brainstorm made first.
+gone=""
+for f in references/host-detect.md scripts/ensemble-detect-host; do
+  [ -e "$D/$f" ] && gone="$gone $(basename "$f")"
+done
+if [ -z "$gone" ] && grep -qF 'QUESTION_TOOL' "$D/SKILL.md" && grep -qiE 'resolves no peer variables' "$D/SKILL.md"; then
+  pass "question tool is inline; no host-detection files are carried"
 else
-  fail "host detection must be scoped to what en-build still uses" \
-       "it resolves no peer variables since D52"
+  fail "question tool must be inline and host detection must stay gone" \
+       "carried:$gone (it resolves no peer variables since D52)"
 fi
 
 report

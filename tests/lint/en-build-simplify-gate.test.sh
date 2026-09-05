@@ -26,7 +26,7 @@ fi
 reason_ok=1
 grep -qiE "reason.*REQUIRED|REQUIRED.*reason" "$EN_BUILD" || reason_ok=0
 grep -qF "docs-only" "$EN_BUILD" || reason_ok=0
-grep -qF "all-destructive-gated" "$EN_BUILD" || reason_ok=0
+grep -qF "trivial:<10-lines" "$EN_BUILD" || reason_ok=0   # all-destructive-gated cannot occur since D52
 if [ "$reason_ok" -eq 1 ]; then
   pass "not_applicable / failed require a recorded reason (docs-only, --no-simplify, etc.)"
 else

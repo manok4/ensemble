@@ -53,7 +53,7 @@ The toolkit has five design pillars:
 2. **Map, not encyclopedia.** Top-level `AGENTS.md` and `CLAUDE.md` are short pointer indexes (~100 lines) that lead the agent into deeper sources of truth in `docs/`. SKILL.md files follow the same principle — process logic in the file, templates and long checklists in `references/`.
 3. **Cross-agent peer review.** Claude Code and Codex review each other's work via CLI subprocess at high-leverage gates: end of `en-plan`, per unit during `en-build`, and on demand via `/en-review --peer`.
 4. **Compounding knowledge.** Every solved problem, pattern, and decision is captured in `docs/learnings/` with frontmatter, queryable by future runs. `en-learn` updates `docs/architecture.md` after material changes; `en-sweep` runs event-driven drift cleanup (on every PR merge to `main`) so doc debt gets paid down continuously.
-5. **Lean by design.** SKILL.md files target 150–400 lines; agents are short specialist prompts (~40–120 lines). Conditional dispatch, depth-scaled questioning, mid-tier model defaults for peer review.
+5. **Lean by design.** A SKILL.md fits in 24KB (about 6K tokens; lines are not a measure, since they run 70–130 characters here); agents are short specialist prompts (~40–120 lines). Conditional dispatch, depth-scaled questioning, mid-tier model defaults for peer review.
 
 Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from Superpowers (TDD discipline, worktree isolation, two-stage review), Gstack (live browser QA, confidence-calibrated findings), Compound Engineering (persona-driven review, autofix-class routing, learnings store, stable IDs), and OpenAI's harness-engineering essay (map-not-encyclopedia AGENTS.md, plans split by lifecycle, doc lints, recurring drift cleanup, failure-→-capability-gap operating principle).
 
@@ -190,6 +190,27 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 - **D71. A rule stated in eight files and enforced in none.** Every copy of `references/script-invocation.md` calls `${CLAUDE_SKILL_DIR}` *"not a portable alternative ... a Claude-Code-only content substitution that expands to empty on Codex, which turns a guarded call into a silent skip"*. Nothing checked for it. `/en-flow` then used `$ARGUMENTS` to pass the user's request into `/en-plan`: the same class, in the one skill that does not carry that reference, where an empty expansion plans nothing. These are worse than a broken path because they do not fail. The instruction still runs, it just means something else. The guard bans the class in skill instructions and, separately, asserts the prose survives in all eight copies, because a rule enforced with no explanation teaches nobody why. Prose that names a substitution in order to forbid it is exempt via a same-line negation. **What this costs:** a skill that legitimately wants a host-only variable now has to phrase the exemption. **Two notes on method.** The first pattern I wrote for the prose half matched **zero of eight** copies, because "Claude-Code-only content substitution" wraps across two lines and grep is line-based; that is the fourth time this campaign a line-wrapped `grep -F` has produced a guard that could not fail. And one negative control passed because its own edit silently did not apply, so the control proved nothing until the substitution was appended directly. **A control that does not change the file is indistinguishable from a guard that does not work.**
 - **D72. `/en-review`'s steps still instructed on `--peer-only`, and step 9 had the two modes backwards.** The 2026-09-01 rename made `--peer` the default and peer-sole, `--cross` the opt-in that runs host personas alongside the peer and reconciles both, and `--host` personas alone. The flags table and the dispatch step said exactly that. **Four other places did not.** Step 7 was headed *"Peer-only short-circuit (`--peer-only`)"* and described the short-circuit as an opt-in, when it is what happens unless you ask otherwise. Two Reference-files entries carried the old spelling. Worst was step 9, which labelled the `--cross` behaviour **"Default (personas + peer)"** and the actual default **"`--peer-only`"**: not merely a stale name but the two modes swapped, so a reader of that step believed a plain `/en-review` ran the persona roster. A flag absent from its own table but instructed on in the flow is worse than one that is merely stale, because the reader looks for it, does not find it, and has to guess which half is current. **The guard scanned only the table.** Two tests asserted `--no-peer` and `--peer-only` were gone, both by matching `^| \`--flag\``, which is why four occurrences in the steps survived a month. The check now scans the whole file and exempts historical prose by a same-line date or change word, so the sentence recording that a spelling changed is still allowed; a control confirming that exemption is not over-broad runs alongside the three that reintroduce each site. **Two consequences of the rename that nobody had followed through.** `--lite` collapses the host persona roster, so under the new default it does nothing at all: a rare collision between two opt-ins became what happens to anyone passing `--lite` alone. It now reports `lite_gate: overridden (no-persona-roster)`, using the existing `overridden` outcome and a new caller-added reason id rather than a fourth enum value, so the three-value envelope contract is untouched. And en-review's step-2a matrix still had a `--no-peer` row: en-review does not accept that flag, `--host` replaced it and has its own row. The `no-peer-flag` reason id stays live in the shared peer contract because `/en-plan` and `/en-foundation` still take the flag. **What this costs:** the exemption is keyword-based, so a future historical note that avoids all of `until <year>`, `former`, `renamed`, `supersed`, `replaced by` and `no longer` will trip the guard and need rewording. **Also corrected:** D46's clause claiming `/en-loop` keeps `--peer-only` at its checkpoints. en-loop was updated at the rename; the sentence was not. Enforcement tier: `tests/lint/en-review-modes.test.sh`, 8 assertions.
 - **D73. Decision numbers are checked for gaps, dangling citations, and collisions with main.** The log's lint asserted two things: numbers ascend, and none repeats. Both pass on a sequence with a hole, and **D36 was missing** — never written rather than retired, absent from every version of the file in git history and cited nowhere. Both also pass when two branches claim the same number, which happened on 2026-09-03: **PRs #74 and #75 each wrote D65 and D66** while neither could see the other, and it surfaced as a merge conflict I resolved by hand. On a merge that auto-resolved it would not have surfaced at all; it would have landed as a duplicate. Three checks close that. **Contiguity, minus declared gaps:** D36 is recorded as `Never issued.` rather than filled, because renumbering to close a hole would invalidate every citation in the repo, the amendment chains (D46 amends D35, D52 supersedes it) included. A declared gap costs one line; a renumber costs the ability to cite anything. **Citations resolve:** every `D<N>` named anywhere in `skills/`, `docs/` or `tests/` must be a decision that exists — 71 were checked and all resolved, so this pins a property that already held. **Branch-vs-main:** a number this branch adds must not already exist on `origin/main`, compared against the fork point so only genuinely new numbers count. It is skipped, and says so in its output, when there is nothing to compare against; CI checks out at `fetch-depth: 0`, so it runs there. **What this costs:** a long-lived branch now has to renumber after main advances, which is the point but is friction at exactly the moment a PR looks finished. **Two decorative assertions caught in the writing.** The first never-issued check looped over entries selected by the phrase "Never issued" and then asserted they contained it, so it could not fail; it now asserts nothing cites the number instead. And the first collision control passed because it ran the pre-change copy of the test file, proving nothing until the fork was simulated properly from the commit before #74. That is the second control this week that was itself broken rather than the guard. Enforcement tier: `tests/lint/decision-log-order.test.sh`, 8 assertions.
+- **D74. `/en-brainstorm` payload pass: host detection dropped, one retrieval agent, web research decided in round 1 (amends D39 and D47).** A token audit of the skill's up-front load found ~15.6K tokens before any project context was read, 43% of it library text the flow never used. **Host detection was dead weight.** The skill sourced `host-detect.md` (and through it `recursion-guard.md` and the 7KB detection script) to learn one mapping, `AskUserQuestion` on Claude Code and `request_user_input` on Codex, which the Q&A step already stated inline. The script never emitted that variable at all: it resolves `PEER_*`, and brainstorm has no peer. All four files left the skill (~3.4K tokens per run, 19KB of payload); the two tests that used brainstorm's copies as their canonical target now point at `en-review`'s. **One retrieval agent.** The frontier rounds' fact lookup and the synthesis-time absence verifier were two prose dispatch specs with one contract (a question list, a read budget, a `file:line`-or-`absent` return, no interpretation), both running on the parent's model. `repo-fact-lookup` states the contract once and declares the retrieval tier, which `agent-dispatch.md` had listed as having no members. This amends D39's "a lightweight rule, not a verifier sub-agent": the verifier has been a sub-agent since #54, dispatched in the only idle time the flow has (while the user reads the synthesis), and the rule itself, verify or label, is unchanged. **Web research is a round-1 item.** The flow said "ask on Standard/Deep", a blocking turn on every run, while the dispatch matrix in the same skill said "on-request"; it is now one numbered item in the first frontier round with a recommended answer of skip unless a trigger holds, and the matrix and the question pool agree. **Also:** Deep design docs target 150–300 lines rather than 250–500, because `/en-plan` reads the doc whole to inherit its decisions; a failure row covers a project with no `bin/ensemble-lint`; the design template's "one question per turn" note, stale since D47, defers to SKILL.md; the hard gate is stated once instead of three times; and the "carried X until <date>" history paragraphs in `research-dispatch.md` were cut from all seven copies, since that record lives here and in git while every carrier paid ~1K tokens per run for it. **What this costs:** brainstorm no longer carries the host-detection snippet, so enabling the `--peer` override §7.2 lists for it would mean re-adding those files; and `repo-fact-lookup` is one more agent file to keep, though at 30 lines it is smaller than the two prose specs it replaced.
+- **D75. Cross-skill hygiene from the en-brainstorm round: host detection only where consumed, a byte budget for SKILL.md, descriptions capped at 300 characters.** Three findings from D74 applied across the skill set. **(1) Host detection is carried only by skills that read a peer or host variable.** An audit of the six carriers found three that consume it (`en-foundation`, `en-plan`, `en-review` read `PEER_MODE`/`PEER_AVAILABLE` and route through the peer-invoke script, which does not detect on its own), one that needs the script but not the document (`en-loop`, for the worker CLI; trimmed in its own round), and two that consumed nothing: `en-build` sourced it for the question tool the script never emits, and `en-sweep` had a "Detect host" step whose result nothing read, since its CI wrapper picks the CLI with `command -v`. Both now name the question tool inline as `en-brainstorm` does; about 3K tokens per run and 14KB of payload each. **(2) SKILL.md is budgeted in bytes, 24KB.** The 150–400 line target stated here twice was enforced nowhere and measured nothing: average line length runs 73–127 characters across the skills, so `en-simplify` at 87 lines is 11KB and `en-build` at 439 lines is 56KB. `tests/lint/skill-size.test.sh` enforces the budget with a per-skill baseline for the five skills over it today; a pinned skill may shrink and never grow, and a baseline row for a skill that has come under budget fails until deleted, so the list only shortens as each review round lands. **(3) Descriptions are capped at 300 characters of text.** They ran 335–637 (about 1.7K tokens) and are loaded into every session whether or not the skill runs; each is now one purpose sentence plus its trigger phrases, which are unchanged. The existing description-budget test's per-skill cap drops from 700 to 300. **What this costs:** the size baseline is a table someone edits when a skill shrinks, which is the intended friction; and a 300-character description has no room for mode lists, so a user who wants `--refresh` or `--orchestrated` finds them in the body, not the listing. **A control worth recording:** the first negative control for the size test appended 100 bytes to an 8KB skill, could not cross a 24KB budget, and passed; it was replaced with one that crosses. A control that cannot fail proves nothing.
+- **D76. `/en-plan` payload pass, and a peer-path defect it surfaced: the isolation flags were documented, never applied (amends D39, D48, D49, D50).** A token audit found ~35K tokens read before the first planning question, most of it a peer stack written for other skills. **The defect first.** `outside-voice.md` had called the Claude isolation flags load-bearing since PR #9 and recorded a field failure where a loaded LSP spent the single `--max-turns` on a tool call; D49 routed every peer call through `ensemble-peer-invoke`, which never applied them. They lived in prose and in a comment block of the prompt builder, and a text guard confirmed the prose still said so. Every Claude peer call from `/en-plan`, `/en-foundation` and `/en-review` ran with MCP servers, skills, user settings and tools loaded. The helper now appends the set when the peer command is `claude` and never for `codex exec`; a rejected flag costs one retry without the set, reported as the new degraded reason `dropped-isolation-fragment`; `ENSEMBLE_PEER_ISOLATION=off` disables it for a session; and `tests/lint/peer-isolation.test.sh` drives the real helper against a PATH shadow that records argv, so the assertion is about what the subprocess receives. The helper also now says so on stderr when no `timeout` binary bounds the peer, where the old prose promised a fail-fast that never existed. **Shared trims.** `outside-voice.md` (three copies) states the D30 contract, when each skill fires the peer, what the two helpers own, and verdict and failure handling; the prompt template and hand-rolled invocation it carried were the scripts' since D49/D50, and it still described en-build's per-unit peer and a 1/2/2 depth cap. `finding-schema.md` (four copies) keeps the schema and host validation; en-review's reconciliation shapes moved to its own persona-dispatch reference. Tests that asserted on the removed prose now assert on the helper's behaviour and on en-plan's brief. **en-plan routes on its own brief.** `peer-brief.md` is its routing policy and said the shared severity matrix meant nothing for a plan, yet SKILL.md cited `severity.md` four times. Five files left the skill: `severity.md`, `peer-model-policy.md` (`/en-review`'s effort resolver), `single-agent-fallback.md`, and the config-get and peer-flags scripts nothing in en-plan executed; the brief now says a plan review runs at the peer's default tier rather than promising an override with no mechanism. **Stale claims.** Two passages described a per-unit worker D52 removed; CONTRACT.md, the template and the flags table carried the pre-D49 cap and the pre-D48 one-question-per-turn dialogue. **Two ordering fixes.** The confidence check ran after promotion and offered to deepen research, and a deepening edit changes Approach and Files, which the plan hash covers, so `/en-build` refused the improved plan at its first phase boundary; it now runs before the pre-write review. And the plan is linted before it is promoted: the lint's P1 rules were exactly what `/en-build` refused later, and nothing ran them. **Cost.** `docs/learnings/index.md` is read inline and `learnings-research` dispatched only when the index lists more candidates than an inline read can drill into (the index here is 276 bytes); the scouts' worked examples left their agent files; the legacy-migration path moved to a gated reference; the gated-flag bullet defers to the template's criteria. Up-front load ~35K → ~27K tokens; payload 217KB → 173KB; SKILL.md 40.2KB → 39.0KB, still over the 24KB budget and pinned. **What this costs:** the isolation set is a per-CLI literal in one helper, which is D44's hazard with D44's mitigation (one place, a classified retry when a flag disappears); an operator's `review_peer_effort_override` is stated as inert for plan reviews rather than silently so; and a project without `bin/ensemble-lint` gets a by-hand check at promotion instead of a hard stop.
+- **D77. `/en-build` payload pass: the contract callers read was two decisions stale, the foundation read was unbounded, and a third of the skill restated itself (amends D52, D53).** **CONTRACT.md** still offered `--no-peer`, `--no-peer-per-unit` (gone with D35) and `--orchestrate` / `--handoff` (gone with D52), while omitting `--review cross|peer|none`; `en-flow` reads that page by design. **D52 left per-unit remnants in seven passages**: a simplify skip for branches "already reviewed per-unit", trailer notes saying destructive and gated units carry their own per-unit evidence two paragraphs after the sentence saying no such path exists, an audit failure blaming a gated unit's dedicated peer pass, the deferral guard, the summary bullet, a progress-report example with per-unit simplifier and peer counts, and a simplify reason (`all-destructive-gated`) that cannot occur, which a test pinned. The post-build list has six items and cited the audit seven times as "step 10.5"; D53 inserted the full-suite item and the citations below it never moved. **The foundation read had no bound**: step 6 said "Read context. Foundation", about 51K tokens on this repo, more than the rest of the skill, where D47 and D48 had bounded the same read for brainstorm and plan; it now reads the frontmatter, the section index, and only the requirement entries the plan's `covers_requirements` cites. **Restatement** was the size problem, not the process: the universal safety gates were stated six times (header, 8b table and prose, a five-step 9a, the phasing-off paragraph, the flags footer, the never-does list), the trailer schemas twice in two formats, the D46 argument in full at 10.3, two audit examples, and an autonomy contract that explained twice that cases 1 and 2 are outside its window. Each rule is now stated once and cited elsewhere; every phrase the eleven en-build tests pin survives. The legacy inference table and the six-rule risk classifier moved behind `references/build-legacy-plans.md`, read only for a plan with no `peer_review_verdict` or a unit with no `risk:`, which the lint now requires of new plans. `stable-ids.md` and `recursion-guard.md` left the skill: it never assigns or renumbers an ID, and step 2 states the guard inline. Foundation §5.2.4, which still described two flavors, a WORKER dispatch role and per-unit peer review, is rewritten to the D52 model. **Measured:** SKILL.md 55.6KB → 47.7KB (the pass aimed at about 40KB and stopped where the remaining prose is either pinned by tests or is the process itself; a second cut would have to remove steps, not words); always-read payload 79KB → 64KB; the foundation read from the whole file to the cited entries. **What this costs:** a legacy plan now costs one extra file read at pre-flight; and a skill that states each gate once relies on its cross-references being right, which is what the sub-step citation fix and the intra-file citation guard are for. **Deferred:** `ensemble-verify-peer-evidence` still carries its pre-D52 per-unit mode and trailer parser, read-only per D54 and still read by `/en-ship`, so trimming it belongs to en-ship's round.
+- **D78. `/en-review` payload pass, and two defects on its peer path: the documented prompt-builder command did not run, and a reason value sat outside the closed enum (amends D45, D50, D72).** **Defect one.** Step 9 built the peer prompt with `--artifact-type code`, a flag the builder rejects with exit 2, and without the `--brief` it requires; D50 moved the review dimensions into per-skill briefs and this call was never updated. `--peer` is the default and makes the peer the sole reviewer, so a plain `/en-review` following its own text had no reviewer. All three peer skills also passed the brief as `references/peer-brief.md`, which the builder opens relative to the caller's cwd, the user's project at runtime; every call now passes `"$SKILL_DIR/references/peer-brief.md"`. `tests/lint/peer-prompt-invocation.test.sh` extracts each skill's documented command from its SKILL.md, fills the placeholders, and runs it from a foreign cwd: a documented invocation that does not execute is the class of defect no prose guard can see. **Defect two.** D72's `--host` row emitted `peer_decision.reason: host-only-mode`, a value in no copy of the contract whose own text calls that a violation; it is now in every copy and in both guards that enumerate the reasons. **Also on the peer path.** Step 7's short-circuit skipped persona *detection* under the default mode, and step 7b's ladder reads the detection result to resolve `high`, so a security diff reviewed peer-sole ran at `medium`; detection (a grep over the diff) now runs in every mode and the mode gates only dispatch. CONTRACT.md told `/en-build` to call `--peer` (it calls `--cross`, D46) and offered `--no-peer` twice (it does not exist here; `--host` replaced it, D72). **Payload.** The default `--peer` path read nothing from `persona-dispatch.md` or `research-dispatch.md`; both are now gated on `--cross`/`--host`. Five files left the skill: `single-agent-fallback.md`, `recursion-guard.md`, the `severity-and-routing.md` alias, `stable-ids.md` and `learning-frontmatter-schema.md`, the last two reached only through one sentence and one table cell. The brief keeps its dimensions and defers its duplicated routing, confidence and effort sections to `severity.md`, `review-confidence-gating.md` and `peer-model-policy.md`. `host-detect.md` (four carriers) loses a 90-line bash snippet that duplicated the detection script and had already drifted from it. The payload guard then exposed three transitive carriers, `recursion-guard.md` in `en-plan` and `en-foundation` and `stable-ids.md` in `en-sweep`, reached only through mentions this pass removed and read by none of their flows; gone. Two dated history paragraphs left the flow for this log, two flag tables became one. Foundation §5.2.5, which still said the peer was off by default and that `/en-build` called this skill per unit, is rewritten. **Measured:** default-path read set ~142KB → ~96KB; payload 201KB → 181KB; SKILL.md 31.0KB → 30.7KB, pinned. **What this costs:** the brief-path fix relies on the model filling `$SKILL_DIR`, the same dependency every bundled-script call already has; and with routing stated once in `severity.md`, a change there now moves en-review, en-build and en-foundation together, which is what a shared file is for.
+- **D79. `--lite` is a lighter review in every mode, gated on risk alone (amends D42).** `--lite` collapsed the host persona roster and did nothing else, so under `--peer`, the default since D45, it was a no-op that reported itself as `overridden (no-persona-roster)`. Mano's intent for the flag is the quick fix: a bug fix or small change read once by whichever reviewer the mode runs. **The flag is now a depth setting.** Under `--peer` the peer receives `references/peer-brief-lite.md` (correctness, regression risk, standards visible in the diff; one turn) in place of the full brief; under `--host` the roster collapses as before; under `--cross` both. The effort ladder's rung 2 resolves `low` on `lite_gate: applied` as well as on `is_small_and_safe`. **The gate narrows to risk.** D42's gate overrode `--lite` on line count and on any uncounted file, so a fix with its regression test and a changelog line was never lite; that contradicts what the flag is for. The new classification `is_low_risk` is `RISK_SIGNALS` empty and no conditional persona fired; size and uncounted files are not inputs. The override-reason enum shrinks to `risk-signal` and `conditional-persona:<names>`; `unknown-line-count`, `exec-lines-out-of-range`, `uncounted-files` and `no-persona-roster` are retired. `is_small_and_safe` keeps its old definition for the ladder, where it lets a tiny signal-free diff earn `low` without a flag. D42's outcome-line grammar, envelope object and mutation boundary are unchanged. **Guards.** `tests/lint/peer-prompt-invocation.test.sh` runs en-review's documented builder command with the lite brief from a foreign cwd and checks the prompt carries the lite dimensions and no testing table; `tests/lint/en-review-lite.test.sh` checks the lite brief keeps correctness and none of the full brief's other tables, that the retired reason ids are gone, and that the builder's section markers are present. Both went red with a testing table injected into the lite brief. **What this costs:** the user is now the judge of "quick". A large refactor passed with `--lite` gets a lite read; the risk-surface list still catches auth, payments, schema, secrets, outbound effects and bulk data mutation regardless of the flag.
+- **D80. `/en-review` verifies its own P0/P1 fixes with one severity-gated pass (extends D49 to code review).** en-review ran once, and so did `/en-build`'s post-build review: after fixes landed, nobody asked the reviewer again, so a P1 fixed wrongly or a fix that introduced a new P0 shipped under a `review-verdict:` trailer describing the code before the fix. `/en-plan` has had the answer since D49: review, apply, one verification pass with the previous findings in the prompt, and the builder already supports it through `--iteration-context-file`; en-review never wired it up. **The pass.** When a run addressed any P0 or P1 (an `applied_fixes[]` entry at that severity), or `--verify` was passed, en-review reviews once more on the same target, mode, review mode and effort tier, with the lite brief plus a previous-review context the host writes from its own envelope: P0/P1 findings as applied-verify, P2/P3 as deferred. One pass, never a loop: a P0/P1 the pass reports is surfaced with its original id and never applied in that run, because the frozen set (D42) closed at apply time and a third pass mostly resamples the second (D49). **Two entry points.** In-run, when interactive mode applied a P0/P1 from the frozen set. Next-run, `/en-review --verify [<envelope-path>]`, for a P0 that halted mutation, a `manual` fix, or `/en-build`'s batch; en-build calls it before its single full-suite run so the trailer describes the code that ships. Every run now writes its envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json`, which is what `--verify` reads. **Auditable in the D41 pattern.** A mandatory `verification_pass:` line on every run: `clean`, `new-findings (<ids>)`, or `not-run (<reason>)` with `<reason>` from a closed set (`no-p0-p1-addressed`, `peer-failure`); the envelope carries the structured object the line derives from, and `verdict` is the verification pass's when it ran. `tests/lint/en-review-verification-pass.test.sh` pins the flag, the three outcomes, the severity gate, the single-pass rule, the mutation boundary, the builder's previous-review section (run, not grepped) and en-build's call. **What this costs:** one extra peer call, on a lite brief, only on runs that addressed a P0 or P1. Nothing on a clean run.
+- **D81. The code-review peer reads the tree; the helper launches it detached (amends D76, D30 held mechanically).** D76 applied the Claude isolation set the docs had promised since PR #9, and that set included `--tools ''`. The record shows why: the peer was designed one-shot, a loaded user-level LSP once spent the single turn on a tool call, and the fix removed everything that could consume a turn. D30's rationale, that the peer reports and never acts, was attached afterwards. The consequence was a code reviewer that could not open the file next to the diff, while the Codex peer, under `codex exec`'s sandbox, could. compound-engineering's cross-model pass reached the same conclusion independently: Read allowed in-tree, mutators, shell, subagents, web and MCP denied, 25 turns. **Two access modes, in `ensemble-peer-invoke`.** `--access none` is the D76 set unchanged, for document review (`/en-plan`, `/en-foundation`) and for `/en-review`'s lite brief and verification pass. `--access read-tree` keeps the base set (no MCP, skills, session or user settings) and adds `--tools Read,Grep,Glob --permission-mode dontAsk` with a 25-turn cap (`ENSEMBLE_PEER_MAX_TURNS`); a turn is one model-to-tool round trip inside the peer, and the host still gets one report. Codex gets `-s read-only` in both modes. MCP stays off: the host user's servers include write-capable ones, and a reviewer must not be able to reach them under any prompt; a project that wants a docs server for its reviewer is a later, repo-config decision. Sub-agents from the peer are out: unbounded cost and an isolation set that would no longer mean anything. **Three companions.** `--schema <file>` binds the CLI's output schema (`--json-schema` on Claude, `--output-schema` on Codex) to `scripts/peer-findings.schema.json`, so a malformed answer is refused at the source; the recovery path remains as fallback. The helper unwraps Claude's result envelope to the findings (`structured_output`, else the result text) and records the served model from `modelUsage` as `peer_decision.model_actual`, so a fallback can never read as cross-agent by assertion alone. And because a peer reading the tree can run for minutes, past the tool-call ceiling that had fixed the old 600-second timeout, the helper gains a detached form: `ensemble_peer_start` returns at once, `ensemble_peer_wait` polls in bounded slices, `ensemble_peer_result` and `ensemble_peer_reap` finish it; the read-tree ceiling is 1200 seconds. `/en-review` starts the peer before the persona batch under `--cross` and collects it after. **Guards.** `tests/lint/peer-isolation.test.sh` drives the real helper against PATH-shadow CLIs and asserts the argv per access mode, the turn cap, the codex sandbox flag, the schema flags, the timeout per mode, the envelope unwrap and receipt, and that start returns at once, wait is bounded, result carries the exit code and reap kills a running peer. Negative controls: dropping `--permission-mode` from the read-tree set, disabling the unwrap, and making start synchronous each turned their clause red. Live probes against the installed CLI confirmed Read works under `dontAsk` without a prompt, a denied Bash is reported as unavailable, and `--json-schema` returns `structured_output`. **What this costs:** a full-brief peer review is slower and dearer by however many reads the peer takes, and the 1200-second ceiling will be met on large diffs; the lite brief and the verification pass stay one-shot, which is where the speed for a quick fix comes from.
+- **D82. `/en-ship` runs the helpers EN15 built for it, and gains a checks-only entry point (amends D57, D58).** EN15's U5 and U6 wrote `ensemble-ship-preflight` and `ensemble-plan-checkpoint` because, in the helpers' own words, prose re-derived all of that on every run; both units listed SKILL.md among their files. SKILL.md gained a description of the two under "Bundled scripts" and nothing else: step 3 and step 7 still restated the staging state machine by hand, step 8 restated the checkpoint across four sub-steps and called the evidence verifier directly, and step 12 re-derived the plan path the checkpoint already returns as `plan_path`. The helpers were exercised only by their own tests. **Now the flow calls them.** Step 3 fetches, then reads the preflight's JSON; step 7 acts on its `staging_case`; step 8 is one checkpoint call plus the outcome table and the flip; step 12 uses `plan_path`. The D57 rationale paragraphs that rode along in the flow are this log's and left it. **Two pages read by others were wrong.** CONTRACT.md promised the skill never pushes to the default branch without `--allow-main-push`, a flag that does not exist and that the skill's own failure protocol refuses by design, since a flag lets a caller pre-authorise the push from a config file; the contract now says what the skill does. Foundation §5.2.8 described an eight-step flow ending in an optional merge, four decisions stale; rewritten. **Three additions from the CI-strategy discussion.** The targeted-test ladder labels its result `selection: graph` when the project's `test_changed_command` chose the tests and `selection: approximate` when the prefix map or the sibling heuristic did, and the label travels into the PR body; a selection above about sixty percent of the suite runs the suite. A passing run writes its own receipt, recording `lint`, `typecheck` and `targeted_tests` and never `full_suite`, so a pre-push hook skips what happened seconds earlier without ever skipping the suite on en-ship's word. And `--preflight` runs steps 1 through 8, writes the receipt, prints the preflight state and stops, so a hook, a hand check or a branch that never went through `/en-build` gets the checks without a ship. **Also.** `references/verification-receipt.md` is gated on the hook question; the script emits every validity reason itself. **Measured:** SKILL.md 32.3KB → 27.0KB, still pinned; always-read set about 46KB → about 36KB (`references/verification-receipt.md` no longer in it). **What this costs:** the checkpoint prose the plan-completion guard pinned is now a table, and the guard's clauses were kept by keeping their phrases in that table rather than by loosening them; the selection tier is a label, not a guarantee, and CI must still treat every local claim as unverified.
+- **D83. `ensemble-verify-peer-evidence` keeps only the mode its callers use (completes D52).** The verifier carried two modes: branch coverage, which `/en-build`'s end-of-build audit and `/en-ship`'s plan-completion checkpoint call, and a single-commit mode that validated the per-unit `peer-verdict:` / `peer-resolution:` / `peer-skipped:` trailers with `--require-peer-resolution` for destructive units. D52 ended the per-unit peer pass that wrote those trailers; since then no skill has emitted one and no caller has invoked the mode, its own test file was the only thing that ran it, and its header still said `/en-build` called it before and after each unit commit. Deferred from D77's round to this one because `/en-ship` was the last skill still describing the legacy read. **Now:** branch coverage is the only mode in both carriers; a commit ref without `--branch-coverage` exits 2 and names the flag, rather than answering `missing-evidence` for trailers nothing writes; legacy per-unit trailers in a range are ignored, never parsed and never fatal. The script drops from 510 lines to 256. Its test keeps every branch-coverage clause and adds two: the retired form is refused, and a legacy-only range yields no coverage and no error. **What this costs:** a branch built before D52 and shipped now is reported as `complete_evidence_missing` by the checkpoint, which is the honest reading of a branch whose review evidence predates the current trailer, rather than being credited from per-unit trailers.
+- **D84. `/en-resolve-pr` is model-invocable, and it carries the contract D59 wrote into prose (amends D59, applies EN12's rule).** Two defects on the path `/en-ship`'s watch loop depends on. **One.** The skill's frontmatter carried `disable-model-invocation: true`. Claude Code's documentation is explicit: that flag lets only a person invoke the skill, and keeps its description out of the model's context. D59 built the whole `--orchestrated` contract around `/en-ship`, which is the model driving, invoking this skill unattended; on a Claude Code host that invocation is refused before it starts, and `/en-ship` edits nothing itself by design, so the loop had no repair path. The flag is gone; the intent it served, not firing on a stray phrase, is covered by the trigger phrases and by needing an open PR. `/en-flow`, `/en-loop`, `/en-setup` and `/en-sweep` keep the flag and are manual by design; `/en-qa` keeps it for now and is a question for its own round. **Two.** EN12 says a programmatically invoked skill owes its callers a `CONTRACT.md`. D59 wrote the promise into both SKILL.md files instead, and the contract-shape lint, which derives callees from an invocation verb, never saw the caller because `/en-ship`'s sentence said the delegate "addresses each". `/en-ship` now says invoke, the contract page exists with the D59 promises as its content, and the lint binds the six verdicts, the three flags and the one-pass promise to the skill text. **A rule from the first defect.** The lint now fails any derived callee that carries `disable-model-invocation: true`; the flag and programmatic invocation cannot both be true of one skill. **Two holes in `--orchestrated`.** Step 12's learning soft-prompt said nothing about the unattended case; it now names the candidate in the returned summary instead of asking. Step 15 named a Claude-only question tool; it names the host's, as the other skills do. **Also in this round.** Step numbers cited across the three references had drifted (the summary is step 15, not 14; an empty run goes to the merge-readiness check, not to reply-and-resolve) and are cited by name; the reply-format reference keeps the quote rule, one good and bad example, the needs-human tone list and the decision-context format, and drops the per-verdict examples the SKILL.md table already states; the rubric drops its repeat of the default-to-fix paragraph; the triage reference drops a history paragraph and a promised `--skip` flag that does not exist. A parity guard now requires every script carried by more than one skill to be byte-identical unless it is on a short, reasoned exception list; it found `/en-setup` still installing the pre-D65 `ensemble-sweep-activity-check`, with the `chore(docs):` collision D65 removed from `/en-sweep`'s copy, and a one-line comment drift in `ensemble-plan-hash`; both synced. **What this costs:** with the flag gone, a request like "address the review comments" can invoke this skill without the user typing its name, which is the behaviour the trigger phrases describe. The parity guard's exception list (`ensemble-build-peer-prompt`, three deliberate per-artifact variants) is a place a fourth variant could hide; the list says why each entry is there.
+- **D85. `/en-qa` is model-invocable, carries a contract, and states each rule once (amends D61; second instance of D84's rule).** `/en-qa` carried `disable-model-invocation: true` while its own step 1 said a caller drives it unattended and D61 built the orchestrated seam on that fact: `/en-loop`'s Morning Review runs it overnight, which is why URL discovery, driver selection and framework bootstrap became skips rather than questions. On a Claude Code host the flag refuses the model's invocation, so that seam led nowhere. The contract lint missed it because `/en-loop` said "run", not "invoke". The flag is gone, `/en-loop` says invoke, and the contract page exists: accepted invocations, the never-blocks guarantee when a caller drives, the report shape in which every selected flow ends Pass, Fail or Skip with a reason, the envelope of atomic `fix(qa):` commits and no push, the per-run bug cap. **Stale claims.** Foundation §5.2.6 predated D61 entirely, naming a reference D61 deleted and a Playwright-locked flow; rewritten. Pre-D61 remnants in the references said browser QA is unavailable without the Playwright tool and that the fallback is system checks only, which is the rule D61 replaced with host-native first; a pause case was named for one driver; a skip reason cited `peer_mode_override: off`, the peer-review key, which has nothing to do with browsers; a `{{LINT_CMD}}` template token sat in step 3 as a value; and the bootstrap step said "install Playwright" a paragraph after "never install Playwright", without the distinction between the project's own test framework with consent and a stack to make this run possible. All corrected. **Config nobody shipped.** The skill read `qa.max_bugs_to_fix_per_run` and `qa.browser_flow_timeout_minutes` from a global JSON file and test accounts from the repo-local YAML, and none of the three was in `/en-setup`'s config template. The three keys are in the template with their defaults, and the skill names that one file. **Payload.** `references/qa-flows.md` restated Phase 1, the golden-path steps, the bug protocol, the output, the skip list and the cross-review posture, all of which SKILL.md already held; its three unique parts, the edge-case table with what to check, the real-interface rule for regression tests and the budgets, are in SKILL.md and the file is gone. `browser-driver.md` keeps selection, the Playwright patterns, auth and the token-cost heuristics. **Measured:** always-read set about 28KB → about 24KB. **What this costs:** as with D84, "test this" can now invoke the skill without the user typing its name, which is the behaviour its trigger phrases describe; and the autonomy contract stays a 2.5KB mirror of `/en-build`'s, kept so this skill reads it without loading that one.
+- **D86. `code-simplifier` is the read-only reviewer D60 said it was (completes D60).** D60 declared `/en-simplify`'s three reviewers read-only and dropped the per-unit dispatch document, but left `agents/code-simplifier.md` as the pre-D52 agent: frontmatter and body said it modifies files, is dispatched by `/en-build` per unit between two verification gates, takes a unit's Approach, returns `changes_made[]` and skips on `diff_too_large`. SKILL.md and the dispatch reference both knew, and worked around it in prose: the agent's description says it may write, that must not be true here, say so in every prompt. Every run paid a 7.7KB read of instructions the parent then contradicted, the agent's JSON had a field for an edit and none for a finding, and the registered description hosts show was the same stale text. **The agent is rewritten as what it is:** a reviewer of one dimension over a diff, returning findings with location, rationale, the proposed edit, a behaviour-preservation note, a confidence and an outside-scope flag, with the balance rules and the safety-check bar kept from the original. **Its tier moves to evidence.** The shared tier table listed it under `ceiling` because "output is code"; its output is findings, the parent makes the judgement that becomes an edit, and D60 said so, so the row moves in all eight carriers and the frontmatter declares `model: sonnet`; the tier guard already ties the two together. Trade-off: cheaper findings from a mid-tier model, with the ceiling-tier judgement still the parent's. **Also.** `references/code-simplifier-dispatch.md` restated the skill in the same words; its two unique parts, what each reviewer receives and the revert-the-one-fix protocol, are in steps 4 and 6 and the file is gone. Foundation had no §5.2 subsection for this skill at all since D69 added only the catalogue row; §5.2.16 exists, and the agent catalogue and dispatch table no longer describe a per-unit writer. `/en-setup`'s template shipped `simplifier.enabled_default`, `skip_on_trivial` and `max_lines_to_run` under a comment that still said per unit; nothing reads them, since `/en-build` gates on docs-only, trivial or `--no-simplify` and the size cap's only reader was the retired agent, so the keys and the contract's promise of a size cap are gone. **Measured:** read set per run about 25KB → about 18KB.
+- **D87. `/en-learn` describes its callers, its steps and its store as they are (amends D26, D34; completes EN14).** The skill said it auto-runs after `/en-build` and `/en-qa`, and that the synthesis reflex fires from `/en-plan`, `/en-review` and `/en-brainstorm`; since D26 and D38 `/en-qa` never prompts and `/en-build`'s checkpoint is the sole capture point, and the synthesis callers are `/en-brainstorm`, `/en-foundation` and `/en-resolve-pr`. It offered a `--peer` flag for an Outside Voice pass while its contract says it invokes no peer and it carries no peer machinery. Its capture flow began at step 2, named its lifecycle sub-steps 11a and 11b under step 14, and cited steps 8, 10 and 11 for things at 11, 9 and 14; the intra-file guard passed because those numbers existed. The lifecycle step is step 11 again, so the sub-step names, D34 and two guards are true rather than rewritten, and the other citations are by name. Foundation §5.2.7 described retired category directories, three phantom sub-agents and `--migrate` as the removed bootstrap mode; rewritten. The contract names `/en-loop` and `--migrate` and says that a caller-driven capture asks nothing. **References.** The log and index formats and the cross-reference rule still listed `ingest` and `pack` operations EN14 removed. Three references bumped or read an `updated:` field on solutions the schema does not define; the lint paired pages by a `component` field that does not exist; the index reference promised four `index-coverage` lint rules of which the shipped lint has none for `docs/learnings/index.md` (its two rules cover the generated indexes), while `--lint`'s `index-drift` is the check that exists; the schema's worked examples included a decision with frontmatter, which the artifact router forbids. Each corrected against the schema and the lint as shipped. The severity note that loaded the peer contract at the top of every run now sits in the lint mode, the only mode that grades. `learn-cross-ref-maintenance.md` restated the lint's check list around an eight-line procedure and a five-row edge table; those two are in the always-on section and the file is gone. **Measured:** default capture read set about 66KB → about 58KB.
+- **D88. `/en-foundation` carries a current plan template and a peer stack sized for a document (amends D24, D56; extends D76).** Its copy of the plan template predated `/en-plan`'s: no Test seams section, no per-unit Interfaces block, and the pre-D49 re-review cap in its lifecycle paragraph. A bootstrap plan for a new project would have been written in a shape `/en-build` no longer expects. Synced, and `tests/parity/reference-parity.test.sh` now holds every reference carried by more than one skill byte-identical unless listed with a reason; the three per-skill peer briefs are the one exception, and this was the only live drift in the reference set. **The peer stack.** For a document review the skill passes no effort tier, yet it carried `peer-model-policy.md` and, reached only through that file, the config-get and peer-flags scripts; its own brief routes findings and says the code-shaped matrix never made sense here, yet it cited `severity.md`; the builder adds the single-agent framing itself, yet it cited `single-agent-fallback.md`. Three references and two scripts gone, the decision object cited from the contract, as D76 did for `/en-plan`. **Also.** A flags table for `--retrofit` and `--no-peer`, which existed only in prose; the depth trim stated once instead of twice; the recursion variable set once; a synthesis routed to an ADR rather than the retired `decisions/` layout; a failed peer recorded through `peer_decision` in the run output rather than as a note written into the foundation document. Foundation §5.2.2 predated D24 and D56 and the agent table still listed two agents D56 removed; both rewritten. **Measured:** fresh-run read set about 104KB → about 88KB; payload 189KB → 163KB.
+- **D89. `/en-debug` says what it does, and its references promise only what ships (amends D62).** Its description ended "Read-only." and foundation §5.2.13 said "never writes code", while D62 added a code mode that fixes after the user chooses to; the description is the text that routes a request, so "fix this bug from the stack trace" could have been routed away. Both now say read-only in telemetry mode, fix on request in code mode, and §5.2.13 describes the code mode at all. The telemetry handoff pointed at `/en-build` to "write a fix"; `/en-build` executes plans, so the handoff is the fix path here or `/en-plan` with `plan_type: bug`. **Promises.** The conventions reference told projects to configure a `logging.unstructured` lint rule that `bin/ensemble-lint` does not have; it now says Ensemble ships no such rule and how a project enforces the shape with its own linter. The skill reads `observability.allowed_log_commands` and `max_log_lines`, which the config template did not carry; it does. The hypothesis-format reference held three worked examples and a copy of the confidence scale, all of which SKILL.md already states; the reference keeps the structure and the rendering, redaction and routing rules. **Measured:** telemetry-run read set about 50KB → about 45KB.
+- **D90. `/en-flow` states each rule once and has a foundation entry (completes D69, D70).** The smallest skill carried four dated history paragraphs, each explaining a defect D70 already records: the `$ARGUMENTS` substitution, the peer-only review cited to D35, the capture over a decline, and the `<promise>DONE</promise>` marker. Each is now one clause citing D70 or the live decision. Its never-does list still cited D35 for the post-build phase, which D52 owns; its flags table said "Stage 1" for what the process numbers step 3. `references/en-flow-pipeline.md` restated the artifact table, the gates and local-only mode the skill already states; its one unique part, the stage graph, is in the skill and the file is gone. D69 added the catalogue row and no §5.2 subsection; §5.2.9 exists. **Measured:** read set about 10.7KB → about 8.4KB.
+- **D91. `/en-loop` runs the detection script instead of reading about it (closes the D75 deferral; amends D67).** en-loop needs one fact from host detection, `HOST`, to pick the worker agent. It sourced `references/host-detect.md` for it, which since D78 carries no snippet to source, only prose that describes `scripts/ensemble-detect-host`; and through that reference it carried `recursion-guard.md`, a contract for a variable this skill neither sets nor branches on. Step 1 now runs the script and reads `HOST`; both references are gone, and the guard that required the prose reference by name requires the script instead. Two dated history notes, the missing anchor convention and the `--max-iterations` pass-through D67 records, are gone; the review model is cited to D52. Foundation §5.2.15 still named the checkpoint review `--peer-only`, a flag D72 renamed; corrected. **Measured:** read set about 26KB → about 16KB.
+- **D92. `/en-setup`'s citations resolve, and its config template promises only keys something reads (amends D63).** Four internal citations had drifted again since D63 renumbered the flow: the diagnostic mode offered to re-run the bin install as step 9 (it is 10), the guardrail prompt as step 12 (13), the review-action prompt as step 13 (14), and the failure message blamed steps 8–9 for artifacts steps 9–10 install; the reference list placed the `REVIEW.md` template at step 14 (16). The bin-install step still copied from `<plugin>/bin/`, a path that stopped existing when skills became self-contained, and cited the workflow template by line number. The `timeout` advisory described `/en-build`'s peer subprocess, which since D52 is `/en-review`'s, and the top-of-file severity note said this skill emits P0–P3 findings when it is the lint it installs that does. All corrected. **The config template.** A consumer audit of every key found seven with no reader anywhere: two concrete peer model IDs citing a deleted `cli-wrappers.md` and breaking the no-model-ID rule, `peer_reject_behavior`, `learnings_cross_project`, `learn_ingest_off_topic_threshold` (EN14 removed ingest), the two logging-lint keys D89 retired, and a `fitness` block whose reference does not exist. Gone; the `protected_branches` extension point stays, since it is labelled not-yet-implemented and a guard holds it to that label. The header claimed repo-level keys override `~/.ensemble/config.json`, which is true of the review keys read through `ensemble-config-get` and false of the peer keys, which host detection reads from the global file only; the template now says which file reads which, and the peer keys are listed for discovery rather than as live settings. Foundation §5.2.11 still described the retired `learnings/{bugs,patterns,decisions,sources}` skeleton, a `host-detect.md` D63 removed and a `bin/` script path D68 fixed; rewritten.
+- **D93. `/en-guardrail`'s installer writes the path it actually sits at (amends D64).** The installer's hook command was the literal `bash "${ENSEMBLE_HOME:-$HOME/CodeRepo/ensemble}/skills/en-guardrail/bin/check-guardrail.sh"`, one developer's checkout path as the default, in the settings file of every project and global install. On any other machine, or under the per-skill install layout where no `skills/` parent exists, that command names nothing, and Claude Code treats a hook command that fails as a non-blocking error: the guardrail was registered, reported `yes`, and guarded nothing. D64 verified 28 adversarial probes against the live hook and never asked whether the hook was reachable. The installer now resolves `check-guardrail.sh` beside itself and writes that absolute path; `status` reports a registered hook whose path no longer exists as `broken` rather than `yes`; the printed global one-liner uses the resolved paths; and the skill's JSON example shows a placeholder instead of a machine path. The test installs under an empty `HOME` from a foreign directory and asserts the written path exists and carries no developer path; the pre-D93 installer turned both clauses red. **What this costs:** moving the checkout requires re-running the installer, which `status` now tells you.
+- **D94. `/en-sweep`'s foundation entry describes the scheduled sweep, and its config keys are all in the template (amends D27, D65).** Foundation §5.2.10 was twelve kilobytes describing the sweep D27 replaced on 2026-05-05: triggered by `push` to `main`, five loop guards including author and label checks, host detection inside the skill, a CI wrapper passing `--skill` flags that no CLI has, an `EN_REVIEW_MODE` variable nothing sets, `bin/` and `references/sweep-trigger-workflow.yml` paths that D66 and D68 corrected elsewhere. Rewritten to the scheduled model with its gate, wrapper and guards. The skill carried four dated history notes for defects D27 and D65 record; each is a clause now. `sweep.enabled`, which `/en-setup` writes on a declined install, and `sweep.auto_merge_enabled`, which the skill documents, were absent from the config template; both are in it. **Measured:** SKILL.md 15.0KB → 14.6KB; the foundation entry 12.3KB → 3.5KB.
 ---
 
 ## 5. Skill Catalog
@@ -225,7 +246,7 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
 
 - **Purpose.** Explore an idea through Q&A, research prior art, propose 2–3 approaches with trade-offs, run a devil's-advocate pass, and write a design doc.
 - **Process (high-level).** (`skills/en-brainstorm/SKILL.md` is canonical; this is a summary.)
-  1. Detect host (light — only needed for path conventions).
+  1. Resolve the question tool (`AskUserQuestion` on Claude Code, `request_user_input` on Codex). No host detection and no peer (D74).
   2. Scope check (Lightweight / Standard / Deep).
   3. Existing context scan (`docs/foundation.md`, `docs/plans/`, recent commits, related code).
   4. Q&A via **frontier rounds** — model open decisions as a design tree, ask each round's independent frontier in one numbered batch with a recommended answer per question (one-per-turn retained on Lightweight and for rigor probes); facts are looked up non-blocking, never asked; default to the host blocking question tool `$QUESTION_TOOL`, open-ended only when genuinely open (D39).
@@ -233,11 +254,11 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
   4c. **Blindspot gate** — when the user cannot *evaluate* part of the territory (not merely undecided), map its decision surface before interviewing into it; territory-scoped, once per territory, never in a non-interactive run (D47).
   5. **Product pressure test** — self-gating rigor-gap probes before approaches (evidence / specificity / counterfactual / attachment / durability; EN05/D39).
   6. **Integration check** — probe non-obvious combination consequences before approaches (EN05/D39).
-  7. Optional research via `web-research` agent (Context7, WebSearch).
+  7. Optional research via `web-research` (Context7, WebSearch), decided as one round-1 item with a default of skip (D74).
   8. Propose 2–3 approaches with trade-offs and a recommendation — **divergently generated** via parallel constraint-diverged sub-agents on Deep, or Standard with 3+ live directions (D47).
   9. Devil's advocate — stress-test the recommendation.
   10. Present design and get user approval.
-  11. **Verify-before-claiming** — verify absence-claims against the repo or label them unverified assumptions (EN05/D39).
+  11. **Verify-before-claiming** — absence-claims go to `repo-fact-lookup` while the user reads the synthesis; each is verified against the repo or labeled an unverified assumption (EN05/D39, D74).
   12. Write to `docs/designs/YYYY-MM-DD-<topic>-design.md`.
   13. Hand off — suggest `en-foundation` (new product) or `en-plan` (feature).
 - **Hard gate.** Does not invoke implementation skills.
@@ -249,50 +270,17 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
 
 #### 5.2.2 `en-foundation`
 
-- **Purpose.** Produce the foundational artifact set for a new product: `foundation.md` (vision, decisions, technical direction), `docs/architecture.md` (initial architectural reality seed), `AGENTS.md` and `CLAUDE.md` (project-level pointer maps). Run once when a project starts; thereafter `en-learn` keeps the architecture reality and pointer maps current.
-- **Process (high-level).**
-  1. Detect host. Resolve peer for Outside Voice.
-  2. Orient — read existing `foundation.md`, brainstorm design docs, and any code in the repo.
-  3. Discovery (one question per turn) across these topic groups, depth-scaled:
-     - Product identity & problem
-     - Users & roles
-     - Goals & success criteria
-     - Scope boundaries (in / out / deferred)
-     - Functional requirements (R-IDs assigned here)
-     - User experience
-     - Technical direction (stack, hosting, security model)
-     - Data architecture (tables, isolation, key entities)
-     - API surface
-     - Deployment & infrastructure
-     - Risks & open questions
-  4. Synthesize — present a structured summary for approval.
-  5. Draft `foundation.md` using the template.
-  6. Section-by-section review with the user.
-  7. **Outside Voice review** — ship the draft to the peer agent; user picks which findings to incorporate.
-  8. Seed `docs/architecture.md` with the initial architecture (component diagram, layer rules if specified, primary data flows). Marked as `status: seed` until `en-learn` writes its first reality-driven update after the first plan ships.
-  9. Write `AGENTS.md` as the canonical, host-agnostic pointer map (~100 lines) using `references/agents-md-template.md`. Indexes `foundation.md`, `docs/architecture.md`, `docs/plans/active/`, `docs/learnings/`, and `docs/references/`. Lists key project commands (build, test, lint), conventions, and entry points — anything an agent (any agent) needs to orient itself.
-  10. Write `CLAUDE.md` using `references/claude-md-template.md`. **Strict structure:**
-      - **First line** — exactly: `> See [AGENTS.md](./AGENTS.md) for the project map and shared agent guidance.`
-      - **Body** — Claude-Code-specific content **only**. No content duplicated from `AGENTS.md`. Allowed sections:
-        - **Slash command preferences** for this project (e.g., "Use `/en-plan` before `/en-build` for any feature with > 3 files").
-        - **Skill invocation priority** when multiple skills could apply.
-        - **Auto-memory guidance** specific to Claude Code's `~/.claude/projects/.../memory/` system.
-        - **Status line / hook references** (paths to project-specific hooks if any).
-        - **Plugin/marketplace pointers** if the project uses specific Claude Code plugins.
-        - **Tool-name notes** specific to Claude Code (e.g., "AskUserQuestion is deferred — preload via `ToolSearch` before first use").
-      - **Forbidden** in CLAUDE.md (belongs in AGENTS.md): project structure, coding conventions, build/test/lint commands, architecture descriptions, anything readable by Codex.
-      - Doc lint `claude-md.no-shared-content` flags any heading or content block that duplicates AGENTS.md.
-  11. Final save and hand off (suggest `en-plan` for the first feature).
-- **Hard gate.** No code; no PRs; no scaffolding.
-- **Cross-review.** On by default. Skip with `--no-peer`.
-- **Reference files.**
-  - `references/foundation-template.md` (depth-scaled)
-  - `references/foundation-questions.md`
-  - `references/architecture-template.md` (initial seed)
-  - `references/agents-md-template.md`
-  - `references/claude-md-template.md`
-  - `references/host-detect.md`
-  - `references/outside-voice.md`
+- **Purpose.** Produce, once per project, or back-fill with `--retrofit`, the foundational artifacts: `docs/foundation.md` (PRD, technical direction, architecture intent), the `docs/architecture.md` seed, `AGENTS.md` and `CLAUDE.md`, and for a new project the bootstrap plan `<PREFIX>01-feature_project-setup` (D24). Documents only: no code, no PR.
+- **Process (high-level).** (`skills/en-foundation/SKILL.md` is canonical.)
+  1. Detect host for the peer; recursion guard; detect fresh vs retrofit.
+  2. Orient and write a **known-facts ledger** per discovery group from the existing foundation, design docs, the learnings index read inline, and on a retrofit the codebase via `repo-research`, hot-spot-scoped from `git log` (D56).
+  3. Right-size depth; run the discovery loop from `references/foundation-questions.md`, one question per turn, asking only what the ledger left open and confirming detected groups in one line.
+  4. Traceability gate: every goal or actor that affects behaviour is served by a requirement or explicitly deferred; conditional on the section existing (D56).
+  5. Synthesize for approval; resolve `plan_id_prefix` (2–3 uppercase letters, `FR` fallback, never changed once plans exist); draft from the template at the precision the user actually gave, no invented metrics, no surviving placeholders, the user's terminology.
+  6. Section review with the user; Outside Voice review of the draft through the shared builder and invoke helper, routed by this skill's own brief, at the peer's default tier; apply, defer or disagree.
+  7. Seed `docs/architecture.md`; write `AGENTS.md` and `CLAUDE.md` from the templates; on a new project emit the bootstrap plan; flip the foundation to `active` on acceptance; hand off to `/en-build` or `/en-plan`.
+- **Cross-review.** On by default; `--no-peer` disables. **Agents.** `repo-research` only (D56).
+- **Reference files.** `references/foundation-questions.md`, `references/peer-brief.md`, `references/stable-ids.md`, the four templates plus the plan template for the bootstrap plan, the shared peer files (`host-detect.md`, `outside-voice.md`, `peer-contract.md`, `finding-schema.md`), `references/research-dispatch.md`.
 
 #### 5.2.3 `en-plan`
 
@@ -306,407 +294,147 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
   2. Resume / `--from-legacy` / create fresh.
   3. Source the request: brainstorm doc, foundation, bug report, legacy plan, or rough description. Foundation is read **bounded** (frontmatter + section index + only the sections needed), never whole. A matching design doc's settled decisions are **carried, not re-asked** (D48). **Infer `plan_type`** (`feature` / `improvement` / `bug`); confirm if ambiguous.
   4. Right-size depth (Lightweight / Standard / Deep).
-  5. Phase 1 research — dispatch `repo-research` and `learnings-research` agents in parallel. Optionally `web-research`.
+  5. Phase 1 research — dispatch `repo-research`; read `docs/learnings/index.md` inline and dispatch `learnings-research` only when the index lists more candidates than an inline read can drill into (D76). Optionally `web-research`.
   5b. **Context-sufficiency check** — when the problem, the approach, or the scope is genuinely unresolved, recommend `/en-brainstorm` first; never a hard gate, and gaps recorded as explicit assumptions if the user proceeds (D49).
   6. Resolve planning questions via **frontier rounds** — architecture in round 1, then file boundaries / test strategy / dependencies / migrations together in round 2, each with a recommended answer; one-per-turn retained on Lightweight (D48).
   7. Break the work into implementation units with stable U-IDs (`U1`, `U2`, …).
   8. For each unit: Goal, Requirements covered, Dependencies, Files, Approach, Execution note, Patterns to follow, Test scenarios, Verification.
   9. Resolve `plan_id_prefix` from `foundation.md` (default `FR`); auto-increment `<NN>` per-prefix.
-  10. Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`. (User flips to `open` after acceptance; `/en-build` flips to `in_progress`; `/en-learn capture` flips to `completed` and moves the file.)
-  11. **Outside Voice review** — peer agent critiques the plan; user incorporates agreed findings.
-  12. Confidence check; capture-from-synthesis reflex.
-  13. Hand off to `en-build`.
+  10. Confidence check, before the write: deepen or record as an assumption, because the plan hash covers Approach and Files (D76). Pre-write plan-quality review.
+  11. Write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`.
+  12. **Outside Voice review** — the peer critiques the plan against `references/peer-brief.md`; the host applies findings per that brief; one verification pass, only after a P0/P1 (D49).
+  13. Lint the plan (`bin/ensemble-lint --scope docs/plans/active`), then promote `draft → open`, hash, close out a consumed design, auto-commit (D76). `/en-build` flips to `in_progress`; `/en-learn capture` flips to `completed` and moves the file.
+  14. Capture-from-synthesis reflex; hand off to `en-build`.
 - **Cross-review.** On by default.
 - **Reference files.**
   - `references/templates/plan-template.md`
   - `references/host-detect.md`
   - `references/outside-voice.md`
+  - `references/peer-brief.md`, `references/peer-contract.md`
   - `references/research-dispatch.md`
   - `references/stable-ids.md`
 
 #### 5.2.4 `en-build`
 
-- **Purpose.** Execute a plan. Runs in two flavors based on host detection. Both flavors guarantee the same cross-agent property: the agent that *implements* a unit is **not** the agent that *reviews* it.
-- **Two dispatch roles** (used in different flavors). It's important to keep these distinct because they have different constraints:
-  - **WORKER dispatch** — the host dispatches the other agent to *do implementation work*. The worker may edit files, write code, run tests within scope. The worker returns its diff. Used in build-by-orchestration. This is **not** subject to D30 ("peer reports, host applies") because D30 governs *peer-review* dispatch, not worker dispatch.
-  - **PEER-REVIEWER dispatch** — the host dispatches the other agent to *review and report findings only*. The peer-reviewer **must not** edit files, run commands, or commit (D30 + Appendix A). Used in build-handoff and in any cross-review.
-- **Flavors.**
-  - **Build-by-orchestration** (default in Claude Code). Claude is the host. For each unit, Claude dispatches Codex as a **WORKER** (`codex exec` with explicit "implement this unit" scope) — Codex writes the code and returns the diff. Claude then reviews the diff itself (`code-simplifier` + lint + tests + own judgment) and applies findings. If applying a finding requires further code edits, Claude has two options:
-    1. Apply the fix itself (Claude has the working tree).
-    2. Dispatch Codex as WORKER again with explicit "apply this specific fix" instructions, then re-verify.
-    Either is fine — Codex remains in WORKER role; Claude remains the host. No D30 violation. The cross-agent property holds because Codex implemented and Claude reviewed; no separate `claude -p`/`codex exec` peer-reviewer subprocess is needed.
-  - **Build-handoff** (default in Codex). Codex is the host. For each unit, Codex implements natively, runs `code-simplifier`, then dispatches Claude as a **PEER-REVIEWER** via `claude -p`. Claude returns structured findings only — does not modify any files (D30 + Appendix A). Codex parses the findings, applies the ones it agrees with, defers others to `tech-debt-tracker.md`, disagrees with the rest, then commits. The cross-agent property holds because Codex implemented and Claude (as peer-reviewer) reviewed.
-- **Why the asymmetry.** The choice of dispatch role depends on which agent is the host:
-  - Host = Claude (Claude Code) → Codex is dispatched as WORKER (Claude is naturally the reviewer-of-Codex's-output).
-  - Host = Codex → Claude is dispatched as PEER-REVIEWER (Codex implements natively).
-  - Either way: implementer ≠ reviewer, and the host always holds the write pen on commits.
-- **D30 applies to peer-reviewer dispatch only.** Worker dispatch (build-by-orchestration) does *not* invoke D30 — the worker is implementing, not reviewing. The dispatching prompt must clearly identify which role it's invoking; the wrapper in `references/build-orchestration.md` does this with explicit role markers in the dispatch prompt.
-- **Process (high-level).**
-  1. Detect host. Choose flavor.
-  2. Load plan; verify all U-IDs present and unblocked.
-  3. Set up branch (or worktree if available). Auto-stash dirty tree with confirmation.
-  4. Read foundation, related plan files, CLAUDE.md / AGENTS.md, project conventions.
-  5. Plan review with the user — concerns, clarifications, dependency installs needed.
-  6. For each unit (in dependency order):
-     - Honor `Execution note` (test-first / characterization-first / pragmatic).
-     - Implement via current host or dispatch peer (build-by-orchestration mode).
-     - **Verification gate 1.** Run unit-level tests + project lint/typecheck. If anything fails, fix before proceeding — do not advance to simplification or peer review on a broken unit.
-     - **Code simplification pass.** Dispatch the `code-simplifier` agent against the unit's diff. The agent refines recently modified code for clarity, consistency, and project-standards compliance (CLAUDE.md / AGENTS.md), preserving functionality. Skip on trivial units (renames, single-line config tweaks, pure deletions); skip with `--no-simplify` on the invocation. The simplifier modifies files directly and returns a `summary` + `changes_made[]`.
-     - **Verification gate 2.** Re-run unit-level tests after the simplifier. If anything fails, **revert the simplifier's changes** (`git restore` the affected files to their pre-simplifier state) and proceed with the original implementation. Surface the regression in the unit's progress report.
-     - **Per-unit Outside Voice peer review.** A different agent than the implementer reviews the simplified unit diff and returns structured findings only. **The reviewer never modifies files** (D30 + Appendix A).
-       - In **build-by-orchestration** (host = Claude, implementer = Codex): Claude reads Codex's returned diff and forms findings itself. No separate subprocess; the cross-agent property is already satisfied because Codex implemented and Claude is reviewing.
-       - In **build-handoff** (host = Codex, implementer = Codex natively): Codex shells out via `claude -p --output-format json "<peer prompt>"` with `ENSEMBLE_PEER_REVIEW=true` set. Claude reads the diff, returns findings JSON, and exits. Codex parses the JSON.
-     - **Host applies findings it agrees with.** The host walks each finding and chooses one of three responses:
-       1. **Agree and apply** — host modifies the unit's code to address the finding. Mechanical fixes (typos, naming, simple refactors) and clear correctness fixes apply autonomously. Note in commit body: `Addresses peer finding: <title>`.
-       2. **Agree but defer** — finding is valid but out of scope for this unit. Append an entry to `docs/plans/tech-debt-tracker.md` (with TD-ID per A19) citing the unit. Move on.
-       3. **Disagree with rationale** — host believes the peer is wrong. Note one-line rationale in the unit progress report. Move on.
-     - **Surface to user.** If the peer reports a P0 finding the host disagrees with, *or* a security/architectural finding marked confidence ≥ 8 the host wants to defer, pause and ask the user before committing. All other host decisions proceed without confirmation.
-     - **Re-verification.** If host applied any code changes in response to peer findings, re-run unit tests + lint before commit. Failures revert host's changes (`git restore`) and surface to user.
-     - Commit with conventional message including the U-ID; commit body lists peer findings handled (applied / deferred / disagreed).
-  7. After all units: full test suite, lint, typecheck.
-  8. Summary: completion status per U-ID, deviations, simplifier changes (if any), next-step recommendation. Auto-invokes `/en-learn` (soft prompt) → suggests `/en-review` → `/en-qa` → `/en-ship`.
-- **Cross-review.** On per unit. Disable with `--no-peer-per-unit`.
-- **Code simplification.** On by default per unit. Disable with `--no-simplify`.
-- **Reference files.**
-  - `references/host-detect.md`
-  - `references/outside-voice.md`
-  - `references/build-orchestration.md` (per-unit dispatch logic)
-  - `references/build-handoff.md` (Codex-native flow)
-  - `references/code-simplifier-dispatch.md` (when to skip, what to pass, revert protocol)
+- **Purpose.** Execute a plan unit by unit on a feature branch. **The host implements every unit on every host** (D52); the cross-agent property comes from the single post-build review, which `/en-review` dispatches to the other agent. There is no worker dispatch and no flavor.
+- **Process (high-level).** (`skills/en-build/SKILL.md` is canonical; this is a summary.)
+  1. Resolve the question tool (no host detection, no peer resolution of its own); plugin-install preflight.
+  2. Load the plan and run pre-flight: the sub-state matrix on `status` / `peer_review_verdict` / unresolved resolutions, with a finalize-and-build recovery for `draft + revise`; record the plan-hash baseline; flip `open → in_progress`. Legacy plans (no verdict field, no `risk:`) go through a gated inference reference (D77).
+  3. Branch setup; **bounded** context read (`AGENTS.md`, `CLAUDE.md`, related plans, and only the foundation entries for the plan's `covers_requirements`; D77); plan review with the user; batch size (D25).
+  4. Phasing decision from six triggers; phase classification from `risk:` (P1 low, P2 medium, P3 high or medium+migration, P4 destructive); dependency-vs-phase invariant. Universal safety gates, stated once in 8b: `risk: destructive` needs the typed `"run unit U<N>"`, `gated: true` needs y/skip/abort every time, no flag disables either.
+  5. Per unit: gate → execution note → implement (check first whether the work already exists) → verification gate with the five-question system-wide check → path-limited commit with a `phase:` trailer. After a phase: lint, typecheck and the tests covering that phase's files (D53), plan-hash check, working-tree contract.
+  6. Post-build, once over the branch diff: lint+typecheck gate → `/en-simplify` → `/en-review --cross --mode headless` (peer mandatory, personas additive; D46) → apply findings in one batch → the full suite once (D53), writing a verification receipt on success (D58) → one commit carrying `review-verdict:` and `simplify-verdict:` (D41) → the evidence audit via `ensemble-verify-peer-evidence --branch-coverage --require-simplify` → the structured learning checkpoint (D26).
+- **Agent autonomy contract (D33).** Between units the build does not pause except for the seven enumerated cases; uncertainty means advance, and a concern goes in the informational progress report.
+- **Flags.** `--review cross|peer|none`, `--no-simplify`, `--unit`, `--from`, `--from-phase`, `--no-phasing`, `--dry-run`, `--finalize-only`, `--commit-wip`, `--re-baseline`. Standing policy (`worktree`, `strict_destructive`, `pause_between_phases`, `learning_checkpoint`) lives in `.ensemble/config.local.yaml`.
+- **Reference files.** `references/finding-schema.md`, `references/peer-contract.md`, `references/severity.md`, `references/script-invocation.md`; gated: `references/build-legacy-plans.md`. Scripts: `ensemble-plan-hash`, `ensemble-verification-receipt`, `ensemble-verify-peer-evidence`.
 
 #### 5.2.5 `en-review`
 
-- **Purpose.** Multi-persona code review of current branch changes against the plan and project conventions. Confidence-gated — sub-threshold findings are filed as TD entries instead of cluttering review output.
-- **Process (high-level).**
-  1. Detect host. Determine diff base (PR target, default branch fallback).
-  2. Read plan(s) referenced by the branch.
-  3. Always-on personas: `correctness`, `testing`, `maintainability`, `standards`. Plus `learnings-research`.
-  4. Conditional personas based on diff content: `security`, `performance`, `migrations`.
-  5. Each persona returns structured JSON with `confidence: 1-10`. Synthesis merges, dedups, classifies.
-  6. **Confidence gate.** Findings with `confidence < threshold` (default `7`, configurable via `~/.ensemble/config.json` → `review.confidence_threshold`) are filed as TD entries with marker `Filed by /en-review (confidence <N>)`. P0 findings always surface regardless of confidence (with `low_confidence: true` flag if rated low). Skipped in `report-only` mode (sub-threshold findings returned in `sub_threshold_findings: []` instead). Per `references/review-confidence-gating.md`.
-  7. Apply `safe_auto` fixes automatically.
-  8. Present `gated_auto`, `manual`, and `advisory` findings grouped by severity.
-  9. User picks which to apply.
-  10. Optional `--peer` flag enables Outside Voice cross-review on top of personas.
-  11. Output review report (markdown) and a JSON envelope (for programmatic callers). Both include `sub_threshold_filed_count`.
-- **Modes.** Three modes determine whether `en-review` may modify files:
-  - **`interactive`** (default for direct user invocation) — auto-applies `safe_auto` fixes, presents `gated_auto`/`manual` findings to the user. May write to the working tree.
-  - **`headless`** (default for skill-to-skill invocation in non-CI contexts) — auto-applies `safe_auto` fixes silently and returns structured JSON for the calling skill. May write to the working tree. Used by `en-build` per-unit and `/en-review`.
-  - **`report-only`** — strictly read-only. No file edits, no commits. Returns findings JSON only. **Required mode when `en-review` is invoked from CI** (e.g., by `en-sweep`). The reason: mutation in CI would push a commit, which retriggers sweep — and more fundamentally, a "verification gate" that mutates is conceptually muddled. Verification and repair are separate steps.
-
-  Mode is selected by the calling skill, with these mandatory rules:
-  - When `en-build` invokes `en-review` per-unit → `headless`.
-  - When `en-sweep` invokes `en-review` to gate a PR → `report-only` (always; not configurable).
-  - When the user invokes `/en-review` directly → `interactive`.
-- **Cross-review.** Off by default; available via `--peer`.
-- **Reference files.**
-  - `references/host-detect.md`
-  - `references/outside-voice.md`
-  - `references/persona-dispatch.md`
-  - `references/finding-schema.md`
-  - `references/severity-and-routing.md`
+- **Purpose.** Code review of a branch diff, a ref range, uncommitted work, or a file, **with the cross-agent peer on by default** (D45). Confidence-gated: sub-threshold findings file as TD entries rather than cluttering the output.
+- **Review modes** (mutually exclusive; D72). `--peer` (default): the peer is the sole reviewer, and where no peer CLI exists the peer role runs on the host model in a fresh subprocess, recorded as `single-agent-fallback`. `--cross`: host personas and the peer in one parallel batch, reconciled into `corroborated` / `peer-only` / `host-only` / `conflicting`, corroborated first; what `/en-build` uses (D46). `--host`: personas only, no peer subprocess. `report-only` never runs a peer (CI, D38).
+- **Process (high-level).** (`skills/en-review/SKILL.md` is canonical; this is a summary.)
+  1. Detect host; recursion guard; resolve one `peer_decision` (closed reason enum, `references/peer-contract.md`); read the effort and alias overrides.
+  2. Determine the mutation mode (`interactive` / `headless` / `report-only`; the caller picks) and the target; read the diff, the plan the branch cites, `AGENTS.md`, `CLAUDE.md`; pre-flight lint on changed docs.
+  3. Persona detection runs in every mode (D78): the conditional heuristics and the diff-signal classification feed the effort ladder even when no persona is dispatched. `--lite` is a lighter review in whichever mode runs (lite peer brief under `--peer`, collapsed roster under `--host`, both under `--cross`), fail-closed on risk signals and fired conditional personas only, with a mandatory `lite_gate:` line (D42, D79).
+  4. Finalize the effort tier against the ladder; requirements coverage (the spec axis) against the plan's units, reported as its own findings.
+  5. Dispatch per mode. The peer is **blind** to persona findings, which is what licenses launching it in the same batch; its prompt comes from `ensemble-build-peer-prompt` with this skill's brief, and the call goes through `ensemble-peer-invoke`, detached, with `--access read-tree` for the full brief and `--access none` for the lite brief and the verification pass (D81).
+  6. Synthesize (two-source reconciliation under `--cross`); confidence gate (default 7; P0 always surfaces); two-phase mutation protocol with a frozen authorized set, `applied_fixes[]` derived from the tree delta, and the mandatory `review_fixes:` line (D42); one severity-gated verification pass when a P0/P1 was addressed, with the mandatory `verification_pass:` line (D80); markdown summary plus JSON envelope, written to `/tmp/ensemble/en-review/<run-id>/`.
+- **Reference files.** Every run: `references/host-detect.md`, `references/peer-brief.md`, `references/peer-contract.md`, `references/severity.md`, `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md`, `references/diff-signal-detection.md`, `references/review-confidence-gating.md`, `references/tech-debt-tracker-format.md`. Gated on `--cross`/`--host`: `references/persona-dispatch.md`, `references/research-dispatch.md`. Under `--lite`: `references/peer-brief-lite.md`.
 
 #### 5.2.6 `en-qa`
 
-- **Purpose.** Test the work like a real user. System checks first, then live browser end-to-end via Playwright MCP. Find bugs, fix them with atomic commits, regenerate regression tests, re-verify.
-- **Process (high-level).**
-  1. System checks: lint, typecheck, project test suite. Stop and report if anything fails.
-  2. If a URL is provided (or auto-detected from the branch), proceed to browser QA.
-  3. Bootstrap test framework if absent; otherwise read existing test conventions.
-  4. Click through golden-path flows.
-  5. Click through edge cases: empty states, error states, slow network, double-click, navigate-mid-action.
-  6. For each bug:
-     - Reproduce.
-     - Identify root cause.
-     - Fix in source code.
-     - Add regression test.
-     - Atomic commit `fix(qa): <description>`.
-     - Re-verify.
-  7. Output QA report with before/after evidence.
-- **Cross-review.** Off — bug fixes are mechanical.
-- **Reference files.**
-  - `references/qa-flows.md`
-  - `references/playwright-helpers.md`
+- **Purpose.** Test the work like a real user: system checks, then a live browser pass over the flows the change reaches, with each bug fixed, regression-tested and committed atomically.
+- **Who drives it (D61, D85).** A person, or `/en-loop`'s Morning Review; `/en-build` suggests it to the user. Model-invocable on purpose, with a `CONTRACT.md`. When a caller drives, the pre-flow questions (URL, driver, framework) become skips with reasons, never prompts.
+- **Process (high-level).** (`skills/en-qa/SKILL.md` is canonical.)
+  1. Resolve context; recursion guard. Phase 1: lint, typecheck, test suite; stop on the first failure.
+  2. Detect the URL (flag, preview-URL comment, local dev server). Select one browser driver for the whole run: host-native surface first, then Playwright MCP, else Phase 1 only; never install a third stack.
+  3. Browser-phase detector: Phase 2 runs when the diff touches frontend files (`needs_browser`, shared `diff-signal-detection`) or `--browser`; `--system-only` wins. Fail closed when the diff cannot be classified.
+  4. Phase 2, scoped to the change: attribute changed files to the flows they reach and exercise only those, golden path plus edge cases; unattributable files are reported as impact undetermined rather than triggering a sweep; `--all-flows` is the explicit sweep. Flows needing external interaction are skipped with the reason.
+  5. Per bug: reproduce, root cause, fix, regression test that exercises a real interface, atomic `fix(qa):` commit, re-verify. Capped per run.
+  6. Report: every selected flow ends Pass, Fail or Skip with reason; screenshots under `.test-output/qa/`.
+- **Cross-review.** Off; bug fixes are mechanical. **Learning capture.** Not here; `/en-build`'s checkpoint owns it (D26).
+- **Reference files.** `references/browser-driver.md` (selection, per-driver patterns, auth, token cost), `references/diff-signal-detection.md` (`needs_browser`).
 
 #### 5.2.7 `en-learn`
 
-- **Purpose.** Maintain `docs/learnings/` as a compounding, interlinked wiki — not a flat folder. Capture engineering events, ingest external sources, keep architecture/foundation/plans honest, curate external library references, and check graph health.
-- **Modes.** `capture` (default), `--refresh`, `--lint`, `--migrate` (one-time retrofit; seeds `patterns/` from existing codebase via `repo-research`; entries flagged `source: bootstrap` and `requires_validation: true`, default `confidence: 6`).
-- **Always-on behavior for `capture`:**
-  - **Active cross-reference maintenance.** After writing the new entry, walk through every page in its `related: []` field and append a reciprocal back-reference to those pages' frontmatter. Forward refs without back-refs make the graph one-directional and orphans accumulate.
-  - **Index update.** Append a one-line entry to `docs/learnings/index.md` under the appropriate category, with date and one-line summary.
-  - **Log append.** Append a single line to `docs/learnings/log.md` in the format `## [YYYY-MM-DD] <op> | <subject>` (grep-friendly — Karpathy's tip).
-
-##### Mode A: `capture` (default)
-
-Run after a feature ships, after a bug is fixed, or anytime there is a durable insight worth preserving. Also invoked as `capture --from-conversation` when `en-plan`, `en-review`, or `en-brainstorm` ends with a synthesis worth filing.
-
-- **Process (high-level).**
-  1. Detect what just shipped (recent commits, branch summary) — or, in `--from-conversation` mode, take the user-confirmed synthesis as input.
-  2. Identify the learning category: `bugs/`, `patterns/`, `decisions/`.
-  3. Spawn parallel sub-tasks:
-     - **Context Analyzer** — extract problem, symptoms, root cause from conversation and commits.
-     - **Solution Extractor** — capture the fix, why it works, prevention strategies.
-     - **Related Docs Finder** — search `docs/learnings/` for overlap; flag near-duplicates; identify pages that should back-link.
-  4. Write `docs/learnings/<category>/<slug>-<date>.md` with frontmatter.
-  5. Apply the always-on behaviors (cross-refs, index update, log append).
-  6. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits to drifted sections only — never regenerate the whole doc. Bump `updated: YYYY-MM-DD`.
-  7. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-  8. **Move the relevant plan** from `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` to `docs/plans/completed/<…>.md` — flip status from `in_progress` (or `open`) to `completed`, set `shipped: <date>`, replace plan-tense with documentation-tense. Note any deviations from the plan.
-  9. **Sync `AGENTS.md` / `CLAUDE.md`** if the artifact directory or top-level guidance changed (rare).
-  10. Update `docs/README.md` index.
-
-##### Mode C: `--refresh`
-
-Audit existing learnings for *content* staleness. For each entry: keep, update, replace, or archive (move to `docs/learnings/archive/`). Useful periodically (~monthly) or after a big architectural shift.
-
-Distinct from `--lint`, which audits *structural* health.
-
-##### Mode E: `--lint`
-
-Structural health check on the wiki graph. Distinct from `--refresh`, which is content-staleness; `--lint` is graph-shape.
-
-- **Checks.**
-  - **Orphans** — pages with zero inbound references.
-  - **Missing back-refs** — page A's frontmatter has `related: [B]` but page B does not have A in its `related:`. Asymmetric forward refs.
-  - **Contradictions** — claims across pages that conflict (LLM judgment, not mechanical). Surface with both citations.
-  - **Missing pages** — concepts mentioned by name in 3+ pages without a dedicated entry. Suggest creating a page.
-  - **Stale references** — links pointing to files that have moved or been deleted.
-  - **Index drift** — entries in `index.md` that no longer match underlying pages, or pages that exist but are missing from `index.md`.
-  - **Log drift** — operations missing from `log.md` (compare against git log of `docs/learnings/`).
-- **Output.** A report grouped by check, with severity (P1 = orphan, broken link, missing back-ref; P2 = missing page, data gap, log drift; P3 = contradiction needing human judgment). For mechanical findings (P1, most P2), `learn --lint --fix` auto-applies fixes (add the missing back-ref, repair the broken link, regenerate `index.md`). Contradictions and content-judgment items go to the user.
-- **Cadence.** On demand (`/en-learn --lint`), or invoked by `en-sweep` as part of its post-merge pass. `en-sweep` invokes `en-learn --lint` and routes the output through its PR-batching flow.
-
-- **Cross-review.** Off by default in all modes (`--peer` to enable).
-- **Reference files.**
-  - `references/learning-template.md`
-  - `references/learning-frontmatter-schema.md`
-  - `references/learn-cross-ref-maintenance.md` (the always-on behavior)
-  - `references/learn-index-format.md` (curated `index.md` structure)
-  - `references/learn-log-format.md` (append-only log conventions)
-  - `references/learn-lint.md` (the check catalog and auto-fix rules)
-  - `references/architecture-update-rules.md` (when to touch `docs/architecture.md`, what counts as material)
+- **Purpose.** Maintain the repo's knowledge store as a compounding, interlinked wiki (Karpathy's pattern, D19): terms in `docs/CONTEXT.md`, decisions as ADRs in `docs/decisions/`, solutions flat in `docs/learnings/` with `index.md` and `log.md` for navigation. Gated: it writes nothing unless the entry is unrecoverable from the code and changes a future decision.
+- **Modes.** `capture` (default), `--refresh` (content staleness, per artifact type), `--lint` / `--lint --fix` (graph health), `--migrate` (a store still on the retired `bugs/` `patterns/` `decisions/` layout). EN14 removed `ingest` and `--pack`.
+- **Who invokes it (D87).** `/en-build`'s learning checkpoint, the sole capture prompt (D26, D38), and `/en-loop` at loop end; `/en-brainstorm`, `/en-foundation` and `/en-resolve-pr` with `--from-conversation` (D21); `/en-sweep` with `--lint`. Contract in its `CONTRACT.md`. No peer.
+- **Capture (high-level).** (`skills/en-learn/SKILL.md` is canonical.)
+  1. Recursion guard; legacy-layout check, offering `--migrate`.
+  2. Detect the input: recent commits, a conversation synthesis, or a stated subject.
+  3. The capture gate: three conditions, each answered by naming something; the default is to write nothing, and a skip is reported with the failed condition.
+  4. Route to one artifact type, term > decision > solution; gather, compose from that type's template, write to its path; vocabulary accretion into `docs/CONTEXT.md` is the one permitted second write.
+  5. Ground every artifact written with `ensemble-validate-claims`; findings are adjudicated, exit 2 is reported as unverified.
+  6. Plan lifecycle: the flip to `completed/` always runs when a plan is in context (11a, the source of truth per D34); documentation-tense rewrites only on an actual capture (11b).
+  7. Always-on bookkeeping: reciprocal back-references, index line, log line with the head SHA that `/en-build`'s checkpoint reads as its baseline; then architecture, foundation, map and generated-index syncs when material.
+- **Reference files.** `references/capture-gate.md`, `references/artifact-types.md`, `references/glossary-rules.md`, `references/adr-format.md`, `references/grounding-validation.md`, `references/learn-index-format.md`, `references/learn-log-format.md`, `references/learn-lint.md` (shared with `/en-sweep`), `references/architecture-update-rules.md`, `references/layout-migration.md` (gated), the three templates, `references/peer-contract.md` (severity vocabulary for `--lint`).
 
 #### 5.2.8 `en-ship`
 
-- **Purpose.** Get clean changes onto the remote with a meaningful commit message and PR.
-- **Process (high-level).**
-  1. Pre-flight: `git status`, current branch, diff stat. Stop on merge conflicts.
-  2. Lint + typecheck + targeted tests on changed files.
-  3. Secret scan on diff (.env files, AWS keys, private keys, common API-key patterns).
-  4. Confirm scope of staging — show what will be committed.
-  5. Conventional-commit message generated from the diff.
-  6. Push: feature branch → `git push -u origin <branch>`, default branch → `git push origin <default>`.
-  7. PR creation via `gh pr create` with summary auto-generated from commits and the plan.
-  8. Optional merge if user confirms and CI is green.
-- **Cross-review.** Off — by this point, `en-review` and `en-qa` have already passed.
-- **Reference files.**
-  - `references/conventional-commits.md`
-  - `references/secret-patterns.md`
+- **Purpose.** Get clean changes onto the remote with a conventional commit and a PR, hands-off by default (D38), ending in one named state (D57).
+- **Process (high-level).** (`skills/en-ship/SKILL.md` is canonical; this is a summary.)
+  1. Resolve context once: branch, base, existing PR (an existing PR is updated, never re-created). Recursion guard.
+  2. Pre-flight: fetch the base, then `ensemble-ship-preflight` classifies the tree (ahead/behind, published, staging case, excluded and untracked inventory) and blocks on a detached HEAD, a conflicted tree or an unresolvable base. Conflicts are predicted with `git merge-tree`; a published branch is never rewritten without approval.
+  3. Verification: a valid receipt from `/en-build` skips lint, typecheck and tests, with no partial credit (D58); otherwise run them, selecting targeted tests by the project's `test_changed_command`, then its `test_impact` map, then the sibling heuristic, and label the selection `graph` or `approximate`. The secret scan and `git diff --check` always run. A passing run writes its own receipt (D82).
+  4. Staging by the preflight's case: push existing commits, stage the computed allowlist path by path, preserve and exclude the rest, or stop as a no-op. Never `git add .`.
+  5. Plan completion checkpoint: `ensemble-plan-checkpoint` resolves `complete` / `partial_expected` / `complete_evidence_missing` / `incomplete_unexpected` / `up_to_date` / `not_applicable` from the branch's `review-verdict:` coverage (D57); a complete build flips the plan to `completed/` atomically with the ship commit (D34 backstop). `--preflight` stops after this step (D82).
+  6. Conventional commit; push; `gh pr create` with a test plan that reports only what ran, the local receipt's fingerprint and selection tier, and the plan path.
+  7. Local watch-and-fix loop: poll CI and review findings, trusted sources only, drive `/en-resolve-pr --orchestrated` (D59), bounded to `ship.watch_max_cycles` repair cycles, exit in one named state. `--auto-merge` arms only after `clean`.
+- **Safety floor.** Secret-scan match, push to the default branch, and a guardrail hit always hard-stop, even hands-off. Never force-pushes, amends published commits, skips hooks, deletes branches or bypasses branch protection.
+- **Reference files.** `references/conventional-commits.md`, `references/secret-patterns.md`; gated: `references/verification-receipt.md` (the pre-push hook contract).
+
+#### 5.2.9 `en-flow`
+
+- **Purpose.** The hands-off pipeline: plan → build → learn → ship for one piece of work, each stage an existing skill, en-flow only sequencing, gating and passing artifacts forward. Manual-invoke only (`disable-model-invocation: true`); the only skill that invokes lifecycle skills in sequence.
+- **Process (high-level).** (`skills/en-flow/SKILL.md` is canonical.)
+  1. Recursion guard; shipping precondition (`git remote`; none → `local_only`, a terminal success state).
+  2. Plan: `--plan <path>` or `/en-plan` with the request passed through verbatim. Gate: a plan at `status: open`.
+  3. Build: `/en-build <plan>`; en-build runs simplify and `/en-review --cross` itself (D52). Gate: end-of-build evidence audit `verdict: ok`.
+  4. Learn: read en-build's `learning_checkpoint:`; act only on `ci_environment` or a missing value, never over a decline (D70).
+  5. Ship: `/en-ship` with its bounded watch loop, `--no-watch` passed through, never `--auto-merge`; skipped under `--no-ship` or `local_only`.
+  6. Terminal report ending `en-flow: done` or `en-flow: stopped at <step> — <reason>`.
+- **Flags.** `--plan <path>`, `--no-ship`, `--no-watch`. **Cross-review.** None of its own; the build stage's review is en-build's. **Reference files.** None; the stage graph is in the skill.
 
 #### 5.2.10 `en-sweep`
 
-- **Purpose.** Doc-drift cleanup that runs *automatically after every PR merge to `main`*. Scans the merged code against documentation artifacts, identifies what drifted, opens *doc-only* fix-up PRs, and auto-merges them after `en-review` clears them. Pays down doc debt continuously without ever modifying code.
-- **Strict scope: doc-only.** `en-sweep` **never** modifies source code, configuration, tests, or any non-doc artifact. If it notices a code-level pattern that should be refactored (a duplicated helper, a layer-rule violation, a hand-rolled util that has a shared equivalent), it files the observation as an entry in `docs/plans/tech-debt-tracker.md` for `en-plan` / `en-build` to handle later. This separation is non-negotiable: `en-sweep` running unattended (auto-triggered, auto-merged) means it must touch only artifacts where the blast radius is bounded to documentation.
-- **Trigger model — scheduled with activity gate.** Default trigger: **cron schedule** (default `0 9 * * 1` — Monday 9am UTC; configurable via `sweep.schedule` in `.ensemble/config.local.yaml`: `daily` / `weekly` / `monthly` named values, or a literal cron expression). Manual invocation also supported via `workflow_dispatch` (Actions UI) or `/en-sweep` slash command. Implemented as `.github/workflows/en-sweep.yml` installed by `/en-setup`.
-
-  **Activity gate.** Before the sweep job runs, `bin/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the same `chore(sweep|arch|plans|learnings|maps|docs):` patterns sweep produces) and counts non-sweep commits since then. Zero → skip silently (no LLM calls, no PRs, no comments). Non-zero → run. Manual `workflow_dispatch` always bypasses the gate.
-- **Why scheduled-with-gate beats every-merge.** Every-merge fires sweep on commits that introduce no detectable drift (typo fixes, test renames, peripheral changes). The activity gate alone wouldn't help in that model because there's always activity per-merge by construction. A scheduled cadence with the activity gate gives predictable cost (one sweep per cadence) while the gate skips quiet weeks entirely. Drift detection latency (up to one cadence cycle) is the trade-off; for most projects, weekly is fine.
-- **Why a separate skill from `en-learn`.** `en-learn` captures lessons in conversation, in real time, in the user's working session. `en-sweep` runs unattended in CI. Different cadence (event-driven vs invocation-driven), different scope (doc drift vs lesson capture), different blast radius (auto-merge vs human-confirmed).
-- **Process (high-level).**
-  1. Triggered by `push` to `main`. CI checks out the repo and runs `/en-sweep`.
-  2. Detect host (CI runner). Resolve peer for any `en-review` invocations within sweep's PRs.
-  3. Run doc lints (`bin/ensemble-lint`) — file-shape checks. Capture violations.
-  4. Run `en-learn --lint` — wiki-graph checks (orphans, missing back-refs, etc.). Capture violations.
-  5. Compare `docs/architecture.md` against current code via `repo-research` agent: are documented components still present? Are dependency rules still honored? Are layer boundaries still clean?
-  6. Cross-check `docs/plans/active/` for plans whose work has shipped on `main` — they should be moved to `completed/`. (`en-learn` handles the move during normal flow, but if the user shipped without invoking `en-learn`, sweep catches it.)
-  7. Cross-check `AGENTS.md` and `CLAUDE.md` against current `docs/` structure — pointer-map drift.
-  8. Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`:
-     - `chore(docs): fix broken cross-refs in foundation.md`
-     - `chore(arch): document new ProvidersV2 boundary in docs/architecture.md`
-     - `chore(plans): move EN03 to completed/`
-     - `chore(learnings): add missing back-refs in patterns/`
-     - `chore(learnings): archive 4 superseded entries`
-     - `chore(maps): update AGENTS.md pointer to new docs/references/ entry`
-  8a. **Continuous monitoring (opt-in).** When `.ensemble/config.local.yaml` declares `sweep.continuous_monitoring.dead_code: true` or `dep_audit: true`, run `skills/en-sweep/scripts/continuous-monitor` (wraps `ts-prune` / `vulture` / Go `deadcode` / `npm audit` / `pip-audit` / `cargo audit`) and pipe through `skills/en-sweep/scripts/triage-findings`. Output is partitioned by **size**:
-     - Trivial / mechanical (single dead function; dep-vuln with auto-fix; `loc_estimate` < `sweep.auto_plan_threshold_loc`) → append to `tech-debt-tracker.md` with marker `Filed by /en-sweep (continuous-monitor)`.
-     - Pattern / structural / decision-required (≥ `sweep.auto_plan_threshold_locations` dead-code findings clustered in same area; severe CVE without auto-fix) → write a draft plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` with `status: draft`, `generator: en-sweep`, `generator_run: <merge-sha>`, `generator_checks: [dead-code|dep-audit]`, `area: <subtree>`. Capped at `sweep.max_drafts_per_run` (default 3); overflow rolls to TD with a "would have been a plan" note.
-     - Idempotency: skip if an existing plan with `generator: en-sweep` and matching `area:` is still open. Per `references/sweep-checks.md`.
-  9. For each batch, open a focused PR with a single conventional commit.
-  10. Each PR runs `en-review` automatically. If `en-review` returns clean (no P0/P1 findings), the PR auto-merges.
-  11. If `en-review` finds anything, the PR stays open for human resolution.
-  12. Summary report posted as a comment on the original triggering PR: what was fixed, what was deferred to `tech-debt-tracker.md`, what was filed as a draft plan, what needs human judgment.
-- **What goes to `tech-debt-tracker.md` instead of a sweep PR.** Anything that requires modifying source code, config, or tests. Examples: "this helper duplicates `formatDate` in `src/utils/`", "Routes module imports from Config layer — violates layer rule", "test coverage gap on payment retry path." These get appended with category, severity, file paths, and date. `en-plan` reads `tech-debt-tracker.md` when planning new work.
-- **Cross-review.** Off by default. Each sweep PR goes through `en-review` (in `mode:report-only`), which is the quality gate.
-
-##### CI execution model
-
-A slash command is an interactive-host concept, not a CI executable. The GitHub Action workflow doesn't invoke `/en-sweep` literally — it runs a wrapper command that maps to the host CLI's headless mode.
-
-**Wrapper resolution (in CI runner):**
-
-```bash
-# bin/en-sweep-ci  (installed by ./setup; lives in the plugin's bin/)
-# Resolves which CLI is available in the runner and invokes it headlessly.
-
-if command -v claude >/dev/null 2>&1; then
-  claude -p --output-format json \
-    --max-turns 50 \
-    --skill en-sweep \
-    "$@"
-elif command -v codex >/dev/null 2>&1; then
-  codex exec --json --skill en-sweep "$@"
-else
-  echo "ERROR: en-sweep requires claude or codex CLI in the CI runner. Install one." >&2
-  exit 1
-fi
-```
-
-**Required runner environment:**
-- One of `claude` or `codex` on PATH.
-- LLM provider auth: `ANTHROPIC_API_KEY` (or OAuth via `claude` setup) for Claude; equivalent for Codex.
-- `GITHUB_TOKEN` (auto-provided by GitHub Actions) for opening PRs.
-- Default timeout: **30 minutes**. Hard cap, configurable via workflow input.
-- Non-interactive — the wrapper passes `-p` (Claude) or `exec` (Codex), and the skill operates without `AskUserQuestion`/`request_user_input` calls.
-
-**Branch naming for sweep PRs:** `en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-doc-update`).
-
-**Fallback if no CLI is available:** the workflow fails with a clear error and posts a comment on the source PR. Does not block the source PR; just notifies the user that sweep is non-operational until a CLI is installed in the runner.
-
-##### Loop guards (preventing self-trigger cascades)
-
-Sweep runs on `push` to `main`. Its auto-merging PRs are themselves pushes to `main`. Without guards, this creates an infinite loop. Five guards in place:
-
-1. **Skip sweep-authored commits.** The workflow's first step inspects `${{ github.event.head_commit.author.name }}` and `${{ github.event.head_commit.message }}`. If the author is `ensemble-sweep[bot]` *or* the message starts with `chore(en-sweep):`, exit immediately (status: skipped).
-2. **Concurrency group.** GitHub Actions `concurrency:` keyed on `en-sweep-${{ github.ref }}` with `cancel-in-progress: false` — only one sweep run per branch at a time. Subsequent triggers queue, not stack.
-3. **Sweep PR labeling.** Every sweep-opened PR carries the label `en-sweep`. The workflow's first step also exits immediately if the merge that just happened was a PR carrying this label (detected via `gh pr view --json labels`).
-4. **No-material-diff termination.** After running all checks, if no fix-PR batches were generated, exit silently. No notification, no commit, no PR.
-5. **Recursion depth cap.** The workflow checks `${{ env.ENSEMBLE_SWEEP_DEPTH }}`; defaults to `0`, increments on each spawn. Hard cap at depth 1 — sweep never spawns sweep. (Defense-in-depth; guards 1+3 should already prevent this.)
-
-##### Doc-only enforcement at runtime
-
-Sweep is contractually doc-only (D27). Implementation enforces this with a runtime guard:
-
-- After staging files for a PR, the workflow runs `git diff --cached --name-only` and verifies every changed path is under `docs/`, `AGENTS.md`, `CLAUDE.md`, or `.github/workflows/en-sweep.yml`. Any path outside this allowlist → abort the PR creation, fail loudly with the offending path, and post to source PR.
-- The allowlist is enforced in `bin/ensemble-doc-only-check`, called as a workflow step before `gh pr create`.
-
-##### When `en-sweep` invokes `en-review`
-
-In CI, `en-sweep` invokes `en-review` in `mode:report-only` (not the default interactive mode). Why:
-
-- `en-review` in interactive/headless mode auto-applies `safe_auto` fixes, which would push another commit to the sweep PR's branch. That's tolerable but adds noise.
-- More importantly, allowing mutation in CI risks the gate making changes that then need re-review — recursive ambiguity.
-- `mode:report-only` makes `en-review` strictly a verifier: it returns findings as JSON, no file edits. Sweep parses the JSON and decides whether to auto-merge (clean) or leave open (P0/P1 findings).
-
-This is documented in `en-review` (§5.2.5) and reinforced by `en-sweep`'s wrapper passing `EN_REVIEW_MODE=report-only` when invoking it.
-
-##### Auto-merge security model
-
-Default-safe configuration:
-
-- **Use `GITHUB_TOKEN` (auto-provided), not a PAT.** Least-privilege.
-- **Workflow permissions** (declared in workflow YAML): `contents: write`, `pull-requests: write`, `issues: write` (for comments). No `actions: write`, no admin.
-- **No fork-triggered runs.** Workflow uses `on: push: branches: [main]` only — never `pull_request_target` from forks (which would expose credentials to attacker-controlled code).
-- **Branch protection respected.** If the repo's branch protection requires N reviews on PRs to `main`, sweep PRs queue for review rather than auto-merge. Sweep detects this via `gh api /repos/.../branches/main/protection` and exits gracefully if its PRs can't be auto-merged. Surfaces in the source-PR comment.
-- **Doc-only enforcement** (above) prevents any source-file edit even if a finding mistakenly suggested one.
-- **Auto-merge disabled on detection failure.** If any guard check errors out (rate-limited GitHub API, auth failure, allowlist check throws), sweep leaves all PRs open for human review and does not auto-merge.
-
-- **Reference files.**
-  - `references/host-detect.md`
-  - `references/sweep-checks.md` (the catalog of doc drift checks)
-  - `references/sweep-trigger-workflow.yml` (template `.github/workflows/en-sweep.yml` installed by setup)
-  - `references/sweep-loop-guards.md` (the five guards above)
-  - `references/sweep-security-model.md` (permission model + fork policy)
-  - `references/tech-debt-tracker-format.md` (entry schema for code-level findings)
-  - `references/doc-lints.md` (shared with `en-review`)
-  - `bin/en-sweep-ci` (the CLI wrapper)
-  - `bin/ensemble-doc-only-check` (runtime allowlist enforcement)
+- **Purpose.** Scheduled doc-drift cleanup (D14, D27). Runs from `.github/workflows/en-sweep.yml` on a cron (default weekly, Monday 09:00 UTC; `daily` / `weekly` / `monthly` or a literal cron chosen at `/en-setup`) plus `workflow_dispatch`, and by hand as `/en-sweep`. Strictly doc-only: code-level findings file as TD entries, never as PRs.
+- **Activity gate.** `ensemble-sweep-activity-check` finds the last sweep-authored commit on `main` by the scopes `chore(sweep|arch|plans|learnings|maps):` and counts non-sweep commits since; zero skips the cycle silently. Every scope in that list must be one a human would not type; `docs` was one and silenced the gate (D65). Manual dispatch bypasses the gate.
+- **CI execution.** The workflow runs the CI wrapper (`scripts/en-sweep-ci`), preferring the freshly cloned plugin's copy, which resolves `claude -p` or `codex exec`, registers the plugin directory so the skill resolves, and fails loudly on a no-op envelope (the green-but-inert failure of FR01 U11). No host detection and no peer inside the skill; the wrapper picked the CLI.
+- **Process (high-level).** (`skills/en-sweep/SKILL.md` is canonical.) Recursion guard; loop guards (concurrency group and depth cap in the workflow, no-material-diff inside the skill); `bin/ensemble-lint` over `docs/`; `/en-learn --lint`; architecture drift via `repo-research`; plan-lifecycle and pointer-map drift; opt-in continuous monitoring (dead code, dependency audit) triaged into TD entries or draft plans; categorize into doc batches; stage each batch and verify it with `ensemble-doc-only-check`; one PR per batch on `en-sweep/<sha>/<batch>`, capped by `sweep.max_prs_per_run`; `/en-review --mode report-only` per PR, never mutating; auto-merge when review finds no P0/P1 and branch protection allows; a summary comment on the source PR.
+- **Security.** `GITHUB_TOKEN` least-privilege, no fork-triggered runs, branch protection respected, doc-only allowlist enforced at runtime, fail-closed on any guard error (`references/sweep-security-model.md`).
+- **Configuration.** `.ensemble/config.local.yaml` `sweep:` block: `enabled`, `schedule`, `max_prs_per_run`, `auto_merge_enabled`, `continuous_monitoring.*`, the triage thresholds and `max_drafts_per_run`. The CI timeout is `timeout-minutes:` in the workflow, not a key.
+- **Reference files.** `references/sweep-checks.md`, `references/sweep-loop-guards.md`, `references/sweep-security-model.md`, `references/tech-debt-tracker-format.md`, `references/doc-lints.md`, `references/learn-lint.md` (shared with `/en-learn`), `references/architecture-update-rules.md`, the workflow template; scripts `scripts/en-sweep-ci`, `ensemble-sweep-activity-check`, `ensemble-doc-only-check`, `continuous-monitor`, `triage-findings`.
 
 #### 5.2.11 `en-setup`
 
-- **Purpose.** Project-level bootstrap and diagnostics. Distinct from the global `./setup` script (which installs Ensemble onto a machine) — this skill prepares a *repository* for Ensemble. Runs three different flows based on detected state.
-- **State detection.** Determined by which artifacts are present in the repo. Trigger for State 2 ("needs Ensemble bootstrap") is *missing `docs/foundation.md` OR missing `docs/learnings/`*, regardless of whether `AGENTS.md` or `CLAUDE.md` already exist.
-
-  | State | Repo signals |
-  |---|---|
-  | **State 1 — New project** | Repo is empty or initial-commit only, AND `docs/foundation.md` doesn't exist |
-  | **State 2 — Existing project, no Ensemble** | Repo has source code AND (`docs/foundation.md` is absent OR `docs/learnings/` is absent). May or may not have `AGENTS.md`/`CLAUDE.md` already |
-  | **State 3 — Existing project with Ensemble** | `docs/foundation.md` exists AND `docs/learnings/` exists. All Ensemble bootstrap artifacts already present |
-
-- **State 2 sub-variants** (each handled differently when generating maps):
-
-  | Variant | What's already there | AGENTS.md action | CLAUDE.md action |
-  |---|---|---|---|
-  | 2a | Neither AGENTS.md nor CLAUDE.md | Generate from template | Generate from template |
-  | 2b | CLAUDE.md only (no AGENTS.md) | Generate AGENTS.md from template; cross-reference existing CLAUDE.md | Append-merge: keep existing content; append Ensemble Claude-specific section if not present |
-  | 2c | AGENTS.md only (no CLAUDE.md) | Append-merge: keep existing content; append Ensemble pointer index if not present | Generate from template (one-line cross-ref to AGENTS.md + Claude-specific guidance) |
-  | 2d | Both AGENTS.md and CLAUDE.md | Append-merge each: keep existing content; append Ensemble pointer index / Claude-specific section if not present. Never overwrite existing user content. | Same |
-
-- **Process per state.**
-  - **State 1 — Greenfield handoff.** Don't pre-create artifacts. Recommend the user start with `/en-brainstorm` to explore the idea, then proceed to `/en-foundation` to establish the foundation document and emit the bootstrap `<PREFIX>01-feature_project-setup` plan (per A1; `<PREFIX>` is the `plan_id_prefix` chosen during foundation, default `FR`). `en-setup` doesn't own greenfield bootstrap; `/en-foundation` does, with `/en-brainstorm` typically preceding it. Output a one-paragraph guide naming both skills and the order.
-  - **State 2 — Retrofit bootstrap.** Run all of these in order:
-    1. **Detect State 2 sub-variant** (2a / 2b / 2c / 2d) and stage the `AGENTS.md` / `CLAUDE.md` actions accordingly.
-    2. **Existing-plans archival.** If `docs/plans/` already exists, run `bin/ensemble-classify-plans` to partition into conforming / non-conforming / subdirs / tech-debt. If non-conforming files exist, prompt to `git mv` them into `docs/plans/legacy/` with a `README.md` explaining the convention. Migrate any later via `/en-plan --from-legacy <path>`.
-    3. **Create directory skeleton:** `docs/{plans/{active,completed},learnings/{bugs,patterns,decisions,sources},references,generated,designs}/`. Seed `docs/learnings/index.md` and `docs/learnings/log.md` with empty templates.
-    4. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries.
-    5. **Generate or merge `AGENTS.md`** per the sub-variant. When merging, never overwrite existing user content — append the Ensemble pointer index as a new section if one isn't already present.
-    6. **Generate or merge `CLAUDE.md`** per the sub-variant. Same merge discipline. The first line must be the cross-reference to `AGENTS.md` (per D15); if an existing `CLAUDE.md` doesn't have it, prepend it. Append-merge any Claude-Code-specific Ensemble guidance into a new section.
-    7. **Add `.gitignore` entries:** `.ensemble/config.local.yaml`. Optionally `docs/learnings/archive/` (ask the user).
-    8. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Surface required permissions/secrets per A20.
-    9. **Create `.ensemble/config.local.example.yaml`** (committed). Offer to create `.ensemble/config.local.yaml` (gitignored).
-    10. **Guardrail check.** Run `skills/en-guardrail/bin/install-guardrail status`. If neither scope is installed, prompt: install project-scoped now (`p`) / print global one-liner (`g`) / skip (`s`).
-    11. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, offer to install from `references/templates/github-workflow-claude-review.yml` (per `docs/integrations/anthropic-code-review-action.md`). The Codex review path (`docs/integrations/codex-code-review-action.md`) is informational only — user runs it manually if they want a second AI perspective.
-    12. **Auto-merge repo-setting check.** `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. If `false`, surface advisory (manual repo setting; agent doesn't flip it).
-    14. **Recommend next steps.** Output a one-paragraph guide naming `/en-foundation --retrofit` (recommended) or `/en-plan` (if jumping into a feature first).
-  - **State 3 — Diagnostic mode.** Run health checks: required directories present? `AGENTS.md` / `CLAUDE.md` current (no doc-lint failures)? `.github/workflows/en-sweep.yml` installed? Anthropic Code Review action installed? Guardrail hook registered? Repo-level `allow_auto_merge` enabled? `bin/ensemble-lint` available? Required CLIs (`gh`, `git`, `jq`) on PATH? MCP servers (Playwright, Context7) configured? Plugin version current? Mirrors CE's `scripts/check-health` pattern. Offer repairs for missing pieces.
-
-- **Output.** A diagnostic report with `🟢` / `🟡` / `🔴` per check, plus any artifacts created or repaired. Recommends next-step skill (per state).
-- **Cross-review.** Off — mechanical setup work, no peer review needed.
-- **Reference files.**
-  - `references/host-detect.md`
-  - `references/templates/agents-md-template.md`
-  - `references/templates/claude-md-template.md`
-  - `references/templates/agents-md-merge-rules.md` (append-merge logic for variants 2b–2d)
-  - `references/templates/github-workflow-en-sweep.yml`
-  - `references/templates/github-workflow-claude-review.yml`
-  - `references/templates/config-local-example.yaml`
-  - `references/setup-state-detection.md` (state-1 / state-2 sub-variants / state-3 heuristics)
-  - `bin/ensemble-classify-plans` (used in step 2)
-  - `skills/en-guardrail/bin/install-guardrail` (used in step 10)
-  - `scripts/check-health` (the diagnostic runner)
+- **Purpose.** Project-level bootstrap and diagnostics; distinct from the machine-level `./setup`. Detects one of three states and runs that flow. Mechanical: no review, no peer, no code. Manual-invoke only.
+- **States.** State 1, greenfield (empty or initial commit, no foundation): hand off to `/en-brainstorm` then `/en-foundation`, create nothing. State 2, an existing project without Ensemble (source present, foundation or learnings missing), with sub-variants 2a–2d by which of `AGENTS.md` / `CLAUDE.md` exist: the retrofit below. State 3, Ensemble present: diagnostics via `scripts/check-health`. A store still on the retired learnings layout is reported with a pointer to `/en-learn --migrate`; setup never migrates it.
+- **State 2 retrofit (high-level).** (`skills/en-setup/SKILL.md` is canonical.) Classify existing plans with `scripts/ensemble-classify-plans` and offer to archive non-conforming ones to `docs/plans/legacy/`; create the skeleton (`docs/{CONTEXT.md,decisions,plans/{active,completed},learnings,generated,designs}`); seed the learnings index and log, the generated indexes, and `docs/CONTEXT.md` with the project's core domain nouns (merge-only if it exists); generate or append-merge `AGENTS.md` and `CLAUDE.md` per sub-variant, never overwriting user content and keeping the cross-reference line first (D15); `.gitignore` entries verified after the write; install the four project-local `bin/` scripts the sweep workflow runs; install the sweep workflow with the chosen cadence unless `sweep.enabled: false` recorded a decline; write the committed config example; offer the guardrail (through `/en-guardrail`'s installer, resolved as a sibling skill), the gnhf CLI, the Claude Code Review action, `REVIEW.md`; note the verification receipt without touching any hook; then a mandatory final verification walk over every required artifact, re-running a missing step once and failing loudly after that; recommend `/en-foundation --retrofit` or `/en-plan`.
+- **State 3.** `check-health` prints 🟢 / 🟡 / 🔴 per check, including the required-artifact table, guardrail status, the review action, the auto-merge repo setting, the `timeout` binary and gnhf; each 🟡 / 🔴 offers its repair.
+- **Idempotent.** A second run on a settled repo changes nothing; declines are recorded in config rather than re-asked.
+- **Reference files.** `references/setup-state-detection.md`, the `AGENTS.md` / `CLAUDE.md` templates and merge rules, the workflow templates, `references/templates/config-local-example.yaml`, `references/templates/ensemble-lint` (the lint it installs), the learnings index and log formats and `references/glossary-rules.md` for seeding, `references/templates/review-md-template.md`, `references/layout-migration.md` (read to describe, never run); scripts `check-health`, `ensemble-classify-plans`, the CI wrapper (`scripts/en-sweep-ci`), `ensemble-sweep-activity-check`, `ensemble-doc-only-check`.
 
 #### 5.2.12 `en-resolve-pr`
 
-- **Purpose.** Address incoming PR review feedback systematically — humans, the Anthropic Claude Code Review action, the Codex review, CodeRabbit, etc. all land here. Triages new vs already-handled items, applies fixes, replies on the right comment-type API, resolves threads (except `needs-human`), reports merge readiness, optionally enables auto-merge.
-- **Argument.** `(none)` — current branch's PR; `<PR-number>` — that PR; `<comment-or-thread-URL>` — targeted single thread.
-- **Triage taxonomy.** Three feedback types (`review_threads`, `pr_comments`, `review_bodies`) partitioned into new / pending-decision / silent-drop (CodeRabbit/Codex/Gemini/Copilot wrappers, "looks good!", CI bot output). Per `references/resolve-pr-triage.md`.
-- **6 verdicts.** `fixed` / `fixed-differently` / `replied` / `not-addressing` (cite evidence) / `declined` (cite specific harm + source: `CLAUDE.md`, `AGENTS.md`, `docs/learnings/patterns/`) / `needs-human` (rare; structured `decision_context` for the user). Per `references/resolve-pr-rubric.md`.
-- **Reply mechanics.** Inline review threads → GraphQL `addPullRequestReviewThreadReply` + `resolveReviewThread`. Top-level PR comments / review bodies → `gh pr comment` (no resolve API). Replies always lead with `> [quoted excerpt]` for thread continuity. Per `references/resolve-pr-reply-format.md`.
-- **Iteration.** Up to 2 fix-verify cycles per invocation; cycle 3 escalates as recurring pattern.
-- **Auto-merge integration.** `--enable-auto-merge` flag flips on `gh pr merge --auto --squash` after addressing. Final summary reports `repo_allows_auto_merge` / `auto_merge_enabled` / `merge_state_status` / `review_decision` / failing/pending checks via `scripts/check-merge-status`.
-- **Capture-from-synthesis (D21).** When a `declined` or `needs-human` verdict surfaces a real anti-pattern, soft-prompt to file a learning via `/en-learn capture --from-conversation`.
-- **Tech-debt routing.** Out-of-scope `replied` verdicts file as `TD<N>` in `docs/plans/tech-debt-tracker.md`.
-- **Cross-review.** Off — review feedback already came from a review pass.
-- **Reference files.**
-  - `references/resolve-pr-triage.md`
-  - `references/resolve-pr-rubric.md`
-  - `references/resolve-pr-reply-format.md`
-  - `skills/en-resolve-pr/scripts/{get-pr-comments, get-thread-for-comment, reply-to-pr-thread, resolve-pr-thread, check-merge-status}` — wrappers around GitHub's GraphQL API (`reviewThreads`, `addPullRequestReviewThreadReply`, `resolveReviewThread`)
+- **Purpose.** Address incoming PR review feedback systematically: humans, the Anthropic Code Review action, the Codex review, CodeRabbit and the rest all land here. Triage new vs already-handled items, apply fixes, reply on the right comment-type API, resolve threads (except `needs-human`), report merge readiness.
+- **Who drives it (D59, D84).** A person, or `/en-ship`'s watch loop with `--orchestrated`. It is model-invocable on purpose; the user-only frontmatter flag it once carried would have left the watch loop with no delegate. Its promises to callers are its `CONTRACT.md`. Under `--orchestrated` it never blocks, runs exactly one pass, and refuses `--enable-auto-merge`; `--yes` is a person's standing consent to decide `needs-human` items, mutually exclusive with `--orchestrated`.
+- **Argument.** `(none)`, the current branch's PR; `<PR-number>`; `<comment-or-thread-URL>` for a single thread.
+- **Triage.** Three feedback types (`review_threads`, `pr_comments`, `review_bodies`) partitioned into new / pending-decision / silent-drop (bot wrappers, approvals, CI output). Content-aware, not author-aware.
+- **Six verdicts.** `fixed` / `fixed-differently` / `replied` / `not-addressing` (cite evidence) / `declined` (cite the specific harm and its source) / `needs-human` (rare; a structured `decision_context` for the person). Default to fixing, nits included. A reviewer-reported bug owes a regression test that fails before the fix.
+- **Reply mechanics.** Inline threads via the GraphQL reply and resolve mutations; top-level comments and review bodies via `gh pr comment`. Every reply leads with a quoted excerpt.
+- **Iteration.** Up to two cycles per invocation, stopping early when feedback is not converging; a third round escalates as a recurring pattern.
+- **Authority.** Inherited and narrowable only: fix, commit, push, reply, resolve. Never merge, rebase, force-push or approve checks; an item needing one returns as `needs-human`.
+- **Reference files.** `references/resolve-pr-triage.md`, `references/resolve-pr-rubric.md`, `references/resolve-pr-reply-format.md`; five `gh` wrappers in its `scripts/`.
 
 #### 5.2.13 `en-debug`
 
-- **Purpose.** Telemetry-driven debugging. Reads structured logs per `references/observability-conventions.md`, correlates by `trace_id` / `request_id` / event field, identifies the failing code path, and surfaces a hypothesis with `file:line` and confidence 1–10. **Read-only** — never writes code; suggests next step (typically `/en-build`, `/en-resolve-pr`, `/en-plan`, or `/en-learn capture`).
-- **Argument shapes.** `<trace-id>` (trace mode) / `<request-id>` / `"<error message>"` / `<file>:<line>` / `(none)` (tail mode).
-- **Log source.** `.ensemble/config.local.yaml` `observability.log_source` — `stdout` / `file` / `command`. `log_command` is constrained to an allowlist (`docker`, `kubectl`, `journalctl`, `gh run view`, `datadog-cli`, `aws logs`, `gcloud logging`, plus user-extended). Defends against prompt-injection from log content.
-- **Span → source mapping.** 5-priority algorithm: `error.stack` (highest confidence, 9–10) → structured `event` field heuristic (6–7) → span-name correlation (6) → full-text `msg` search (4–5) → `repo-research` agent dispatch (variable). Per `references/observability-debug-mapping.md`.
-- **Output format.** Per `references/observability-hypothesis-format.md` — Hypothesis (with confidence/10), Anchor log line (with secret + PII redaction), Span timeline, Suggested next step. Plain text by default; `--markdown` for formatted output.
-- **Confidence cap.** Without structured logs (no trace_id, no event field), falls back to plain-text correlation; caps confidence at 6/10. Suggests adopting structured logging as a follow-up.
-- **Cross-review.** Off — analysis only, no code changes.
-- **Reference files.**
-  - `references/observability-conventions.md` (the log shape contract)
-  - `references/observability-debug-mapping.md`
-  - `references/observability-hypothesis-format.md`
-  - `references/secret-patterns.md` (redaction patterns)
+- **Purpose.** Debug from evidence. **Telemetry mode** reads structured logs from the configured source, correlates by `trace_id` / `request_id` / event, maps the failing span to source, and returns a hypothesis with `file:line` and a confidence out of 10; read-only. **Code mode**, when no telemetry can anchor the error, runs investigate → root cause → optional test-first fix → handoff (D62). A person invokes it; no skill drives it.
+- **Argument shapes.** `<trace-id>` / `<request-id>` / `"<error message>"` / `<file>:<line>` / `(none)` (tail mode).
+- **Telemetry mode.** Log source from `.ensemble/config.local.yaml` `observability:` (`stdout` / `file` / `command`; `log_command` allowlisted, `max_log_lines` capped); parse per `references/observability-conventions.md`; span → source by the five-priority mapping (`error.stack`, `event` heuristic, span name, full-text `msg`, `repo-research` fallback); output per `references/observability-hypothesis-format.md` with secrets redacted. Unstructured logs cap confidence at 6.
+- **Code mode (D62).** Triage; investigate (reproduce, environment, trace the path, instrument boundaries before theorising, find something that works and diff it); root cause with an assumption audit and a causal-chain gate; classify the fix **convergent or divergent**, and never apply a divergent one; present the findings in full, then a blocking choice (fix now / diagnosis only / rethink the design). A fix records the pre-fix scope first, is test-first, one change at a time, and three failed fixes is a signal about the design.
+- **Handoff.** The fix path here, `/en-plan` (`plan_type: bug`) for anything non-trivial, `/en-resolve-pr` when the bug came from a review comment, `/en-learn capture` for a recurring pattern. **Cross-review.** Off.
+- **Reference files.** `references/observability-conventions.md`, `references/observability-debug-mapping.md`, `references/observability-hypothesis-format.md`, `references/debug-investigation.md`, `references/secret-patterns.md`; `agents/repo-research.md` as the mapping fallback.
 
 #### 5.2.14 `en-guardrail`
 
@@ -738,20 +466,30 @@ Default-safe configuration:
   - vs the built-in `/loop` — `/loop` re-invokes a prompt on a fixed interval in-session; en-loop is objective-driven with commit / rollback / retry and a supervised gnhf process that survives the session.
   - vs `/en-build` — en-build executes known plan units; en-loop discovers its slices in the loop. A peer-reviewed plan belongs in `/en-build`, not en-loop.
 - **Process (high-level).** (`skills/en-loop/SKILL.md` is canonical; this is a summary.)
-  1. Preflight: host-detect the worker agent (host-neutral: `claude` on Claude, `codex` on Codex); verify `gnhf` on PATH (else print `npm i -g gnhf` and stop, never native-fallback); clean git; resolve project test / lint commands; require an evidence-based `--stop-when`.
+  1. Preflight: run the detection script and pick the worker agent from `HOST` (host-neutral: `claude` on Claude, `codex` on Codex); verify `gnhf` on PATH (else print `npm i -g gnhf` and stop, never native-fallback); clean git; resolve project test / lint commands; require an evidence-based `--stop-when`.
   2. Compose the per-iteration test-gate worker prompt (implement one slice, run test + lint, commit only on green, no fake success).
   3. Launch gnhf with the prompt + caps + `--stop-when` (feature branch or `--worktree`).
-  4. Checkpoint cadence is en-loop's own mechanic (gnhf has no mid-run callback): run gnhf in bounded chunks capped at `--review-every N` iterations; at each chunk boundary and at loop end run `/en-review --peer-only --mode headless` over the branch diff, record a `review-verdict:` trailer, then relaunch on the same branch with findings folded in as the next chunk's acceptance criteria.
+  4. Checkpoint cadence is en-loop's own mechanic (gnhf has no mid-run callback): run gnhf in bounded chunks capped at `--review-every N` iterations; at each chunk boundary and at loop end run `/en-review --peer --mode headless` over the branch diff, record a `review-verdict:` trailer, then relaunch on the same branch with findings folded in as the next chunk's acceptance criteria.
   5. On final exit: Morning Review (reconstruct state from git / logs / processes, never memory) → `/en-learn capture` → hand off `/en-review` → `/en-qa` → `/en-ship`. Never auto-merge.
 - **Modes.** Hands-Off (bounded, walk away), Companion (steer between chunks via `/en-review`, findings become the next bounded prompt), plus Morning Review on return.
 - **Dependency.** The `gnhf` CLI (`npm i -g gnhf`), agent-agnostic; surfaced as an optional, non-blocking install by `/en-setup` (including a `scripts/check-health` advisory). en-loop wraps gnhf rather than reimplementing the loop (the EN04 lesson, D40).
 - **Cross-review.** Branch-level at checkpoints (every `--review-every N` and at loop end), not per iteration; per-iteration is a fast test-gate only (D39 `performance > speed ≥ cost`).
 - **Safety.** Preserve user changes; no destructive git (worker-prompt rule for every worker); `en-guardrail` covers a `claude` worker (Claude Code PreToolUse hook) while `codex` / other workers rely on the worker-prompt rules + gnhf rollback + `--worktree`; bounded caps (`--max-iterations` / `--max-tokens`, plus en-loop-owned `--max-runtime` via `timeout` / `gtimeout`); never auto-merge; completion is not acceptance.
-- **Reference files.**
-  - `references/host-detect.md`
-  - gnhf CLI (external; `npm i -g gnhf`) — the loop engine this skill wraps
+- **Reference files.** `scripts/ensemble-detect-host` (run for `HOST`; D91); the gnhf CLI (external, `npm i -g gnhf`), the loop engine this skill wraps.
 
 ---
+
+#### 5.2.16 `en-simplify`
+
+- **Purpose.** Behaviour-preserving simplification of recently changed code across three dimensions, reuse, quality and efficiency; fewer lines is not the goal, faster comprehension is. Invoked once per build by `/en-build`'s post-build phase over the branch diff (D52), and ad hoc.
+- **Process (high-level).** (`skills/en-simplify/SKILL.md` is canonical; contract in its `CONTRACT.md`.)
+  1. Resolve scope: user-named, else the branch diff against its base, else recent files; a caller-supplied scope that resolves empty is a result, never a question (D60).
+  2. Preflight the kind of change: documentation, generated or vendored files, lockfiles and formatter churn are not simplified. A kind gate, never a size gate; size belongs to the caller.
+  3. Dispatch `code-simplifier` three times in one batch, one dimension each, read-only, evidence tier (D86); a concurrency limit is backpressure, an undispatchable reviewer runs inline and says so; all three dimensions must have an outcome.
+  4. Apply findings in the parent: inspect widely, edit narrowly; an interface that only ever existed in the unshipped scope is not protected; never remove a safety check.
+  5. Verify: typecheck, lint, scoped tests; revert the specific fix that breaks a check, never the assertion.
+  6. Summarize by dimension. Does not commit; the caller records `simplify-verdict:` (D41).
+- **Cross-review.** Off. **Reference files.** `references/agent-dispatch.md` (shared), `agents/code-simplifier.md`.
 
 ## 6. Agent Catalog
 
@@ -775,13 +513,14 @@ Eleven agents total: 7 reviewers (read-only) + 3 researchers (read-only) + 1 ref
 | Agent | Fires when diff touches | Dispatched by |
 |---|---|---|
 
-### 6.2 Research agents (3)
+### 6.2 Research agents (4)
 
 | Agent | Purpose | Dispatched by |
 |---|---|---|
 | `repo-research` | Scan codebase for patterns, conventions, file paths, existing implementations | `en-plan`, `en-foundation`, `en-sweep`, `en-learn` (for `docs/architecture.md` sync) |
-| `learnings-research` | Query `docs/learnings/` for relevant past bugs, patterns, decisions | `en-plan`, `en-review`, `en-brainstorm`, `en-foundation` |
-| `web-research` | External docs (Context7) and best-practice search (WebSearch). Optional. | `en-plan`, `en-brainstorm`, `learn --pack`, `learn ingest <url>` |
+| `learnings-research` | Query `docs/learnings/` for relevant past bugs, patterns, decisions | `en-plan`, `en-review`, `en-learn` (broad search) |
+| `web-research` | External docs (Context7) and best-practice search (WebSearch). Optional. | `en-plan`, `en-brainstorm` |
+| `repo-fact-lookup` | Answer specific repo questions and verify absence-claims, each with a `file:line` or `absent`; retrieval tier, no interpretation | `en-brainstorm` |
 
 ### 6.3 Refiner agents (1)
 
@@ -789,7 +528,7 @@ Distinct from reviewers (which return findings) and researchers (which return da
 
 | Agent | Purpose | Dispatched by | Source |
 |---|---|---|---|
-| `code-simplifier` | Refine recently modified code for clarity, consistency, and project-standards compliance while preserving exact functionality. Reduces nesting, eliminates redundancy, applies CLAUDE.md / AGENTS.md conventions, avoids over-simplification (no nested ternaries, no clever-at-cost-of-readable). Model: opus. | `en-build` (per unit, before peer review) | [Anthropic claude-plugins-official](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md) |
+| `code-simplifier` | Reviews a diff along one simplification dimension (reuse, quality or efficiency) and returns findings with the proposed edit and a behaviour-preservation note; read-only, the dispatching skill applies what it accepts (D60, D86). Model: sonnet (evidence tier). | `en-simplify` (three at once, one dimension each, over the branch diff) | Adapted from [Anthropic claude-plugins-official](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md), rebuilt as a reviewer |
 | `dimension-reviewer` | Reviews a diff along ONE named dimension (correctness, testing, maintainability, standards, security, performance, migrations); the dimension, focus and scope arrive in the prompt. Read-only. | `en-review`, `en-build`, `en-plan`, `en-foundation` |
 
 ### 6.4 Agent invariants
@@ -1027,10 +766,11 @@ brainstorm → docs/designs/*.md
 
 | Skill | Agents it may dispatch |
 |---|---|
-| `en-brainstorm` | `web-research` (optional), `learnings-research` (optional) |
-| `en-foundation` | `repo-research`, `learnings-research`, `web-research` (optional) |
+| `en-brainstorm` | `web-research` (optional), `repo-fact-lookup` |
+| `en-foundation` | `repo-research` (retrofit; D56) |
 | `en-plan` | `repo-research`, `learnings-research`, `web-research` (conditional) |
-| `en-build` | `code-simplifier` (per unit, before peer review); orchestrates peer agent or operates inline |
+| `en-build` | none directly; invokes `/en-simplify` and `/en-review --cross` once, post-build (D52) |
+| `en-simplify` | `code-simplifier` × 3 (reuse, quality, efficiency), read-only, evidence tier (D86) |
 | `en-review` | 4 always-on reviewers + 3 conditional reviewers + `learnings-research` |
 | `en-qa` | none; uses Playwright MCP directly |
 | `en-learn` | `repo-research` (for `docs/architecture.md` sync), `web-research` (no longer used — external lookup moved to research-time skills), Context Analyzer / Solution Extractor / Related Docs Finder sub-tasks (in-process) |
@@ -1268,7 +1008,7 @@ Mechanical findings auto-fix via `--lint --fix`. Judgment-required findings (con
 
 | Principle | Mechanism |
 |---|---|
-| **Lean SKILL.md** | Target 150–400 lines. Process and decision logic only. |
+| **Lean SKILL.md** | Budget 24KB per SKILL.md, enforced by `tests/lint/skill-size.test.sh` with a per-skill baseline that only tightens. Process and decision logic only. |
 | **External templates** | Templates and long checklists in `references/`. Loaded on demand. |
 | **No bash preambles** | Brief mode/host-detection block (~10 lines), no telemetry, no auto-update. |
 | **Light AskUserQuestion** | Recommendation + 2–4 options + one-line rationale. No heavy decision-brief format. |

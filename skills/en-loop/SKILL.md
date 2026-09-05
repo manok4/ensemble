@@ -1,6 +1,6 @@
 ---
 name: en-loop
-description: "Run a bounded, objective-driven autonomous loop until an evidence-based stop condition. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'. One committed, test-gated slice per iteration, with cross-agent review at checkpoints. Wraps the gnhf CLI. Manual-invoke only; bounded by --stop-when, --max-iterations, --max-tokens and --max-runtime."
+description: "Run a bounded autonomous loop until an evidence-based stop condition: one committed, test-gated slice per iteration, cross-agent review at checkpoints. Wraps the gnhf CLI. Trigger phrases: 'loop on this', 'keep working overnight', 'run until', 'autonomous loop', 'good night have fun', 'gnhf'."
 disable-model-invocation: true
 ---
 
@@ -9,10 +9,7 @@ disable-model-invocation: true
 
 > **Running a bundled script.** Anchor every call to this skill's own directory:
 > `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`.
-> The trailing `;` is load-bearing. en-loop carries one script,
-> `scripts/ensemble-detect-host`, and had no anchor convention until 2026-09-03:
-> it was the only script-carrying skill without one, which is why its host-detection
-> reference could get away with naming a `bin/` path that resolves nowhere.
+> The trailing `;` is load-bearing. en-loop carries one script, `scripts/ensemble-detect-host`.
 
 Run a **bounded, objective-driven autonomous loop**: keep an agent working, one small committed test-gated slice per iteration, toward an objective, until an evidence-based stop condition is met. This is the ralph / autoresearch / "good night, have fun" pattern for overnight, walk-away work.
 
@@ -33,12 +30,12 @@ Ensemble's value-add is exactly two things, not the loop plumbing:
 
 - **vs `/en-flow`** — en-flow is a *fixed one-shot pipeline* (plan → build → learn → ship) for a **defined plan**. en-loop is *open-ended*: an objective whose scope is not fully enumerated, chipped at one committed slice per iteration until a natural-language stop condition ("keep reducing complexity until the suite is green and lint is 0").
 - **vs the built-in `/loop`** — `/loop` re-invokes a prompt on a fixed interval in-session. en-loop is objective-driven with commit / rollback / retry and a real supervised (gnhf) process that survives the session.
-- **vs `/en-build`** — en-build executes *known plan units* with per-unit and branch-level review. en-loop discovers its slices in the loop, but borrows en-build's per-slice test-gate and the branch-level review model (D35). If the work is already a peer-reviewed plan, use `/en-build`, not en-loop.
+- **vs `/en-build`** — en-build executes *known plan units* with per-unit and branch-level review. en-loop discovers its slices in the loop, but borrows en-build's per-slice test-gate and the branch-level review model (D52). If the work is already a peer-reviewed plan, use `/en-build`, not en-loop.
 
 ## Preflight (before launching a loop)
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve the worker agent host-neutrally: `claude` on a Claude Code host, `codex` on a Codex host (unless the user overrides with `--agent`). Never hardcode a single agent. **Note guardrail applicability in the launch report:** `en-guardrail` (a Claude Code `PreToolUse` hook) covers the worker only when the worker runtime honors that hook — that is a `claude` worker. A `codex` (or other) worker is **not** covered by the Claude hook; for those runs the safety floor is the worker-prompt rules + gnhf rollback + `--worktree` (see Safety).
-1a. **No recursion-guard step, deliberately.** Every other skill carrying `references/recursion-guard.md` begins with one. en-loop cannot be reached from inside a peer subprocess: `disable-model-invocation: true` means only a human starts it. The contract still matters here because the detection script in step 1 reads `ENSEMBLE_PEER_REVIEW` itself, and because the checkpoint `/en-review --peer` sets that variable for the peer it dispatches.
+1. **Detect host.** Run `eval "$(bash "$SKILL_DIR/scripts/ensemble-detect-host")"` and read `HOST` (the peer variables it also emits are not used here). Resolve the worker agent host-neutrally: `claude` on a Claude Code host, `codex` on a Codex host (unless the user overrides with `--agent`). Never hardcode a single agent. **Note guardrail applicability in the launch report:** `en-guardrail` (a Claude Code `PreToolUse` hook) covers the worker only when the worker runtime honors that hook — that is a `claude` worker. A `codex` (or other) worker is **not** covered by the Claude hook; for those runs the safety floor is the worker-prompt rules + gnhf rollback + `--worktree` (see Safety).
+1a. **No recursion-guard step, deliberately.** en-loop cannot be reached from inside a peer subprocess: `disable-model-invocation: true` means only a human starts it. The detection script reads `ENSEMBLE_PEER_REVIEW` itself, and the checkpoint `/en-review --peer` sets that variable for the peer it dispatches; this skill neither sets nor branches on it.
 2. **Verify gnhf is installed.** Run `gnhf --help`. If gnhf is not on PATH, **print the install command and stop**:
    > `/en-loop` needs the gnhf CLI. Install it with `npm i -g gnhf`, then re-run. (`/en-setup` also offers this install.)
 
@@ -80,7 +77,7 @@ git log --oneline --decorate --max-count=20
 pgrep -fl 'gnhf|claude|codex' || true
 ```
 
-Then run **independent** verification: `/en-review` over the branch diff plus `/en-qa`, comparing the result to the stop condition and the user's latest feedback. Decide: **Mergeable**, **Needs follow-up loop**, or **Do not merge**. If it needs follow-up, continue in Companion mode instead of presenting the run as complete. Hand off to `/en-ship` only when Mergeable and only with explicit authorization. Never auto-merge.
+Then invoke `/en-review` over the branch diff and invoke `/en-qa`, as **independent** verification, comparing the result to the stop condition and the user's latest feedback. Decide: **Mergeable**, **Needs follow-up loop**, or **Do not merge**. If it needs follow-up, continue in Companion mode instead of presenting the run as complete. Hand off to `/en-ship` only when Mergeable and only with explicit authorization. Never auto-merge.
 
 ## Per-iteration worker-prompt contract (fed to gnhf)
 
@@ -158,7 +155,7 @@ Forward only the caps `gnhf --help` advertises; if gnhf has no `--model` flag, p
 
 **Flag ownership.** `--objective`, `--stop-when`, `--review-every`, `--mode`, `--max-iterations` and `--max-runtime` are **en-loop's own**: en-loop interprets them and does not forward them to gnhf verbatim. Only `--agent`, `--max-tokens`, `--worktree` and `--push` are pass-throughs, forwarded **only if `gnhf --help` advertises them**, because gnhf's flag surface is version-dependent and forwarding a flag it does not list is an error.
 
-**`--max-iterations` is the one to get right.** It is the budget for the *whole run*, and gnhf never receives it. What gnhf's own `--max-iterations` receives is `--review-every`, so each chunk stops at the checkpoint boundary and the review can run. Forwarding the user's overall cap instead collapses the run to a single chunk: `--max-iterations 40 --review-every 5` would run forty iterations with **no checkpoint review at all**, which is half of what en-loop adds over a bare gnhf run. This section listed it as a pass-through until 2026-09-03. en-loop decrements the overall budget itself as chunks complete, and stops launching new ones when it reaches zero.
+**`--max-iterations` is the one to get right.** It is the budget for the *whole run*, and gnhf never receives it. What gnhf's own `--max-iterations` receives is `--review-every`, so each chunk stops at the checkpoint boundary and the review can run. Forwarding the user's overall cap instead collapses the run to a single chunk: `--max-iterations 40 --review-every 5` would run forty iterations with **no checkpoint review at all**, which is half of what en-loop adds over a bare gnhf run. en-loop decrements the overall budget itself as chunks complete, and stops launching new ones when it reaches zero.
 
 `--max-runtime` is likewise enforced by en-loop, via `command -v timeout || command -v gtimeout` (macOS: `brew install coreutils`), stopping the current chunk gracefully at the cap rather than relying on a gnhf runtime flag that may not exist.
 
@@ -179,7 +176,5 @@ Forward only the caps `gnhf --help` advertises; if gnhf has no `--model` flag, p
 
 ## Reference files
 
-- `references/host-detect.md` — host detection (worker-agent selection)
-- `references/recursion-guard.md` — the `ENSEMBLE_PEER_REVIEW` contract, reached through `host-detect.md`; it governs the short-circuit the detection script takes when it runs inside a peer subprocess
-- `$SKILL_DIR/scripts/ensemble-detect-host` — the detection script `references/host-detect.md` describes. Prefer running it over sourcing that file's inline snippet: the snippet omits the recursion-guard short-circuit and the session cache, so sourcing it works but is slower and misses a fast-path
+- `$SKILL_DIR/scripts/ensemble-detect-host` — host detection for worker-agent selection; run it, read `HOST`
 - gnhf CLI (`npm i -g gnhf`) — the loop engine this skill wraps; surfaced as an optional install by `/en-setup`

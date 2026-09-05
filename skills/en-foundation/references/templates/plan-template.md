@@ -74,6 +74,10 @@ data_scale: {{DATA_SCALE}}
 
 <one to three paragraphs: the architectural shape of the solution. Decisions live here at the macro level; per-unit tactics live in U-ID sections.>
 
+## Test seams
+
+<Where tests observe this work, decided once and inherited by every unit. Name each seam and say whether it already exists or is new. Prefer existing, prefer the highest seam that can still observe the behaviour, prefer few. Omit this section when the plan adds no tests.>
+
 ## Technical design
 
 **Present ONLY when an architecture-complexity trigger fires** (≥3 new/changed components, a ≥3-step protocol/handshake, a state machine, ≥3 data-flow stages, or DSL/public-API design). A **directional** high-level sketch of the cross-cutting architecture — component boundaries, data flow between them, and key interfaces/contracts. Directional, not a spec (the units carry the tactics). **Omit this section entirely on simpler plans** that fire no trigger.
@@ -89,6 +93,9 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Goal:** <one-line outcome>
 - **Requirements covered:** R<N>, AE<N>
 - **Dependencies:** <U-IDs that must complete first, or `none`>
+- **Interfaces:** *(omit unless a later unit calls something this one creates)*
+  - *Produces:* <exact names, signatures, return shapes later units call>
+  - *Consumes:* <exact names this unit calls from earlier units>
 - **Files:** <repo-relative paths the unit will touch>
 - **Approach:** <how this unit will be implemented>
 - **Risk:** low | medium | high | destructive
@@ -233,7 +240,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 
 ## Lifecycle
 
-1. **Draft** — `en-plan` writes the plan, runs Outside Voice, user iterates. `status: draft`. File lives in `active/`. If verdict is `revise`, `/en-plan` re-runs the peer pass after applying findings (depth-aware iteration cap: lightweight=1, standard=2, deep=2). On `approve`, `/en-plan` writes `peer_review_plan_hash`, flips status to `open`, and auto-commits the plan file.
+1. **Draft** — `en-plan` writes the plan, runs Outside Voice, user iterates. `status: draft`. File lives in `active/`. If verdict is `revise`, `/en-plan` applies findings and re-runs the peer once, and only when the pass returned a P0 or P1 (D49). On `approve`, `/en-plan` writes `peer_review_plan_hash`, flips status to `open`, and auto-commits the plan file.
 2. **Open** — Plan has cleared peer review (verdict `approve`) or `--no-peer` was used. `status: open`. Still in `active/`. Queued for build. Tracked in git.
 3. **In progress** — `en-build` picks the plan up and flips `status: in_progress` at start. Still in `active/`. Per-phase boundary checks validate `peer_review_plan_hash` against immutable plan-input fields (excluding the iteration log, per-unit status, and `peer_review_resolutions`).
 4. **Completed** — `en-learn capture` flips `status: completed`, sets `shipped: <date>`, moves the file to `completed/`.

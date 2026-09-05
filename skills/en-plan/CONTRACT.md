@@ -18,8 +18,9 @@ checkpoint will block.
 ## Non-interactive guarantee
 
 **Partial, and callers must plan for it.** This skill is interactive by design:
-it asks planning questions one per turn. `--branch-on-default` removes the only
-checkpoint that blocks unattended, but the planning dialogue itself remains. A
+it asks planning questions in frontier rounds (one per turn on Lightweight).
+`--branch-on-default` removes the only checkpoint that blocks unattended, but
+the planning dialogue itself remains. A
 caller wanting a fully unattended run must supply enough context up front that
 no question is needed.
 
@@ -46,9 +47,10 @@ never force-pushes or rebases.
 
 ## Cost bounds
 
-The peer loop is capped by depth: lightweight 1, standard 2, deep 2. The re-loop
-is gated on severity — a pass returning only P2/P3 findings exits instead of
-spending another round trip.
+The peer loop runs at most two passes at every depth: the initial review and
+one verification pass, and the second only when the first returned a P0 or P1
+(D49). A pass returning only P2/P3 findings exits instead of spending another
+round trip.
 
 ## Recursion
 

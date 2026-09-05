@@ -55,7 +55,7 @@ updated: YYYY-MM-DD
 
 ## TD-ID stability
 
-TD-IDs are **append-only** (per `references/stable-ids.md`):
+TD-IDs are **append-only**, like every stable ID in Ensemble:
 
 - Never renumber. Never delete.
 - When resolved, move the entry from `## Open` to `## Resolved`. Keep the same TD-ID.

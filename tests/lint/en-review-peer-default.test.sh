@@ -383,10 +383,10 @@ rm -rf "$IT"
 # Every reason the helper can emit must be a member of the published enum
 # (EN11-PR-008), so helper and policy cannot drift apart.
 missing_reasons=""
-for reason in default-on explicit-flag no-peer-flag single-agent-fallback \
+for reason in default-on explicit-flag no-peer-flag host-only-mode single-agent-fallback \
               report-only-mode recursion-guard peer-unavailable \
               peer-failed:auth peer-failed:unknown peer-failed:retry-exhausted \
-              dropped-model-fragment dropped-effort-fragment; do
+              dropped-model-fragment dropped-effort-fragment dropped-isolation-fragment; do
   grep -qF -- "$reason" "$POLICY" || missing_reasons="$missing_reasons $reason"
 done
 if [ -z "$missing_reasons" ]; then
@@ -394,7 +394,7 @@ if [ -z "$missing_reasons" ]; then
 else
   fail "reasons emitted but not in the policy enum" "$missing_reasons"
 fi
-for reason in default-on dropped-model-fragment dropped-effort-fragment \
+for reason in default-on dropped-model-fragment dropped-effort-fragment dropped-isolation-fragment \
               peer-failed:auth peer-failed:unknown peer-failed:retry-exhausted; do
   grep -qF -- "$reason" "$INVOKE" || fail "helper cannot emit documented reason: $reason"
 done
@@ -491,10 +491,16 @@ has "$DISPATCH" "+1" "same-source overlap boost retained"
 has "$DISPATCH" "fast-pass" "fast-pass corroboration carve-out preserved"
 has "$DISPATCH" "Blind-peer invariant" "blind-peer invariant is named"
 hasnt "$DISPATCH" "confirm or counter them" "the stale peer-reads-findings claim is gone"
-has "$SCHEMA" "reconciliation" "finding-schema documents reconciliation records"
-has "$SCHEMA" "sources" "record carries sources[] not a scalar"
-has "$SCHEMA" "contributing" "record carries contributing[] provenance"
-has "$SCHEMA" "source" "raw findings carry a source tag"
+# The reconciliation record shapes moved on 2026-09-04 from the shared
+# finding-schema (four carriers, three of which never produce or parse them)
+# into en-review's persona-dispatch, beside the algorithm. The shared schema
+# keeps a pointer; the fields are asserted where they now live.
+RECON="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
+has "$RECON" "reconciliation[].bucket" "persona-dispatch documents reconciliation records"
+has "$RECON" "reconciliation[].sources" "record carries sources[] not a scalar"
+has "$RECON" "reconciliation[].contributing" "record carries contributing[] provenance"
+has "$RECON" "findings[].source" "raw findings carry a source tag"
+has "$SCHEMA" "reconciliation" "the shared schema still points at the aggregated envelope"
 has "$SKILL" "Two-source reconciliation" "en-review step 10 reconciles two sources"
 has "$SKILL" "never auto-applied" "conflicting findings are never auto-applied"
 

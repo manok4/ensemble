@@ -45,11 +45,20 @@ else
        "$total / $BUDGET chars — over by $((total - BUDGET)); largest is $worst at $worst_n"
 fi
 
-# No single skill should dominate the shared budget.
-CAP=700
+# No single skill should dominate the shared budget. The cap is on the text
+# of the scalar (prefix and quotes stripped). 700 was the ceiling until
+# 2026-09-03, when every description was rewritten to a purpose sentence plus
+# its trigger phrases; the longest was 637 and all are now under 300. Modes,
+# flags and rubric summaries are body content; the description is loaded into
+# every session whether or not the skill runs.
+CAP=300
+desc_text_chars() {
+  awk '/^description:/{f=1} f{print} f && /"[[:space:]]*$/ && !/^description:[[:space:]]*"$/{exit}' "$1" \
+    | sed -e 's/^description:[[:space:]]*"//' -e 's/"[[:space:]]*$//' | tr -d '\n' | wc -c | tr -d ' '
+}
 over=""
 for s in "$REPO_ROOT"/skills/*/SKILL.md; do
-  n=$(desc_chars "$s")
+  n=$(desc_text_chars "$s")
   [ "$n" -gt "$CAP" ] && over="$over $(basename "$(dirname "$s")"):$n"
 done
 if [ -z "$over" ]; then

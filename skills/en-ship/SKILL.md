@@ -1,6 +1,6 @@
 ---
 name: en-ship
-description: "Push clean changes to the remote with a meaningful commit and PR. Pre-flight (lint + typecheck + targeted tests + secret scan + merge-conflict check), conventional-commit message, push, gh pr create. Optional --auto-merge enables gh pr merge --auto --squash. Trigger phrases: 'ship it', 'push and PR', 'open a PR', 'commit and push', 'send for review'."
+description: "Push clean changes with a conventional commit and a PR: preflight (lint, typecheck, targeted tests, secret scan, merge check), push, gh pr create, optional --auto-merge. Trigger phrases: 'ship it', 'push and PR', 'open a PR', 'commit and push', 'send for review'."
 ---
 
 
@@ -19,157 +19,86 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    - **Existing PR** — `gh pr list --head <branch> --state open`. **If one exists, this run updates it**: step 12 pushes to it and the watch loop resumes on it, and `gh pr create` is never called a second time. Re-running `/en-ship` on a branch that already has a PR is an ordinary, safe operation, not a new ship.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't ship).
-3. **Pre-flight.**
-   - `git status` — show unstaged + staged + untracked.
-   - `git rev-parse --abbrev-ref HEAD` — current branch.
-   - `git diff --stat origin/<base>...HEAD` — diff scope.
-   - **Merge conflict check** — `git status` for `UU` markers. On detection: stop and surface; do not attempt to ship a conflicted tree.
+3. **Pre-flight.** Fetch, then let the helper classify: `git fetch origin <base>`, then `bash "$SKILL_DIR/scripts/ensemble-ship-preflight" --base origin/<base> [--scope <path>]... --json`. It returns the branch, `ahead`/`behind`, `published`, `staging_case`, `scope_matched`, `excluded` and `untracked_inventory`, and it never stages, fetches or rewrites. A state it cannot ship from (detached HEAD, a conflicted tree, an unresolvable base) exits 1 with a `blocked` reason, and this run stops there. Pass `--scope` only when the user named the paths this ship is about.
    - **Default-branch protection** — if `HEAD == main`, ask explicitly: "Pushing directly to `main`. Confirm? (y/N)". Default no.
-   - **Base freshness.** `git fetch origin <base>`, then report ahead/behind counts. Checking the diff without fetching cannot tell you the base moved, which is how a branch reaches push time needing a rebase nobody planned.
+   - **Base freshness.** The fetch is what makes a moved base detectable; report the ahead/behind counts. Checking the diff without fetching is how a branch reaches push time needing a rebase nobody planned.
      - **Predict conflicts before integrating** — `git merge-tree` against the fetched base. A predicted conflict is surfaced now, while the tree is clean, not discovered mid-rebase.
-     - **Inventory untracked and unstaged files first.** Record path and checksum for everything the ship is not about to commit, and verify that inventory after any integration. An untracked file lost during a rebase is silent, and the ship reports success either way.
-     - **Never rewrite a published branch automatically.** If the branch has no upstream, an ordinary rebase is fine. If it has already been pushed, rebasing rewrites history other people and open PRs may be built on: offer merge-base integration instead, and require explicit approval before any `--force-with-lease`.
+     - **Inventory untracked and unstaged files first.** `untracked_inventory` and `excluded` are that record, with checksums; verify that inventory after any integration. An untracked file lost during a rebase is silent, and the ship reports success either way.
+     - **Never rewrite a published branch automatically.** `published: true` means others and open PRs may be built on this history: offer merge-base integration instead, and require explicit approval before any `--force-with-lease`. An unpublished branch may be rebased.
 
 4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04) - you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The interactive checkpoints below **auto-resolve**; only the hard-stop safety floor pauses.
 
-   - **Learning capture is NOT decided here.** It was relocated to `/en-build`'s completion checkpoint (EN04; see the EN04 checkpoint spec in the Ensemble repo and foundation D38) so capture happens at the point of insight. `/en-ship` no longer prompts for learnings on the default path.
+   - **Learning capture is NOT decided here.** It lives at `/en-build`'s completion checkpoint (D38), at the point of insight; this skill never prompts for learnings.
    - **Auto-resolved under hands-off:** the scope-confirm (step 7) is auto-accepted; the plan-completion checkpoint (step 8) auto-flips a verifiably-complete plan and passes informationally otherwise (see those steps).
    - **Safety floor - always hard-stops, even hands-off (never auto-resolved):**
      - **Secret-scan match** (step 6) - stop; do not ship secrets.
      - **Push to the default branch** (`HEAD == main`/default, step 3) - explicit confirmation required.
      - **Destructive-guardrail hit** (`en-guardrail` intercept on any command) - its prompt fires regardless.
-   - **`--interactive` escape hatch** restores the prior stop-and-ask flow: it re-enables the scope-confirm and plan-completion prompts. (It does **not** prompt for learnings — learning capture is a single checkpoint at `/en-build` completion; `/en-ship` never handles it.)
+   - **`--interactive` escape hatch** restores the stop-and-ask flow for the scope-confirm and plan-completion prompts. Learning capture stays at `/en-build`.
 
 5. **Lint + typecheck + targeted tests on changed files.**
 
    **First, ask whether another layer already proved this exact tree.** Run
-   `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" verify --requires lint,typecheck,full_suite --json`.
-   This runs **after** the step-3 base-freshness gate, because that gate is what makes a moved base
-   detectable at all — checking the receipt first would accept one whose base had silently advanced.
+   `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" verify --requires lint,typecheck,full_suite --json`,
+   after the step-3 base-freshness gate, since that gate is what makes a moved base detectable.
 
    - **Exit 0** → skip lint, typecheck and the targeted tests. Report what was skipped, which checks the
      receipt covered, how old it is, and who wrote it. A skip nobody can see is indistinguishable from a
      check that never existed.
    - **Any non-zero** → run everything, and **surface the refusal reason verbatim** (`fingerprint-mismatch`,
      `base-moved`, `dependency-changed`, `wrong-repo`, `expired`, `check-not-recorded`, `no-receipt`).
-     A silent re-run teaches nobody why the optimisation did not apply.
 
-   **There is no partial credit.** An invalid receipt means run everything. Do not run "the tests covering
-   what changed", do not keep the lint result and re-run only the suite, and do not reason about which
-   subset might still apply. Selecting a subset from a delta is test-impact analysis, which the tier below
-   shows this project cannot do reliably — and a receipt that silently under-tests is worse than no receipt.
-   The asymmetry is the whole argument: a needless re-run costs minutes, a wrongly-skipped one costs a
-   broken main branch.
-
-   **The secret scan and `git diff --check` always run**, receipt or not. They are cheap, and they ask a
-   question about *this diff* rather than about the tree's tests, so no receipt can answer them.
+   **There is no partial credit.** An invalid receipt means run everything; the validity argument is
+   `references/verification-receipt.md`'s and is not repeated here.
+   **The secret scan and `git diff --check` always run**, receipt or not: they ask a question about *this diff*, which no receipt can answer.
 
    - Project `lint` command (from `AGENTS.md`).
    - Project `typecheck` command if applicable.
    - **Targeted tests — resolve the set in this fixed order, first match wins:**
-     1. **`test_changed_command:` from `AGENTS.md`**, if the project declares one. It wins outright: the project knows how to select its own tests better than any inference here.
-     2. **The `test_impact:` prefix map from `AGENTS.md`**, mapping source directories to test directories.
-     3. **The sibling-filename heuristic** — same path with `.test.` / `.spec.` / `_test.` inserted. This is the fallback for projects that have declared nothing, so adding the map is additive and never breaks an existing repo.
+     1. **`test_changed_command:` from `AGENTS.md`**, if the project declares one. It wins outright, and it is the tier a project should fill with its stack's dependency-graph tooling (`jest --findRelatedTests`, `pytest-testmon`, Go's package graph, `nx affected`). Report `selection: graph`.
+     2. **The `test_impact:` prefix map from `AGENTS.md`**, mapping source directories to test directories. Report `selection: approximate`.
+     3. **The sibling-filename heuristic** — same path with `.test.` / `.spec.` / `_test.` inserted. The fallback for projects that have declared nothing. Report `selection: approximate`.
 
-     **Report why each test was selected** — which rule matched, and for the map, which prefix. A selection nobody can audit is one nobody will notice is wrong.
+     **Report why each test was selected** — which rule matched, and for the map, which prefix. A selection nobody can audit is one nobody will notice is wrong. The tier travels into the PR body (step 12), so a reviewer can tell a graph-selected run from a guessed one.
 
-     **An empty selection is reported as empty, never as a pass.** This is the failure the heuristic caused: in any layout where tests do not sit beside sources — `backend/app/services/` mapping to `backend/tests/services/`, say — it matches nothing, runs nothing, and the step reports success. Zero tests found is a finding about the project's configuration, not a green check.
+     **An empty selection is reported as empty, never as a pass.** In any layout where tests do not sit beside sources, the heuristic matches nothing, runs nothing, and used to report success. Zero tests found is a finding about the project's configuration, not a green check.
+
+     **Above about sixty percent of the suite, run the suite.** A selection that large has stopped paying for itself, and a full run is the stronger evidence.
    - On any failure → stop; surface; offer to run `/en-review` or `/en-qa` to triage.
+   - **On success, write a receipt for what this run proved:** `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check lint=passed --check typecheck=passed --check targeted_tests=passed --base origin/<base> --by en-ship`, plus `--dep <path>` per lockfile. It records `targeted_tests`, never `full_suite`, so a pre-push hook that requires the suite still runs it. Never fatal: a failed write is a warning.
 6. **Secret scan on diff.** Per `references/secret-patterns.md`. Match against high-confidence regexes + file-name red flags.
    - Match → stop; print offenders; suggest `git restore <file>` or `--allow-secrets` (rare).
    - Heuristic match only → surface as warning; let user confirm.
-7. **Resolve what to commit, then confirm scope.** The skill said what to *show* but never how files reach the index. Resolve one case explicitly — they are ordered, first match wins:
+7. **Resolve what to commit, then confirm scope.** Act on the `staging_case` step 3 returned. Resolve one case explicitly — they are ordered, first match wins:
 
-   | Working tree | Action |
+   | Case | Action |
    |---|---|
-   | Clean, commits already ahead of base | **Push the existing commits. Create no new commit.** The build already committed its work; a ship commit here would be empty or spurious. |
-   | Tracked changes inside the ship's scope | Stage that computed allowlist, path by path. |
-   | Modified or untracked files outside the scope | **Preserve and exclude.** They are reported, never staged, never stashed away silently. |
-   | No commits ahead and nothing in scope | Stop as a no-op. There is nothing to ship, and that is not a failure. |
+   | `push-existing` — clean tree, commits already ahead of base | **Push the existing commits. Create no new commit.** The build already committed its work; a ship commit here would be empty or spurious. |
+   | `stage-scoped` — tracked changes inside the ship's scope | **Stage that computed allowlist** (`scope_matched`), path by path. |
+   | Anything in `excluded` — modified or untracked files outside the scope | **Preserve and exclude.** Reported, never staged, never stashed away silently. |
+   | `no-op` — no commits ahead and nothing in scope | **Stop as a no-op.** There is nothing to ship, and that is not a failure. |
    | A PR already exists for this branch (step 1) | Update it — push and rejoin the watch loop; do not call `gh pr create` again. |
 
    **Never `git add .` or `git add -A`.** A bare stage absorbs whatever is in the tree, which on a machine with unrelated edits in flight commits work the user never offered and cannot easily find afterwards.
 
    Show what will be committed (`git diff --cached` summary) plus what was deliberately excluded. **Hands-off (default):** auto-accept the computed scope and continue. **`--interactive`:** the user confirms or revises before proceeding.
 
-8. **Plan completion checkpoint.** AFTER all blocking preflight checks have passed (lint, typecheck, tests, secret scan, scope confirm) and BEFORE committing. The checkpoint never gates the ship — every outcome is informational; it catches plans orphaned at `status: in_progress` (or `open`) that should have been flipped to `completed` by `/en-learn capture` step 11 but weren't (dropped soft prompt, skipped capture, etc.).
+8. **Plan completion checkpoint.** After every blocking preflight check and before committing, so the lifecycle flip lands in the same commit as the ship and a later failure cannot leave a plan recorded as shipped when no PR opened. Informational: no outcome blocks the PR. It catches plans left at `status: in_progress` OR `open` that `/en-learn capture`'s lifecycle flip should have completed; the `open` case is the recovery path for a build that skipped the `open → in_progress` flip.
 
-   **Placement rationale.** This step deliberately runs LATE in preflight — after lint/typecheck/secret-scan/scope-confirm and before commit-message generation. Earlier placement would mutate the plan (flip status, set shipped, git mv) before later checks could fail, leaving the plan recording having shipped when the PR never opened. Late placement makes the lifecycle mutation atomic with the ship commit.
+   Run `bash "$SKILL_DIR/scripts/ensemble-plan-checkpoint" --base <merge-base> --json`. It finds the plan from the branch name (case-normalised: `/en-build` may create `fr07-…` for `FR07-…`), reads its units, asks `scripts/ensemble-verify-peer-evidence --branch-coverage` which U-IDs the branch's `review-verdict:` trailers cover, and returns `outcome`, `plan_path`, `covered_units`, `missing_units` and `deferred_units`. **There is one evidence path, not two:** under D52 one branch-level review covers every unit, so a per-unit `peer-verdict:` trailer can exist only on a branch built before that change; its absence is not a gap, and nothing here looks for it.
 
-   1. **Plan-branch detection.** Read the current git branch name. Extract `<plan_id>` via case-insensitive regex against the foundation's `plan_id_prefix:` (e.g. `EN`, `FR`) — branch name pattern is `<plan_id>-<slug>` per `/en-plan`'s default-branch checkpoint. **Normalize the extracted ID to the canonical (uppercase) form** before any filesystem lookup: `/en-build` may create lowercase branches (e.g. `fr07-auth-rotation`) while plan files are named with the uppercase prefix (`FR07-feature_auth-rotation.md`); on case-sensitive filesystems an unnormalized lookup misses the plan and silently records `not_applicable`, defeating the checkpoint. If no plan_id derivable → record `plan_completion_checkpoint: not_applicable`; skip silently to step 9.
+   | `outcome` | Meaning | Then |
+   |---|---|---|
+   | `up_to_date` | the plan is already `completed` | record `plan_completion_checkpoint: up_to_date`. **Idempotency:** a re-run after the flip silently passes here; the state machine moves forward only. |
+   | `not_applicable` | no plan for this branch, or it is `draft` / `abandoned` | record `plan_completion_checkpoint: not_applicable`; for `draft`, one line: finalize via `/en-plan` before shipping. |
+   | `complete` | every in-scope U-ID is covered | record `plan_completion_checkpoint: complete`, then flip. |
+   | `partial_expected` | every missing U-ID declares `Ship scope: deferred` or `production_pending` | record `plan_completion_checkpoint: partial_expected`, note `partial_expected: U1-U7 shipped; U8 held (production_pending)`, then flip. |
+   | `complete_evidence_missing` | implementing commits exist, but no `review-verdict:` covers them | record `plan_completion_checkpoint: complete_evidence_missing` with `evidence_warning: no review-verdict covers U5, U6`; the plan stays active. The work is there; the audit trail is not. |
+   | `incomplete_unexpected` | a U-ID has neither coverage nor an implementing commit | record `plan_completion_checkpoint: incomplete_unexpected` and name the units; the plan stays active. Something is genuinely unbuilt. |
 
-   2. **Plan file lookup.** Using the normalized (uppercase) plan_id from step 1, look for `docs/plans/active/<plan_id>-*.md`. If found, read frontmatter; otherwise check `docs/plans/completed/<plan_id>-*.md` (already shipped; outcome `up_to_date`). If neither exists → outcome `not_applicable`; skip silently to step 9.
+   **The flip.** Hands-off (default): auto-select `y` on `complete` / `partial_expected`. `--interactive`: prompt with `y` (recommended) / `skip` / `details`, where `details` shows per-unit state (U-ID, commit, coverage) and re-prompts, loop until terminal. `y`: set `status: completed` and `shipped: <today>` in the frontmatter, `git mv` the file to `docs/plans/completed/`, stage it, and record `plan_completion_checkpoint: completed_and_moved`. The flip commits atomically with the ship commit at step 10; if push or PR creation later fails, the local record is still right (the work is done) and a re-run sees `completed` → `up_to_date`. `skip` records `plan_completion_checkpoint: skipped_by_user`. `--no-plan-completion-checkpoint` skips the step and records `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)`.
 
-   3. **Status inspection.**
-      - `completed` → record `plan_completion_checkpoint: up_to_date`; skip silently to step 9.
-      - `in_progress` OR `open` → continue to completeness check. **The `open` case is intentional**, NOT a typo: it preserves the recovery path from `/en-learn` step 11, which handles "build started but skipped the `open → in_progress` flip" (interrupted build, manual resume, etc.). If the work IS verifiably complete (per step 4 below), the checkpoint flips `open → completed` directly.
-      - `draft` → record `plan_completion_checkpoint: not_applicable`; surface a one-line notice ("plan still in draft state; finalize via /en-plan before shipping"); skip to step 9.
-      - `abandoned` → record `plan_completion_checkpoint: not_applicable`; terminal state; skip to step 9.
-
-   4. **Build completeness check.** Resolve exactly one outcome. Compute coverage once:
-      `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --json` → `covered_units`,
-      the U-IDs the branch's `review-verdict:` trailers cover.
-
-      **There is one evidence path, not two.** Under D52 the host implements every unit and a single
-      branch-level review at `/en-build` step 10.3 covers all of them, so unit commits carry only
-      `phase: P<N>`. A per-unit `peer-verdict:` / `peer-resolution:` / `peer-skipped:` trailer can exist
-      only on a branch built before that change. Do not treat its absence as a gap, and do not look for it.
-
-      Then classify each plan U-ID and resolve the outcome from the combination:
-
-      | Recorded outcome | When | Meaning |
-      |---|---|---|
-      | `plan_completion_checkpoint: complete` | every in-scope U-ID is in `covered_units` | the build is done and its review is on record |
-      | `plan_completion_checkpoint: partial_expected` | every *missing* U-ID declares `Ship scope: deferred` or `production_pending` | the plan intends to ship without them |
-      | `plan_completion_checkpoint: complete_evidence_missing` | in-scope U-IDs have implementing commits on the branch but no `review-verdict:` covers them | the work is there; the audit trail is not |
-      | `plan_completion_checkpoint: incomplete_unexpected` | an in-scope U-ID has neither coverage nor an implementing commit | something is genuinely unbuilt |
-
-      **Why these are separate.** Collapsing them into one `incomplete_build` was the observed failure: a
-      branch that had shipped U1–U7, deliberately held U8 behind a production gate, and had genuinely been
-      reviewed still reported as an unfinished build. Three different situations, three different responses —
-      one of them needs code written, one needs a trailer, and one needs nothing at all.
-
-      **All four are informational. None blocks the PR.** Only `plan_completion_checkpoint: complete` and
-      `plan_completion_checkpoint: partial_expected` permit the
-      lifecycle flip in sub-step 6; `complete_evidence_missing` and `incomplete_unexpected` leave the plan
-      `active` and name what is missing:
-
-      ```
-      partial_expected: U1-U7 shipped; U8 held (production_pending)
-      evidence_warning: no review-verdict covers U5, U6
-      ```
-
-   5. **Surface the checkpoint prompt** (structured). **Hands-off (default):** do NOT prompt - on `complete` or `partial_expected`, auto-select `y` (the recommended action) and perform the flip in sub-step 6; when the outcome is `complete_evidence_missing` or `incomplete_unexpected`, it is already recorded (no prompt, PR still opens). **`--interactive`:** surface the prompt and let the user choose:
-      ```
-      Plan completion checkpoint
-      ──────────────────────────
-      Plan `<plan_id>-<slug>` is still at `status: <in_progress|open>`.
-      All <N> units have peer-evidence trailers on unit commits; the
-      build is verifiably complete.
-
-      Mark the plan as completed and move to docs/plans/completed/?
-        y       (recommended) — flip status, set shipped: <today>, git mv to completed/
-        skip                — leave at <in_progress|open>; you flip manually later
-        details              — show per-unit completion state
-      ```
-
-   6. **Handle response.** (Hands-off auto-selects `y` on a verifiably-complete build; `--interactive` takes the user's choice.)
-      - `y` (default): perform the lifecycle flip atomically with the commit that's about to fire at step 10 —
-        - Set `status: completed` in plan frontmatter.
-        - Set `shipped: <today>`.
-        - `git mv docs/plans/active/<plan-file>.md docs/plans/completed/<plan-file>.md`.
-        - `git add` the renamed file (the rename + frontmatter edit are now staged).
-        - Continue to step 9 (commit-message generation); the lifecycle flip becomes part of the same commit as the ship work. **If push or PR-create at step 11 / 12 fails, the lifecycle flip is locally committed but the ship didn't complete remotely.** This is acceptable: the local state correctly records the plan as completed (the work IS done), and the user can rerun `/en-ship` to retry the remote operations. Next run sees `completed` → `up_to_date`.
-        - Record `plan_completion_checkpoint: completed_and_moved`.
-      - `skip`: record `plan_completion_checkpoint: skipped_by_user` with an audit-friendly note ("user explicit skip; plan stays at <in_progress|open>"). Continue to step 9 with no mutation.
-      - (For reference, the outcomes set automatically from earlier sub-steps are `up_to_date`, `not_applicable`, `complete_evidence_missing` and `incomplete_unexpected`; see sub-steps 1–4.)
-      - `details`: show per-unit completion state (U-ID, unit-commit SHA, evidence trailer count, U-ID's risk classification). Show plan-branch detection source. Re-prompt; loop until terminal option.
-
-   7. **Idempotency.** Re-running `/en-ship` on the same branch after the checkpoint flipped status to `completed`:
-      - Status inspection finds `completed` → outcome `up_to_date`; checkpoint silently passes.
-      - No re-prompts. No double-flip. The state machine moves forward only.
-
-   8. **Flag override.** `--no-plan-completion-checkpoint` skips the whole step; record `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)`.
+   **`--preflight` stops here.** Steps 1 through 8 have run, the receipt is written, and the named preflight state is printed: no commit, no push, no PR. This is how a hook, a hand check before review, or a branch that never went through `/en-build` gets the checks without a ship.
 
 9. **Generate conventional-commit message.** Per `references/conventional-commits.md`:
    - Inspect the diff to determine `<type>` (`feat` / `fix` / `docs` / `refactor` / etc.).
@@ -195,10 +124,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     - Body auto-generated:
       - **Summary** — 1–3 bullets from the commits.
       - **Test plan** — what was **actually run**, with its result: the targeted tests from step 5 and their count, plus the `/en-qa` report when one exists. If nothing was run, say so — *"No test run recorded for this branch"* — and do not synthesise a plausible list from the changed files. A checkbox list nobody executed reads to a reviewer exactly like one that passed, which is the failure mode: it is a claim without evidence, and it is worse than an empty section because it displaces the question.
-      - Plan reference: `Closes plan: <resolved-plan-path>` if the branch name carries a recognizable plan ID (`<PREFIX><NN>`). The resolved path depends on the step-8 checkpoint outcome:
-        - `completed_and_moved` → use `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (the plan was just renamed; the active/ path no longer exists).
-        - `up_to_date` → use `docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (already in completed/ from a prior ship).
-        - `skipped_by_user`, `complete_evidence_missing`, `incomplete_unexpected`, `not_applicable` → use `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (plan stayed in active/).
+      - **Verified locally** — the receipt's tree fingerprint and checks (`bash "$SKILL_DIR/scripts/ensemble-verification-receipt" show --json`) and the step-5 `selection:` tier. CI never trusts this line; it lets a reader correlate the tree CI tests with the one that passed here, and it is what makes an escaped defect diagnosable.
+      - Plan reference: `Closes plan: <plan_path>` when step 8 returned one, in `completed/` after a flip and `active/` otherwise.
     - Use HEREDOC for body to preserve formatting.
     - On PR-creation success → return URL.
 13. **Local watch-and-fix loop (default ON).** After the PR opens, watch it and resolve findings **locally** - the fixing happens on this machine, not in CI (EN04, D38). CI's role is to run tests and let a review model (e.g. the Anthropic Code Review action, CodeRabbit, `/en-sweep`'s review) post findings; en-ship watches for those and fixes them here, in your checkout, with your credentials. This keeps write access and secrets off CI entirely.
@@ -220,7 +147,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     3. **Cancel a stale tick.** Re-check the head SHA captured at step 0. If it moved — a delegate pushed, or someone else did — **this tick's CI results are dead**: discard them and re-poll rather than acting on a status that describes a commit that is no longer the head.
 
     4. **When trusted findings appear, fix locally. Feedback before CI, in that order.**
-       - **Review-thread / comment findings first** — `/en-resolve-pr --orchestrated` addresses each per its 6-verdict rubric.
+       - **Review-thread / comment findings first** — invoke `/en-resolve-pr --orchestrated`; it addresses each per its 6-verdict rubric.
        - **Failing checks second** — fetch the failed-job logs (`gh run view --log-failed`) and pass them into `/en-resolve-pr --orchestrated` so it has the actual failure, not just "a check is red."
 
        **Always pass `--orchestrated`.** It is what tells the delegate a human is not watching: it returns `needs-human` as a result instead of asking a question this loop cannot answer, runs one pass instead of cycling inside a cycle, and refuses to arm auto-merge. Omitting it is how an unattended loop stalls on a question, or spends six rounds while this step counts two.
@@ -229,13 +156,11 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
        **What `/en-resolve-pr` may do on this skill's behalf.** Being invoked here is not itself authorization; it acts under the scope this run holds. **Permitted:** fix, commit, push, reply, resolve threads, on this PR's head. **Excluded:** merge, rebase, force-push, approving checks, and any branch update this loop did not ask for. It may narrow that scope — deferring an item as `needs-human` — but never widen it. If resolving something would require an excluded action, it comes back as `needs-human` instead of being done.
 
-       The delegate states the same bound from its own side, so neither skill is the only place it is written down.
-
-       **en-ship edits nothing here itself.** Fixing is delegated; a watcher that also patches code is two skills in a trench coat, and the seam is where the authority bound lives.
+       **en-ship edits nothing here itself.** Fixing is delegated.
 
     5. **Loop until clean.** Re-poll after each push; if new trusted findings land, resolve again. Continue until all checks are green AND no unresolved review threads remain — bounded to `ship.watch_max_cycles` **repair cycles** (default `2`, matching what `/en-flow` documents) to avoid spinning on an unfixable finding.
 
-       **A cycle is a repair-and-push iteration, not a poll.** Waiting on unchanged CI consumes nothing. This distinction is the whole budget: counted as polls, a 16-minute test job exhausts a three-cycle cap before it has finished once, escalating a PR that was never in trouble.
+       **A cycle is a repair-and-push iteration, not a poll.** Waiting on unchanged CI consumes nothing; counted as polls, one long test job would exhaust the cap before finishing once.
 
     6. **Exit in exactly one named state**, with its evidence. Never improvise a closing sentence, and never say "safe to merge" — that is the reader's call, not this skill's.
 
@@ -263,6 +188,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 | `--base <branch>` | Override PR target base |
 | `--reviewers <list>` | Request reviewers via `gh pr create --reviewer` |
 | `--no-test-on-changed` | Skip targeted-test step (rare; usually leave on) |
+| `--preflight` | Run steps 1 through 8, write the receipt, print the preflight state, and stop. No commit, push or PR. |
 | `--interactive` | Restore the pre-EN04 stop-and-ask flow: re-enable the scope-confirm (step 7) and plan-completion (step 8) prompts. Opposite of the hands-off default. (Does not prompt for learnings — that's an en-build-completion checkpoint only.) |
 | `--no-plan-completion-checkpoint` | Skip the plan-completion checkpoint (step 8). Records `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)` for audit. |
 
@@ -279,11 +205,12 @@ Diff:   12 files changed, 247 insertions, 38 deletions
 Pre-flight (hands-off):
   ✓ Lint
   ✓ Typecheck
-  ✓ Targeted tests (8 changed files; 14 tests passed)
+  ✓ Targeted tests (8 changed files; 14 tests passed; selection: graph)
   ✓ Secret scan (clean)
   ✓ Base: origin/main fetched; 0 behind, 5 ahead; no predicted conflicts
   ✓ Staging: 12 tracked files in scope; 2 unrelated files preserved and excluded
   ✓ plan_completion_checkpoint: completed_and_moved (FR07-auth-rotation → completed/; shipped: 2026-05-20)
+  ✓ Receipt written: lint, typecheck, targeted_tests (by en-ship)
 
 Commit:
   feat(auth): rotate refresh token on every access - U1-U5
@@ -309,13 +236,14 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 
 - `references/conventional-commits.md` — message format
 - `references/secret-patterns.md` — secret-scan regex catalog
-- `references/verification-receipt.md` — what makes a receipt valid, and how a project's own pre-push hook can read one
+- `references/verification-receipt.md` — **gated**: read when a project asks how its own pre-push hook can consume a receipt. The script emits every validity reason itself.
 
 ## Bundled scripts
 
-- `scripts/ensemble-ship-preflight` — returns git, base and staging state as JSON: ahead/behind, whether the branch is published, which of the five staging cases holds, and the in-scope / excluded / untracked file lists. Read-only; it classifies and never stages. A state it cannot resolve (detached HEAD, conflicted tree, unresolvable base) exits non-zero *and* names itself, so a caller cannot proceed by reading the JSON and ignoring the status.
-- `scripts/ensemble-plan-checkpoint` — resolves the plan-completion outcome: `complete`, `partial_expected`, `complete_evidence_missing`, `incomplete_unexpected`, plus `up_to_date` and `not_applicable`. Read-only; `/en-ship` owns the lifecycle flip.
-- `scripts/ensemble-verification-receipt` — records and checks which expensive verifications already passed against this exact working tree, so `/en-ship` and a project's pre-push hook can skip what `/en-build` already proved. Validity is a conjunction: fingerprint, base SHA, dependency hashes, repo path and age must all hold, or the checks run. Run `verify --requires <checks>`; a non-zero exit always carries a reason.
+- `scripts/ensemble-ship-preflight` — step 3: git, base and staging state as JSON. Read-only; a state it cannot ship from exits non-zero and names itself.
+- `scripts/ensemble-plan-checkpoint` — step 8: the plan-completion outcome and `plan_path`. Read-only; this skill owns the flip.
+- `scripts/ensemble-verification-receipt` — step 5 reads (`verify --requires`) and writes (`write --check`); step 12 shows. A non-zero verify always carries a reason.
+- `scripts/get-pr-comments` — step 13: the complete, paginated set of review threads, review bodies and comments.
 
 ## Failure protocol
 
@@ -329,7 +257,7 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 | `gh pr create` fails (auth, repo permissions) | Surface error; commit + push succeed regardless; user can open PR manually |
 | Auto-merge requested but branch protection rejects | Surface; PR remains open; user reviews and merges manually |
 | Unstaged dirty tree at start | Resolve it with step 7's state machine: scope-matching changes are staged path by path, everything else is preserved and excluded. "Stage all" is not offered — it was, and on a tree holding unrelated work it commits what the user never offered. |
-| Branch is detached HEAD | Refuse; ask user to check out or create a branch first |
+| Branch is detached HEAD | Refuse (`ensemble-ship-preflight` exits 1, `blocked: detached-head`); ask user to check out or create a branch first |
 
 ## What this skill never does
 

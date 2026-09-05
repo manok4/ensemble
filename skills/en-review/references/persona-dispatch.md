@@ -107,6 +107,20 @@ When the peer runs (the default — see the peer-decision step in `/en-review`),
  "conflict": false}
 ```
 
+### Record fields
+
+| Field | Required | Meaning |
+|---|---|---|
+| `findings[].source` | yes when a peer ran | `host` or `peer`. Which side produced this raw finding. Omit when no peer ran (all findings are host). |
+| `reconciliation[].bucket` | yes | `corroborated` \| `peer-only` \| `host-only` \| `conflicting` |
+| `reconciliation[].sources` | yes | Array of contributing sides. `["host","peer"]` for corroborated and conflicting; a single-element array otherwise. **An array, not the scalar `source`**: a corroborated record represents both sides and a scalar cannot express that. |
+| `reconciliation[].canonical` | yes | The finding object presented to the user. Selected highest-severity, then highest-confidence, then host-source. |
+| `reconciliation[].contributing` | yes | `[{source, finding_id}]` for every raw finding folded into this record. Summing these across all records MUST equal the raw finding count (the partition invariant). |
+| `reconciliation[].confidence` | yes | Post-boost confidence: `+2` for cross-source corroboration, `+1` for same-source overlap, capped at 10. |
+| `reconciliation[].conflict` | yes | `true` only for the `conflicting` bucket. Conflicting records are **never auto-applied**. |
+
+The envelope also carries `peer_decision`, defined in `references/peer-contract.md` and echoed verbatim from the invoke helper so callers never re-derive it. (This table lived in the shared finding-schema until 2026-09-04; nothing outside `/en-review` produces or parses these fields, so it moved to the one carrier that does.)
+
 ### One global algorithm (so the buckets partition)
 
 Conflict and corroboration are two stages of a **single pass over one shared consumption pool**, in a fixed order:
@@ -199,10 +213,10 @@ Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit 
 
 ## Lite roster (`--lite`)
 
-When `/en-review --lite` runs and the diff classifies `is_small_and_safe` per `references/diff-signal-detection.md`, dispatch a reduced roster instead of the full panel:
+When `/en-review --lite` runs under `--host` or `--cross` and the diff classifies `is_low_risk` per `references/diff-signal-detection.md`, dispatch a reduced roster instead of the full panel (under `--peer` the same flag hands the peer `references/peer-brief-lite.md`):
 
 - **Roster:** `correctness` + `standards` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
-- **Fail closed:** if `is_small_and_safe` is `false` — unknown line count, any uncounted non-code file, any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides.
+- **Fail closed:** if `is_low_risk` is `false` — any risk signal, or any conditional persona independently triggered — run the **full roster**. `--lite` is advisory; the gate decides. Size does not gate.
 - **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
 - **Outcome line (EN08):** the gate's decision is reported by the mandatory `lite_gate:` line in en-review's summary (`applied` / `overridden (<reasons>)` / `not-requested`) — never a silent override.
 

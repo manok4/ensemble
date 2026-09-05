@@ -55,8 +55,11 @@ degraded peer can never read as a normal one.
  "reason": "<enum below>",
  "peer_mode": "cross-agent" | "single-agent-fallback" | "off",
  "effort": "low" | "medium" | "high",
- "model_alias": "<alias>" | null}
+ "model_alias": "<alias>" | null,
+ "model_actual": "<served model, from the CLI's own receipt>" | null}
 ```
+
+`model_actual` is what the CLI reported serving (Claude's `modelUsage` key), not what was asked for; `null` where the route gives no receipt. It is evidence for a degraded or fallback run, never an input to any decision.
 
 `degraded` is the canonical representation of a successful-but-reduced run, so
 the three states mean the same thing everywhere.
@@ -64,8 +67,8 @@ the three states mean the same thing everywhere.
 | `peer` | `reason` values |
 |---|---|
 | `on` | `default-on`, `explicit-flag` |
-| `off` | `no-peer-flag`, `single-agent-fallback`, `report-only-mode`, `recursion-guard`, `peer-unavailable`, `auto-skip:diff-below-threshold`, `auto-skip:lightweight-depth`, `peer-failed:auth`, `peer-failed:timeout`, `peer-failed:unknown`, `peer-failed:retry-exhausted` |
-| `degraded` | `dropped-model-fragment`, `dropped-effort-fragment` |
+| `off` | `no-peer-flag`, `host-only-mode`, `single-agent-fallback`, `report-only-mode`, `recursion-guard`, `peer-unavailable`, `auto-skip:diff-below-threshold`, `auto-skip:lightweight-depth`, `peer-failed:auth`, `peer-failed:timeout`, `peer-failed:unknown`, `peer-failed:retry-exhausted` |
+| `degraded` | `dropped-model-fragment`, `dropped-effort-fragment`, `dropped-isolation-fragment` |
 
 **Anything outside this enum is a contract violation.** Callers branch on these
 exact spellings, so never rename, abbreviate or add to them without changing

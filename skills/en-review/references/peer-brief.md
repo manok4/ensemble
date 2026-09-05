@@ -70,7 +70,7 @@ Two rules bind the floor. **A documented repo standard always wins** — where t
 | **`AGENTS.md` / `CLAUDE.md` conventions** | Build/test/lint command alignment; coding conventions stated in the maps |
 | **File naming** | New file follows the project's casing convention (kebab-case, snake_case, camelCase, etc.); placement matches existing structure |
 | **Commit messages** | Conventional commits (`<type>(<scope>): <subject>`); subject ≤ 50 chars; imperative mood |
-| **Frontmatter validity** | Markdown artifacts in `docs/` have valid frontmatter per `references/learning-frontmatter-schema.md` and per Appendix C of foundation |
+| **Frontmatter validity** | Markdown artifacts in `docs/` have valid frontmatter (the pre-flight `bin/ensemble-lint` run enforces the schemas; report what it flagged) |
 | **Stable IDs** | R-IDs / U-IDs / FRXX / TD-IDs cited correctly; never renumbered |
 | **Path conventions** | Repo-relative paths in artifacts (no `/Users/...`, no `C:\...`) |
 | **Status correctness** | `docs/plans/active/*.md` has `status: draft \| open \| in_progress \| abandoned`; `docs/plans/completed/*.md` has `status: completed`. `plan_type` is one of `feature`, `improvement`, `bug`. |
@@ -125,59 +125,4 @@ about the change as a whole.
 
 ## What this skill does with the findings
 
-Contract first: severity, confidence, the autofix classes and the resolution
-statuses are defined in `references/peer-contract.md`. What follows is policy.
-
-| Severity | Confidence | Class | Action |
-|---|---|---|---|
-| P0 | any | any | **Pause and ask.** Even `safe_auto` does not apply silently at P0. |
-| P1 | ≥ 7 | `safe_auto` | Apply, re-verify, note in the commit body. |
-| P1 | ≥ 7 | `gated_auto` | Apply with a one-line announcement; the user can revert. |
-| P1 | ≥ 7 | `manual` | Surface; the user decides. |
-| P1 | < 7 | any | Surface; the user decides. |
-| P2 | ≥ 8 | `safe_auto` | Apply silently. |
-| P2 | ≥ 8 | `gated_auto` | Apply with a one-line announcement. |
-| P2 | < 8 | any | File to the tech-debt tracker; mention in the summary. |
-| P2 | any | `manual` | Surface; the user decides. |
-| P3 | any | `advisory` | Note in the summary. No action. |
-| P3 | any | other | File to the tech-debt tracker. |
-
-**Re-verify after applying.** Any code change made in response to a finding
-re-runs unit tests and lint before the commit. On failure, `git restore` the
-change and surface it. Never commit broken code in pursuit of a finding.
-
-`conflicting` findings are never auto-applied. Prefer `corroborated` ones when
-triaging: host and peer agreeing independently is the strongest signal available.
-
-## Confidence surfacing
-
-| Confidence | Behaviour |
-|---|---|
-| 8–10 | Surface in the main report. |
-| 6–7 | Surface with a caveat tag. |
-| 5 | Surface only when severity ≥ P1. |
-| 1–4 | Suppress unless severity is P0. |
-
-Sub-threshold findings are filed to the tech-debt tracker rather than discarded,
-so there is a paper trail without review noise.
-
-## Effort
-
-An ordered first-match cascade — `high` is tested first, so a change satisfying
-more than one condition resolves to the strongest tier.
-
-| Order | Tier | Condition |
-|---|---|---|
-| 1 | `high` | the security or migrations dimension fired, an architectural trigger is present, or the unit is `risk: destructive` or `gated: true` |
-| 2 | `low` | the diff is small and carries no risk signals |
-| 3 | `medium` | otherwise — the floor |
-
-The floor is `medium`, not `low`: review is a recall problem and the findings
-that justify running a peer at all are the subtle ones. `low` is an explicit cost
-opt-in for diffs that have earned it.
-
-Resolution order, first hit wins: an `--effort` flag, then
-`<repo>/.ensemble/config.local.yaml`, then `~/.ensemble/config.json`
-(`review_peer_effort_override`, `review_peer_model_alias`), then the ladder.
-`/en-review` is the only resolver; it produces one final tier and one final alias
-and passes them on. Model IDs are never hardcoded — see the contract.
+Routing by severity, confidence and autofix class is the matrix in `references/severity.md`; sub-threshold findings file per `references/review-confidence-gating.md`; the effort tier resolves per `references/peer-model-policy.md`, with `/en-review` as the only resolver. Stated there once rather than repeated here. `conflicting` findings are never auto-applied; `corroborated` ones lead the report.

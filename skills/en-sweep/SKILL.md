@@ -1,6 +1,6 @@
 ---
 name: en-sweep
-description: "Scheduled doc-drift cleanup. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'. Runs file-shape lint, wiki-graph health, and architecture, plan-lifecycle and pointer-map drift checks, then opens an auto-merging doc-only PR once review clears it. An activity gate skips runs with no new commits; code-level findings file as tech debt."
+description: "Scheduled doc-drift cleanup: file-shape lint, wiki-graph health, architecture and plan-lifecycle drift, then an auto-merging doc-only PR once review clears it. Skips when nothing new landed. Trigger phrases: 'sweep', 'doc cleanup', 'fix doc drift', 'run sweep'."
 disable-model-invocation: true
 ---
 
@@ -32,13 +32,13 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 
 **Activity gate.** Before the sweep job runs, `$SKILL_DIR/scripts/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the scopes `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently: no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
 
-**Every scope in that list has to be one sweep authors and a human would not.** A shared scope makes the gate read a human commit as sweep's own in two places at once, picking it as `LAST_SWEEP_SHA` and subtracting it from the count. Both errors skip the cycle. `chore(docs):` was in the list until 2026-09-03 and did exactly that, so the lint batch now ships as `chore(sweep):`.
+**Every scope in that list has to be one sweep authors and a human would not.** A shared scope makes the gate read a human commit as sweep's own in two places at once, picking it as `LAST_SWEEP_SHA` and subtracting it from the count, and both errors skip the cycle; that is why the lint batch ships as `chore(sweep):` and `docs` is not a sweep scope (D65).
 
 The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. CI runner determines which CLI is available.
+1. **No host detection.** In CI, `$SKILL_DIR/scripts/en-sweep-ci` has already picked the CLI; interactively, the host's own tools apply. The skill reads no host or peer variable and carries no detection files.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The workflow enforces Guard 1 (concurrency group) and Guard 3 (recursion depth cap) before the skill runs. Guard 2 (no-material-diff) fires inside the skill, at step 10.
 4. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
@@ -112,7 +112,7 @@ Sweep is scheduled, so it cannot fire on its own commits and the cadence is the 
 2. **No-material-diff termination.** Silent exit when sweep produces no batches. Inside the skill, at step 10.
 3. **Recursion depth cap.** Hard stop at `ENSEMBLE_SWEEP_DEPTH=1`, against an agent reading this file and dispatching `/en-sweep` from inside a sweep. In the workflow.
 
-Two further guards existed under the old `push` trigger, one reading the pushed commit's message and one reading the merged PR's label. Both only ever caught sweep re-triggering on its own merge, which no longer happens. They are retired rather than demoted, and their numbers are not reused; `references/sweep-loop-guards.md` records what they did so the question does not get reopened without the trigger change that would justify them.
+Two further guards belonged to the retired `push` trigger and caught only sweep re-triggering on its own merge; their numbers are not reused, and `references/sweep-loop-guards.md` records them so the question is not reopened without the trigger change that would justify them (D27, D65).
 
 ## Auto-merge eligibility
 
@@ -131,7 +131,6 @@ Otherwise: PR stays open for human resolution.
 
 ## Reference files
 
-- `references/host-detect.md` — host detection
 - `references/sweep-checks.md` — full check catalog (file-shape, wiki-graph, architecture, plan lifecycle, pointer maps, continuous monitoring)
 - `$SKILL_DIR/scripts/continuous-monitor` — dead-code + dep-audit scanner; outputs JSON-lines findings
 - `$SKILL_DIR/scripts/triage-findings` — partitions findings into TD entries vs draft plans
@@ -163,12 +162,11 @@ Otherwise: PR stays open for human resolution.
 ## Configuration
 
 Sweep reads `.ensemble/config.local.yaml`, the project-local gitignored file
-`/en-setup` seeds. It is **not** `~/.ensemble/config.json`, which this section
-named until 2026-09-03; that file is real but holds `peer_mode_override` for
-host detection, and nothing in it has ever reached sweep.
+`/en-setup` seeds; nothing in `~/.ensemble/config.json` reaches sweep.
 
 ```yaml
 sweep:
+  enabled: true             # /en-setup writes false when the workflow install is declined
   schedule: weekly          # informational; the cron lives in the workflow file
   max_prs_per_run: 6        # step 11 stops opening PRs at this count
   auto_merge_enabled: true  # false leaves every PR for manual approval
@@ -187,9 +185,7 @@ which means they are only as reliable as the step that cites them.
 
 **The CI timeout is not a config key.** It is `timeout-minutes:` in
 `.github/workflows/en-sweep.yml`, and editing the workflow is the only way to
-change it. This section advertised a `ci_timeout_minutes` key until
-2026-09-03; nothing substituted it into the workflow, so setting it did
-nothing.
+change it.
 
 ## What this skill never does
 

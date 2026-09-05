@@ -1,7 +1,6 @@
 ---
 name: en-qa
-description: "Test the work like a real user. Phase 1: lint + typecheck + test suite. Phase 2: Playwright browser end-to-end (golden path + edge cases — empty/error states, slow network, double-click, navigate-mid-action, keyboard, mobile). Per bug: reproduce → root cause → fix → regression test → atomic commit → re-verify. Outputs a QA report with screenshots. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
-disable-model-invocation: true
+description: "Test the work like a real user: lint, typecheck, tests, then Playwright browser end-to-end on the golden path and edge cases; each bug gets a fix, a regression test and a commit. Trigger phrases: 'test this', 'qa', 'browser test', 'end-to-end', 'verify the feature works', 'click through it'."
 ---
 
 
@@ -11,11 +10,11 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
 ## Process
 
-1. **Resolve context.** Establish once: the branch and its base, the changed files, and **whether a human is driving**. A caller (`/en-build`, `/en-loop`) drives this unattended; a person invoking it directly does not. That single fact changes what happens at every prompt below, so resolve it first and state it in the report.
+1. **Resolve context.** Establish once: the branch and its base, the changed files, and **whether a human is driving**. A caller (`/en-build`, `/en-loop`) drives this unattended; a person invoking it directly does not. This skill is model-invocable on purpose: a `disable-model-invocation: true` flag would let only a person run it and leave those callers with nothing to invoke. That single fact changes what happens at every prompt below, so resolve it first and state it in the report.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocess shouldn't QA in CI).
 3. **Phase 1 — system checks.** Run in this order; stop on first failure:
-   - Project lint (from `AGENTS.md` `{{LINT_CMD}}`).
+   - Project lint (the lint command `AGENTS.md` declares).
    - Typecheck if applicable.
    - Project test suite.
    On failure: report what failed, surface to user, exit. Don't proceed to browser QA on a broken build.
@@ -32,22 +31,33 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    **Never introduce a third stack.** Do not install Puppeteer, a standalone Playwright, or another automation surface to make a run possible; a project that has none is a finding, not a setup task.
 
    **One driver for the whole run.** After the first flow is exercised, do not switch: element references, screenshots, session and auth state do not carry across drivers, and a run that mixes them produces a report where half the evidence describes a session that no longer exists. Falling back is allowed only before the first flow runs.
-6. **Bootstrap test framework if absent.** If the project has no test suite at all, surface and offer to install Playwright (or the project's preferred framework). Bootstrap is its own commit.
+6. **Bootstrap the project's test framework if absent.** If the project has no test suite at all and a person is driving, offer to set up the project's preferred framework; the bootstrap is its own commit. This is the project's own suite, installed with consent, and it is not the browser driver: step 5's rule against installing a stack to make this run possible still holds. When a caller drives, record `Skip — no test framework` and continue.
 6a. **Browser-phase detector.** Before running Phase 2, classify the change via `references/diff-signal-detection.md`. Run Phase 2 only when `needs_browser` is `true` (the diff touches frontend/UI files) **OR** the user passed `--browser`. When `needs_browser` is `false` AND `--browser` was not passed: skip Phase 2 with the one-line note *"Browser QA auto-skipped — no frontend files changed; pass --browser to force."* and proceed to the report. **Fail closed:** if the diff can't be classified (no base ref, detached HEAD), treat as `needs_browser: true` and run Phase 2. `--browser` always forces Phase 2; `--system-only` always skips it (and wins over `--browser`).
-7. **Phase 2 — browser QA of what was implemented.** Per `references/qa-flows.md`.
+7. **Phase 2 — browser QA of what was implemented.**
 
    **Scope first: map the change to flows.** Take the changed files and attribute each to the flows (foundation §6 F-IDs) it can reach, through routes, components, and the modules those import. **Exercise only those flows.** This is QA of a change, not a release regression sweep: walking twenty flows for a one-route edit spends most of the run re-proving things nobody touched, and buries the finding that matters in a wall of green.
 
    **When attribution is incomplete, say so — do not fall back to everything.** If a changed file cannot be attributed to any flow (a shared utility, a build-config change, no route map available), exercise the flows you *did* attribute, then list the unattributed files in the report under "impact undetermined". Expanding silently to the full catalogue trades a stated gap for an unstated cost, and the reader can no longer tell which flows were run because they were implicated and which were swept up. `--flow <name>` overrides attribution; `--all-flows` is the explicit way to ask for the sweep.
 
-   For each in-scope flow, exercise the golden path + the edge cases (empty state, error state, slow network, double-click, navigate-mid-action, keyboard-only, mobile viewport), and capture screenshots at decision points.
+   For each in-scope flow, exercise the golden path (navigate to the entry point, do what a user would, verify the end state), then these edge cases, capturing a screenshot at each decision point:
+
+   | Edge case | What to check |
+   |---|---|
+   | **Empty state** | Form with no input; list with no items; cart with no products |
+   | **Maximum input** | Field at the maximum allowed length; pagination at the last page |
+   | **Error state** | Trigger a 4xx (bad form data); trigger a 5xx (offline; bad backend) |
+   | **Slow network** | Throttle to slow 3G; loading states show; no double-submit on lag |
+   | **Double-click** | Click a button twice rapidly; idempotent or single-firing |
+   | **Navigate-mid-action** | Submit a form and navigate away at once; either cancels or completes |
+   | **Keyboard-only** | Tab through the flow; focus order; every action reachable |
+   | **Mobile viewport** | 375x667; the flow still works |
 
    **A flow that cannot be driven automatically is Skipped, never faked.** OAuth handoffs, email or SMS confirmation, real payments, third-party APIs without a sandbox: when a human is driving, ask whether to do that step manually; when a caller is driving, record `Skip — needs external interaction: <what>` and continue.
 8. **Bug protocol** (for each bug found):
    - Reproduce — confirm consistently.
    - Identify root cause — read source; trace path.
    - Fix in source code.
-   - Add regression test (must fail on unfixed code, pass on fix).
+   - Add regression test (must fail on unfixed code, pass on fix). It exercises the behaviour through a real interface and asserts the observable result: the output, the state, the side effect. A test whose only evidence is that a source file contains, or no longer contains, some string proves nothing: the text can be dead or commented out, and a behaviour-preserving refactor breaks the test while the bug stays fixed.
    - Atomic commit: `fix(qa): <one-line>`. Body cites the QA flow.
    - Re-verify — re-run failing flow + regression test.
 8a. **Done means every in-scope flow has an outcome.** The run ends one of two ways: a report in which **every flow selected at step 7 is marked Pass, Fail, or Skip with its reason**, or a preflight blocker that stopped QA before any flow could run, named alongside what would clear it. Ending in neither, or dropping a flow from the report because nothing could reach it, is the failure this bar exists to prevent — an absent flow reads as a flow that passed.
@@ -75,7 +85,6 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 - Branch is doc-only (`git diff --name-only` shows only `docs/`).
 - **No frontend files changed** (detector `needs_browser: false`, no `--browser`) — per `references/diff-signal-detection.md`.
 - `--system-only` flag.
-- `peer_mode_override: off` and the user disabled all browser ops.
 
 ## Cross-review
 
@@ -102,7 +111,7 @@ Why scope this way: the autonomy bug class is the same as en-build's — agent-i
 ### Legitimate pause cases within the contract window (exhaustive within scope, no others permitted)
 
 1. **System check fails** at Phase 1 (e.g. test suite red, typecheck broken). The QA flow can't sensibly proceed; surface and stop.
-2. **Playwright MCP unavailable mid-flow.** A flow that started but lost MCP connectivity; surface gap and skip remaining flows. *(Distinct from the pre-flow Playwright availability check at setup — that's out of scope per Scope above.)*
+2. **Browser driver lost mid-flow.** A flow that started but lost its driver (MCP connectivity dropped, the host surface closed); surface the gap and skip the remaining flows. *(Distinct from the pre-flow driver selection at setup, which is out of scope per Scope above.)*
 3. **Bug found that requires user judgment** to fix (e.g. ambiguous expected behavior; missing requirement). Surface the bug and ask the user.
 4. **Bug fix breaks Phase 1 checks** (regression). Stop; surface state.
 5. **User-initiated abort.**
@@ -121,6 +130,20 @@ If uncertain, continue. The pause cases above and Phase 1's system checks are th
 ## Learning capture
 
 `/en-qa` does **not** prompt for learnings. Learning capture is a single, structured checkpoint at **`/en-build` completion** (after the branch-level review — see foundation D26). If a QA pass surfaces something worth filing, capture it with an explicit `/en-learn capture`; otherwise the en-build checkpoint is the one place the decision is made.
+
+## Budgets and config
+
+Browser QA is the most expensive part of any Ensemble flow, so two caps bound a run, and both live with the test accounts in the repo-local `.ensemble/config.local.yaml` (`/en-setup`'s template carries the keys):
+
+```yaml
+qa:
+  browser_flow_timeout_minutes: 15   # soft cap per flow; past it, a person is asked to continue or skip, a caller gets a Skip
+  max_bugs_to_fix_per_run: 5         # fix the first N; list the rest for follow-up
+  test_accounts:
+    primary:
+      email: qa-primary@example.com
+      password: $QA_PRIMARY_PASSWORD   # an env-var reference, never the secret
+```
 
 ## Output format
 
@@ -162,8 +185,8 @@ URL: https://preview-fr07.vercel.app
 
 ## Reference files
 
-- `references/qa-flows.md` — flow catalog and bug protocol
-- `references/browser-driver.md` — driver selection, and per-driver usage patterns
+- `references/browser-driver.md` — driver selection, per-driver usage patterns, auth, token-cost heuristics
+- `references/diff-signal-detection.md` — `needs_browser`, shared with `/en-review`
 
 ## Failure protocol
 

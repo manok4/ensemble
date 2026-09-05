@@ -154,7 +154,7 @@ path in a carried file resolves against whichever skill carries it, and only
 - **Source:** the cross-skill guard fix, 2026-08-31
 - **Severity:** P2
 - **Confidence:** 9/10 — the paths are literal and the install layout is known
-- **Location:** `en-sweep` (2), `en-guardrail` (2), `en-brainstorm` (1), `en-build` (1)
+- **Location:** `en-sweep` (2), `en-guardrail` (2), `en-build` (1). `en-brainstorm` was listed with one site; none remained when checked on 2026-09-03, and since that date the skill runs no bundled script at all.
 
 - **What:** these skills instruct an agent to run a helper at
   `skills/<self>/scripts/<name>` — a path rooted at the Ensemble repo, not at the

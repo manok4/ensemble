@@ -25,16 +25,12 @@ ends Phase 2 and is reported.
 
 ## Playwright MCP patterns
 
-
-## Setup check
-
-Before invoking any browser tool, verify Playwright MCP is available. In Claude Code:
-
-```text
-ToolSearch with query "select:mcp__plugin_playwright_playwright__browser_navigate"
-```
-
-If the tool isn't loaded, browser QA is unavailable — fall back to system checks only.
+Only when selection landed on Playwright MCP. Its tools appear under the host's
+MCP prefix (`browser_navigate`, `browser_snapshot`, … after `mcp__<server>__`,
+where `<server>` is whatever the host registered). On Claude Code they are
+deferred: load the navigate tool with `ToolSearch` (`select:` its full name as
+the host lists it) before the first call. If no host lists one, this driver is
+absent and selection moves on; that is not a reason to install one.
 
 ## Canonical patterns
 
@@ -117,9 +113,9 @@ Run at the end of the QA pass to release the browser context.
 
 If the app requires auth:
 
-1. Check `~/.ensemble/config.local.yaml` for a test account.
+1. Check the repo-local `.ensemble/config.local.yaml` for a test account.
 2. If present → log in once via `browser_fill_form` + `browser_click`; subsequent flows reuse the session.
-3. If absent → surface and ask user: "Browser QA needs auth. Provide a test account in `.ensemble/config.local.yaml` or skip the auth-gated flows? (skip / provide / abort)"
+3. If absent → a person is asked: "Browser QA needs auth. Provide a test account in `.ensemble/config.local.yaml` or skip the auth-gated flows? (skip / provide / abort)". A caller gets `Skip — needs auth` on the gated flows.
 
 Test accounts in config:
 
@@ -132,12 +128,6 @@ qa:
 ```
 
 The `<password>` field, by convention, references an env var: `password: $QA_PRIMARY_PASSWORD` so secrets stay out of files.
-
-## When MCP isn't available
-
-Hard fall-back: surface a one-line note in the QA report ("Playwright MCP unavailable; system checks only.") and continue with Phase 1 only.
-
-The user can install the Playwright MCP server later and re-run `/en-qa` for full coverage.
 
 ## Token cost
 

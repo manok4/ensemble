@@ -78,7 +78,7 @@ no solutions is not "empty".
 
 ## When `index.md` is regenerated
 
-- After every `en-learn capture` or `en-learn ingest` (incremental: just append the new entry to its category section, bump `total_entries` and `updated`).
+- After every `en-learn capture` (incremental: just append the new entry to its category section, bump `total_entries` and `updated`).
 - After `en-learn --refresh` archives or supersedes entries (incremental: remove the affected line, add an `archive/` link if the page moved).
 - After `en-learn --lint --fix` (full regeneration if drift was detected).
 - After `en-sweep` runs and detects drift (full regeneration via `en-learn --lint --fix`).
@@ -112,13 +112,6 @@ _(no entries yet)_
 
 _(no entries yet)_
 
-## Lint rule
+## Drift
 
-`bin/ensemble-lint` checks:
-
-- `index-coverage.missing` — page exists but is not in `index.md` (P1).
-- `index-coverage.stale-entry` — `index.md` line points to a non-existent or moved page (P1).
-- `index-coverage.title-drift` — `index.md` line title differs from page's `title:` frontmatter (P2).
-- `index-coverage.related-count-drift` — count in `index.md` differs from page's `related:` length (P2).
-
-`--fix` regenerates `index.md` to match the underlying pages.
+`en-learn --lint`'s `index-drift` check compares all three sections against their sources (`docs/CONTEXT.md`, `docs/decisions/`, `docs/learnings/`) and `--fix` regenerates the file. `bin/ensemble-lint` does not read this file; its `index-coverage` rules cover the generated indexes under `docs/generated/`.

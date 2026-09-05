@@ -22,9 +22,9 @@ omit any model override so the declaration, not the caller, decides.
 
 | Tier | For | Ours |
 |---|---|---|
-| `retrieval` | find it, cite it, do not judge it | (none today) |
-| `evidence` | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research` |
-| `ceiling` | output is code, or a judgement the orchestrator would otherwise make itself | `code-simplifier`, `dimension-reviewer` |
+| `retrieval` | find it, cite it, do not judge it | `repo-fact-lookup` |
+| `evidence` | evidence-driven work and mechanical verification | `repo-research`, `learnings-research`, `web-research`, `code-simplifier` |
+| `ceiling` | output is code, or a judgement the orchestrator would otherwise make itself | `dimension-reviewer` |
 
 **The binding is Claude Code's, and only Claude Code's.** An agent's `model:`
 frontmatter is read by Claude Code's agent loader, which maps the tier to a

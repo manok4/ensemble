@@ -7,9 +7,12 @@ Owned by `en-build`. Callers depend on this page, not on `SKILL.md`.
 | Form | Caller |
 |---|---|
 | `/en-build <plan-path>` | `en-flow` |
-| `--unit U<N>` · `--from U<N>` · `--from-phase P<N>` | selection |
-| `--no-simplify` · `--no-peer` · `--no-peer-per-unit` | post-build control, each recorded |
-| `--orchestrate` · `--handoff` | force a flavor |
+| `--unit U<N>` · `--from U<N>` · `--from-phase P<N>` | selection; universal safety gates still fire per unit |
+| `--review cross\|peer\|none` · `--no-simplify` | post-build control; each outcome is recorded in the `review-verdict:` / `simplify-verdict:` trailers and the audit |
+| `--no-phasing` · `--dry-run` · `--finalize-only` · `--commit-wip` · `--re-baseline` | run control |
+
+There is no flavor flag and no `--no-peer`: since D52 the host implements every
+unit on every host, and the single post-build review is `/en-review`'s.
 
 The plan must be at `status: open` (or `in_progress` when resuming). A caller
 passing a `draft` plan gets a refusal or a recovery prompt, not a build.

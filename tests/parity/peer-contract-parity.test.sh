@@ -78,7 +78,7 @@ assert_eq "" "$(echo $drifted)" "every copy of the contract is byte-identical"
 # Absence is the failure mode that matters: a copy missing a reason value still
 # parses as markdown and still looks like a contract.
 for v in P0 P1 P2 P3 safe_auto gated_auto manual advisory \
-         cross-agent single-agent-fallback default-on recursion-guard \
+         cross-agent single-agent-fallback default-on recursion-guard host-only-mode \
          peer-failed:retry-exhausted dropped-effort-fragment \
          applied deferred disagreed superseded; do
   missing=""

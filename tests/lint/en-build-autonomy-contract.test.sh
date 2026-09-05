@@ -88,7 +88,7 @@ for case_phrase in "Working tree dirty at branch setup" "Plan-review concerns su
 done
 
 # --- All five en-qa pause cases enumerated ---
-for case_phrase in "System check fails.* at Phase 1" "Playwright MCP unavailable mid-flow" "Bug found that requires user judgment" "Bug fix breaks Phase 1 checks" "User-initiated abort"; do
+for case_phrase in "System check fails.* at Phase 1" "(Browser driver lost|Playwright MCP unavailable) mid-flow" "Bug found that requires user judgment" "Bug fix breaks Phase 1 checks" "User-initiated abort"; do
   if grep -qE "$case_phrase" "$EN_QA"; then
     pass "en-qa enumerates pause case: $(echo "$case_phrase" | head -c 50)..."
   else

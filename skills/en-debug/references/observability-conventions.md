@@ -4,7 +4,6 @@ Defines the minimum *shape* Ensemble expects of application logs and traces. **G
 
 Used by:
 
-- The lint rule `logging.unstructured` (flags violations).
 - The `/en-debug` skill (reads logs to reproduce bugs).
 - `/en-resolve-pr` (when reviewer comments reference observability gaps).
 
@@ -31,7 +30,7 @@ Custom fields are allowed and encouraged — namespace them under a domain prefi
 ## What this contract enables
 
 - **Bug reproduction.** `/en-debug` can take a `trace_id` and walk the spans to identify the failing code path.
-- **Lint enforcement.** `logging.unstructured` flags `console.log()`, `print()`, and bare formatted strings outside of explicit dev paths.
+- **Enforcement.** A project's own linter flags `console.log()`, `print()`, and bare formatted strings outside explicit dev paths; Ensemble ships no rule for this.
 - **Cross-cutting observability.** Aggregators (Datadog, Honeycomb, Loki) parse the same JSON regardless of language.
 - **AI-assisted debugging.** Agents reading logs don't need to learn project-specific text patterns — the shape is uniform.
 
@@ -44,36 +43,9 @@ Custom fields are allowed and encouraged — namespace them under a domain prefi
 
 These are project decisions. Ensemble doesn't care *how* the logs are emitted, only *what shape* they have on the way out.
 
-## Configuring the lint rule
+## Enforcing the shape
 
-Add to your project's `.ensemble/config.local.yaml`:
-
-```yaml
-observability:
-  structured_logging_required: true
-  logging_dev_paths:
-    - "**/*.dev.{ts,js}"
-    - "scripts/**"
-    - "tests/**"
-    - "**/*.test.{ts,js,py}"
-```
-
-The `logging.unstructured` rule scans tracked source files for the patterns below and flags any occurrence outside `logging_dev_paths`:
-
-| Language | Pattern | Suggested replacement |
-|---|---|---|
-| TypeScript / JavaScript | `console.log(`, `console.error(`, `console.warn(` | Project's structured logger (`logger.info(...)`, `pino.error(...)`) |
-| Python | `print(` (bare), `logging.basicConfig` outside `__main__` | Project's structured logger (`logger.info(...)`, `structlog.get_logger().error(...)`) |
-| Go | `fmt.Println(`, `fmt.Printf(` outside `cmd/` | `slog.Info(...)`, `log.New(...)` with JSON handler |
-| Rust | `println!(`, `eprintln!(` in non-binary crates | `tracing::info!`, `log::warn!` |
-
-The lint emits **P2 advisory** by default (not P1 blocker) — structured logging is a discipline that takes time to roll out. Bump to P1 in `.ensemble/config.local.yaml` once the codebase is clean:
-
-```yaml
-lint:
-  rule_severity_overrides:
-    "logging.unstructured": P1
-```
+Ensemble ships no lint rule for unstructured logging; `bin/ensemble-lint` checks documents, not source. A project that wants the contract enforced adds a rule to its own linter (a `no-console` rule in ESLint, a `print` ban in Ruff) with its dev, script and test paths excluded. `/en-debug` degrades gracefully either way: unstructured logs cap the hypothesis at 6/10 and the run says so.
 
 ## Configuring the `/en-debug` log source
 
@@ -132,13 +104,13 @@ These are the points where missing observability hurts most. Other emits are at 
 - **Including PII in `msg` or top-level fields.** Use `user_id` (a stable hash or numeric ID), not email/name.
 - **Logging at the wrong level.** Errors that are recovered cleanly are `warn`, not `error`. Reserve `error` for unrecovered failures.
 - **Stringifying and re-parsing JSON.** Emit once, structured. Don't `JSON.stringify` then log as `msg`.
-- **Adding `console.log` and forgetting it.** That's what `logging.unstructured` is for — make it a P1 blocker once the codebase is clean.
+- **Adding `console.log` and forgetting it.** A rule in the project's own linter catches it; make it blocking once the codebase is clean.
 
 ## Where this fits in the harness
 
 | Feedforward (guides) | Feedback (sensors) |
 |---|---|
-| This document | `logging.unstructured` lint rule |
+| This document | the project's own logging lint |
 | `.ensemble/config.local.yaml` schema | `logging.required-emit` lint rule (P2 advisory) |
 | Project's logger setup (logger.ts, etc.) | `/en-debug` reads logs to reproduce bugs |
 | | `/en-review` checks observability adherence on changed files |

@@ -137,10 +137,14 @@ grep -qi 'Write the \*\*situation\*\*, not the subject' "$SCHEMA" \
 # --- Schema parity across carriers -------------------------------------------
 # The schema is duplicated per self-contained skill. Derive carriers from the
 # filesystem so that deleting a copy cannot make this check quietly vacuous.
+# Two carriers until 2026-09-04; en-review's standards dimension now defers to
+# the pre-flight lint (D78), so en-learn, which writes the frontmatter, is the
+# one carrier. The identity loop below still runs, and goes back to doing real
+# work the day a second carrier appears.
 CARRIERS=$(ls "$REPO_ROOT"/skills/*/references/learning-frontmatter-schema.md 2>/dev/null | wc -l | tr -d ' ')
-[ "$CARRIERS" -ge 2 ] \
-  && pass "at least two skills carry the schema ($CARRIERS)" \
-  || fail "at least two skills carry the schema (found $CARRIERS)"
+[ "$CARRIERS" -ge 1 ] \
+  && pass "the schema has a carrier ($CARRIERS)" \
+  || fail "the schema has a carrier (found $CARRIERS)"
 
 REF_SUM=$(shasum "$SCHEMA" | cut -d' ' -f1)
 SKEW=0

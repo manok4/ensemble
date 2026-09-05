@@ -113,7 +113,9 @@ else
 fi
 
 # --- 6. All sweep commit prefixes recognized ---
-for prefix in "chore(sweep)" "chore(arch)" "chore(plans)" "chore(learnings)" "chore(maps)" "chore(docs)"; do
+# chore(docs) left this list with D65: humans type it, and a scope shared with
+# humans silences the gate (D84 found this copy still recognising it).
+for prefix in "chore(sweep)" "chore(arch)" "chore(plans)" "chore(learnings)" "chore(maps)"; do
   TMP=$(make_repo)
   cd "$TMP"
   echo "x" > a.txt
@@ -186,5 +188,8 @@ if [ "$rc" -ne 0 ]; then
 else
   fail "unknown flag should exit non-zero" "rc=$rc"
 fi
+
+# --- D65 holds in this copy too: no scope a human would type ---------------
+assert_not_contains "$(grep '^SWEEP_PATTERN=' "$CHECK")" "docs" "SWEEP_PATTERN claims no scope humans share (en-setup copy)"
 
 report

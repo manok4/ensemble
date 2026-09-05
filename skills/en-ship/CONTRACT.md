@@ -15,6 +15,9 @@ Owned by `en-ship`. Callers depend on this page, not on `SKILL.md`.
 | `--auto-merge` | arms `gh pr merge --auto --squash`; default OFF |
 | `--draft` · `--no-pr` · `--base <branch>` · `--reviewers <list>` | PR shape |
 | `--no-watch` | open the PR and stop, skipping the watch loop |
+| `--preflight` | run the checks (steps 1 through 8), write the receipt, print the preflight state; no commit, push or PR |
+| `--interactive` | restore the stop-and-ask prompts for scope and plan completion |
+| `--no-plan-completion-checkpoint` · `--no-test-on-changed` | skip one preflight step; each records that it was skipped |
 | `--allow-secrets` | bypass the secret scan; use sparingly |
 
 ## Non-interactive guarantee
@@ -25,7 +28,8 @@ must handle a stop, not assume a PR exists on return.
 
 ## Return
 
-The PR URL plus pre-flight results. On a stop, the failing check and its output.
+The PR URL plus pre-flight results. With `--preflight`, the preflight state and
+the receipt, and no PR. On a stop, the failing check and its output.
 A caller must not treat a reported URL as a completed hand-off when the watch
 loop is still running.
 
@@ -34,7 +38,8 @@ loop is still running.
 **This skill is the widest envelope in the toolkit: it pushes and opens PRs.**
 That authority does not extend to its callers and cannot be widened by them. It
 never force-pushes, never merges directly (auto-merge is armed, not performed),
-and never pushes to the default branch without `--allow-main-push`.
+and never pushes to the default branch without a confirmation typed at run
+time. There is no flag for that, so a caller cannot pre-authorise it.
 `--allow-secrets` requires an explicit flag precisely because it bypasses a
 safety check.
 

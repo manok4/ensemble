@@ -115,10 +115,12 @@ else
 fi
 
 # --- Integration - host-neutral worker-agent selection (not hardcoded) ---
-if grep -qiE "host-neutral" "$SKILL" && grep -qF "host-detect.md" "$SKILL" && grep -qiE "never hardcode" "$SKILL"; then
-  pass "worker-agent selection is host-neutral (claude/codex via host-detect)"
+# D91: the skill runs the detection script and reads HOST; the prose reference
+# (and the recursion-guard reached only through it) are no longer carried.
+if grep -qiE "host-neutral" "$SKILL" && grep -qF "scripts/ensemble-detect-host" "$SKILL" && grep -qiE "never hardcode" "$SKILL"; then
+  pass "worker-agent selection is host-neutral (claude/codex via the detection script)"
 else
-  fail "must select the worker agent host-neutrally via host-detect (never hardcoded)"
+  fail "must select the worker agent host-neutrally via the detection script (never hardcoded)"
 fi
 
 # --- Core rule: host orchestrates, gnhf executes; completion is not acceptance ---
@@ -224,5 +226,9 @@ if grep -qiE "[Gg]uardrail coverage is conditional|covers.*only.*claude worker|o
 else
   fail "must condition en-guardrail coverage on a claude worker (codex/other are not covered)"
 fi
+
+for gone in references/host-detect.md references/recursion-guard.md; do
+  [ -e "$REPO_ROOT/skills/en-loop/$gone" ] && fail "en-loop no longer carries $gone (D91)" || pass "en-loop no longer carries $gone (D91)"
+done
 
 report

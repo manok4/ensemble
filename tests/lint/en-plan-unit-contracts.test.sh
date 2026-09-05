@@ -35,9 +35,11 @@ fi
 
 # --- 2. it is self-gating, and says why it exists ---
 # Without the omit clause every unit grows a block; without the reason, the next
-# editor cannot tell whether it is decoration.
+# editor cannot tell whether it is decoration. (The reason changed with D52:
+# there is no per-unit worker any more, but a name one unit invents and another
+# calls still has to match, and the block is where it is pinned.)
 if grep -qiE 'omit (it entirely )?(unless|when)' "$SKILL" \
-   && grep -qiE 'never sees U3|worker never sees' "$SKILL"; then
+   && grep -qiE 'pins both to the same signature|never sees U3' "$SKILL"; then
   pass "the block is self-gating and states the dispatch fact that motivates it"
 else
   fail "the Interfaces block must be self-gating and explain the per-unit dispatch"

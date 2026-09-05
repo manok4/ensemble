@@ -64,7 +64,6 @@ fi
 # the whole rule, so it is asserted structurally, not just by presence.
 QS="$REPO_ROOT/skills/en-qa/SKILL.md"
 QD="$REPO_ROOT/skills/en-qa/references/browser-driver.md"
-QF="$REPO_ROOT/skills/en-qa/references/qa-flows.md"
 
 qhas() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "not in $(basename "$1")"; }
 
@@ -107,7 +106,10 @@ qhas "$QS" "none of those three may block"       "pre-flow questions do not bloc
 qhas "$QS" "it waits, which is worse"            "the reason names waiting, not failing"
 
 # --- regression tests assert behaviour, not source text ----------------------
-qhas "$QF" "through a real interface"            "a regression test exercises a real interface"
-qhas "$QF" "can be dead or commented out"        "the source-grep anti-pattern is named"
+# D85 folded qa-flows.md into the skill; the rule now lives in the bug protocol.
+qhas "$QS" "through a real interface"            "a regression test exercises a real interface"
+qhas "$QS" "can be dead or commented out"        "the source-grep anti-pattern is named"
+[ -e "$REPO_ROOT/skills/en-qa/references/qa-flows.md" ] && fail "qa-flows.md is gone (D85 folded it into the skill)" || pass "qa-flows.md is gone (D85 folded it into the skill)"
+grep -qF "peer_mode_override" "$QS" && fail "en-qa no longer cites the peer key as a browser skip reason" || pass "en-qa no longer cites the peer key as a browser skip reason"
 
 report

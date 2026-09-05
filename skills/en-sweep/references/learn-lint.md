@@ -69,7 +69,7 @@ different pages that overlap in topic but may conflict. For each pair, output:
 Only emit "contradicts" with high confidence (≥7).
 ```
 
-Pairs are found by overlapping `tags` and `component` fields. Output: P3 advisory with both citations. No auto-fix (always judgment).
+Pairs are found by overlapping `tags` and shared wording in `applies_when`. Output: P3 advisory with both citations. No auto-fix (always judgment).
 
 ### `missing-pages`
 
@@ -101,7 +101,7 @@ Auto-fixable: regenerate from all three.
 
 For every page in `docs/learnings/` (excluding `archive/`):
 
-- Compute the most recent `en-learn` operation on that page (per its `updated:` field).
+- Compute the most recent `en-learn` operation on that page: its `date:`, or the `Last updated` note `--refresh` adds.
 - Look for a corresponding `log.md` entry on or near that date.
 - If missing → P2 (auto-fix: append a `## [<date>] capture | <title>` line).
 

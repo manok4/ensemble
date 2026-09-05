@@ -1,6 +1,6 @@
 ---
 name: en-setup
-description: "Project-level Ensemble bootstrap and diagnostics. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'. Detects greenfield, existing-without-Ensemble, or already-integrated, then creates the docs skeleton, seeds docs/CONTEXT.md from the declared domain model, generates AGENTS.md and CLAUDE.md, and offers the optional integrations. Runs health checks on an integrated project."
+description: "Ensemble bootstrap and diagnostics for a project: detects its state, creates the docs skeleton, generates AGENTS.md and CLAUDE.md, offers optional integrations and health checks. Trigger phrases: 'set up Ensemble', 'bootstrap Ensemble', 'install Ensemble here', 'retrofit', 'diagnose Ensemble'."
 disable-model-invocation: true
 ---
 
@@ -14,10 +14,7 @@ Project-level Ensemble bootstrap and diagnostics. Distinct from the global `./se
 
 > **Hard rule:** This skill is mechanical setup work. **No code review, no peer cross-review, no implementation.** Off-loads anything ambiguous to `/en-brainstorm`, `/en-foundation`, or `/en-plan`.
 
-> **Severity vocabulary.** This skill emits findings graded P0-P3. Those levels,
-> and the confidence scale beside them, are defined in
-> `references/peer-contract.md` and mean the same thing to every skill that
-> reads them.
+> **Severity vocabulary.** The lint this skill installs (`bin/ensemble-lint`) emits findings graded P0-P3; the levels are defined in `references/peer-contract.md` and mean the same thing to every skill that reads them. This skill's own report uses 🟢 / 🟡 / 🔴.
 
 ## Process
 
@@ -122,20 +119,20 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    This step is verified again in the final-verification phase (step 18). Both checks must pass.
 10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 11 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
 
-   - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper invoked by `.github/workflows/en-sweep.yml` (line 114 of the template).
-   - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — invoked directly by the workflow (lines 52, 54 of the template) for the "no non-sweep commits since last run" gate.
+   - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper the workflow runs (it prefers the freshly cloned plugin's copy and falls back to this one).
+   - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — run by the workflow's activity-gate step for the "no non-sweep commits since last run" check.
    - `$SKILL_DIR/scripts/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
    - `bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
 
    **Resolving the script path.** This skill carries the scripts it installs in its own `scripts/` directory, so there is nothing to discover: anchor to the skill directory as `references/script-invocation.md` describes. `${ENSEMBLE_PLUGIN_DIR:-}` is still honored when set, for a caller that deliberately points at another install.
 
-   For each of the four scripts: copy from `<plugin>/bin/<name>` to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
+   For each of the four: copy from `$SKILL_DIR/scripts/<name>` (the lint from `$SKILL_DIR/references/templates/ensemble-lint`) to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
 
    **Verification:** after copying, confirm with `[ -x bin/<name> ]` for each. Re-checked in the final-verification phase (step 18).
 
    These bin scripts are project-local on purpose — they're invoked from `.github/workflows/en-sweep.yml` via relative paths, which only works if they're committed to the repo.
 
-   **Re-sync on update (drift caveat).** Because these are *copied* into the project, a consuming repo carries a frozen snapshot from install time — fixes to the plugin's `bin/` scripts do NOT propagate automatically. When the plugin updates a sweep script (e.g. the `en-sweep-ci` guard fix), re-run this step to re-copy (it's idempotent — it overwrites when content differs). The current workflow template mitigates this for `en-sweep-ci` specifically by preferring the freshly-cloned `$ENSEMBLE_PLUGIN_DIR/bin/en-sweep-ci` at run time and only falling back to the project-local copy; `ensemble-sweep-activity-check` still runs project-local (its job doesn't clone), so re-sync it on update.
+   **Re-sync on update.** These are copies, so a consuming repo carries a snapshot from install time; re-run this step after a plugin update (idempotent: it overwrites when content differs). The workflow prefers the freshly cloned `en-sweep-ci`, but `ensemble-sweep-activity-check` and `ensemble-lint` run project-local, so they need the re-sync.
 
 11. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`.
 
@@ -249,11 +246,9 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     ```
     🟡 No `timeout` binary found on PATH.
        Repair: brew install coreutils  (macOS)
-       Used by: /en-build's peer-review subprocess hang protection.
-       Without it, /en-build will fail fast with a clear install
-       instruction on the first peer call — peer review never runs
-       unwrapped (per PR #9). Install before the next /en-build run
-       or expect peer-review-required units to halt with an error.
+       Used by: the peer helper's timeout wrapper (/en-review, /en-plan,
+       /en-foundation). Without it the peer runs unbounded and the
+       helper says so on stderr at every call.
     ```
 
     **For each missing required artifact**: re-run the corresponding install step **once**. If it's still missing, **fail loudly**:
@@ -264,7 +259,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
       - bin/ensemble-lint (not present)
       - .gitignore (does not contain '.ensemble/config.local.yaml')
 
-    These were supposed to be installed by steps 8–9 but the writes
+    These were supposed to be installed by steps 9–10 but the writes
     didn't take. Re-run /en-setup, or surface this to the user and ask
     them to commit what's there before proceeding.
     ```
@@ -303,11 +298,11 @@ Invoke `bash "$SKILL_DIR/scripts/check-health"` — this skill carries it, ancho
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Required-artifact verification** - same table as State 2 step 18 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 9? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
-- **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 12).
-- **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 13).
+- **Required-artifact verification** - same table as State 2 step 18 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 10? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
+- **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 13).
+- **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 14).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
-- **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by `/en-build`'s peer-review subprocess hang protection. Advisory-only because `/en-build` already fails fast with the install instruction on the first peer call — never silently degraded.
+- **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by the peer helper's timeout wrapper. Advisory-only: the helper says on stderr when it runs unbounded.
 - **`gnhf` CLI (optional; only for `/en-loop`)** — `command -v gnhf`. 🟢 if present; 🟡 advisory if absent (surface `npm i -g gnhf`). Agent-agnostic loop engine that `/en-loop` wraps; only needed for `/en-loop`, so its absence is never 🔴 — every other skill works without it.
 
 For each 🟡 / 🔴 check, the user can opt-in to repair:
@@ -390,7 +385,7 @@ Next step:
 - `references/learn-index-format.md` — `learnings/index.md` empty-state seed
 - `references/learn-log-format.md` — `learnings/log.md` empty-state seed
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
-- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; referenced from step 14
+- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; State 2 step 16
 - `scripts/check-health` — diagnostic runner (State 3)
 - `install-guardrail`, carried by `/en-guardrail` — installs/uninstalls the destructive-command guardrail hook
 - `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)

@@ -106,45 +106,6 @@ The `no_match_note` is a useful signal — it tells the dispatcher to capture ag
 - **You do not invoke other agents.**
 - **JSON only.** No commentary outside JSON.
 
-## Worked example
-
-Dispatched by `/en-plan` for "FR07 — refresh-token rotation":
-
-```json
-{
-  "summary": "Three relevant entries. The refresh-token-race bug from April directly informs this work; the single-flight-cache pattern is the recommended approach.",
-  "matches": [
-    {
-      "path": "docs/learnings/refresh-token-race-2026-04-15.md",
-      "title": "Refresh token race when two requests arrive within rotation window",
-      "artifact_type": "solution",
-      "applies_when": "Multiple concurrent requests from one user during refresh-token rotation",
-      "relevance_score": 10,
-      "why_relevant": "Direct prior art — same problem class, same component (auth-middleware).",
-      "key_insight": "Two near-simultaneous refresh requests both rotate; second invalidates first. Fix: serialize per-user with singleFlight cache."
-    },
-    {
-      "path": "docs/learnings/single-flight-cache-2026-03-20.md",
-      "title": "Single-flight cache for per-user side-effecting operations",
-      "artifact_type": "solution",
-      "applies_when": "Operation has side effects, must run at most once per key, with concurrent callers awaiting the same result",
-      "relevance_score": 9,
-      "why_relevant": "The recommended fix pattern for the FR07 race condition.",
-      "key_insight": "singleFlight<K, V>(key, fn) de-dupes concurrent calls keyed on K; concurrent callers all await the same promise."
-    },
-    {
-      "path": "docs/learnings/cookie-attributes-2026-02-08.md",
-      "title": "Cookie attributes for refresh-token storage",
-      "artifact_type": "decision",
-      "applies_when": "Storing auth tokens in cookies",
-      "relevance_score": 6,
-      "why_relevant": "Tangential — relevant if FR07 also touches cookie attributes; otherwise just context.",
-      "key_insight": "HttpOnly + Secure + SameSite=Lax. Don't change without re-evaluating client compatibility."
-    }
-  ]
-}
-```
-
 ## Evidence dossier
 
 For large result sets, follow the evidence-dossier protocol in `references/research-dispatch.md`: write verbatim quotes + source pointers to a scratch dossier at `/tmp/ensemble/<skill>/<run-id>/<this-agent>.md` (line-capped ~150), and return only a 3–5 line **gist** plus `dossier_path` instead of inlining every quote. The orchestrator and downstream agents read the dossier from disk on demand. **Degraded fallback:** if the scratch write fails, return findings inline and set `dossier_path: null` — never drop evidence.

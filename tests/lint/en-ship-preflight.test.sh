@@ -147,4 +147,63 @@ else
   pass "no partial-credit path may be reintroduced"
 fi
 
+# --- D82: the flow runs the helpers EN15 built for it -------------------------
+# The two helpers existed since EN15 with SKILL.md in their file lists, and the
+# flow never called them; only "Bundled scripts" described them. Negative
+# control at authoring: restoring the pre-D82 step 8 (the verifier called
+# directly, four sub-steps of prose) turned the checkpoint clause red.
+step3=$(sed -n '/^3\. \*\*Pre-flight/,/^4\. /p' "$S")
+printf '%s' "$step3" | grep -qF 'scripts/ensemble-ship-preflight" --base' \
+  && pass "step 3 runs ensemble-ship-preflight" || fail "step 3 must run ensemble-ship-preflight"
+step7=$(sed -n '/^7\. \*\*Resolve what to commit/,/^8\. /p' "$S")
+printf '%s' "$step7" | grep -qF 'staging_case' && printf '%s' "$step7" | grep -qF '`push-existing`' \
+  && printf '%s' "$step7" | grep -qF '`stage-scoped`' && printf '%s' "$step7" | grep -qF '`no-op`' \
+  && pass "step 7 acts on the helper's staging_case" || fail "step 7 must act on staging_case (push-existing / stage-scoped / no-op)"
+step8=$(sed -n '/^8\. \*\*Plan completion checkpoint/,/^9\. /p' "$S")
+printf '%s' "$step8" | grep -qF 'scripts/ensemble-plan-checkpoint" --base' \
+  && pass "step 8 runs ensemble-plan-checkpoint" || fail "step 8 must run ensemble-plan-checkpoint"
+printf '%s' "$step8" | grep -qF 'plan_path' && grep -qF 'Closes plan: <plan_path>' "$S" \
+  && pass "the PR body uses the checkpoint's plan_path" || fail "step 12 must use plan_path from the checkpoint"
+
+# --- D82: selection tier, ratio rule, receipt write, fingerprint, --preflight --
+has "$S" 'selection: graph'        "a graph-selected run is labelled"
+has "$S" 'selection: approximate'  "a map or heuristic selection is labelled approximate"
+has "$S" 'sixty percent'           "an oversized selection runs the suite"
+if grep -qE 'write --check lint=passed --check typecheck=passed --check targeted_tests=passed[^`]*--by en-ship' "$S" \
+   && grep -qF 'never `full_suite`' "$S"; then
+  pass "a passing run writes a receipt for targeted_tests and never claims full_suite"
+else
+  fail "en-ship must write a receipt recording targeted_tests, never full_suite"
+fi
+has "$S" 'Verified locally'        "the PR body carries the local receipt's fingerprint and tier"
+grep -qE '^\| `--preflight` \|' "$S" && grep -qF '**`--preflight` stops here.**' "$S" \
+  && pass "--preflight runs the checks and stops before the commit" || fail "--preflight must be a flag that stops after step 8"
+
+# --- D82: the contract says what the skill does -------------------------------
+C=skills/en-ship/CONTRACT.md
+if grep -qF -- '--allow-main-push' "$C" "$S"; then
+  fail "no page names --allow-main-push" "a flag that does not exist; the skill refuses one by design"
+else
+  pass "no page names --allow-main-push"
+fi
+grep -qF -- '--preflight' "$C" && pass "the contract offers --preflight" || fail "the contract must offer --preflight"
+
+# --- D82: the documented helper commands run from a foreign cwd --------------
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+# The fixture sets its own identity: a CI runner has none, the first commit
+# then fails, the branch switch moves the unborn HEAD, and `main` never exists.
+( cd "$T" && git init -q -b main r && cd r \
+    && git config user.email test@test.local && git config user.name Test && git config commit.gpgsign false \
+    && git commit -q --allow-empty -m init \
+    && git checkout -q -b en99-x && git commit -q --allow-empty -m "feat: u1" ) 2>/dev/null
+SD="$REPO_ROOT/skills/en-ship"
+pf=$(cd "$T/r" && bash "$SD/scripts/ensemble-ship-preflight" --base main --json 2>&1); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$pf" | grep -q '"staging_case": *"push-existing"' \
+  && pass "preflight helper classifies a foreign repo (push-existing)" \
+  || fail "preflight helper classifies a foreign repo" "rc=$rc $pf"
+ck=$(cd "$T/r" && bash "$SD/scripts/ensemble-plan-checkpoint" --base main --json 2>&1); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$ck" | grep -q '"outcome": *"not_applicable"' && printf '%s' "$ck" | grep -q '"plan_path"' \
+  && pass "checkpoint helper resolves a foreign repo without a plan (not_applicable, plan_path present)" \
+  || fail "checkpoint helper resolves a foreign repo" "rc=$rc $ck"
+
 report
