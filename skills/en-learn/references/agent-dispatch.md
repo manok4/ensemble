@@ -18,7 +18,12 @@ directory carries agent definitions nothing can reach.
 
 Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this
 table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites**
-omit any model override so the declaration, not the caller, decides.
+omit any model override so the declaration, not the caller, decides, with one
+exception: a skill that reads an operator-configured alias for its agents
+(`/en-review`'s `review_host_model_alias`) passes it as the Agent tool's `model`,
+because that is the operator deciding, not the caller. Effort has no per-call
+parameter; an agent that needs one declares `effort:` in its frontmatter, and a
+repo overrides it with a project-level copy under `.claude/agents/` (D100).
 
 | Tier | For | Ours |
 |---|---|---|

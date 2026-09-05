@@ -106,6 +106,25 @@ if grep -q "custom prompt" "$STUB/argv2" 2>/dev/null && ! grep -q "operating una
 else
   fail "a caller-supplied prompt must be passed through unchanged"
 fi
+# D100: runner model and effort arrive as env and become CLI flags; a bad
+# value is dropped, never passed.
+STUB_OUT="$STUB/argv3" ENSEMBLE_SWEEP_MODEL=fable ENSEMBLE_SWEEP_EFFORT=high PATH="$STUB:$PATH" \
+  bash "$REPO_ROOT/skills/en-sweep/scripts/en-sweep-ci" >/dev/null 2>&1 || true
+if grep -qx -- "--model" "$STUB/argv3" && grep -qx "fable" "$STUB/argv3" \
+   && grep -qx -- "--effort" "$STUB/argv3" && grep -qx "high" "$STUB/argv3"; then
+  pass "ENSEMBLE_SWEEP_MODEL and ENSEMBLE_SWEEP_EFFORT become --model and --effort"
+else
+  fail "ENSEMBLE_SWEEP_MODEL/EFFORT must become --model/--effort (D100)" "$(tr '\n' ' ' < "$STUB/argv3" 2>/dev/null)"
+fi
+STUB_OUT="$STUB/argv4" ENSEMBLE_SWEEP_MODEL='x --dangerously' ENSEMBLE_SWEEP_EFFORT=turbo PATH="$STUB:$PATH" \
+  bash "$REPO_ROOT/skills/en-sweep/scripts/en-sweep-ci" >/dev/null 2>&1 || true
+if ! grep -qx -- "--model" "$STUB/argv4" && ! grep -qx -- "--effort" "$STUB/argv4"; then
+  pass "a malformed model or unknown effort is dropped, not passed"
+else
+  fail "a malformed model or unknown effort must be dropped" "$(tr '\n' ' ' < "$STUB/argv4" 2>/dev/null)"
+fi
+grep -q 'vars.ENSEMBLE_SWEEP_MODEL' "$WF" && pass "workflow template passes ENSEMBLE_SWEEP_MODEL from repo variables" \
+  || fail "workflow template must pass ENSEMBLE_SWEEP_MODEL from vars"
 rm -rf "$STUB"
 
 report

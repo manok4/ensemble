@@ -31,12 +31,12 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    | Diff below `skip_peer_below_lines` | `off` | `auto-skip:diff-below-threshold` |
    | Lightweight depth AND `skip_peer_on_lightweight` | `off` | `auto-skip:lightweight-depth` |
 
-   Two carve-outs are deliberate, not oversights. **`report-only` never runs a peer**: `/en-sweep` invokes `/en-review` in that mode inside CI, where D38 keeps API secrets and repo-write off, so a default peer would silently require credentials there. **`single-agent-fallback` is ON.** With `--peer` the default, "no peer CLI" cannot mean "no review": the peer role runs on the host model in a fresh subprocess, and `peer_decision.peer_mode` records `single-agent-fallback` so the report never reads as a cross-agent pass. `--host` declines the fallback and takes the persona roster instead.
+   **`report-only` never runs a peer**: `/en-sweep` invokes `/en-review` in that mode inside CI, where D38 keeps API secrets and repo-write off, so a default peer would silently require credentials there. **`single-agent-fallback` is ON.** With `--peer` the default, "no peer CLI" cannot mean "no review": the peer role runs on the host model in a fresh subprocess, and `peer_decision.peer_mode` records `single-agent-fallback` so the report never reads as a cross-agent pass. `--host` declines the fallback and takes the persona roster instead.
 
 2b. **Read the effort/alias config overrides** (the two high-precedence layers only). This skill is the **SOLE resolver** (`peer-model-policy.md` (b)), but resolution is deliberately **split across two points** because the ladder's inputs do not exist yet at step 2:
 
    - **Overrides, read here:** the `--effort <low|medium|high|xhigh>` flag, then `$SKILL_DIR/scripts/ensemble-config-get review_peer_effort_override --allowed low,medium,high,xhigh`. If either yields a tier, that tier is final and step 7b skips the ladder.
-   - **Model alias, read here:** `$SKILL_DIR/scripts/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design, and the alias does not depend on diff signals.
+   - **Models, read here:** `ensemble-config-get review_peer_model_alias` (the Claude peer's alias), `review_peer_codex_model` (a Codex peer's `-m`, else inherit), and `review_host_model_alias` (the Agent-tool `model` for every persona under `--cross`/`--host`; unset → the agent's frontmatter). Host effort is the agent's `effort:` frontmatter, overridable per repo by a `.claude/agents/dimension-reviewer.md` copy (`references/peer-model-policy.md` (c)). There is no `--model` run flag by design.
 3. **Determine mode** (per `references/persona-dispatch.md` and the §5.2.5 contract). The caller picks: `en-build` → `headless` (auto-applies `safe_auto` silently, returns JSON); `en-sweep` → `report-only` (CI; **strictly read-only**, never configurable); a user directly → `interactive` (auto-applies `safe_auto`, surfaces the rest). Mutation rights per mode are the table under Flags.
 4. **Resolve the review target.** Most runs review a branch diff, but the target is whatever the invocation names:
 
@@ -82,7 +82,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 8. **Dispatch, per review mode.** `--peer` (default) dispatches the peer alone: step 7's detection fed the effort tier and nothing else, and no persona roster runs. `--host` dispatches the persona roster alone. Only `--cross` dispatches both, and only `--cross` reaches the reconciliation in step 10.
 
-    **`--cross`: the peer first, then the personas in ONE batch.** Start the peer detached (step 9), then one message with multiple `Agent` tool calls for the roster. Because the peer is **blind** to persona findings (see step 9), nothing orders it after the roster, so serializing it would add its latency to every review for no benefit. Collect the personas, then wait for the peer.
+    **`--cross`: the peer first, then the personas in ONE batch.** Start the peer detached (step 9), then one message with multiple `Agent` tool calls for the roster, each carrying `model: <review_host_model_alias>` when step 2b resolved one and no `model` otherwise. The peer is **blind** to persona findings (step 9), so nothing orders it after the roster. Collect the personas, then wait for the peer.
 9. **Outside Voice peer (runs in `--peer` and `--cross`; `--peer` is the default and makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
    - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid.
    - Build the prompt: `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"` (the brief supplies the review dimensions; pass `references/peer-brief-lite.md` instead when `lite_gate` is `applied`).
@@ -142,15 +142,15 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | Flag | Effect |
 |---|---|
 | `--mode interactive\|headless\|report-only` | Override the default mode (caller-selected; see step 3) |
-| `--peer` | **Default.** The peer is the sole reviewer; host personas do not run. Fastest and cheapest of the three. Where no peer CLI exists, the peer role runs on the host model in a **fresh subprocess** rather than being skipped — see the fallback note in step 2a. |
+| `--peer` | **Default.** The peer is the sole reviewer; host personas do not run. Where no peer CLI exists, the peer role runs on the host model in a **fresh subprocess** rather than being skipped — see the fallback note in step 2a. |
 | `--cross` | Host personas **and** the peer, reconciled into the four buckets, **corroborated findings reported first**. The thorough mode: it is the only one that produces standards / testing / maintainability findings with project context alongside an independent read. Used by `/en-build` (D46). |
-| `--host` | Host personas only, in fresh-context sub-agents. No peer subprocess. Use when no peer is wanted or reachable and you do not want the same-model fallback. |
+| `--host` | Host personas only, in fresh-context sub-agents. No peer subprocess and no same-model fallback. |
 | `--effort low\|medium\|high\|xhigh` | Pin the peer's reasoning-effort tier for this run, the highest-precedence layer in `references/peer-model-policy.md` (b). Omit to let repo config, then user config, then the ladder decide. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full target) |
-| `--focus security\|performance\|tests\|correctness\|maintainability\|all` | Bias the reviewer's attention toward one concern. It **narrows emphasis, never coverage**: a P0 outside the focus is still reported, because a reviewer that suppresses a security finding while focused on tests is worse than one that was never focused. In `--cross` it biases the peer only; the persona roster is already dimension-split. |
-| `--lite` | A lighter review for a quick fix: the peer reads a lite brief, the host roster collapses to `correctness` + `standards` (+ `fast-pass`); applies to whichever the mode runs. **Fail-closed on risk** — a risk signal or a triggered conditional persona forces the full review regardless of the flag. Size does not gate. |
+| `--focus security\|performance\|tests\|correctness\|maintainability\|all` | Bias the reviewer's attention toward one concern. It **narrows emphasis, never coverage**: a P0 outside the focus is still reported. In `--cross` it biases the peer only; the roster is already dimension-split. |
+| `--lite` | A lighter review for a quick fix (step 7a): lite brief for the peer, `correctness` + `standards` (+ `fast-pass`) for the roster. **Fail-closed on risk**; size does not gate. |
 | `--verify [<envelope-path>]` | Run only the verification pass of step 12a against a previous run's envelope, for P0/P1 fixes made after that run. Bare, it takes the newest matching envelope under `/tmp/ensemble/en-review/`. |
 
 ## Mutation rules per mode
@@ -170,6 +170,7 @@ Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}
   "verdict": "approve | revise | reject",
   "summary": "<2-3 sentence overall>",
   "personas": ["correctness", "testing", "maintainability", "standards", "security"],
+  "host_model": "<review_host_model_alias or frontmatter alias> | null",
   "mode": "interactive | headless | report-only",
   "lite_gate": {"outcome": "applied | overridden | not-requested", "reasons": []},
   "verification_pass": {"outcome": "clean | new-findings | not-run", "reason": "no-p0-p1-addressed | peer-failure | null", "finding_ids": []},
@@ -206,7 +207,7 @@ Always emit a markdown summary alongside the JSON, even in `headless`/`report-on
 ## Code review — FR07-auth-rotation
 
 **Verdict:** revise (3 findings)
-**Personas fired:** correctness, testing, maintainability, standards, security
+**Personas fired:** correctness, testing, maintainability, standards, security (host_model: opus)
 **Pre-flight lint:** clean
 **Auto-applied:** 3 safe_auto fixes
 lite_gate: not-requested

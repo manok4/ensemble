@@ -183,6 +183,8 @@ working. `triage-findings` parses the last three itself, so a typo there is
 silent and the default stands. The rest are read by this skill's own steps,
 which means they are only as reliable as the step that cites them.
 
+**The runner's model and effort are repository Actions variables, not config keys.** `ENSEMBLE_SWEEP_MODEL` and `ENSEMBLE_SWEEP_EFFORT` (Settings → Secrets and variables → Actions → Variables) reach `en-sweep-ci` through the workflow's `env:` and become `--model` / `--effort` on Claude or `-m` / `model_reasoning_effort` on Codex; unset means the runner CLI's default. This file never reaches CI, so a key here could not do that job. A manual `/en-sweep` runs on the session's model.
+
 **The CI timeout is not a config key.** It is `timeout-minutes:` in
 `.github/workflows/en-sweep.yml`, and editing the workflow is the only way to
 change it.
