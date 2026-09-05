@@ -37,9 +37,11 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
    **Scope first: map the change to flows.** Take the changed files and attribute each to the flows (foundation §6 F-IDs) it can reach, through routes, components, and the modules those import. **Exercise only those flows.** This is QA of a change, not a release regression sweep: walking twenty flows for a one-route edit spends most of the run re-proving things nobody touched, and buries the finding that matters in a wall of green.
 
+   **Write the flow ledger before the first flow runs.** Put every selected flow into `.test-output/qa/<run-id>/flows.json` with `outcome: pending`, and update the entry as each flow ends; print one line per flow as it completes. A Phase 2 run is long enough for the context to be compacted under it, and after that the only record of which flows were selected, which ran and what each found is this file. The report at step 9 is derived from it, never from memory.
+
    **When attribution is incomplete, say so — do not fall back to everything.** If a changed file cannot be attributed to any flow (a shared utility, a build-config change, no route map available), exercise the flows you *did* attribute, then list the unattributed files in the report under "impact undetermined". Expanding silently to the full catalogue trades a stated gap for an unstated cost, and the reader can no longer tell which flows were run because they were implicated and which were swept up. `--flow <name>` overrides attribution; `--all-flows` is the explicit way to ask for the sweep.
 
-   For each in-scope flow, exercise the golden path (navigate to the entry point, do what a user would, verify the end state), then these edge cases, capturing a screenshot at each decision point:
+   For each in-scope flow, exercise the golden path (navigate to the entry point, do what a user would, verify the end state), then these edge cases, capturing a screenshot at each decision point. Screenshots go to disk under `.test-output/qa/`, with whichever driver; only the path enters the report, so image bytes never sit in context. For a visual bug, capture the element or region at fault rather than the whole viewport, so the evidence shows the defect at a size a reader can judge:
 
    | Edge case | What to check |
    |---|---|
@@ -56,13 +58,13 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 8. **Bug protocol** (for each bug found):
    - Reproduce — confirm consistently.
    - Identify root cause — read source; trace path.
-   - Fix in source code.
+   - Fix in source code. **Fix what the change broke.** A bug in a flow the change did not reach, or behaviour unrelated to the diff, is recorded in the report as a follow-up, not fixed here, unless the in-scope flow cannot pass without it: QA of a change is not a licence to repair the product. Regression tests are sized like the neighbouring test files, one focused test per bug.
    - Add regression test (must fail on unfixed code, pass on fix). It exercises the behaviour through a real interface and asserts the observable result: the output, the state, the side effect. A test whose only evidence is that a source file contains, or no longer contains, some string proves nothing: the text can be dead or commented out, and a behaviour-preserving refactor breaks the test while the bug stays fixed.
    - Atomic commit: `fix(qa): <one-line>`. Body cites the QA flow.
    - Re-verify — re-run failing flow + regression test.
 8a. **Done means every in-scope flow has an outcome.** The run ends one of two ways: a report in which **every flow selected at step 7 is marked Pass, Fail, or Skip with its reason**, or a preflight blocker that stopped QA before any flow could run, named alongside what would clear it. Ending in neither, or dropping a flow from the report because nothing could reach it, is the failure this bar exists to prevent — an absent flow reads as a flow that passed.
 
-9. **Output QA report** — system-check status, flows exercised, bugs found and fixed, regression tests added, screenshots, skipped flows with reasons.
+9. **Output QA report**, from the flow ledger: system-check status, flows exercised, bugs found and fixed, follow-ups recorded, regression tests added, screenshot paths, skipped flows with reasons.
 
 ## Flags
 
