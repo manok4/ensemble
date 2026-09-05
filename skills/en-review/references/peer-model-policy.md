@@ -18,6 +18,8 @@ An **ordered first-match cascade**. `high` is evaluated first, so a change that 
 
 **Why `high` is tested first even though it looks redundant.** Both rung-2 inputs already require `RISK_SIGNALS` to be empty (and `lite_gate: applied` requires no conditional persona to have fired), so security and migrations can never collide with `low`. But the **architectural**, **destructive**, and **gated** conditions are *not* inputs to `is_small_and_safe`, and genuinely can co-occur with it. A small, signal-free diff on a `gated: true` unit must still resolve `high`. Ordering the cascade makes that true by construction rather than by coincidence.
 
+**`xhigh` is an opt-in, never a ladder rung.** The ladder resolves `low`, `medium` or `high`; `xhigh` reaches the peer only through layer 1 or 2 of the resolution order below, for a run someone has decided is worth it. Effort names do not mean the same amount of reasoning across model generations, so the rung-to-tier mapping is re-measured, not renamed, when the peer model changes (D95). `max` is not accepted: on a long artifact it drafts the reply in reasoning and again in output.
+
 **Why the floor is `medium` and not `low`.** Review is a recall problem, and the findings that justify running a peer at all are the subtle ones. Bottoming out at `low` would erode the capability being paid for. `low` is an explicit cost opt-in for diffs that have earned it.
 
 ## (b) Resolution order, and its single owner
@@ -26,7 +28,7 @@ An **ordered first-match cascade**. `high` is evaluated first, so a change that 
 
 | Order | Layer | How |
 |---|---|---|
-| 1 | `--effort <low\|medium\|high>` flag | Parsed by `/en-review` |
+| 1 | `--effort <low\|medium\|high\|xhigh>` flag | Parsed by `/en-review` |
 | 2 | `<repo>/.ensemble/config.local.yaml` | Via `$SKILL_DIR/scripts/ensemble-config-get` |
 | 3 | `~/.ensemble/config.json` | Via `$SKILL_DIR/scripts/ensemble-config-get` |
 | 4 | The ladder in (a) | Default |
@@ -77,7 +79,7 @@ Published here once, and consumed verbatim by `/en-review` and the drift tests, 
 {"peer": "on" | "off" | "degraded",
  "reason": "<enum>",
  "peer_mode": "cross-agent" | "single-agent-fallback" | "off",
- "effort": "low" | "medium" | "high",
+ "effort": "low" | "medium" | "high" | "xhigh",
  "model_alias": "<alias>" | null,
  "model_actual": "<served model>" | null}
 ```
