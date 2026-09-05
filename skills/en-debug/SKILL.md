@@ -43,7 +43,7 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
    - `log_source` — `stdout` (read from stdin), `file` (read `log_path`), or `command` (run `log_command`).
    - If unconfigured, prompt the user for log location and exit.
 4. **Validate `log_command` is allowlisted** if used. Default allowlist: `docker`, `kubectl`, `journalctl`, `gh run view`, `gh run view --log`, `datadog-cli`, `aws logs`, `gcloud logging`. Anything else requires explicit `observability.allowed_log_commands` entry.
-5. **Fetch logs.** Per the configured source. Cap fetched lines at `observability.max_log_lines` (default 5000).
+5. **Fetch logs.** Per the configured source. Cap fetched lines at `observability.max_log_lines` (default 5000). Strip any base64 run longer than 200 characters before the lines enter context and note how many were stripped: container logs and token payloads carry them, they anchor nothing, and encoded blobs in tool output are a known trigger for safety false positives.
 6. **Parse logs.** Per `references/observability-conventions.md` — structured-JSON shape. If logs aren't structured JSON, surface a warning and fall back to plain-text correlation (less precise).
 7. **Correlate.** Per the argument mode:
    - **Trace mode** — filter to entries where `trace_id == arg`; sort by timestamp; build a span timeline.
@@ -122,7 +122,7 @@ When there's no usable telemetry, run a systematic diagnosis loop adapted from c
 **Core principles:** investigate before fixing (no fix until the full causal chain from trigger to symptom has no gaps); one change at a time (no shotgun debugging); when stuck, diagnose *why* rather than trying harder.
 
 1. **Triage.** Reach a clear problem statement. If the input references an issue tracker (`#123`, Linear/Jira URL), fetch it (`gh issue view <n> --json title,body,comments,labels` for GitHub) and read the full comment thread, not just the opening post. **Trivial-bug fast-path:** if the cause is immediately readable (typo, missing import, obvious null deref) present the cause + one-line fix and go straight to the fix-choice gate in step 3.
-2. **Investigate.**
+2. **Investigate.** The first four moves below do not depend on one another; issue them in one message.
    - **Reproduce** — run the test / trigger the error / follow the repro steps. If it doesn't reproduce after 2–3 tries, read `references/debug-investigation.md` for intermittent-bug techniques.
    - **Verify environment sanity** — right branch, deps installed, expected runtime, env vars present, no stale build artifacts.
    - **Trace the code path** — read the stack bottom-to-top; find the first frame where input is already invalid; walk until valid input becomes invalid output. Check `git log --oneline -10 -- <file>` for recent changes; `git bisect` for regressions.
