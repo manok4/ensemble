@@ -35,7 +35,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 2b. **Read the effort/alias config overrides** (the two high-precedence layers only). This skill is the **SOLE resolver** (`peer-model-policy.md` (b)), but resolution is deliberately **split across two points** because the ladder's inputs do not exist yet at step 2:
 
-   - **Overrides, read here:** the `--effort <low|medium|high>` flag, then `$SKILL_DIR/scripts/ensemble-config-get review_peer_effort_override --allowed low,medium,high`. If either yields a tier, that tier is final and step 7b skips the ladder.
+   - **Overrides, read here:** the `--effort <low|medium|high|xhigh>` flag, then `$SKILL_DIR/scripts/ensemble-config-get review_peer_effort_override --allowed low,medium,high,xhigh`. If either yields a tier, that tier is final and step 7b skips the ladder.
    - **Model alias, read here:** `$SKILL_DIR/scripts/ensemble-config-get review_peer_model_alias` → the default alias. There is no `--model` run flag by design, and the alias does not depend on diff signals.
 3. **Determine mode** (per `references/persona-dispatch.md` and the §5.2.5 contract). The caller picks: `en-build` → `headless` (auto-applies `safe_auto` silently, returns JSON); `en-sweep` → `report-only` (CI; **strictly read-only**, never configurable); a user directly → `interactive` (auto-applies `safe_auto`, surfaces the rest). Mutation rights per mode are the table under Flags.
 4. **Resolve the review target.** Most runs review a branch diff, but the target is whatever the invocation names:
@@ -145,7 +145,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | `--peer` | **Default.** The peer is the sole reviewer; host personas do not run. Fastest and cheapest of the three. Where no peer CLI exists, the peer role runs on the host model in a **fresh subprocess** rather than being skipped — see the fallback note in step 2a. |
 | `--cross` | Host personas **and** the peer, reconciled into the four buckets, **corroborated findings reported first**. The thorough mode: it is the only one that produces standards / testing / maintainability findings with project context alongside an independent read. Used by `/en-build` (D46). |
 | `--host` | Host personas only, in fresh-context sub-agents. No peer subprocess. Use when no peer is wanted or reachable and you do not want the same-model fallback. |
-| `--effort low\|medium\|high` | Pin the peer's reasoning-effort tier for this run, the highest-precedence layer in `references/peer-model-policy.md` (b). Omit to let repo config, then user config, then the ladder decide. |
+| `--effort low\|medium\|high\|xhigh` | Pin the peer's reasoning-effort tier for this run, the highest-precedence layer in `references/peer-model-policy.md` (b). Omit to let repo config, then user config, then the ladder decide. |
 | `--base <ref>` | Override diff base |
 | `--no-lint` | Skip pre-flight lint |
 | `--scope <path>` | Limit review to a path (default: full target) |

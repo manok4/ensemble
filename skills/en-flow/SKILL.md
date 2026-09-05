@@ -42,7 +42,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 ### 3. Plan
 
 - If `--plan <path>` was passed, use that plan; otherwise invoke `/en-plan` with the request the user gave `/en-flow`, passed through verbatim. Pass the words, not a host substitution such as `$ARGUMENTS`, which expands to empty on Codex and plans nothing silently (D70).
-- **GATE:** a plan file exists at `docs/plans/active/<PREFIX><NN>-*.md` with `status: open` (or the `--no-peer` finalize path). Read its frontmatter; stop the pipeline if the request was non-software / not implementation-ready, or if the plan is stuck in `draft` (surface and stop). **Record the plan path** — it threads through steps 4 to 6.
+- **GATE:** a plan file exists at `docs/plans/active/<PREFIX><NN>-*.md` with `status: open` (or the `--no-peer` finalize path). Read its frontmatter; stop the pipeline if the request was non-software / not implementation-ready, or if the plan is stuck in `draft` (surface and stop). **Record the plan path** in `/tmp/ensemble/en-flow/<run-id>/state.json`; it threads through steps 4 to 6, and a stage is long enough for the context to be compacted between it and the next. Before each stage, print one line naming the stage that finished and its result, and the stage starting.
 
 ### 4. Build
 
@@ -53,7 +53,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 ### 5. Learn (model-decided)
 
 - Ensure `/en-learn` is **considered** exactly once. **The model decides whether a capture is warranted** based on the build outcome: capture when there's durable insight — a non-obvious pattern, a deviation from the plan, a library footgun, a recurring shape worth filing; skip silently for a mechanical change with no generalizable lesson. This mirrors en-learn's existing soft-prompt contract; it is a judgment step, not an unconditional invocation.
-- **Read en-build's outcome before doing anything.** Its learning checkpoint records one of four canonical values in `learning_checkpoint:`, and each one settles this step on its own:
+- **Read en-build's outcome before doing anything.** Its learning checkpoint records one of four canonical values in `learning_checkpoint:`; record the value in `state.json` as soon as the build stage returns, and read it from there. Each one settles this step on its own:
 
   | `learning_checkpoint:` | What step 5 does |
   |---|---|
@@ -72,7 +72,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 - Otherwise invoke `/en-ship`. Per its default, en-ship opens the PR then enters the **bounded watch loop** (poll CI + reviews → `/en-resolve-pr`, capped at 2 cycles, then escalate needs-human). Pass `--no-watch` through when en-flow was invoked with `--no-watch`.
 - **No auto-merge.** en-flow never merges; en-ship is invoked without `--auto-merge`. The user merges when the PR is ready.
 
-7. **Terminal report.** Emit a completion summary: plan path, units built, audit verdict, whether a learning was captured, PR URL (or local-only summary). End with an explicit done marker: the last line is `en-flow: done` or `en-flow: stopped at <step> — <reason>`, so a reader can tell a finished run from one that stopped at a gate.
+7. **Terminal report.** From `state.json`, emit a completion summary: plan path, units built, audit verdict, whether a learning was captured, PR URL (or local-only summary). End with an explicit done marker: the last line is `en-flow: done` or `en-flow: stopped at <step> — <reason>`, so a reader can tell a finished run from one that stopped at a gate.
 
 ## Flags
 

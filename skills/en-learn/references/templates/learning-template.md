@@ -67,6 +67,10 @@ does not belong.
   timeout" is unusable; `PARTNER_BATCH_MAX` and "413 with an empty body" are what
   a future agent greps for.
 - **Say why, not what.** The what is in the code. The why is the entry.
+- **Mark what you copied.** A sentence taken from a PR thread, a document, a log
+  or a source page is a quotation, in quotation marks with its source named.
+  Everything else is in your own words; a summary that reproduces the source
+  unmarked reads as a claim the entry is making.
 - **Write for someone about to make a change,** not someone studying the system.
 - **No hedging.** If confidence is low, that is what the `confidence` field is
   for. "It may be that in some cases" wastes the reader's time in every case.

@@ -83,4 +83,29 @@ else
   fail "en-setup must document the re-sync caveat"
 fi
 
+# --- D99: the wrapper supplies the prompt when the workflow passes none -------
+# The workflow calls the wrapper bare, and `claude -p` with no prompt reads an
+# empty stdin. The prompt carries the autonomous framing so a runner cannot pass
+# the num_turns guard by describing the PR it would open. Behavioural: a stub
+# `claude` on PATH records its argv.
+STUB=$(mktemp -d); cat > "$STUB/claude" <<'S'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$STUB_OUT"
+printf '{"type":"result","num_turns":3,"is_error":false,"result":"ok"}\n'
+S
+chmod +x "$STUB/claude"
+STUB_OUT="$STUB/argv" PATH="$STUB:$PATH" bash "$REPO_ROOT/skills/en-sweep/scripts/en-sweep-ci" >/dev/null 2>&1 || true
+if grep -q "operating unattended in CI" "$STUB/argv" 2>/dev/null; then
+  pass "wrapper passes the autonomous prompt when called bare"
+else
+  fail "wrapper must pass the autonomous prompt when called bare (D99)"
+fi
+STUB_OUT="$STUB/argv2" PATH="$STUB:$PATH" bash "$REPO_ROOT/skills/en-sweep/scripts/en-sweep-ci" "custom prompt" >/dev/null 2>&1 || true
+if grep -q "custom prompt" "$STUB/argv2" 2>/dev/null && ! grep -q "operating unattended" "$STUB/argv2" 2>/dev/null; then
+  pass "a caller-supplied prompt is passed through unchanged"
+else
+  fail "a caller-supplied prompt must be passed through unchanged"
+fi
+rm -rf "$STUB"
+
 report

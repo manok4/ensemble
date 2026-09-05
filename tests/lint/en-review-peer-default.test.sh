@@ -126,6 +126,14 @@ assert_eq "PEER_MODEL='' PEER_EFFORT='-c model_reasoning_effort=\"low\"' " \
           "$(pf low 'codex exec' opus)" "alias is inert on codex by design"
 assert_eq "PEER_MODEL='' PEER_EFFORT='' " \
           "$(pf medium 'futurecli run')" "unknown CLI degrades to inherit-everything"
+# D95: xhigh is a valid opt-in tier on both CLIs; max is not offered.
+assert_eq "PEER_MODEL='--model sonnet' PEER_EFFORT='--effort xhigh' " \
+          "$(pf xhigh 'claude -p')" "xhigh is accepted for the claude peer"
+assert_eq "PEER_MODEL='' PEER_EFFORT='-c model_reasoning_effort=\"xhigh\"' " \
+          "$(pf xhigh 'codex exec')" "xhigh is accepted for the codex peer"
+out=$("$FLAGS" --effort max --peer-cmd 'claude -p' 2>/dev/null); rc=$?
+assert_exit_code 2 "$rc" "max is not an accepted tier"
+has "$POLICY" "xhigh" "policy documents the xhigh opt-in"
 
 # A configured alias is untrusted input (EN11-CR-003): a space would become
 # extra argv once the fragment is word-split, and quotes would corrupt the

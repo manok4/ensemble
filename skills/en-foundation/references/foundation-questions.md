@@ -1,6 +1,6 @@
 # Foundation discovery questions
 
-The Q&A library `/en-foundation` draws from. **One question per turn; multiple-choice preferred where natural.**
+The Q&A library `/en-foundation` draws from. **Asked in frontier rounds, one per group, each question with a recommended answer; one per turn on Lightweight and for rigor probes.** Multiple-choice preferred where natural.
 
 > **Depth scaling.** Lightweight projects skip the data/architecture/security tiers; Standard does most; Deep does all.
 
@@ -125,7 +125,7 @@ Before writing the foundation:
 
 ## Question style guidelines
 
-- **One per turn.** Don't bundle.
+- **One round per group.** Bundle a group's independent questions with recommended answers; a question that depends on another still open waits for the next round.
 - **Multiple-choice when natural.** Open-ended when the answer is genuinely free-form.
 - **Default to short answers.** Push back on rambling answers.
 - **Watch for redundancy.** If `repo-research` already surfaced the stack, don't ask "what stack?" — confirm with: "The repo uses TypeScript + Bun. Confirm or change?"

@@ -55,19 +55,28 @@ Exit.
 Run all of these in order. Each step is idempotent — running `/en-setup` twice produces the same end state.
 
 1. **Confirm sub-variant.** Probe for `AGENTS.md` / `CLAUDE.md` existence; classify as 2a/2b/2c/2d.
-2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, run `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` to inspect it. Output partitions plans into:
+1a. **Probe once, then ask once.** Seven serial prompts made this flow an interview. Issue every probe in one message: `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` when `docs/plans/` exists, `sweep.enabled` and `lint_ci.enabled` in `.ensemble/config.local.yaml`, the resolved guardrail installer's `status`, `command -v gnhf`, `gh api repos/<owner>/<repo> --jq .allow_auto_merge`, and whether `.github/workflows/en-sweep.yml`, `.github/workflows/claude-code-review.yml`, `.github/workflows/ensemble-lint.yml`, `REVIEW.md` and `.ensemble/config.local.yaml` exist. Then put **one numbered round** to the user, each item with a recommended answer, listing only what the probes left open:
+
+   | Item | Listed when | Recommend |
+   |---|---|---|
+   | Archive non-conforming plans to `docs/plans/legacy/` (step 2) | `non_conforming` is non-empty | `y` |
+   | Ignore `docs/learnings/archive/` (step 9) | always | `n` |
+   | Sweep cadence `daily` / `weekly` / `monthly` / cron (step 11) | no workflow, `sweep.enabled` not `false` | `weekly` |
+   | Create `.ensemble/config.local.yaml` (step 12) | absent | `y` |
+   | Guardrail scope `p` / `g` / `s` (step 13) | neither scope installed | `p` |
+   | Install gnhf (step 13a) | not on PATH | `n` |
+   | Claude Code Review action (step 14) | workflow absent | `y` |
+   | `REVIEW.md`, with its project type (step 16) | absent | `y` |
+   | `ensemble-lint.yml` PR check (step 18) | absent, `lint_ci.enabled` not `false` | `y` |
+
+   A recorded decline is not listed again. The steps below read this round's answers and none of them asks a second time; from here the install runs through step 18 without stopping, printing one line per step as it completes.
+2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` (run at step 1a) partitions plans into:
    - `conforming` — already pass Ensemble plan validation; leave in place.
    - `non_conforming` — `.md` files in `docs/plans/` that aren't Ensemble plans (legacy / hand-rolled / from another tool).
    - `subdirs` — unrecognized subdirectories.
    - `tech_debt` — `docs/plans/tech-debt-tracker.md` if present (treat as conforming).
 
-   **If `non_conforming` is non-empty**, prompt:
-   > "Found `<count>` plan file(s) in `docs/plans/` that don't match Ensemble's format:
-   >   - `<path1>`
-   >   - `<path2>`
-   >   - …
-   >
-   > Archive them to `docs/plans/legacy/` so they're preserved but won't be picked up by `/en-build`, `/en-learn`, `/en-sweep`? You can migrate any of them into Ensemble's flow later via `/en-plan --from-legacy <path>`. (y/n; default y)"
+   **If `non_conforming` is non-empty**, the round listed the files and asked whether to archive them to `docs/plans/legacy/`, preserved but no longer picked up by `/en-build`, `/en-learn` or `/en-sweep`, with `/en-plan --from-legacy <path>` as the later migration route.
 
    On `y` → `mkdir -p docs/plans/legacy`; `git mv` each non-conforming file into `docs/plans/legacy/`. Write `docs/plans/legacy/README.md` documenting:
    - The convention: legacy plans are preserved here untouched; Ensemble skills ignore this directory.
@@ -114,7 +123,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 8. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
 9. **Add `.gitignore` entries** if missing. **Verify each entry is actually present after the write — do not assume the write succeeded.**
    - `.ensemble/config.local.yaml` — **required.** Confirm with `grep -qF '.ensemble/config.local.yaml' .gitignore` after writing. If `.gitignore` doesn't exist, create it with this line.
-   - Optionally `docs/learnings/archive/` — ask the user.
+   - Optionally `docs/learnings/archive/` — per the round's answer.
 
    This step is verified again in the final-verification phase (step 18). Both checks must pass.
 10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 11 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
@@ -138,7 +147,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the workflow as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
  Depends on step 10 — the workflow won't function without those bin scripts.
-    1. **Ask cadence.** Prompt: "How often should `/en-sweep` run? `daily` / `weekly` / `monthly` (default `weekly`), or paste a cron expression for custom (e.g. `0 9 * * 1,4` for Mon+Thu)."
+    1. **Cadence** is the round's answer: `daily` / `weekly` / `monthly` (default `weekly`), or a literal cron expression (e.g. `0 9 * * 1,4` for Mon+Thu).
     2. **Map to cron.** Named values map to:
        - `daily` → `0 9 * * *`
        - `weekly` → `0 9 * * 1` (Monday 9am UTC)
@@ -146,33 +155,23 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
        - Anything else is treated as a literal cron expression and substituted as-is.
     3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
     4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 18.
-    5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; preferred — generate with `claude setup-token`) OR `ANTHROPIC_API_KEY` (pay-per-use) OR `OPENAI_API_KEY` (if running `codex` CLI). Workflow passes all three; the CLI in the runner picks up the matching one."
-    6. **Note the activity gate:** "Sweep runs on the configured schedule but skips silently when no non-sweep commits have landed since the last sweep run. Manual `workflow_dispatch` always bypasses the gate. Activity check via `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
+    5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max; generate with `claude setup-token`), `ANTHROPIC_API_KEY` (pay-per-use) or `OPENAI_API_KEY` (`codex` CLI). The workflow passes all three; the runner's CLI picks up its own."
+    6. **Note the activity gate:** "Sweep runs on schedule but skips silently when no non-sweep commits landed since the last run; `workflow_dispatch` bypasses the gate. Check: `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
 
-12. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. **Offer** to create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented; ask the user.
-13. **Guardrail check.** The guardrail installer belongs to `/en-guardrail`, which installs as its own skill and may not be present. **Resolve it before use:** look for `install-guardrail` in a sibling `en-guardrail` skill directory alongside this one. If it is not there, say so and point the user at `/en-guardrail` rather than guessing a path — then skip to the next step. When it resolves, run it with `status`. If neither scope is installed, prompt:
-    > "The en-guardrail PreToolUse hook isn't installed. It prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy, etc.) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`). Choose:
-    >   `p` — install project-scoped now (writes to `<repo>/.claude/settings.json`).
-    >   `g` — print the global one-liner for me to run from my terminal (active everywhere; agents can't write `~/.claude/` themselves).
-    >   `s` — skip for now."
+12. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. Create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented when the round said `y`.
+13. **Guardrail check.** The guardrail installer belongs to `/en-guardrail`, which installs as its own skill and may not be present. **Resolve it before use:** look for `install-guardrail` in a sibling `en-guardrail` skill directory alongside this one. If it is not there, say so and point the user at `/en-guardrail` rather than guessing a path — then skip to the next step. Its `status` ran at step 1a. If neither scope is installed, the round offered the hook, which prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`): `p` project-scoped (writes `<repo>/.claude/settings.json`), `g` the global one-liner to run yourself (agents can't write `~/.claude/`), `s` skip.
 
     On `p` → run the resolved installer with `install-project` (installs **both** the Bash matcher and the MCP DB-tool matcher — EN09).
     On `g` → run the resolved installer with `install-global` (no `--apply`) and surface its output verbatim.
     On `s` → record in the report; don't ask again this session.
 
-    Idempotent — if the status check reports any scope active, skip the prompt and note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
-13a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` uses the `gnhf` CLI (an agent-agnostic autonomous-loop engine) for bounded, overnight, objective-driven loops. Detect it with `command -v gnhf`. If absent, offer (optional, never blocking):
-    > "`/en-loop` uses the `gnhf` CLI for bounded autonomous loops. Install now? (`npm i -g gnhf`) (`y` / `n`)
-    > gnhf is agent-agnostic and only needed for `/en-loop` — every other Ensemble skill works without it."
+    Idempotent — if the status check reports any scope active, the round omitted the item; note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
+13a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` uses the `gnhf` CLI (an agent-agnostic autonomous-loop engine) for bounded, overnight, objective-driven loops. `command -v gnhf` ran at step 1a; if absent, the round offered the install (optional, never blocking): gnhf is agent-agnostic and only needed for `/en-loop`, every other Ensemble skill works without it.
 
     On `y` → run `npm i -g gnhf`; surface the result (and any npm error verbatim). On `n` → record in the report; skip. **Never a hard gate** — gnhf is optional, so declining (or a failed npm install) does not fail setup.
 
-    Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence and skip the prompt.
-14. **Claude Code Review action check.** Detect `.github/workflows/claude-code-review.yml`. If absent, prompt:
-    > "Anthropic's Claude Code Review GitHub Action isn't installed. It runs Claude on every PR and posts inline review comments — these are exactly what `/en-resolve-pr` is built to handle. Install? (`y` / `n`)
-    > Auth options:
-    >   - **OAuth** (Pro/Max subscription) — free within rate limits. Requires `CLAUDE_CODE_OAUTH_TOKEN` repo secret (generate with `claude setup-token`).
-    >   - **API key** — pay-per-use, no rate cap. Requires `ANTHROPIC_API_KEY` repo secret. Edit the workflow after install to switch."
+    Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence; the round omitted the item.
+14. **Claude Code Review action check.** If `.github/workflows/claude-code-review.yml` is absent, the round offered Anthropic's Claude Code Review GitHub Action: it runs Claude on every PR and posts inline review comments, which is what `/en-resolve-pr` is built to handle. Auth is either **OAuth** (Pro/Max, `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`) or an **API key** (`ANTHROPIC_API_KEY`, pay-per-use); the workflow is edited after install to switch.
 
     On `y` → write `.github/workflows/claude-code-review.yml` from `references/templates/github-workflow-claude-review.yml`. Surface a one-line follow-up: "Add `CLAUDE_CODE_OAUTH_TOKEN` to repo secrets (Settings → Secrets and variables → Actions). See `https://github.com/manok4/ensemble/blob/main/docs/integrations/anthropic-code-review-action.md` for setup."
     On `n` → record in the report; skip.
@@ -181,13 +180,12 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 15. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
     - `true` → record 🟢 "Auto-merge enabled at repo level."
     - `false` or empty → surface advisory (not blocking):
-      > "Auto-merge is disabled at the repo level. `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` won't be able to enable auto-merge on PRs until you flip Settings → General → 'Allow auto-merge' on. Skipping for now — this is a manual repo setting."
+      > "Auto-merge is disabled at the repo level; `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` need Settings → General → 'Allow auto-merge' switched on."
 
     Idempotent. Don't try to flip it via API — that requires admin scope and is the kind of repo-policy change a human should make explicitly.
-16. **`REVIEW.md` offer.** Detect `REVIEW.md` at the repo root. If absent, prompt:
-    > "`REVIEW.md` is a project-root file that tunes how PR review behaves on this repo — severity calibration, nit caps, skip rules, repo-specific checks, convergence behavior on multi-round reviews. Read automatically by Anthropic's managed Code Review service (Team/Enterprise plans); for the self-hosted action, the workflow's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action'). Seed `REVIEW.md` from the Ensemble-flavored default template? (`y` / `n`)"
+16. **`REVIEW.md` offer.** If `REVIEW.md` is absent at the repo root, the round offered to seed it from the Ensemble-flavored template. It tunes PR review on this repo: severity calibration, nit caps, skip rules, repo-specific checks, convergence on multi-round reviews. Anthropic's managed Code Review service reads it automatically; the self-hosted action's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action').
 
-    On `y` → ask the user `{{PROJECT_TYPE}}` (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
+    On `y` → `{{PROJECT_TYPE}}` came with the answer (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
@@ -226,8 +224,8 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
 
-    - `.github/workflows/ensemble-lint.yml` (opt-in). A PR check running `bin/ensemble-lint --scope docs/` on changes to `docs/`, `AGENTS.md` or `CLAUDE.md`. Template at `references/templates/github-workflow-ensemble-lint.yml`. Narrower than the sweep — it reports on a pull request rather than running on a schedule or opening one — so offer it separately. A decline records `lint_ci.enabled: false`.
-    - `.github/workflows/en-sweep.yml` (step 11 opt-in). **A decline is recorded, never silent.** Write `sweep.enabled: false` to `.ensemble/config.local.yaml` and report the workflow as *declined*, not *missing*. Re-offering an install the operator deliberately refused is how a verification report trains them to skim it — the same reason `--no-simplify` records `not_applicable` with a reason instead of leaving a hole.
+    - `.github/workflows/ensemble-lint.yml` (step 1a opt-in). A PR check running `bin/ensemble-lint --scope docs/` on changes to `docs/`, `AGENTS.md` or `CLAUDE.md`. Template at `references/templates/github-workflow-ensemble-lint.yml`. Narrower than the sweep, it reports on a pull request rather than running on a schedule or opening one, so it is its own item. A decline records `lint_ci.enabled: false`.
+    - `.github/workflows/en-sweep.yml` (step 11 opt-in). **A decline is recorded, never silent.** Write `sweep.enabled: false` to `.ensemble/config.local.yaml` and report the workflow as *declined*, not *missing*. Re-offering an install the operator refused trains them to skim the report.
 
     - `.github/workflows/claude-code-review.yml` (step 14 opt-in)
     - `REVIEW.md` (step 16 opt-in)

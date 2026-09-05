@@ -43,6 +43,22 @@ has "$Q"     'after the orient ledger has been subtracted' "the question bands c
 # there matches one of its three bytes, not the character.
 has "$Q"     '^\| Deep \| 30'                            "the Deep question band survives"
 
+# --- 1b. frontier rounds, a ledger on disk, research that does not block (D97)
+# Each anchored on wording only SKILL.md or the question library carries.
+# Negative control at authoring: restoring "One question per turn" in the
+# discovery loop turned the first clause red.
+has "$SKILL" 'Frontier rounds, one per group'          "discovery asks each group as one round"
+has "$SKILL" 'On \*\*Lightweight\*\*, ask one question per turn' "Lightweight keeps one-per-turn"
+has "$SKILL" 'Rigor probes stay one per turn'           "rigor probes are not bundled"
+has "$SKILL" '/tmp/ensemble/en-foundation/<run-id>/ledger.md' "the ledger is written to disk"
+has "$SKILL" 'dispatched first and not waited on'       "retrofit research does not block the interview"
+has "$Q"     'One round per group'                      "the question library agrees on cadence"
+if grep -q 'One question per turn' "$SKILL" "$Q"; then
+  fail "the retired one-per-turn rule is gone from both files"
+else
+  pass "the retired one-per-turn rule is gone from both files"
+fi
+
 # --- 2. the traceability gate ------------------------------------------------
 has "$SKILL" '6a\. \*\*Traceability gate' "the traceability gate is its own step"
 

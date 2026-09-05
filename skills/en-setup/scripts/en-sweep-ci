@@ -53,6 +53,15 @@ guard_codex() {
   fi
 }
 
+# The prompt. The workflow passes none, and `claude -p` with no prompt reads an
+# empty stdin. This is also the one place Ensemble composes a whole prompt for a
+# fresh model in CI, so it carries the autonomous framing: a runner that ends its
+# turn describing the PR it would open passes the num_turns guard below while
+# doing nothing (D99).
+if [ $# -eq 0 ]; then
+  set -- 'Run /en-sweep now. You are operating unattended in CI: nobody is watching and nobody can answer a question, so do not end the turn on a plan, a question, or a description of what you would do. Run the sweep, open the doc-only PRs its steps produce, and write .ensemble/sweep-summary.md. If a step is blocked, record the blocker in the summary and continue with the rest.'
+fi
+
 if command -v claude >/dev/null 2>&1; then
   set -- -p --output-format json --max-turns 50 --skill en-sweep "$@"
   if [ -n "$PLUGIN_DIR" ]; then

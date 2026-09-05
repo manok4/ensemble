@@ -84,9 +84,15 @@ Then invoke `/en-review` over the branch diff and invoke `/en-qa`, as **independ
 This is Ensemble's core value-add over a bare gnhf run. Every iteration follows a **test-gate**: implement one slice, run test + lint, commit only on green. Compose the prompt from this block, substituting `<objective>`, `<test>`, `<lint>`, and `<evidence-based condition>`:
 
 ```text
+You are operating autonomously. Nobody is watching this iteration and nobody can
+answer a question, so do not end it on a plan, a question, or a promise; do the
+work, or leave the blocker note below. Before ending, check your last paragraph:
+if it describes work not yet done, do that work now.
+
 Iteration: implement one small slice toward <objective>. Before coding, inspect the
 repo, relevant docs, and recent commits. Preserve user changes; make no unrelated
-refactors.
+refactors. A pre-existing bug or behaviour the objective does not mention is a note
+in the commit body, not a fix in this slice, unless the slice cannot work without it.
 
 Implement the slice, then run <test> and <lint>. Commit ONLY on green, with a
 conventional message and a `phase:` / evidence trailer describing what was verified.

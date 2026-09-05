@@ -8,7 +8,7 @@
 # testable there.
 #
 # Usage:
-#   ensemble-peer-flags --effort <low|medium|high>
+#   ensemble-peer-flags --effort <low|medium|high|xhigh>
 #                       [--peer-cmd <cmd>] [--model-alias <alias>]
 #
 # Emits two shell-escaped, eval-able lines using the same contract as
@@ -36,7 +36,7 @@ MODEL_ALIAS=""
 DEFAULT_CLAUDE_ALIAS="sonnet"
 
 usage() {
-  echo "usage: ensemble-peer-flags --effort <low|medium|high> [--peer-cmd <cmd>] [--model-alias <alias>]" >&2
+  echo "usage: ensemble-peer-flags --effort <low|medium|high|xhigh> [--peer-cmd <cmd>] [--model-alias <alias>]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -50,11 +50,15 @@ while [ $# -gt 0 ]; do
 done
 
 # Validate BEFORE emitting anything, so an invalid tier never produces partial
-# output that a caller might eval.
+# output that a caller might eval. `xhigh` is the fourth tier the current model
+# generation exposes (D95); a peer CLI that does not accept it rejects the
+# fragment, and ensemble-peer-invoke drops it as `dropped-effort-fragment`
+# rather than failing the review. `max` is deliberately not offered: on long
+# artifacts it drafts the reply in reasoning and again in output.
 case "$EFFORT" in
-  low|medium|high) ;;
+  low|medium|high|xhigh) ;;
   "") echo "ensemble-peer-flags: --effort is required" >&2; usage; exit 2 ;;
-  *)  echo "ensemble-peer-flags: invalid effort '$EFFORT' (expected low|medium|high)" >&2; exit 2 ;;
+  *)  echo "ensemble-peer-flags: invalid effort '$EFFORT' (expected low|medium|high|xhigh)" >&2; exit 2 ;;
 esac
 
 # Resolve the peer command if the caller did not supply one.
