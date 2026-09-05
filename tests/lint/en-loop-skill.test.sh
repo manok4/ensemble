@@ -114,6 +114,21 @@ else
   fail "must document the full safety list (preserve / no-destructive-git / never-auto-merge / guardrail)"
 fi
 
+# --- Worker prompt carries the autonomous framing (D99) ---
+# The worker is a fresh model per iteration; a worker that ends its turn on a
+# plan or a question produces a rollback. Anchored on the prompt block's own
+# opening sentence.
+if grep -qF "You are operating autonomously. Nobody is watching this iteration" "$SKILL"; then
+  pass "worker prompt opens with the autonomous framing"
+else
+  fail "worker prompt must open with the autonomous framing (D99)"
+fi
+if grep -qF "not a fix in this slice, unless the slice cannot work without it" "$SKILL"; then
+  pass "worker prompt keeps incidental findings out of the slice"
+else
+  fail "worker prompt must keep incidental findings out of the slice"
+fi
+
 # --- Integration - host-neutral worker-agent selection (not hardcoded) ---
 # D91: the skill runs the detection script and reads HOST; the prose reference
 # (and the recursion-guard reached only through it) are no longer carried.
