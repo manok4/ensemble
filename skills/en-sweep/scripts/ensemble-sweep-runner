@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# ensemble-sweep-runner — run /en-sweep on a dedicated machine, on a schedule,
+# through Codex, then merge the doc-only PRs it opened once their checks are
+# green (D101). launchd starts this (see install-sweep-schedule); a person can
+# run it too.
+#
+# Usage:
+#   ensemble-sweep-runner [--repos <file>] [--repo <path>]... [--force]
+#                         [--merge-only] [--no-merge] [--dry-run]
+#
+#   --repos <file>   repo list, one checkout path per line, `#` comments
+#                    (default: $ENSEMBLE_SWEEP_REPOS or ~/.ensemble/sweep-repos)
+#   --repo <path>    sweep this checkout (repeatable; replaces the list)
+#   --force          bypass the activity gate
+#   --merge-only     skip Codex; merge what the last run's result file lists
+#   --no-merge       run the sweep, leave every PR open
+#   --dry-run        print what would run; launch nothing, merge nothing
+#
+# Per repo: clean tree, fetch, fast-forward the default branch, activity gate,
+# `codex exec` with the sweep prompt and the operator's model and effort, then
+# read .ensemble/sweep-result.json (the skill writes it; no file means the
+# skill did not run, and nothing is merged), wait for each eligible PR's checks,
+# `gh pr merge --squash --delete-branch`.
+#
+# Model and effort: `sweep.model` and `sweep.effort` in the repo's
+# .ensemble/config.local.yaml on this machine win; ENSEMBLE_SWEEP_MODEL and
+# ENSEMBLE_SWEEP_EFFORT (set in the launchd plist by install-sweep-schedule)
+# are the machine-wide default; unset means Codex's configured default.
+#
+# Env: ENSEMBLE_SWEEP_REPOS, ENSEMBLE_SWEEP_TIMEOUT (seconds per Codex run,
+# default 2700), ENSEMBLE_SWEEP_CHECKS_TIMEOUT (seconds to wait for a PR's
+# checks, default 1800), ENSEMBLE_SWEEP_LOCK (default ~/.ensemble/sweep.lock),
+# ENSEMBLE_SWEEP_LOG (default ~/.ensemble/logs/sweep.log).
+#
+# Exit: 0 when every repo was swept or skipped for a stated reason; 1 when any
+# repo failed (Codex error, no result file, merge error); 2 on usage or doctor
+# failure; 0 with a note when another run holds the lock.
+
+set -u
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+ENSEMBLE_DIR="${ENSEMBLE_HOME_DIR:-$HOME/.ensemble}"
+REPOS_FILE="${ENSEMBLE_SWEEP_REPOS:-$ENSEMBLE_DIR/sweep-repos}"
+LOCK_DIR="${ENSEMBLE_SWEEP_LOCK:-$ENSEMBLE_DIR/sweep.lock}"
+LOG_FILE="${ENSEMBLE_SWEEP_LOG:-$ENSEMBLE_DIR/logs/sweep.log}"
+RUN_TIMEOUT="${ENSEMBLE_SWEEP_TIMEOUT:-2700}"
+CHECKS_TIMEOUT="${ENSEMBLE_SWEEP_CHECKS_TIMEOUT:-1800}"
+CHECKS_POLL="${ENSEMBLE_SWEEP_CHECKS_POLL:-30}"
+FORCE=false; MERGE_ONLY=false; NO_MERGE=false; DRY_RUN=false
+REPOS=()
+
+usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//' >&2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repos)      [ $# -ge 2 ] || { usage; exit 2; }; REPOS_FILE="$2"; shift 2 ;;
+    --repo)       [ $# -ge 2 ] || { usage; exit 2; }; REPOS+=("$2"); shift 2 ;;
+    --force)      FORCE=true; shift ;;
+    --merge-only) MERGE_ONLY=true; shift ;;
+    --no-merge)   NO_MERGE=true; shift ;;
+    --dry-run)    DRY_RUN=true; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "ensemble-sweep-runner: unknown flag $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"; }
+
+# ---- doctor -----------------------------------------------------------------
+# Guard 3: sweep never spawns sweep, and a peer subprocess never sweeps.
+if [ "${ENSEMBLE_SWEEP_DEPTH:-0}" -ge 1 ]; then log "depth cap reached; skipping"; exit 0; fi
+export ENSEMBLE_SWEEP_DEPTH=1
+if [ "${ENSEMBLE_PEER_REVIEW:-}" = "true" ]; then log "refusing to run inside a peer subprocess"; exit 2; fi
+
+missing=""
+for bin in git gh jq; do command -v "$bin" >/dev/null 2>&1 || missing="$missing $bin"; done
+if [ "$MERGE_ONLY" = false ] && ! command -v codex >/dev/null 2>&1; then missing="$missing codex"; fi
+if [ -n "$missing" ]; then log "doctor: missing on PATH:$missing"; exit 2; fi
+if [ "$DRY_RUN" = false ] && ! gh auth status >/dev/null 2>&1; then log "doctor: gh is not authenticated on this machine"; exit 2; fi
+
+if [ "${#REPOS[@]}" -eq 0 ]; then
+  if [ ! -r "$REPOS_FILE" ]; then log "doctor: no repo list at $REPOS_FILE (install-sweep-schedule add-repo <path>)"; exit 2; fi
+  while IFS= read -r line; do
+    line="${line%%#*}"; line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    [ -n "$line" ] && REPOS+=("${line/#\~/$HOME}")
+  done < "$REPOS_FILE"
+fi
+[ "${#REPOS[@]}" -gt 0 ] || { log "doctor: repo list is empty"; exit 2; }
+
+# ---- Guard 1: one run at a time --------------------------------------------
+if [ "$DRY_RUN" = false ]; then
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo '?')"
+    if [ "$holder" != "?" ] && ! kill -0 "$holder" 2>/dev/null; then
+      log "stale lock from pid $holder; taking it"; rm -rf "$LOCK_DIR"; mkdir "$LOCK_DIR" || exit 2
+    else
+      log "another run holds $LOCK_DIR (pid $holder); skipping"; exit 0
+    fi
+  fi
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
+  trap 'rm -rf "$LOCK_DIR"' EXIT
+fi
+
+# ---- helpers ----------------------------------------------------------------
+# One key from the `sweep:` block of the repo's .ensemble/config.local.yaml
+# (two-space indent, `key: value`, `#` comments stripped, quotes stripped).
+# Anything the awk cannot read is "", and "" means "use the default".
+cfg() {  # $1=key under sweep:
+  local f=".ensemble/config.local.yaml"
+  [ -r "$f" ] || { echo ""; return 0; }
+  awk -v k="$1" '
+    /^[^[:space:]#]/ { inblock = ($0 ~ /^sweep:[[:space:]]*(#.*)?$/) ; next }
+    inblock && $0 ~ "^  " k ":" {
+      v = $0; sub("^  " k ":[[:space:]]*", "", v); sub(/[[:space:]]*#.*$/, "", v)
+      gsub(/^["'\'']|["'\'']$/, "", v); print v; exit
+    }' "$f" 2>/dev/null
+}
+safe_token() { case "$1" in ''|*[!A-Za-z0-9._-]*) return 1 ;; *) return 0 ;; esac; }
+
+with_timeout() {  # $1=seconds, rest=command
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
+  else "$@"; fi
+}
+
+SWEEP_PROMPT='Invoke the en-sweep skill now and run it to completion. You are operating unattended on a scheduled machine: nobody is watching and nobody can answer a question, so do not end the turn on a plan, a question, or a description of what you would do. Run every check, open the doc-only PRs the batches produce, run the report-only review on each, write .ensemble/sweep-summary.md and .ensemble/sweep-result.json exactly as the skill specifies, and do not merge anything yourself: the runner merges eligible PRs after their checks pass. If a step is blocked, record the blocker in the summary and continue with the rest.'
+
+default_branch() {
+  local b
+  b="$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || true)"
+  [ -n "$b" ] || b="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+  [ -n "$b" ] || b="main"
+  printf '%s' "$b"
+}
+
+# Returns 0 when every check on the PR has finished green, 1 when any failed,
+# 2 on timeout. Polls `gh pr view` rather than `gh pr checks --watch` so a PR
+# with no checks at all resolves immediately instead of waiting forever.
+wait_for_checks() {  # $1=pr number
+  local pr="$1" waited=0 rollup pending failed
+  while :; do
+    rollup="$(gh pr view "$pr" --json statusCheckRollup -q '.statusCheckRollup[]? | (.conclusion // .state // "PENDING")' 2>/dev/null || true)"
+    pending="$(printf '%s\n' "$rollup" | grep -cE '^(PENDING|IN_PROGRESS|QUEUED|EXPECTED|WAITING|REQUESTED)$' || true)"
+    failed="$(printf '%s\n' "$rollup" | grep -cE '^(FAILURE|ERROR|CANCELLED|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE)$' || true)"
+    [ "${failed:-0}" -gt 0 ] && return 1
+    [ "${pending:-0}" -eq 0 ] && return 0
+    [ "$waited" -ge "$CHECKS_TIMEOUT" ] && return 2
+    sleep "$CHECKS_POLL"; waited=$((waited + CHECKS_POLL))
+  done
+}
+
+merge_from_result() {  # cwd = repo; $1=result file
+  local result="$1" n merged=0 left=0
+  local eligible
+  eligible="$(jq -r '.prs[]? | select(.merge_eligible == true) | .number' "$result" 2>/dev/null || true)"
+  if [ -z "$eligible" ]; then log "  no merge-eligible PRs in $result"; return 0; fi
+  for n in $eligible; do
+    if [ "$DRY_RUN" = true ]; then log "  would merge PR #$n"; continue; fi
+    wait_for_checks "$n"; rc=$?
+    case "$rc" in
+      1) log "  PR #$n: a check failed; left open"; left=$((left + 1)); continue ;;
+      2) log "  PR #$n: checks still pending after ${CHECKS_TIMEOUT}s; left open"; left=$((left + 1)); continue ;;
+    esac
+    if gh pr merge "$n" --squash --delete-branch >/dev/null 2>&1; then
+      log "  PR #$n: merged"; merged=$((merged + 1))
+    else
+      state="$(gh pr view "$n" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null || echo UNKNOWN)"
+      log "  PR #$n: merge refused (mergeStateStatus=$state); left open. BLOCKED usually means branch protection wants a review this machine's identity cannot give."
+      left=$((left + 1))
+    fi
+  done
+  log "  merged $merged, left open $left"
+  [ "$left" -eq 0 ]
+}
+
+# ---- per repo ---------------------------------------------------------------
+failures=0
+for repo in "${REPOS[@]}"; do
+  log "== $repo"
+  if ! cd "$repo" 2>/dev/null || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log "  not a git checkout; skipped"; failures=$((failures + 1)); continue
+  fi
+  # The skill's own result and summary files live under .ensemble/ and are not
+  # tracked; they must not make the next run read the tree as dirty.
+  if [ -n "$(git status --porcelain 2>/dev/null | grep -v ' \.ensemble/')" ]; then
+    log "  working tree is dirty; skipped (a sweep never runs over uncommitted work)"; continue
+  fi
+  if [ "$(cfg enabled)" = "false" ]; then log "  sweep.enabled: false in config; skipped"; continue; fi
+
+  RESULT=".ensemble/sweep-result.json"
+  if [ "$MERGE_ONLY" = true ]; then
+    if [ -f "$RESULT" ]; then merge_from_result "$RESULT" || failures=$((failures + 1)); else log "  no $RESULT to merge from"; fi
+    continue
+  fi
+
+  branch="$(default_branch)"
+  if [ "$DRY_RUN" = false ]; then
+    git fetch -q origin || { log "  fetch failed; skipped"; failures=$((failures + 1)); continue; }
+    git checkout -q "$branch" 2>/dev/null || { log "  cannot check out $branch; skipped"; failures=$((failures + 1)); continue; }
+    git pull -q --ff-only origin "$branch" || { log "  $branch does not fast-forward; skipped"; failures=$((failures + 1)); continue; }
+  fi
+
+  if [ "$FORCE" = false ] && [ -x "$SELF_DIR/ensemble-sweep-activity-check" ]; then
+    gate="$("$SELF_DIR/ensemble-sweep-activity-check" --branch "origin/$branch" 2>/dev/null || true)"
+    if printf '%s\n' "$gate" | grep -q '^should-run=false'; then
+      log "  activity gate: $(printf '%s\n' "$gate" | sed -n 's/^reason=//p' | head -1); skipped"; continue
+    fi
+  fi
+
+  model="$(cfg model)";  [ -n "$model" ]  || model="${ENSEMBLE_SWEEP_MODEL:-}"
+  effort="$(cfg effort)"; [ -n "$effort" ] || effort="${ENSEMBLE_SWEEP_EFFORT:-}"
+  safe_token "$model" || model=""
+  case "$effort" in minimal|low|medium|high|xhigh) ;; *) effort="" ;; esac
+
+  argv=(codex exec --json -C "$PWD" -s workspace-write
+        -c 'approval_policy="never"' -c 'sandbox_workspace_write.network_access=true'
+        -o ".ensemble/sweep-last-message.md")
+  [ -n "$model" ]  && argv+=(-m "$model")
+  [ -n "$effort" ] && argv+=(-c "model_reasoning_effort=\"$effort\"")
+  argv+=("$SWEEP_PROMPT")
+
+  log "  codex: model=${model:-<default>} effort=${effort:-<default>} timeout=${RUN_TIMEOUT}s"
+  if [ "$DRY_RUN" = true ]; then log "  would run: ${argv[*]}"; continue; fi
+
+  rm -f "$RESULT"
+  started="$(date +%s)"
+  with_timeout "$RUN_TIMEOUT" "${argv[@]}" >> "$LOG_FILE" 2>&1; rc=$?
+  log "  codex exited $rc after $(( $(date +%s) - started ))s"
+
+  # The result file is the proof the skill ran: no file, no merge, and a failure
+  # that says so. Older num_turns guards could not tell "ran and did nothing"
+  # from "described what it would do".
+  if [ ! -f "$RESULT" ] || ! jq -e '.run_id' "$RESULT" >/dev/null 2>&1; then
+    log "  no valid $RESULT after the run; the skill did not execute. Nothing merged."
+    failures=$((failures + 1)); continue
+  fi
+  [ -f .ensemble/sweep-summary.md ] && sed 's/^/  | /' .ensemble/sweep-summary.md >> "$LOG_FILE"
+
+  if [ "$NO_MERGE" = true ]; then log "  --no-merge: PRs left open"; continue; fi
+  merge_from_result "$RESULT" || failures=$((failures + 1))
+  git checkout -q "$branch" 2>/dev/null; git pull -q --ff-only origin "$branch" 2>/dev/null || true
+done
+
+log "done: ${#REPOS[@]} repo(s), $failures failure(s)"
+[ "$failures" -eq 0 ]
