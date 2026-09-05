@@ -14,7 +14,7 @@ Always-on `PreToolUse` hook that prompts before destructive Bash commands. Vendo
 
 1. **Resolve the skill directory** so the bundled scripts can be run and the installed hook compared against them. Nothing else here needs resolving: the guardrail has no modes, no peer, and no host branch — the same three scripts do the same thing wherever it runs.
 
-2. **Status check.** Run `bash "$SKILL_DIR/bin/install-guardrail" status`. It reports both scopes, and whether the registered command still points at a `check-guardrail.sh` that exists; a registered hook whose path no longer resolves is reported as **broken**, not installed. If nothing is active, surface the installer commands (see "Installation" below) and stop.
+2. **Status check.** Steps 2 to 4 are independent reads; issue them in one message. Run `bash "$SKILL_DIR/bin/install-guardrail" status`. It reports both scopes, and whether the registered command still points at a `check-guardrail.sh` that exists; a registered hook whose path no longer resolves is reported as **broken**, not installed. If nothing is active, surface the installer commands (see "Installation" below) and stop.
 3. **Show protected patterns** — render the table from "What's protected" below.
 4. **Show recent fires** if `~/.ensemble/analytics/guardrail.jsonl` exists — last 10 lines, summarized as `pattern × count × repo`.
 5. **Optional dry-run.** If user passes a sample command (`/en-guardrail "rm -rf /tmp/foo"`), pipe a synthetic tool-input JSON through `bin/check-guardrail.sh` and show the verdict (`ask` vs `allow`).
