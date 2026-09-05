@@ -77,6 +77,18 @@ default_branch_fallback: main
 # review:
 #   confidence_threshold: 7
 
+# Reviewer models and effort (flat keys; read by /en-review through
+# ensemble-config-get, this file first, then ~/.ensemble/config.json).
+# Aliases (sonnet, opus, haiku, fable) or a full model ID; your file, your value.
+# review_peer_model_alias: sonnet        # Claude peer; ignored when the peer is Codex
+# review_peer_codex_model:               # Codex peer `-m`; unset inherits ~/.codex/config.toml
+# review_peer_effort_override:           # low | medium | high | xhigh; unset lets the ladder decide
+# review_host_model_alias:               # every host persona under --cross / --host; unset uses the agent frontmatter
+# Host persona effort is the dimension-reviewer agent's `effort:` frontmatter
+# (high); override per repo with a copy at .claude/agents/dimension-reviewer.md.
+# The en-sweep CI runner's model and effort are repository Actions variables
+# (ENSEMBLE_SWEEP_MODEL, ENSEMBLE_SWEEP_EFFORT), because this file never reaches CI.
+
 # --- Observability (telemetry harness) ---
 
 # Where /en-debug looks for application logs when reproducing a bug.
