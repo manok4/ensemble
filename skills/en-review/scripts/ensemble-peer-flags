@@ -9,7 +9,7 @@
 #
 # Usage:
 #   ensemble-peer-flags --effort <low|medium|high|xhigh>
-#                       [--peer-cmd <cmd>] [--model-alias <alias>]
+#                       [--peer-cmd <cmd>] [--model-alias <alias>] [--codex-model <id>]
 #
 # Emits two shell-escaped, eval-able lines using the same contract as
 # $SKILL_DIR/scripts/ensemble-detect-host:
@@ -20,23 +20,26 @@
 #   codex peer:   PEER_MODEL=''
 #                 PEER_EFFORT='-c model_reasoning_effort="medium"'
 #
-# Codex gets NO -m on purpose: `codex exec -m` takes a concrete model ID, and
+# Codex gets NO -m by default: `codex exec -m` takes a concrete model ID, and
 # concrete IDs go stale every vendor release, so the peer inherits the
 # operator's ~/.codex/config.toml model and Ensemble overrides only the
-# reasoning effort. No concrete model ID may ever live in Ensemble.
+# reasoning effort. --codex-model passes an OPERATOR-supplied ID through as
+# -m (D100); it comes from their config file. No concrete model ID may ever
+# live in Ensemble's own files.
 
 set -u
 
 EFFORT=""
 PEER_CMD_IN=""
 MODEL_ALIAS=""
+CODEX_MODEL=""
 
 # The default Claude tier alias. An ALIAS (not a dated model ID) so it
 # auto-resolves to the latest model of that tier and never goes stale.
 DEFAULT_CLAUDE_ALIAS="sonnet"
 
 usage() {
-  echo "usage: ensemble-peer-flags --effort <low|medium|high|xhigh> [--peer-cmd <cmd>] [--model-alias <alias>]" >&2
+  echo "usage: ensemble-peer-flags --effort <low|medium|high|xhigh> [--peer-cmd <cmd>] [--model-alias <alias>] [--codex-model <id>]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -44,6 +47,7 @@ while [ $# -gt 0 ]; do
     --effort)      [ $# -ge 2 ] || { usage; exit 2; }; EFFORT="$2"; shift 2 ;;
     --peer-cmd)    [ $# -ge 2 ] || { usage; exit 2; }; PEER_CMD_IN="$2"; shift 2 ;;
     --model-alias) [ $# -ge 2 ] || { usage; exit 2; }; MODEL_ALIAS="$2"; shift 2 ;;
+    --codex-model) [ $# -ge 2 ] || { usage; exit 2; }; CODEX_MODEL="$2"; shift 2 ;;
     -h|--help)     usage; exit 0 ;;
     *)             usage; exit 2 ;;
   esac
@@ -99,8 +103,12 @@ case "$PEER_CMD_IN" in
     PEER_EFFORT="--effort $EFFORT"
     ;;
   codex*)
-    # No -m: inherit the operator's configured model, override effort only.
-    PEER_MODEL=""
+    # No -m unless the operator supplied one; same narrow grammar as the alias,
+    # for the same reason (the fragment is word-split by the caller).
+    case "$CODEX_MODEL" in
+      ''|*[!A-Za-z0-9._-]*) PEER_MODEL="" ;;
+      *)                    PEER_MODEL="-m $CODEX_MODEL" ;;
+    esac
     PEER_EFFORT="-c model_reasoning_effort=\"$EFFORT\""
     ;;
   *)

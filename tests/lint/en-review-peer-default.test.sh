@@ -134,6 +134,23 @@ assert_eq "PEER_MODEL='' PEER_EFFORT='-c model_reasoning_effort=\"xhigh\"' " \
 out=$("$FLAGS" --effort max --peer-cmd 'claude -p' 2>/dev/null); rc=$?
 assert_exit_code 2 "$rc" "max is not an accepted tier"
 has "$POLICY" "xhigh" "policy documents the xhigh opt-in"
+# D100: an operator-supplied Codex model passes through as -m; same grammar
+# guard as the alias; inert on claude.
+assert_eq "PEER_MODEL='-m gpt-tier-x' PEER_EFFORT='-c model_reasoning_effort=\"high\"' " \
+          "$("$FLAGS" --effort high --peer-cmd 'codex exec' --codex-model gpt-tier-x 2>/dev/null | tr '\n' ' ')" \
+          "codex peer: --codex-model becomes -m"
+assert_eq "PEER_MODEL='' PEER_EFFORT='-c model_reasoning_effort=\"high\"' " \
+          "$("$FLAGS" --effort high --peer-cmd 'codex exec' --codex-model 'x --bad' 2>/dev/null | tr '\n' ' ')" \
+          "codex peer: a codex model with a space is rejected"
+assert_eq "PEER_MODEL='--model sonnet' PEER_EFFORT='--effort high' " \
+          "$("$FLAGS" --effort high --peer-cmd 'claude -p' --codex-model gpt-tier-x 2>/dev/null | tr '\n' ' ')" \
+          "claude peer: --codex-model is inert"
+has "$POLICY" "review_host_model_alias"  "policy documents the host model key"
+has "$POLICY" "review_peer_codex_model"  "policy documents the codex model key"
+has "$SKILL"  "review_host_model_alias"  "en-review reads the host model key"
+has "$SKILL"  "host_model"               "the envelope carries host_model"
+grep -qE '^effort: high$' "$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md" \
+  && pass "dimension-reviewer declares its effort" || fail "dimension-reviewer must declare effort: high (D100)"
 
 # A configured alias is untrusted input (EN11-CR-003): a space would become
 # extra argv once the fragment is word-split, and quotes would corrupt the
