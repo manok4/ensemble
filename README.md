@@ -17,7 +17,7 @@ Ensemble fixes each by design:
 - **Document-as-source-of-truth** — every phase produces a durable artifact in `docs/`; the next phase reads it. The repo *is* the system of record.
 - **Compounding wiki** — `docs/learnings/` accumulates bug fixes, patterns, and decisions. `/en-learn` links them, prunes them, and surfaces them when planning new work.
 - **Cross-agent peer review** — Claude Code and Codex review each other's work via subprocess CLI calls. Single-agent fallback when only one CLI is installed.
-- **Always-on safety** — `/en-guardrail` prompts before destructive Bash commands; `/en-sweep` cleans up doc drift after every PR merge.
+- **Always-on safety** — `/en-guardrail` prompts before destructive Bash commands; `/en-sweep` cleans up doc drift on a schedule from a dedicated machine.
 
 ## Five design pillars
 
@@ -129,7 +129,7 @@ A typical cycle:
 # PR opens. Reviewers (humans + Anthropic action + optional Codex) leave comments.
 /en-resolve-pr
 # All comments addressed; auto-merge flips green; merge.
-# /en-sweep auto-runs post-merge to clean doc drift.
+# /en-sweep runs on a schedule from a dedicated machine to clean doc drift.
 # /en-learn capture auto-prompts to file what you learned.
 ```
 
@@ -209,7 +209,7 @@ cd my-existing-project
 5. Generate or merge `AGENTS.md` (preserving any existing content).
 6. Generate or merge `CLAUDE.md`.
 7. Add `.gitignore` entries.
-8. Install `.github/workflows/en-sweep.yml`.
+8. Record the sweep cadence and print the sweep machine's install commands (the sweep runs there, not in CI).
 9. Create `.ensemble/config.local.example.yaml`.
 10. **Guardrail check** — offer to install `/en-guardrail` (project-scoped or global).
 11. **Claude Code Review action check** — offer to install Anthropic's PR-review action.
@@ -306,8 +306,8 @@ You can run both simultaneously for two AI perspectives.
 |---|---|---|
 | 10 | `/en-debug` | Telemetry-driven debugging. Reads structured logs (per `references/observability-conventions.md`), correlates by `trace_id` / `request_id` / event field, surfaces hypothesis with `file:line` and confidence 1–10. **Read-only** — never writes code. |
 | 12 | `/en-guardrail` | Always-on `PreToolUse` hook that prompts before destructive Bash commands (recursive `rm`, `DROP TABLE`, force-push, `terraform destroy`, `aws s3 rm --recursive`, etc.). Localhost+test/dev DB exemption. Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. Installed globally or project-scoped. |
-| 13 | `/en-sweep` | Event-driven doc-drift cleanup. Auto-fires on `push` to `main`. Opens auto-merging doc-only PRs. **Continuous monitoring** (opt-in): dead-code (`ts-prune` / `vulture` / Go `deadcode`) + dep-vuln (`npm audit` / `pip-audit` / `cargo audit`) with size-based triage — trivial → TD entry; pattern → draft plan. |
-| 14 | `/en-setup` | Project-level bootstrap and diagnostics. Detects state 1/2/3; for retrofits: archives non-conforming plans, creates skeleton, generates AGENTS.md/CLAUDE.md, installs en-sweep workflow + guardrail + Claude Code Review action, checks `allow_auto_merge`, surfaces bootstrap-patterns offer. |
+| 13 | `/en-sweep` | Scheduled doc-drift cleanup, run by launchd on a dedicated machine through Codex; opens doc-only PRs and the runner merges them once checks pass. **Continuous monitoring** (opt-in): dead-code (`ts-prune` / `vulture` / Go `deadcode`) + dep-vuln (`npm audit` / `pip-audit` / `cargo audit`) with size-based triage — trivial → TD entry; pattern → draft plan. |
+| 14 | `/en-setup` | Project-level bootstrap and diagnostics. Detects state 1/2/3; for retrofits: archives non-conforming plans, creates skeleton, generates AGENTS.md/CLAUDE.md, records the sweep schedule, installs guardrail + Claude Code Review action, checks `allow_auto_merge`, surfaces bootstrap-patterns offer. |
 
 For full process detail, mode flags, and reference files per skill, see each skill's `SKILL.md` under [`skills/`](./skills/) — it is the contract the skill executes — and [§5 Skill Catalog](./docs/foundation.md#5-skill-catalog) in the foundation.
 

@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="bin path citations"
 
 # The project-local set: the scripts /en-setup copies into the consuming repo's
-# bin/ so .github/workflows/en-sweep.yml can reach them by relative path.
+# bin/ (since D101 only ensemble-lint; the sweep scripts run from the skill).
 # Derived from en-setup's own verification table rather than hardcoded here, so
 # adding a fifth does not need this file edited. That table is the list the
 # install step is checked against, which makes it the closest thing to a
@@ -36,7 +36,7 @@ INSTALLED=$(grep -oE '`\./bin/[a-z][a-z0-9-]+`' "$REPO_ROOT/skills/en-setup/SKIL
             | tr -d '`' | sed 's|^\./bin/||' | sort -u | tr '\n' ' ')
 
 n_installed=$(printf '%s' "$INSTALLED" | wc -w | tr -d ' ')
-if [ "$n_installed" -lt 2 ]; then
+if [ "$n_installed" -lt 1 ]; then
   fail "en-setup must list the scripts it installs project-local" "found $n_installed"
 else
   pass "en-setup lists $n_installed project-local scripts"
