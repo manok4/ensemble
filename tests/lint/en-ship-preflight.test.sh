@@ -190,7 +190,11 @@ grep -qF -- '--preflight' "$C" && pass "the contract offers --preflight" || fail
 
 # --- D82: the documented helper commands run from a foreign cwd --------------
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-( cd "$T" && git init -q -b main r && cd r && git commit -q --allow-empty -m init \
+# The fixture sets its own identity: a CI runner has none, the first commit
+# then fails, the branch switch moves the unborn HEAD, and `main` never exists.
+( cd "$T" && git init -q -b main r && cd r \
+    && git config user.email test@test.local && git config user.name Test && git config commit.gpgsign false \
+    && git commit -q --allow-empty -m init \
     && git checkout -q -b en99-x && git commit -q --allow-empty -m "feat: u1" ) 2>/dev/null
 SD="$REPO_ROOT/skills/en-ship"
 pf=$(cd "$T/r" && bash "$SD/scripts/ensemble-ship-preflight" --base main --json 2>&1); rc=$?
