@@ -62,8 +62,19 @@ if [ $# -eq 0 ]; then
   set -- 'Run /en-sweep now. You are operating unattended in CI: nobody is watching and nobody can answer a question, so do not end the turn on a plan, a question, or a description of what you would do. Run the sweep, open the doc-only PRs its steps produce, and write .ensemble/sweep-summary.md. If a step is blocked, record the blocker in the summary and continue with the rest.'
 fi
 
+# Model and effort for the runner (D100). Set as repository Actions variables
+# and passed by the workflow; the repo-local config YAML is gitignored and never
+# reaches CI. Empty means the runner CLI's own default. Same narrow grammar as
+# the peer flags: the values are word-split into argv.
+model_ok() { case "$1" in ''|*[!A-Za-z0-9._-]*) return 1 ;; *) return 0 ;; esac; }
+SWEEP_MODEL="${ENSEMBLE_SWEEP_MODEL:-}"; model_ok "$SWEEP_MODEL" || SWEEP_MODEL=""
+SWEEP_EFFORT="${ENSEMBLE_SWEEP_EFFORT:-}"
+case "$SWEEP_EFFORT" in low|medium|high|xhigh|max|'') ;; *) SWEEP_EFFORT="" ;; esac
+
 if command -v claude >/dev/null 2>&1; then
   set -- -p --output-format json --max-turns 50 --skill en-sweep "$@"
+  [ -n "$SWEEP_EFFORT" ] && set -- --effort "$SWEEP_EFFORT" "$@"
+  [ -n "$SWEEP_MODEL" ]  && set -- --model  "$SWEEP_MODEL"  "$@"
   if [ -n "$PLUGIN_DIR" ]; then
     set -- --plugin-dir "$PLUGIN_DIR" "$@"
   fi
@@ -71,6 +82,8 @@ if command -v claude >/dev/null 2>&1; then
   printf '%s\n' "$out"
   guard_claude "$out"
 elif command -v codex >/dev/null 2>&1; then
+  [ -n "$SWEEP_EFFORT" ] && set -- -c "model_reasoning_effort=\"$SWEEP_EFFORT\"" "$@"
+  [ -n "$SWEEP_MODEL" ]  && set -- -m "$SWEEP_MODEL" "$@"
   if [ -n "$PLUGIN_DIR" ]; then
     out=$(codex exec --json --plugin-dir "$PLUGIN_DIR" --skill en-sweep "$@")
   else

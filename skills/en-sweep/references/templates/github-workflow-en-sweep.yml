@@ -101,6 +101,11 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ENSEMBLE_SWEEP_DEPTH: ${{ env.ENSEMBLE_SWEEP_DEPTH }}
+          # Runner model and effort (D100). Repository Actions variables, not
+          # secrets: Settings → Secrets and variables → Actions → Variables.
+          # Empty means the runner CLI's own default.
+          ENSEMBLE_SWEEP_MODEL: ${{ vars.ENSEMBLE_SWEEP_MODEL }}
+          ENSEMBLE_SWEEP_EFFORT: ${{ vars.ENSEMBLE_SWEEP_EFFORT }}
           EN_REVIEW_MODE: report-only
         run: |
           # Recursion-depth guard — sweep should never invoke itself recursively.
