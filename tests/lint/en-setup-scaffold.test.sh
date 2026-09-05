@@ -102,6 +102,29 @@ flat "$SKILL" | grep -qi 'do not re-prompt\|Do not re-prompt' \
   && pass "a recorded decline is not re-prompted" \
   || fail "a recorded decline is not re-prompted"
 
+# --- one opt-in round (D96) --------------------------------------------------
+# The retrofit used to stop up to seven times, one y/n per step. The round is
+# asserted on its own heading, on the table carrying every item, and on the
+# absence of the serial prompt shapes it replaced. Negative control at authoring:
+# restoring the step-13a "Install now? (`y` / `n`)" prompt turned the last
+# clause red.
+flat "$SKILL" | grep -q 'Probe once, then ask once' \
+  && pass "the retrofit asks its opt-ins in one round" \
+  || fail "the retrofit asks its opt-ins in one round"
+round_ok=1
+for item in 'step 2)' 'step 9)' 'step 11)' 'step 12)' 'step 13)' 'step 13a)' 'step 14)' 'step 16)' 'step 18)'; do
+  grep -qF "($item" "$SKILL" || { round_ok=0; fail "round lists the opt-in for $item"; }
+done
+[ "$round_ok" -eq 1 ] && pass "the round lists all nine opt-ins"
+if grep -qE 'Install now\? \(|Install\? \(`y` / `n`\)|\(y/n; default y\)' "$SKILL"; then
+  fail "no serial y/n prompt shape survives outside the round"
+else
+  pass "no serial y/n prompt shape survives outside the round"
+fi
+flat "$SKILL" | grep -q 'runs through step 18 without stopping' \
+  && pass "after the round the install does not stop" \
+  || fail "after the round the install does not stop"
+
 # --- payload: en-setup dispatches nothing (2026-09-02) -----------------------
 # It carried repo-research, learnings-research and the dispatch matrix it has no
 # row in, and its SKILL.md named neither agent. Fifth instance of this defect.
