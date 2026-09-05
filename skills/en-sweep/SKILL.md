@@ -41,9 +41,9 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 1. **No host detection.** In CI, `$SKILL_DIR/scripts/en-sweep-ci` has already picked the CLI; interactively, the host's own tools apply. The skill reads no host or peer variable and carries no detection files.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The workflow enforces Guard 1 (concurrency group) and Guard 3 (recursion depth cap) before the skill runs. Guard 2 (no-material-diff) fires inside the skill, at step 10.
-4. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
+4. **Dispatch the architecture scan first, then lint while it runs.** Step 6's `repo-research` is the slow step and depends on nothing below; start it, then run steps 4, 5, 7 and 8, which are independent scans, and collect its result at step 6. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
 5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
-6. **Architecture drift check.** Dispatch `repo-research` to compare `docs/architecture.md` against the codebase:
+6. **Architecture drift check.** Collect the `repo-research` result dispatched at step 4; it compared `docs/architecture.md` against the codebase:
    - Documented components still present?
    - Layer rules honored? (Code-level violations → tech-debt; doc-level → fix-up PR.)
    - Layer boundaries clean?
@@ -60,7 +60,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `references/sweep-checks.md`. Code-level findings get appended via the format in `references/tech-debt-tracker-format.md`.
 10. **Guard 2 — no-material-diff termination.** If no batches were produced, exit silently (no PR, no comment).
 11. **Stage + verify each batch.**
-    - Apply the fixes for the batch (Edit / Write tools).
+    - Apply the fixes for the batch: `Edit` on existing files, `Write` only for new ones. A doc-drift fix that rewrites `docs/architecture.md` whole produces a diff `/en-review` cannot read as a fix.
     - Run `$SKILL_DIR/scripts/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
     - Cap the number of PRs per run at `max_prs_per_run` (default 6).
 12. **Open PR per batch.**
