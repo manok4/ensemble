@@ -13,7 +13,7 @@ Skip when one approach is clearly best. A menu padded with options you would not
 
 ## The mechanism
 
-Dispatch one read-only sub-agent **per constraint, in parallel**. Each gets the same brief and a **different** constraint, so the divergence is structural rather than a matter of asking nicely for variety.
+Dispatch one read-only sub-agent **per constraint, in parallel**, and do not idle while they run: draft the devil's-advocate questions and the recommendation's rationale skeleton meanwhile, then collect. Each gets the same brief and a **different** constraint, so the divergence is structural rather than a matter of asking nicely for variety.
 
 **The brief** (identical for every agent): what the user is trying to do, the constraints and context gathered in the Q&A, the facts established by the frontier rounds' fact lookups (with `file:line` where they exist), and what has already been ruled out and why.
 
