@@ -26,21 +26,21 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 
 | Trigger | Source |
 |---|---|
-| Scheduled cadence | `.github/workflows/en-sweep.yml` cron (set during `/en-setup`; default `0 9 * * 1` — weekly Mon 9am UTC). Configurable: `daily` / `weekly` / `monthly` named values, or any literal cron expression. |
-| `workflow_dispatch` | Manual fire from the Actions UI; bypasses the activity gate. |
-| Manual (`/en-sweep`) | User runs the slash command locally for ad-hoc cleanup. |
+| Scheduled cadence | launchd on a dedicated Mac runs `$SKILL_DIR/scripts/ensemble-sweep-runner`, installed by `$SKILL_DIR/scripts/install-sweep-schedule` (`daily` / `weekly` / `monthly`, local time; default weekly, Monday 09:00). The runner loops the checkouts listed in `~/.ensemble/sweep-repos` and drives each through **Codex** (D101). |
+| `ensemble-sweep-runner --force` | A person kicks the runner by hand (or `install-sweep-schedule run-now`); `--force` bypasses the activity gate. |
+| Manual (`/en-sweep`) | User runs the slash command in a session for ad-hoc cleanup. |
 
-**Activity gate.** Before the sweep job runs, `$SKILL_DIR/scripts/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the scopes `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`) and counts non-sweep commits since then. If zero, the sweep job is skipped silently: no LLM calls, no PRs, no comments. Manual `workflow_dispatch` always bypasses the gate.
+**Activity gate.** Before the sweep job runs, `$SKILL_DIR/scripts/ensemble-sweep-activity-check` walks `git log` for the most recent sweep-authored commit on `main` (matches the scopes `chore(sweep):`, `chore(arch):`, `chore(plans):`, `chore(learnings):`, `chore(maps):`) and counts non-sweep commits since then. If zero, the runner skips that repo silently: no LLM calls, no PRs. `--force` bypasses the gate.
 
 **Every scope in that list has to be one sweep authors and a human would not.** A shared scope makes the gate read a human commit as sweep's own in two places at once, picking it as `LAST_SWEEP_SHA` and subtracting it from the count, and both errors skip the cycle; that is why the lint batch ships as `chore(sweep):` and `docs` is not a sweep scope (D65).
 
-The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves `claude -p` or `codex exec` (whichever is installed in the runner), registers the freshly-cloned plugin (`--plugin-dir "$ENSEMBLE_PLUGIN_DIR"`) so the `en-sweep` skill resolves, and **guards the result**: if the CLI returns a no-op envelope (`num_turns: 0`, `is_error: true`, or `result` containing "Unknown command"), the wrapper exits non-zero so the job fails loudly instead of going green-but-inert. (Field bug FR01 U11: prior runs passed weekly while doing nothing because the skill was never registered.)
+**The runner, per repo.** Refuses a dirty tree, fetches and fast-forwards the default branch, runs the activity gate, then `codex exec --json -s workspace-write` with network on, the model and effort from the repo's `sweep.model` / `sweep.effort` (else `ENSEMBLE_SWEEP_MODEL` / `ENSEMBLE_SWEEP_EFFORT` from the plist, else Codex's default), and a prompt that invokes this skill unattended. **The proof the skill ran is `.ensemble/sweep-result.json`** (step 14): no valid file after the run means the skill did not execute, the runner logs that, merges nothing and exits non-zero. A turn-count guard could not tell "ran and did nothing" from "described what it would do" (FR01 U11); the result file can. After the run the runner merges every PR the file marks eligible, once that PR's checks are green, with `gh pr merge --squash --delete-branch`. One lock per machine, so a manual kick cannot overlap the schedule.
 
 ## Process
 
-1. **No host detection.** In CI, `$SKILL_DIR/scripts/en-sweep-ci` has already picked the CLI; interactively, the host's own tools apply. The skill reads no host or peer variable and carries no detection files.
+1. **No host detection.** On the schedule the runner launched Codex; interactively, the host's own tools apply. The skill reads no host or peer variable and carries no detection files.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
-3. **Loop guards** (per `references/sweep-loop-guards.md`). The workflow enforces Guard 1 (concurrency group) and Guard 3 (recursion depth cap) before the skill runs. Guard 2 (no-material-diff) fires inside the skill, at step 10.
+3. **Loop guards** (per `references/sweep-loop-guards.md`). The runner enforces Guard 1 (one run per machine, a lock) and Guard 3 (recursion depth cap) before the skill runs. Guard 2 (no-material-diff) fires inside the skill, at step 10.
 4. **Dispatch the architecture scan first, then lint while it runs.** Step 6's `repo-research` is the slow step and depends on nothing below; start it, then run steps 4, 5, 7 and 8, which are independent scans, and collect its result at step 6. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
 5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
 6. **Architecture drift check.** Collect the `repo-research` result dispatched at step 4; it compared `docs/architecture.md` against the codebase:
@@ -58,7 +58,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 
     The user reviews each draft plan, flips `status: draft → open` to accept (or moves to `archive/` to decline). To flesh out a draft into a full plan with peer review and R-ID coverage, run `/en-plan --resume docs/plans/active/<plan>.md`.
 9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `references/sweep-checks.md`. Code-level findings get appended via the format in `references/tech-debt-tracker-format.md`.
-10. **Guard 2 — no-material-diff termination.** If no batches were produced, exit silently (no PR, no comment).
+10. **Guard 2 — no-material-diff termination.** If no batches were produced, write `.ensemble/sweep-result.json` with an empty `prs` list (step 14) and exit; no PR, no comment.
 11. **Stage + verify each batch.**
     - Apply the fixes for the batch: `Edit` on existing files, `Write` only for new ones. A doc-drift fix that rewrites `docs/architecture.md` whole produces a diff `/en-review` cannot read as a fix.
     - Run `$SKILL_DIR/scripts/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
@@ -69,11 +69,16 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
     - PR body: cites the source-PR SHA and the findings addressed.
     - PR label: `en-sweep`. Kept for humans filtering the PR list; no guard reads it since the label guard retired.
 13. **Run `/en-review` per PR.** Mode: `report-only` (mandatory; never configurable for sweep). Returns findings JSON; does NOT mutate.
-14. **Auto-merge eligibility check.**
-    - `/en-review` returns no P0/P1 → eligible.
-    - Branch protection allows (per `references/sweep-security-model.md`) → enable auto-merge via `gh pr merge --auto --squash`.
-    - Otherwise → leave PR open for human resolution.
-15. **Summary report.** Post a comment on the source-triggering PR:
+14. **Merge eligibility, recorded, never acted on here.** For each PR: `/en-review` returned no P0/P1 → `merge_eligible: true`; findings, malformed JSON, or `sweep.auto_merge_enabled: false` → `false` with the reason. Write the whole run to `.ensemble/sweep-result.json` (not staged; it is not in the doc-only allowlist):
+
+    ```json
+    {"run_id": "<ISO timestamp>-<head sha7>", "branch": "main",
+     "prs": [{"number": 102, "batch": "architecture-update", "review": "clean", "merge_eligible": true, "reason": ""},
+             {"number": 103, "batch": "plans", "review": "findings", "merge_eligible": false, "reason": "P1 open"}]}
+    ```
+
+    **This skill never merges.** Merging is the runner's step, after the PR's checks finish green; a session run that wants the same outcome invokes `ensemble-sweep-runner --merge-only --repo <path>`. The file is also the runner's proof the skill executed, so it is written on every path, including the no-batches exit at step 10. `review: inconclusive` (malformed review JSON) is never eligible.
+15. **Summary report.** Write it to `.ensemble/sweep-summary.md`; the runner appends it to `~/.ensemble/logs/sweep.log`:
     ```markdown
     ## en-sweep summary
 
@@ -82,7 +87,7 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
     - #103 — chore(plans): move FR05 to completed/
     - #104 — chore(learnings): add 4 missing back-refs
 
-    All 3 passed `/en-review` and were auto-merged.
+    All 3 passed `/en-review` and are merge-eligible; the runner merges them once checks pass.
 
     Surfaced as judgment items (in PR comment, not auto-fixed):
     - 1 contradiction in `docs/learnings/`
@@ -94,36 +99,36 @@ The CI invocation routes through `$SKILL_DIR/scripts/en-sweep-ci` which resolves
 
     Run took: 4m 32s. Recursion depth: 1.
     ```
-    Saved to `.ensemble/sweep-summary.md` for the workflow's "Post summary on source PR" step.
+    A manual `/en-sweep` prints the same text in the session.
 
 ## Strict scope: doc-only
 
 The doc-only contract is enforced at three points:
 
 1. **Categorization (step 9).** Code-level findings never become PRs; they file as TD entries.
-2. **Runtime enforcement (step 11).** `$SKILL_DIR/scripts/ensemble-doc-only-check` verifies every staged path is in the allowlist (`docs/`, `AGENTS.md`, `CLAUDE.md`, `.github/workflows/en-sweep.yml`, `.ensemble/sweep-summary.md`). Any path outside → abort the batch.
-3. **Default-safe security** (per `references/sweep-security-model.md`). `GITHUB_TOKEN` least-privilege; no `actions: write`; no fork triggers; branch protection respected; fail-closed on any guard error.
+2. **Runtime enforcement (step 11).** `$SKILL_DIR/scripts/ensemble-doc-only-check` verifies every staged path is in the allowlist (`docs/`, `AGENTS.md`, `CLAUDE.md`, `.ensemble/sweep-summary.md`). Any path outside → abort the batch.
+3. **Default-safe security** (per `references/sweep-security-model.md`). The runner acts as the machine's own `gh` identity, whose repo permissions are the entire scope; Codex runs in the workspace-write sandbox; branch protection is respected (a refused merge is left open, never forced); fail-closed on any guard error.
 
 ## Loop guards
 
 Sweep is scheduled, so it cannot fire on its own commits and the cadence is the rate-limiter. Three guards, all load-bearing. Per `references/sweep-loop-guards.md`:
 
-1. **Concurrency group.** One sweep per branch at a time, so a manual `workflow_dispatch` cannot overlap the cron run. In the workflow.
+1. **One run per machine.** The runner takes `~/.ensemble/sweep.lock` and skips when another run holds it, so a manual kick cannot overlap the schedule. In the runner.
 2. **No-material-diff termination.** Silent exit when sweep produces no batches. Inside the skill, at step 10.
-3. **Recursion depth cap.** Hard stop at `ENSEMBLE_SWEEP_DEPTH=1`, against an agent reading this file and dispatching `/en-sweep` from inside a sweep. In the workflow.
+3. **Recursion depth cap.** Hard stop at `ENSEMBLE_SWEEP_DEPTH=1`, against an agent reading this file and dispatching `/en-sweep` from inside a sweep. Set by the runner.
 
 Two further guards belonged to the retired `push` trigger and caught only sweep re-triggering on its own merge; their numbers are not reused, and `references/sweep-loop-guards.md` records them so the question is not reopened without the trigger change that would justify them (D27, D65).
 
-## Auto-merge eligibility
+## Merge eligibility
 
-A sweep PR auto-merges when **all** hold:
+The runner merges a sweep PR when **all** hold:
 
 - PR is doc-only (verified by `$SKILL_DIR/scripts/ensemble-doc-only-check`).
-- `/en-review` in `mode:report-only` returns no P0/P1 findings.
-- CI checks pass (project tests, lint).
-- Branch protection's review requirement is met.
+- `/en-review` in `mode:report-only` returned no P0/P1 findings, recorded as `merge_eligible: true` in `.ensemble/sweep-result.json`.
+- Every check on the PR finished green (the runner waits up to `ENSEMBLE_SWEEP_CHECKS_TIMEOUT`, default 30 minutes; a PR with no checks merges at once).
+- `gh pr merge --squash --delete-branch` succeeds under the machine's identity.
 
-Otherwise: PR stays open for human resolution.
+Otherwise the PR stays open with the reason in the log. A `BLOCKED` merge state after green checks means branch protection wants a review this identity cannot give; the fix is a repo setting, not a runner flag.
 
 ## Cross-review
 
@@ -135,13 +140,13 @@ Otherwise: PR stays open for human resolution.
 - `$SKILL_DIR/scripts/continuous-monitor` — dead-code + dep-audit scanner; outputs JSON-lines findings
 - `$SKILL_DIR/scripts/triage-findings` — partitions findings into TD entries vs draft plans
 - `references/sweep-loop-guards.md` — the three loop guards, and the two the scheduled trigger retired
-- `references/sweep-security-model.md` — auto-merge safety, permissions, fork policy
+- `references/sweep-security-model.md` — the machine's identity, the sandbox, merge safety
 - `references/tech-debt-tracker-format.md` — TD entry schema for code-level findings
 - `references/architecture-update-rules.md` — what counts as material structural change
 - `references/doc-lints.md` — file-shape lint catalog
 - `references/learn-lint.md` — wiki-graph lint catalog
-- `references/templates/github-workflow-en-sweep.yml` — installed workflow
-- `$SKILL_DIR/scripts/en-sweep-ci` — CI wrapper (claude -p / codex exec resolver)
+- `$SKILL_DIR/scripts/ensemble-sweep-runner` — the scheduled entry point: per-repo gate, `codex exec`, result-file guard, merge
+- `$SKILL_DIR/scripts/install-sweep-schedule` — `add-repo`, `install` (launchd), `status`, `run-now`, `uninstall`; run by a person on the sweep machine
 - `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
 - `bin/ensemble-lint` — file-shape lint runner
 - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
@@ -150,26 +155,29 @@ Otherwise: PR stays open for human resolution.
 
 | Failure | Behavior |
 |---|---|
-| `$SKILL_DIR/scripts/ensemble-doc-only-check` rejects a batch | Abort that batch; log loudly with offending paths; post to source PR comment |
+| `$SKILL_DIR/scripts/ensemble-doc-only-check` rejects a batch | Abort that batch; log loudly with offending paths in the summary |
 | `repo-research` returns malformed output | Skip that check; surface in summary; continue with other checks |
-| `/en-review` returns malformed JSON | Treat as inconclusive; leave PR open; do not auto-merge |
-| Branch-protection check fails (rate-limit, auth) | Fail-closed: leave all PRs open; do not auto-merge |
+| `/en-review` returns malformed JSON | Record `review: inconclusive`, `merge_eligible: false`; the PR stays open |
+| A PR's check fails, or its merge is refused | The runner leaves it open with the reason logged; nothing is retried or forced |
 | `gh pr create` fails | Skip that batch; surface error; continue |
-| Workflow times out (default 30 min) | Whatever PRs were already created stay open; the rest are dropped; post summary noting truncation |
-| LLM provider auth fails | CI step exits with clear error; no PRs created; manual user action required to fix secrets |
+| The Codex run exceeds `ENSEMBLE_SWEEP_TIMEOUT` (default 45 min) | The runner kills it; PRs already opened stay open; no result file means nothing merges and the repo is logged as failed |
+| Codex or `gh` auth fails on the machine | The runner's doctor stops before any repo; fix the login on that machine and re-run |
 | Two batches conflict on the same file | Open them as separate PRs; let the second rebase against the first when it lands |
 
 ## Configuration
 
 Sweep reads `.ensemble/config.local.yaml`, the project-local gitignored file
-`/en-setup` seeds; nothing in `~/.ensemble/config.json` reaches sweep.
+`/en-setup` seeds; on the sweep machine that is the file in that machine's
+checkout. Nothing in `~/.ensemble/config.json` reaches sweep.
 
 ```yaml
 sweep:
-  enabled: true             # /en-setup writes false when the workflow install is declined
-  schedule: weekly          # informational; the cron lives in the workflow file
+  enabled: true             # false makes the runner skip this repo; /en-setup writes it on a decline
+  schedule: weekly          # informational; the cadence lives in the launchd plist
+  model: fable              # Codex -m for the scheduled run; unset falls back to ENSEMBLE_SWEEP_MODEL, then Codex's default
+  effort: high              # model_reasoning_effort: minimal | low | medium | high | xhigh
   max_prs_per_run: 6        # step 11 stops opening PRs at this count
-  auto_merge_enabled: true  # false leaves every PR for manual approval
+  auto_merge_enabled: true  # false records every PR as not merge-eligible; the runner merges none
   continuous_monitoring:
     dead_code: true         # step 8a runs the monitor when either is true
     dep_audit: true
@@ -183,17 +191,15 @@ working. `triage-findings` parses the last three itself, so a typo there is
 silent and the default stands. The rest are read by this skill's own steps,
 which means they are only as reliable as the step that cites them.
 
-**The runner's model and effort are repository Actions variables, not config keys.** `ENSEMBLE_SWEEP_MODEL` and `ENSEMBLE_SWEEP_EFFORT` (Settings → Secrets and variables → Actions → Variables) reach `en-sweep-ci` through the workflow's `env:` and become `--model` / `--effort` on Claude or `-m` / `model_reasoning_effort` on Codex; unset means the runner CLI's default. This file never reaches CI, so a key here could not do that job. A manual `/en-sweep` runs on the session's model.
+**Model precedence on the schedule:** `sweep.model` in the repo's YAML on the sweep machine, then `ENSEMBLE_SWEEP_MODEL` from the launchd plist (`install-sweep-schedule --model`), then Codex's configured default; effort the same way. A manual `/en-sweep` runs on the session's model.
 
-**The CI timeout is not a config key.** It is `timeout-minutes:` in
-`.github/workflows/en-sweep.yml`, and editing the workflow is the only way to
-change it.
+**Cadence and timeouts are the runner's, not config keys.** The schedule lives in `~/Library/LaunchAgents/com.ensemble.sweep.plist` (`install-sweep-schedule install --cadence …`); `ENSEMBLE_SWEEP_TIMEOUT` caps each repo's Codex run and `ENSEMBLE_SWEEP_CHECKS_TIMEOUT` the wait for a PR's checks, both set in the plist's environment.
 
 ## What this skill never does
 
 - **Never modifies source code, configuration, tests.** Doc-only contract.
 - **Never spawns sweep.** Guard 3 (recursion depth cap) enforces.
-- **Never bypasses branch protection.**
+- **Never bypasses branch protection.** A refused merge is left open; nothing is forced or approved by the runner.
 - **Never force-pushes.**
 - **Never deletes branches** (post-merge cleanup is optional, off by default).
 - **Never escalates permissions.**

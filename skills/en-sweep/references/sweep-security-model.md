@@ -1,156 +1,93 @@
 # Sweep security model
 
-Sweep auto-merges its own PRs. That requires a careful security posture — it's the riskiest piece of automation in Ensemble. This file documents the safe defaults.
+Sweep opens PRs unattended and the runner merges them without a person in the
+loop. That makes it the riskiest automation in Ensemble, and since D101 it runs
+on a dedicated machine under an operator's own credentials rather than in a
+scoped CI job. This file is the posture that keeps that safe.
 
-## Default-safe configuration
+## The identity is the machine's, and its permissions are the whole scope
 
-### Use `GITHUB_TOKEN`, not a PAT
+The runner uses whatever `gh auth login` established on the sweep machine and
+whatever Codex login is present there. There is no `GITHUB_TOKEN` scoped to a
+job and no `permissions:` block; the boundary is the repo access that account
+holds. Two consequences:
 
-The workflow uses the auto-provided `GITHUB_TOKEN`, **not** a personal access token (PAT). PATs grant broader access; `GITHUB_TOKEN` is scoped to the workflow run and expires when the workflow ends.
+- **Use a dedicated account, or a fine-grained token scoped to the swept
+  repos,** with `contents: write` and `pull-requests: write` and nothing more.
+  An operator's personal admin login works, and is also how a sweep bug would
+  get to do the most damage.
+- **Branch protection decides what that identity may merge.** A required
+  human review blocks `gh pr merge`; the runner logs `BLOCKED` and leaves the
+  PR open. Nothing in Ensemble approves, bypasses or force-pushes. If the goal
+  is hands-off merging, the repo setting has to permit this identity to merge
+  green PRs without a review; that is a repository decision, made once, in the
+  open.
 
-```yaml
-permissions:
-  contents: write       # to commit doc-only fixes
-  pull-requests: write  # to open and auto-merge PRs
-  issues: write         # to post comments on the source PR
-```
+## Codex runs sandboxed
 
-**No `actions: write`** (would let sweep modify workflows — out of scope).
-**No `admin`** (would let sweep change repo settings).
+The runner launches `codex exec -s workspace-write` with network access on
+(it needs `gh` and `git push`) and `approval_policy="never"`, so a command the
+sandbox refuses is refused, not escalated to a prompt nobody will answer. The
+skill's doc-only contract is enforced below that, in git: a batch with a
+non-doc path never becomes a PR.
 
-### No fork-triggered runs
+## Doc-only enforcement at runtime
 
-The workflow uses:
-
-```yaml
-on:
-  push:
-    branches: [main]
-```
-
-**Never** `pull_request_target` from forks — that pattern exposes credentials to attacker-controlled code (a fork's PR can modify the workflow file before it runs). Sweep runs only on pushes to `main`, which means the code has already been merged by a trusted reviewer.
-
-### Branch protection respected
-
-If the repo's branch protection requires N reviews on PRs to `main`, sweep's PRs queue for review rather than auto-merging. Sweep detects this via:
-
-```bash
-PROTECTION=$(gh api "/repos/${{ github.repository }}/branches/main/protection" 2>/dev/null || echo "{}")
-REQUIRED_REVIEWS=$(echo "$PROTECTION" | jq -r '.required_pull_request_reviews.required_approving_review_count // 0')
-
-if [ "$REQUIRED_REVIEWS" -gt 0 ]; then
-  echo "Branch protection requires $REQUIRED_REVIEWS review(s); sweep PRs will queue for review."
-  AUTO_MERGE_ENABLED=false
-fi
-```
-
-Sweep surfaces this in the source-PR comment and exits gracefully with PRs open but not merging.
-
-### Doc-only enforcement at runtime
-
-`bin/ensemble-doc-only-check` runs as a workflow step before `gh pr create`. Verifies every staged path is in the allowlist:
+`scripts/ensemble-doc-only-check` runs before every `gh pr create`. It verifies
+every staged path is in the allowlist:
 
 - `docs/`
 - `AGENTS.md`
 - `CLAUDE.md`
-- `.github/workflows/en-sweep.yml`
 - `.ensemble/sweep-summary.md`
 
-Any path outside → abort PR creation; fail loudly with the offending path; post to source PR comment.
+Any path outside aborts that batch and names the path in the summary. This
+catches the case where the batching logic somehow produced a code-file edit
+despite the doc-only contract. **Sweep never modifies code, even by mistake.**
 
-This catches the case where sweep's batching logic somehow produced a code-file edit despite the doc-only contract. **Sweep never modifies code, even by mistake.**
+## Merging is the runner's, gated three times
 
-### Auto-merge disabled on detection failure
-
-If any guard check errors out (rate-limited GitHub API; auth failure; allowlist check throws), sweep leaves all PRs open for human review and does not auto-merge. Fail-closed.
-
-```bash
-set -e  # any error → exit non-zero → workflow fails → no auto-merge
-```
-
-## What auto-merge requires
-
-For a sweep PR to auto-merge:
-
-1. PR is doc-only (verified by `bin/ensemble-doc-only-check`).
-2. `/en-review` in `mode:report-only` returns no P0/P1 findings.
-3. CI checks (project tests, lint) pass.
-4. Branch protection's review requirement is met (e.g., approval count ≥ required).
-
-If any of these fail, the PR stays open for human resolution.
+The skill records `merge_eligible` per PR in `.ensemble/sweep-result.json` and
+never merges. The runner merges a PR only when the file marks it eligible (the
+report-only `/en-review` found no P0/P1), every check on the PR has finished
+green, and `gh pr merge --squash --delete-branch` succeeds. A failed check, a
+pending check past the timeout, a `BLOCKED` merge state or a missing result
+file all leave the PR open with the reason logged. **Fail-closed:** no file, no
+merge.
 
 ## Trust model
 
 | Actor | Trust |
 |---|---|
-| `ensemble-sweep[bot]` (the workflow's auth principal) | Trusted to modify docs/, AGENTS.md, CLAUDE.md, and the en-sweep workflow itself. Nothing else. |
-| Anyone with `contents: write` on the repo | Trusted as much as sweep — they could disable sweep if they wanted. Defense is repo access control. |
-| External fork PRs | **Untrusted.** Workflow doesn't run on `pull_request_target` from forks. Their PRs go through the normal review flow. |
-
-## Required setup secrets
-
-The repo needs (in Settings → Secrets and variables → Actions) **at least one** of the following, matching whichever CLI the runner installs:
-
-| CLI in runner | Preferred secret | Alternative secret |
-|---|---|---|
-| `claude` | `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription; generate with `claude setup-token`) — bills against subscription rate limit, no pay-per-use API charges | `ANTHROPIC_API_KEY` (pay-per-use API) |
-| `codex` | `OPENAI_API_KEY` | (no subscription path; API key only) |
-
-The workflow template passes all three env vars (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) to the sweep step; the CLI on PATH picks up the one that matches it. Set whichever you have; leave the others empty.
-
-`GITHUB_TOKEN` is auto-provided; no manual setup.
-
-If no usable secret is present, sweep fails at the LLM step with a clear error — doesn't auto-merge anything.
-
-**OAuth vs API key — when to pick which:**
-
-- **OAuth** (`CLAUDE_CODE_OAUTH_TOKEN`) — you have a Claude Pro or Max subscription and want sweep to share its rate-limited quota with your local Claude Code usage. No surprise API bills. Risk: if you hit rate limits during a busy day, sweep can't fire on subsequent merges until the limit resets.
-- **API key** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) — pay-per-use, no rate cap, predictable in CI. Best for high-volume repos or teams where the subscription would be a bottleneck.
-
-You can set both. If `CLAUDE_CODE_OAUTH_TOKEN` is set, `claude` CLI uses it; if not, it falls back to `ANTHROPIC_API_KEY`.
-
-## What sweep never does
-
-- **Never modifies source code, configuration, tests, or any non-doc artifact.** Doc-only contract enforced at runtime via the allowlist.
-- **Never bypasses branch protection.** If the repo requires reviews, sweep waits.
-- **Never force-pushes.** All commits are normal commits; PRs are normal PRs.
-- **Never deletes branches** other than its own merged feature branches (post-merge cleanup is optional and disabled by default).
-- **Never escalates permissions.** The workflow's `permissions:` block is the entire scope.
-- **Never spawns another sweep.** Loop guards (`references/sweep-loop-guards.md`) prevent recursion.
+| The sweep machine's `gh` identity | Trusted to open and merge doc-only PRs on the listed repos. Scope it to that. |
+| Anyone with write access to the repo | Trusted as much as sweep; they could disable it. Defence is repo access control. |
+| The repo list `~/.ensemble/sweep-repos` | Whoever can edit it decides what gets swept. It is a file on the operator's machine. |
+| External PRs | Never swept; the runner only reads the default branch. |
 
 ## Disabling sweep
 
-If a project wants to opt out of auto-merging sweep PRs:
-
-```yaml
-# in .github/workflows/en-sweep.yml
-env:
-  SWEEP_AUTO_MERGE: "false"
-```
-
-Sweep runs normally and opens PRs but does not auto-merge — they wait for human approval.
-
-To disable sweep entirely, delete `.github/workflows/en-sweep.yml`. The skill remains available for manual invocation (`/en-sweep`) but never runs unattended.
+- **One repo:** `sweep.enabled: false` in that repo's `.ensemble/config.local.yaml`
+  on the sweep machine, or remove its line from `~/.ensemble/sweep-repos`.
+- **Merging only:** `sweep.auto_merge_enabled: false`; PRs open, none merge.
+- **The machine:** `install-sweep-schedule uninstall`. The skill stays
+  available for manual `/en-sweep`.
 
 ## Audit trail
 
-Every sweep PR includes:
-
-- The triggering merge commit SHA in the PR body.
-- The list of checks that fired and their findings.
-- The `mode:report-only` review verdict from `/en-review`.
-- The sweep batch name (e.g., `lint-fixes`, `architecture-update`).
-
-The user can always reconstruct *why* sweep made a change.
+Every sweep PR body carries the source merge SHA, the checks that fired and
+their findings, the report-only review verdict and the batch name.
+`~/.ensemble/logs/sweep.log` holds every run: gate decision, model and effort,
+Codex exit, the summary, and each merge or the reason it did not happen. The
+operator can always reconstruct *why* sweep made a change and why it merged.
 
 ## Incident response
 
-If sweep does something unexpected (the rare case of a doc-only-check bypass or a logic bug):
-
-1. **Revert the offending PR** — `gh pr revert <pr-number>` opens a revert PR.
-2. **Disable sweep** — delete or rename the workflow file in a fast-follow PR (commit message: `chore(ci): temporarily disable en-sweep — see <issue>`).
+1. **Revert the offending PR:** `gh pr revert <n>` opens a revert PR.
+2. **Stop the schedule:** `install-sweep-schedule uninstall`, or drop the repo
+   from the list.
 3. **File an issue** documenting the failure mode.
-4. **Add a regression test** under `tests/en-sweep/` for the failure mode.
-5. **Re-enable sweep** only after the test catches the failure on a fixture.
+4. **Add a regression test** under `tests/en-sweep/`.
+5. **Re-enable** only after the test catches the failure on a fixture.
 
-This is the standard response — sweep is software; it can have bugs; the response is to add a test, not to abandon the automation.
+Sweep is software; it can have bugs; the response is a test, not abandoning
+the automation.

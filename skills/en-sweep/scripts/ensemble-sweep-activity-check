@@ -4,21 +4,16 @@
 # default branch since the last sweep-authored commit.
 #
 # Output: prints "should-run=true" or "should-run=false" plus a one-line
-# reason on stdout in GITHUB_OUTPUT format. Always exits 0.
+# reason on stdout as key=value lines. Always exits 0.
 #
 # Usage:
 #   ensemble-sweep-activity-check [--branch <ref>] [--manual]
 #
 # Flags:
 #   --branch <ref>  Branch to check (default: origin/main)
-#   --manual        Force should-run=true (manual workflow_dispatch override)
+#   --manual        Force should-run=true (the runner's --force)
 #
-# Example (in GitHub Actions):
-#   - id: gate
-#     run: |
-#       bin/ensemble-sweep-activity-check \
-#         ${{ github.event_name == 'workflow_dispatch' && '--manual' || '' }} \
-#         >> "$GITHUB_OUTPUT"
+# Called by scripts/ensemble-sweep-runner before each repo's Codex run.
 
 set -eu
 
@@ -39,7 +34,7 @@ done
 
 if [ "$MANUAL" = "true" ]; then
   echo "should-run=true"
-  echo "reason=manual trigger (workflow_dispatch)"
+  echo "reason=manual trigger (--force)"
   exit 0
 fi
 

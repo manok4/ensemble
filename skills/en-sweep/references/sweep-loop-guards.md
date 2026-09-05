@@ -3,8 +3,9 @@
 > **This file described a `push`-triggered sweep until 2026-09-03.** Back then
 > sweep fired on every push to `main`, its own auto-merging PRs were pushes to
 > `main`, and five guards existed to break that cycle. **Sweep is scheduled
-> now** (cron plus `workflow_dispatch`), so it cannot trigger itself, and the
-> two guards whose only job was catching a self-trigger are gone rather than
+> now**, by launchd on a dedicated machine through `scripts/ensemble-sweep-runner`
+> (D101; GitHub Actions until then), so it cannot trigger itself, and the two
+> guards whose only job was catching a self-trigger are gone rather than
 > demoted. Their numbers are not reused: this file and `SKILL.md` count the
 > same three guards the same way.
 
@@ -23,20 +24,20 @@ running *pointlessly*. Its correctness rests on no human ever writing a commit
 in one of sweep's scopes, which is why the scope list is short and deliberate.
 See `SKILL.md`'s activity-gate section, and `tests/en-sweep/activity-gate/`.
 
-## Guard 1 — Concurrency group
+## Guard 1 — One run per machine
 
-```yaml
-concurrency:
-  group: en-sweep-${{ github.ref }}
-  cancel-in-progress: false
+```bash
+mkdir "$LOCK_DIR" || { log "another run holds $LOCK_DIR"; exit 0; }
+printf '%s\n' "$$" > "$LOCK_DIR/pid"; trap 'rm -rf "$LOCK_DIR"' EXIT
 ```
 
-One sweep per branch at a time. `cancel-in-progress: false` queues a second
-trigger rather than killing the first, because a cancelled run can leave half
-its batches open as PRs with nothing to finish them.
+The runner takes `~/.ensemble/sweep.lock` before touching any repo and skips,
+exit 0, when another run holds it; a lock whose pid is dead is taken over. A
+second run is skipped rather than the first killed, because a killed run can
+leave half its batches open as PRs with nothing to finish them.
 
-This still matters on a schedule: a manual `workflow_dispatch` can land while
-the weekly cron run is still going.
+This still matters on a schedule: `install-sweep-schedule run-now` can land
+while the weekly slot is still going.
 
 ## Guard 2 — No-material-diff termination
 
@@ -64,10 +65,11 @@ fi
 export ENSEMBLE_SWEEP_DEPTH=$(( ${ENSEMBLE_SWEEP_DEPTH:-0} + 1 ))
 ```
 
-The workflow sets `ENSEMBLE_SWEEP_DEPTH: 0` and the run step increments it.
-This is the one guard the scheduled model did not weaken, because what it stops
-was never a trigger problem: an agent reading `SKILL.md` and invoking
-`/en-sweep` from inside a sweep. **Sweep never spawns sweep.**
+The runner exports `ENSEMBLE_SWEEP_DEPTH=1` before launching Codex, so a
+sweep that reaches this check from inside a sweep exits. This is the one guard
+the scheduled model did not weaken, because what it stops was never a trigger
+problem: an agent reading `SKILL.md` and invoking `/en-sweep` from inside a
+sweep. **Sweep never spawns sweep.**
 
 ## What was retired, and why it is not coming back
 
@@ -82,9 +84,10 @@ that is the change to argue about, not the guard.
 
 ## When a guard fires
 
-One line to the Actions log, exit 0. Skipping is correct behaviour, so the run
-shows as successful: no PR comment, no failure email. A guard that exited
-non-zero would train the team to ignore a red sweep.
+One line to `~/.ensemble/logs/sweep.log`, exit 0. Skipping is correct
+behaviour, so the run reads as successful. A guard that exited non-zero would
+train the operator to ignore a failed sweep, and the runner reserves non-zero
+for a repo that genuinely failed.
 
 ## What guards do not protect against
 
