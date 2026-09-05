@@ -92,7 +92,7 @@ Steps in order (per §5.2.11):
 3. **Generate or merge `AGENTS.md`** per sub-variant.
 4. **Generate or merge `CLAUDE.md`** per sub-variant.
 5. **Add `.gitignore` entries:** `.ensemble/config.local.yaml`. Optionally `docs/learnings/archive/` (ask user).
-6. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`. Surface required permissions/secrets per A20.
+6. **Record the sweep cadence** (`sweep.schedule`) and print the commands that put `/en-sweep`'s runner on a launchd schedule on the dedicated sweep machine (D101). No workflow is written here.
 7. **Create `.ensemble/config.local.example.yaml`** (committed). Offer to create `.ensemble/config.local.yaml` (gitignored) with most-likely-relevant defaults uncommented.
 8. **Recommend next steps:**
    - "Run `/en-foundation --retrofit` to back-fill `docs/foundation.md` and `docs/architecture.md` from existing code."
@@ -114,7 +114,7 @@ Health checks:
 | `docs/learnings/{bugs,patterns,decisions,sources}/` directories present | 🟢 / 🟡 |
 | `docs/learnings/{index.md,log.md}` present | 🟢 / 🟡 |
 | `docs/generated/{plan-index.md,learning-index.md}` present with `generated: true` | 🟢 / 🟡 |
-| `.github/workflows/en-sweep.yml` installed | 🟢 / 🟡 |
+| `sweep.schedule` recorded in `.ensemble/config.local.yaml` | 🟢 / 🟡 |
 | `.ensemble/config.local.example.yaml` present | 🟢 / 🟡 |
 | `bin/ensemble-lint --scope docs/` runs clean | 🟢 / 🔴 / 🟡 |
 | Required CLIs on PATH (`gh`, `git`, `jq`) | 🟢 / 🔴 |
@@ -142,7 +142,6 @@ Created:
   docs/learnings/{index.md,log.md}
   docs/generated/{plan-index.md,learning-index.md}
   CLAUDE.md (from template)
-  .github/workflows/en-sweep.yml
   .ensemble/config.local.example.yaml
 
 Modified:

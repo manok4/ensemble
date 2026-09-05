@@ -2,7 +2,7 @@
 # Drift guard for en-setup's State-2 retrofit install list.
 #
 # Field-observed bug: PolicyAsync project ran /en-setup but didn't get:
-#   - bin/{en-sweep-ci, ensemble-sweep-activity-check, ensemble-doc-only-check, ensemble-lint}
+#   - bin/ensemble-lint (three sweep scripts were installed too until D101 retired the GitHub sweep)
 #   - .gitignore entry for .ensemble/config.local.yaml
 # Cause: the SKILL.md had no step that copied the project-local bin scripts
 # from the plugin into the target repo, AND the .gitignore step was easy to
@@ -17,7 +17,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-setup retrofit install list"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
-WORKFLOW_TPL="$REPO_ROOT/skills/en-setup/references/templates/github-workflow-en-sweep.yml"
 
 # --- Sanity: skill file present ---
 if [ -f "$SKILL" ]; then
@@ -27,32 +26,29 @@ else
   report
 fi
 
-# --- Each project-local bin script exists in the plugin source (so en-setup
-#     has something to copy from). The bug was that en-setup didn't copy them;
-#     this also catches the case where someone deletes them from the plugin. ---
-for script in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check ensemble-lint; do
-  # en-setup is the skill that copies these into the consuming project, so they
-  # must live in ITS directory. ensemble-lint is a template rather than a bundled
-  # script: EN13 U8 made it a project deliverable, so no skill runs it from its
-  # own scripts/.
-  if [ -f "$REPO_ROOT/skills/en-setup/scripts/$script" ] || [ -f "$REPO_ROOT/skills/en-setup/references/templates/$script" ]; then
-    pass "en-setup carries $script to install"
+# --- The project-local bin script exists in the plugin source (so en-setup
+#     has something to copy from). ensemble-lint is a template rather than a
+#     bundled script: EN13 U8 made it a project deliverable. Until D101 three
+#     sweep scripts were carried and installed too, for a GitHub workflow that
+#     ran them by relative path; the sweep now runs from the skill directory on a
+#     dedicated machine, and en-setup must NOT carry them any more. ---
+if [ -f "$REPO_ROOT/skills/en-setup/references/templates/ensemble-lint" ]; then
+  pass "en-setup carries ensemble-lint to install"
+else
+  fail "en-setup carries references/templates/ensemble-lint — nothing to copy"
+fi
+for gone in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check; do
+  if [ -e "$REPO_ROOT/skills/en-setup/scripts/$gone" ]; then
+    fail "en-setup no longer carries $gone (D101)"
   else
-    fail "en-setup carries neither scripts/$script nor references/templates/$script — nothing to copy"
+    pass "en-setup no longer carries $gone (D101)"
   fi
 done
-
-# --- The en-sweep workflow template references the bin scripts that
-#     en-setup MUST install (regression: if the workflow template stops
-#     referencing them, en-setup may stop installing them, but if it still
-#     references them and en-setup skips the install, CI will fail). ---
-for script in en-sweep-ci ensemble-sweep-activity-check; do
-  if grep -qF "bin/$script" "$WORKFLOW_TPL"; then
-    pass "en-sweep workflow template references bin/$script"
-  else
-    fail "en-sweep workflow template no longer references bin/$script (or template moved)"
-  fi
-done
+if [ -e "$REPO_ROOT/skills/en-setup/references/templates/github-workflow-en-sweep.yml" ]; then
+  fail "the GitHub sweep workflow template is retired (D101)"
+else
+  pass "the GitHub sweep workflow template is retired (D101)"
+fi
 
 # --- SKILL.md has a step that installs the project-local bin scripts. ---
 # Look for a heading or paragraph that mentions "Install project-local bin"
@@ -63,11 +59,16 @@ else
   fail "SKILL.md missing the 'Install project-local bin' step (the bug fix)"
 fi
 
-for script in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check ensemble-lint; do
-  if grep -qF "bin/$script" "$SKILL"; then
-    pass "SKILL.md mentions bin/$script in the install list"
+if grep -qF "bin/ensemble-lint" "$SKILL"; then
+  pass "SKILL.md mentions bin/ensemble-lint in the install list"
+else
+  fail "SKILL.md does not mention bin/ensemble-lint (must be in the install list)"
+fi
+for gone in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check; do
+  if grep -qF "\`./bin/$gone\`" "$SKILL"; then
+    fail "SKILL.md no longer installs ./bin/$gone (D101)"
   else
-    fail "SKILL.md does not mention bin/$script (must be in the install list)"
+    pass "SKILL.md no longer installs ./bin/$gone (D101)"
   fi
 done
 
@@ -125,9 +126,6 @@ for required in \
   "docs/generated/{plan-index.md,learning-index.md}" \
   "AGENTS.md" \
   "CLAUDE.md" \
-  "bin/en-sweep-ci" \
-  "bin/ensemble-sweep-activity-check" \
-  "bin/ensemble-doc-only-check" \
   "bin/ensemble-lint" \
   ".ensemble/config.local.example.yaml"; do
   if printf '%s' "$TABLE" | grep -qF "$required"; then
@@ -154,14 +152,12 @@ fi
 
 # --- The output-format example reflects the bin scripts (so report stays
 #     accurate) ---
-for script in en-sweep-ci ensemble-sweep-activity-check ensemble-doc-only-check ensemble-lint; do
-  # The output example block lists target-repo files with a leading "  - ./bin/...". Match that.
-  if grep -qE "  - \./bin/$script" "$SKILL"; then
-    pass "output example lists ./bin/$script in 'Created' section"
-  else
-    fail "output example should list ./bin/$script in 'Created' section"
-  fi
-done
+# The output example block lists target-repo files with a leading "  - ./bin/...". Match that.
+if grep -qE "  - \./bin/ensemble-lint" "$SKILL"; then
+  pass "output example lists ./bin/ensemble-lint in 'Created' section"
+else
+  fail "output example should list ./bin/ensemble-lint in 'Created' section"
+fi
 
 if grep -qE "[Ff]inal verification: [0-9]+ / [0-9]+ required" "$SKILL"; then
   pass "output example includes a 'Final verification: N / N' line"

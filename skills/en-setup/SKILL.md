@@ -55,13 +55,13 @@ Exit.
 Run all of these in order. Each step is idempotent — running `/en-setup` twice produces the same end state.
 
 1. **Confirm sub-variant.** Probe for `AGENTS.md` / `CLAUDE.md` existence; classify as 2a/2b/2c/2d.
-1a. **Probe once, then ask once.** Seven serial prompts made this flow an interview. Issue every probe in one message: `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` when `docs/plans/` exists, `sweep.enabled` and `lint_ci.enabled` in `.ensemble/config.local.yaml`, the resolved guardrail installer's `status`, `command -v gnhf`, `gh api repos/<owner>/<repo> --jq .allow_auto_merge`, and whether `.github/workflows/en-sweep.yml`, `.github/workflows/claude-code-review.yml`, `.github/workflows/ensemble-lint.yml`, `REVIEW.md` and `.ensemble/config.local.yaml` exist. Then put **one numbered round** to the user, each item with a recommended answer, listing only what the probes left open:
+1a. **Probe once, then ask once.** Seven serial prompts made this flow an interview. Issue every probe in one message: `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` when `docs/plans/` exists, `sweep.enabled` and `lint_ci.enabled` in `.ensemble/config.local.yaml`, the resolved guardrail installer's `status`, `command -v gnhf`, `gh api repos/<owner>/<repo> --jq .allow_auto_merge`, and whether `.github/workflows/claude-code-review.yml`, `.github/workflows/ensemble-lint.yml`, `REVIEW.md` and `.ensemble/config.local.yaml` exist. Then put **one numbered round** to the user, each item with a recommended answer, listing only what the probes left open:
 
    | Item | Listed when | Recommend |
    |---|---|---|
    | Archive non-conforming plans to `docs/plans/legacy/` (step 2) | `non_conforming` is non-empty | `y` |
    | Ignore `docs/learnings/archive/` (step 9) | always | `n` |
-   | Sweep cadence `daily` / `weekly` / `monthly` / cron (step 11) | no workflow, `sweep.enabled` not `false` | `weekly` |
+   | Sweep cadence `daily` / `weekly` / `monthly` (step 11) | `sweep.enabled` not `false` | `weekly` |
    | Create `.ensemble/config.local.yaml` (step 12) | absent | `y` |
    | Guardrail scope `p` / `g` / `s` (step 13) | neither scope installed | `p` |
    | Install gnhf (step 13a) | not on PATH | `n` |
@@ -126,37 +126,21 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    - Optionally `docs/learnings/archive/` — per the round's answer.
 
    This step is verified again in the final-verification phase (step 18). Both checks must pass.
-10. **Install project-local `bin/` scripts.** **(Required for the en-sweep workflow in step 11 to actually run.)** Copy these scripts — including `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint` — into `<repo-root>/bin/`, `chmod +x` each, and stage for commit:
+10. **Install project-local `bin/ensemble-lint`.** Copy `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint`, to `<repo-root>/bin/ensemble-lint`, `chmod +x` it, and `git add bin/ensemble-lint`. **Idempotent**: if the destination exists AND matches the source, skip the copy but still verify `chmod +x`. **Verification:** `[ -x bin/ensemble-lint ]`; re-checked in step 18. **Re-sync on update:** it is a copy, so re-run this step after a plugin update. Until D101 three sweep scripts were installed here too, for a GitHub workflow that ran them by relative path; the sweep now runs from the skill directory on a dedicated machine and nothing project-local is needed for it.
 
-   - `$SKILL_DIR/scripts/en-sweep-ci` — wrapper the workflow runs (it prefers the freshly cloned plugin's copy and falls back to this one).
-   - `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — run by the workflow's activity-gate step for the "no non-sweep commits since last run" check.
-   - `$SKILL_DIR/scripts/ensemble-doc-only-check` — used by the en-sweep skill to gate doc-only PR auto-merge.
-   - `bin/ensemble-lint` — used by en-sweep, en-plan, en-review for file-shape lints.
+11. **Sweep schedule (dedicated machine).** The sweep no longer runs in this repo's CI: launchd on a dedicated Mac runs `/en-sweep`'s runner through Codex on a cadence, and the runner merges the doc-only PRs once their checks pass (D101). This step records the choice and prints what to run **on that machine**; it writes no schedule here, because the schedule is not this repo's.
 
-   **Resolving the script path.** This skill carries the scripts it installs in its own `scripts/` directory, so there is nothing to discover: anchor to the skill directory as `references/script-invocation.md` describes. `${ENSEMBLE_PLUGIN_DIR:-}` is still honored when set, for a caller that deliberately points at another install.
-
-   For each of the four: copy from `$SKILL_DIR/scripts/<name>` (the lint from `$SKILL_DIR/references/templates/ensemble-lint`) to `<repo>/bin/<name>`, run `chmod +x <repo>/bin/<name>`, and `git add bin/<name>`. **Idempotent**: if the destination file exists AND the content matches the source, skip the copy but still verify `chmod +x`.
-
-   **Verification:** after copying, confirm with `[ -x bin/<name> ]` for each. Re-checked in the final-verification phase (step 18).
-
-   These bin scripts are project-local on purpose — they're invoked from `.github/workflows/en-sweep.yml` via relative paths, which only works if they're committed to the repo.
-
-   **Re-sync on update.** These are copies, so a consuming repo carries a snapshot from install time; re-run this step after a plugin update (idempotent: it overwrites when content differs). The workflow prefers the freshly cloned `en-sweep-ci`, but `ensemble-sweep-activity-check` and `ensemble-lint` run project-local, so they need the re-sync.
-
-11. **Install `.github/workflows/en-sweep.yml`** from `references/templates/github-workflow-en-sweep.yml`.
-
-    **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the workflow as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
- Depends on step 10 — the workflow won't function without those bin scripts.
-    1. **Cadence** is the round's answer: `daily` / `weekly` / `monthly` (default `weekly`), or a literal cron expression (e.g. `0 9 * * 1,4` for Mon+Thu).
-    2. **Map to cron.** Named values map to:
-       - `daily` → `0 9 * * *`
-       - `weekly` → `0 9 * * 1` (Monday 9am UTC)
-       - `monthly` → `0 9 1 * *` (1st of the month, 9am UTC)
-       - Anything else is treated as a literal cron expression and substituted as-is.
-    3. **Substitute** `{{SWEEP_CRON}}` in the template with the resolved cron expression and write the workflow file. Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` so the choice is documented (informational; the cron is already in the workflow file).
-    4. **Verify** the workflow file exists after the write: `[ -f .github/workflows/en-sweep.yml ]`. Re-checked in step 18.
-    5. **Surface required secrets** per A20: "Sweep needs **one** auth secret in repo Settings → Secrets and variables → Actions: `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max; generate with `claude setup-token`), `ANTHROPIC_API_KEY` (pay-per-use) or `OPENAI_API_KEY` (`codex` CLI). The workflow passes all three; the runner's CLI picks up its own."
-    6. **Note the activity gate:** "Sweep runs on schedule but skips silently when no non-sweep commits landed since the last run; `workflow_dispatch` bypasses the gate. Check: `$SKILL_DIR/scripts/ensemble-sweep-activity-check`."
+    **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the sweep as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
+    1. **Cadence** is the round's answer: `daily` / `weekly` / `monthly` (default `weekly`). Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` (informational; the cadence lives in the plist on the sweep machine).
+    2. **Print the machine-side commands**, with this repo's path filled in:
+       ```
+       # on the sweep machine, once per repo (the installer is carried by /en-sweep, beside this skill):
+       bash <ensemble>/…/en-sweep/scripts/install-sweep-schedule add-repo <path-to-this-checkout>
+       # once per machine (re-run to change cadence or the default model):
+       bash <ensemble>/…/en-sweep/scripts/install-sweep-schedule install --cadence weekly --hour 9 --model <alias-or-id> --effort high
+       ```
+       and note that the machine needs `codex`, `gh` (logged in with an identity allowed to merge green PRs) and `jq` on PATH, a clean clone of this repo, and `sweep.model` / `sweep.effort` in that clone's `.ensemble/config.local.yaml` if this repo should override the machine default.
+    3. **Note the activity gate:** "The runner skips a repo silently when no non-sweep commits landed since the last sweep; `--force` bypasses it."
 
 12. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. Create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented when the round said `y`.
 13. **Guardrail check.** The guardrail installer belongs to `/en-guardrail`, which installs as its own skill and may not be present. **Resolve it before use:** look for `install-guardrail` in a sibling `en-guardrail` skill directory alongside this one. If it is not there, say so and point the user at `/en-guardrail` rather than guessing a path — then skip to the next step. Its `status` ran at step 1a. If neither scope is installed, the round offered the hook, which prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`): `p` project-scoped (writes `<repo>/.claude/settings.json`), `g` the global one-liner to run yourself (agents can't write `~/.claude/`), `s` skip.
@@ -216,16 +200,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     | `AGENTS.md` | exists; contains the Ensemble pointer-map section marker |
     | `CLAUDE.md` | exists; first non-frontmatter line cross-references AGENTS.md |
     | `.gitignore` | contains `.ensemble/config.local.yaml` (`grep -qF '.ensemble/config.local.yaml' .gitignore`) |
-    | `./bin/en-sweep-ci` | exists, executable (`-x`) |
-    | `./bin/ensemble-sweep-activity-check` | exists, executable |
-    | `./bin/ensemble-doc-only-check` | exists, executable |
-    | `./bin/ensemble-lint` | exists, executable |
+    | `./bin/ensemble-lint` | exists, executable (`-x`) |
     | `.ensemble/config.local.example.yaml` | exists |
 
     **Optional artifacts** (depend on user opt-in earlier; surface in report but don't fail if absent):
 
     - `.github/workflows/ensemble-lint.yml` (step 1a opt-in). A PR check running `bin/ensemble-lint --scope docs/` on changes to `docs/`, `AGENTS.md` or `CLAUDE.md`. Template at `references/templates/github-workflow-ensemble-lint.yml`. Narrower than the sweep, it reports on a pull request rather than running on a schedule or opening one, so it is its own item. A decline records `lint_ci.enabled: false`.
-    - `.github/workflows/en-sweep.yml` (step 11 opt-in). **A decline is recorded, never silent.** Write `sweep.enabled: false` to `.ensemble/config.local.yaml` and report the workflow as *declined*, not *missing*. Re-offering an install the operator refused trains them to skim the report.
+    - `sweep.schedule` in `.ensemble/config.local.yaml` (step 11 opt-in; the schedule itself lives on the sweep machine). **A decline is recorded, never silent.** Write `sweep.enabled: false` and report the sweep as *declined*, not *missing*. Re-offering an install the operator refused trains them to skim the report.
 
     - `.github/workflows/claude-code-review.yml` (step 14 opt-in)
     - `REVIEW.md` (step 16 opt-in)
@@ -296,7 +277,8 @@ Invoke `bash "$SKILL_DIR/scripts/check-health"` — this skill carries it, ancho
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Required-artifact verification** - same table as State 2 step 18 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 10? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local scripts.
+- **Required-artifact verification** - same table as State 2 step 18 (final verification). Each missing required artifact is 🔴; offer the same install step as a repair (e.g. missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 10? (y/n)"). This catches projects that were retrofitted before the bin-install step existed and never got the project-local lint.
+- **Sweep schedule** — read `sweep.enabled` / `sweep.schedule` from `.ensemble/config.local.yaml`: 🟢 recorded, 🟡 absent (print the step 11 machine-side commands). A leftover `.github/workflows/en-sweep.yml` is 🟡 *retired; delete it*. Whether the dedicated machine's launchd job is loaded is that machine's `install-sweep-schedule status`, not something this repo can see.
 - **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 13).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 14).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
@@ -331,11 +313,7 @@ Created:
   - docs/generated/{plan-index.md,learning-index.md}
   - CLAUDE.md (from template)
   - REVIEW.md (review-only instructions; from template)
-  - .github/workflows/en-sweep.yml
   - .github/workflows/claude-code-review.yml (Anthropic Code Review action)
-  - ./bin/en-sweep-ci (chmod +x)
-  - ./bin/ensemble-sweep-activity-check (chmod +x)
-  - ./bin/ensemble-doc-only-check (chmod +x)
   - ./bin/ensemble-lint (chmod +x)
   - .ensemble/config.local.example.yaml
   - .claude/settings.json (en-guardrail PreToolUse hook, project-scoped)
@@ -361,7 +339,7 @@ Next step:
 | Repo is not a git repo | Surface and stop. Tell user to run `git init` first or pass `--no-git` (rare). |
 | `package.json` malformed | Skip command detection; substitute `<unset>` and surface a warning. |
 | User declines `.ensemble/config.local.yaml` creation | Skip; only the example file exists. |
-| GH Action workflow already exists with different content | Don't overwrite. Surface a warning: "Existing `.github/workflows/<file>.yml` differs from template; leaving as-is. Compare manually if you want to update." Applies to both `en-sweep.yml` and `claude-code-review.yml`. |
+| GH Action workflow already exists with different content | Don't overwrite. Surface a warning: "Existing `.github/workflows/<file>.yml` differs from template; leaving as-is. Compare manually if you want to update." A leftover `en-sweep.yml` from before D101 is reported as retired: delete it, the sweep runs from the dedicated machine now. |
 | Existing `AGENTS.md` / `CLAUDE.md` has Ensemble integration already | Detect via heading/link match; no-op. |
 
 ## What this skill never does
@@ -378,7 +356,6 @@ Next step:
 - `references/templates/agents-md-template.md` — AGENTS.md template + substitutions
 - `references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
 - `references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
-- `references/templates/github-workflow-en-sweep.yml` — GH Action workflow
 - `references/templates/config-local-example.yaml` — committed config template
 - `references/learn-index-format.md` — `learnings/index.md` empty-state seed
 - `references/learn-log-format.md` — `learnings/log.md` empty-state seed

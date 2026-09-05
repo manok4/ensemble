@@ -86,8 +86,8 @@ default_branch_fallback: main
 # review_host_model_alias:               # every host persona under --cross / --host; unset uses the agent frontmatter
 # Host persona effort is the dimension-reviewer agent's `effort:` frontmatter
 # (high); override per repo with a copy at .claude/agents/dimension-reviewer.md.
-# The en-sweep CI runner's model and effort are repository Actions variables
-# (ENSEMBLE_SWEEP_MODEL, ENSEMBLE_SWEEP_EFFORT), because this file never reaches CI.
+# The scheduled sweep's model and effort are `sweep.model` / `sweep.effort`
+# below, read from this file in the checkout on the sweep machine.
 
 # --- Observability (telemetry harness) ---
 
@@ -104,18 +104,19 @@ default_branch_fallback: main
 # --- Sweep ---
 
 # sweep:
-#   # Cadence — substituted into .github/workflows/en-sweep.yml at /en-setup
-#   # install time. Named values (`daily`/`weekly`/`monthly`) map to canonical
-#   # cron expressions; any other value is treated as a literal cron passthrough.
-#   # Default `weekly` (Monday 9am UTC). Edit the workflow file directly to
-#   # tweak after install — re-running /en-setup respects the schedule already
-#   # in the workflow unless you explicitly opt to regenerate.
-#   schedule: weekly                     # daily | weekly | monthly | <cron expression>
-#   enabled: true                        # /en-setup records false here when the workflow install is declined
-#   auto_merge_enabled: true             # false leaves every sweep PR open for manual approval
-#   # The CI timeout is NOT set here. It is `timeout-minutes:` in
-#   # .github/workflows/en-sweep.yml. A `ci_timeout_minutes` key sat in this
-#   # block until 2026-09-03 with nothing substituting it into the workflow.
+#   # The sweep runs on a dedicated machine on a launchd schedule through Codex
+#   # (D101); `schedule` here is informational, the cadence lives in that
+#   # machine's plist (install-sweep-schedule install --cadence ...).
+#   schedule: weekly                     # daily | weekly | monthly
+#   enabled: true                        # false: the runner skips this repo; /en-setup records it on a decline
+#   # Model and effort for the scheduled run, read from THIS file in the
+#   # checkout on the sweep machine. Unset falls back to the plist's
+#   # ENSEMBLE_SWEEP_MODEL / ENSEMBLE_SWEEP_EFFORT, then Codex's default.
+#   model: fable                         # codex exec -m; alias or full model ID
+#   effort: high                         # minimal | low | medium | high | xhigh
+#   auto_merge_enabled: true             # false: every sweep PR is recorded as not merge-eligible and stays open
+#   # Timeouts are the runner's: ENSEMBLE_SWEEP_TIMEOUT (per-repo Codex cap) and
+#   # ENSEMBLE_SWEEP_CHECKS_TIMEOUT (wait for a PR's checks), set in the plist.
 #   max_prs_per_run: 6
 #   # Dead-code + dep-vuln continuous monitoring.
 #   continuous_monitoring:
