@@ -52,7 +52,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    - **pr_comments / review_bodies:** is the body actionable (vs. wrapper text from CodeRabbit/Codex/Gemini/Copilot, or approvals like "looks great!")? Non-actionable → **silent drop** (do not narrate; do not list). Actionable AND already replied? → skip. Actionable + not replied → new.
 
    If no new items, jump to step 14 (merge readiness), then the summary.
-6. **Plan a numbered task list** of new items grouped by feedback type. Surface to user.
+6. **Plan a numbered task list** of new items grouped by feedback type. Surface to user, and write it to `/tmp/ensemble/en-resolve-pr/<run-id>/items.json`, updating each item's verdict as it lands: a multi-item pass can outlast the context, and the summary at step 15 is derived from the file. Read the code each item points at in one message; the reads do not depend on one another.
 7. **Per item, apply the rubric** from `references/resolve-pr-rubric.md` and produce one of six verdicts:
    - `fixed` — code changed as suggested
    - `fixed-differently` — code changed using a better approach; explain why in the reply
@@ -61,7 +61,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    - `declined` — concern may be valid, but the suggested fix would actively make the code worse (**must cite specific harm**, ideally referencing `CLAUDE.md`, `AGENTS.md`, or `docs/learnings/`)
    - `needs-human` — judgment call requiring user input (architectural change, security-sensitive, ambiguous business logic)
 
-   For `fixed` / `fixed-differently`: edit the code, then run **only targeted tests** for the changed file(s). Never run the full suite per item — step 8 does that once for the combined diff.
+   For `fixed` / `fixed-differently`: edit the code surgically, then run **only targeted tests** for the changed file(s). **Fix what the comment names.** Something adjacent the reviewer did not raise is a suggestion in the reply or a `TD<N>` entry (step 13), not an edit in this pass; default-to-fix covers the feedback, not the neighbourhood. Never run the full suite per item — step 8 does that once for the combined diff.
 
    **A reviewer-reported bug owes a regression test.** When the comment describes behaviour that is actually wrong — not a style preference, a naming question, or a refactor suggestion — add a test that **fails before the fix and passes after it**, and say so in the reply. Reproduce the reported failure where that is feasible at all. A fix with no failing test behind it is a claim that the bug is gone, and the next reviewer has no way to tell it apart from a fix that missed. Where a regression test is genuinely impractical, say which and why in the reply rather than passing over it silently.
 8. **Combined validation.** Aggregate `files_changed` across all items. If non-empty:
