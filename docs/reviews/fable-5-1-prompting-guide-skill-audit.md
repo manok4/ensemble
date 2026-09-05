@@ -4,6 +4,10 @@ Date: 2026-09-05
 Source: https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-1
 Branch reviewed: `en-brainstorm-efficiency-pass` at `ccdde62`
 
+## What landed
+
+The "apply now" items below shipped in the PR that carries this file, as D95 through D99: the `xhigh` effort tier, en-setup's single opt-in round, en-foundation's frontier rounds and disk ledger, the run ledgers for en-build, en-qa, en-flow and en-resolve-pr, the autonomous framing in the en-loop worker prompt and the en-sweep CI wrapper, and the batching, search, edit, long-output and progress lines in the remaining skills. Still open, by design: the peer ladder rung re-measurement, the agent tier comparison, and en-sweep at medium effort, each of which waits on an eval.
+
 ## Scope and method
 
 This is a static audit. Each `skills/en-*/SKILL.md`, its bundled `agents/*.md`, the peer briefs, the peer prompt builder and the peer invoke helper were read against the sixteen sections of the guide. "Current standing" below means how well the prompt text already matches the guide's recommendations. Nothing here was measured at runtime; where the guide says to run an eval before changing a setting, that is repeated rather than pre-empted.
