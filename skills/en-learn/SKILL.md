@@ -104,10 +104,10 @@ After every write:
    **Edge case: no plan_id in context.** If `/en-learn capture` is invoked outside any plan context (no plan branch, no `--plan` argument), step 11 is a silent no-op — there's nothing to flip.
 12. **Apply always-on behaviors** (cross-refs, index update, log append).
 13. **Sync `docs/architecture.md`** if material structural change (new module, changed boundaries, new infrastructure, dependency direction shifts, new external integration). Surgical edits only — never regenerate. Bump `updated:`. Per `references/architecture-update-rules.md`.
-14. **Sync `foundation.md`** if scope, decisions, or top-level direction changed.
-15. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare).
+14. **Sync `foundation.md`** if scope, decisions, or top-level direction changed. Surgical edits only, never regenerate.
+15. **Sync `AGENTS.md` / `CLAUDE.md`** only if the artifact directory or top-level guidance changed (rare). Surgical edits only.
 16. **Update `docs/README.md` index** if it exists.
-17. **Regenerate `docs/generated/learning-index.md`** by appending the new entry; bump `total_entries`.
+17. **Append the new entry to `docs/generated/learning-index.md`** and bump `total_entries`; do not regenerate the file.
 
 ## Process — Mode B: `--refresh`
 
@@ -154,9 +154,10 @@ reversal.
 rather than deleting it, because "we stopped using that word" is itself worth
 recording.
 
-**3. Confirm each disposition** with the user, or `--auto` for the non-judgment
-cases (a citation the validator resolved as a pure path move, an index line that
-drifted).
+**3. Confirm the dispositions in one round**, every entry with its proposed
+disposition and the reason, so the user corrects the list rather than answering
+entry by entry; `--auto` applies the non-judgment cases without asking (a citation
+the validator resolved as a pure path move, an index line that drifted).
 
 ## Process — Mode C: `--lint` / `--lint --fix`
 
