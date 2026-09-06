@@ -52,7 +52,13 @@ fingerprint can see that. Age is the proxy. Default 120 minutes, overridable wit
 - **`/en-build`** writes it after its single full-suite run passes, recording
   `full_suite` plus one check per named suite in `AGENTS.md` (`unit`, `db`,
   `e2e` for a project that declares those commands).
-- **`/en-ship`** reads in preflight, and skips only what a valid receipt covers.
+- **`/en-review`** reads before its post-review check and skips it when the
+  tree is already proved, which is only possible when it applied nothing. When
+  the check runs and passes on the bare branch diff it writes `lint`,
+  `typecheck` and `targeted_tests`, so a standalone review hands `/en-ship`
+  something it can honour.
+- **`/en-ship`** reads in preflight, and skips only what a valid receipt covers:
+  `full_suite` first, then `targeted_tests`, which is the set it would run itself.
 - **A project's pre-push hook** may read it, to avoid repeating what `/en-ship`
   just ran seconds earlier on the identical tree.
 - **CI never reads one.** It is the independent authority, and a receipt is a
