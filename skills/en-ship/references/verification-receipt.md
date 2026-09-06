@@ -29,7 +29,8 @@ Validity is a **conjunction**. All of these must hold:
 | It parses, and its schema is known | `malformed` |
 
 There is no partial credit and no reasoning about which subset of checks might
-still apply. **Every clever invalidation rule is a way to ship untested code**,
+still apply. Per-suite check names are not partial credit: a caller that asks
+for `db` gets `db` or `check-not-recorded`, never an inference from `unit`. **Every clever invalidation rule is a way to ship untested code**,
 and the cost of being wrong is asymmetric: a needless re-run costs minutes, a
 wrongly-skipped run costs a broken main branch. When anything is unclear the
 command exits non-zero and the caller runs the checks.
@@ -48,7 +49,9 @@ fingerprint can see that. Age is the proxy. Default 120 minutes, overridable wit
 
 ## Who writes and who reads
 
-- **`/en-build`** writes it after its single full-suite run passes.
+- **`/en-build`** writes it after its single full-suite run passes, recording
+  `full_suite` plus one check per named suite in `AGENTS.md` (`unit`, `db`,
+  `e2e` for a project that declares those commands).
 - **`/en-ship`** reads in preflight, and skips only what a valid receipt covers.
 - **A project's pre-push hook** may read it, to avoid repeating what `/en-ship`
   just ran seconds earlier on the identical tree.
