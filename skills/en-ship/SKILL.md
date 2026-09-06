@@ -41,6 +41,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    **First, ask whether another layer already proved this exact tree.** Run
    `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" verify --requires lint,typecheck,full_suite --json`,
    after the step-3 base-freshness gate, since that gate is what makes a moved base detectable.
+   On `check-not-recorded` alone, ask once more with `--requires lint,typecheck,targeted_tests`: that is exactly
+   the set this step runs, so a receipt `/en-review` wrote against the identical tree is the same evidence.
 
    - **Exit 0** → skip lint, typecheck and the targeted tests. Report what was skipped, which checks the
      receipt covered, how old it is, and who wrote it. A skip nobody can see is indistinguishable from a

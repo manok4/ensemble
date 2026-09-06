@@ -108,11 +108,11 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
 
     **Phase 1 — authorize, then baseline + freeze (before ANY edit).** Authorization comes FIRST, so the frozen set never changes after mutation begins:
-    0. **Any finding you do not understand stops the whole phase.** Before collecting authorizations, read the frozen candidates and ask about anything ambiguous — what the finding means, what fix it implies, whether it holds for this codebase. **Ask about all of them at once, and apply nothing until they are answered.** Findings interact: applying the four you understood and asking about the fifth is how a partial reading becomes a wrong implementation, and the frozen-set protocol below cannot undo it because the set was already frozen around a misreading. In `headless` and `report-only` there is no one to ask, so an ambiguous finding is not authorized — it is surfaced unapplied with the ambiguity named.
+    0. **Any finding you do not understand stops the whole phase.** Before collecting authorizations, ask about every ambiguous candidate at once, what it means, what fix it implies, whether it holds for this codebase, and apply nothing until they are answered. Findings interact: a set frozen around a misreading is one the protocol below cannot unfreeze. In `headless` and `report-only` there is no one to ask, so an ambiguous finding is not authorized; it is surfaced unapplied with the ambiguity named.
 
     1. **Collect ALL authorizations up front.** In `interactive` mode, surface every finding before touching anything: `gated_auto` announcements (user can decline) and `manual` picks are gathered NOW — not mid-run. In `headless` mode there is no user, so the authorized set is `safe_auto` findings ONLY. In `report-only` the authorized set is empty.
     2. **Freeze one final authorized set** — the ONLY findings whose fixes may be applied this run, per the severity.md action matrix. A finding not in the frozen set is not applied this run, period; if the user wants more later, that is a NEW run with a new baseline.
-    3. **Capture the pre-review baseline** with a non-mutating snapshot that covers **content of tracked AND untracked files** — e.g. a temporary-index tree (`GIT_INDEX_FILE=<tmp> git add -A && git write-tree` against a throwaway index) or a content-hash manifest over every working-tree path (`git ls-files -co --exclude-standard` + per-file hashes). `git status --porcelain` alone is NOT sufficient (it records that an untracked path exists, not its content) and `git stash create` does NOT preserve untracked content — without content coverage, a review edit to a pre-existing untracked file could not be distinguished from the user's original work. Pre-existing dirty-tree changes belong to the user, never to the review.
+    3. **Capture the pre-review baseline** with a non-mutating snapshot that covers the **content of tracked AND untracked files**: a temporary-index tree (`GIT_INDEX_FILE=<tmp> git add -A && git write-tree` against a throwaway index) or a content-hash manifest over `git ls-files -co --exclude-standard`. `git status --porcelain` records that an untracked path exists, not its content, and `git stash create` does NOT preserve untracked content; without content coverage a review edit to a pre-existing untracked file cannot be told from the user's original work. Pre-existing dirty-tree changes belong to the user, never to the review.
 
     **Phase 2 — apply within the frozen set.**
     - In `interactive` mode: apply the frozen set (auto-tier `safe_auto`; `gated_auto` entries the user did not decline; `manual` entries the user explicitly picked in Phase 1). Re-verify after. **`manual` findings are NEVER applied without the user's explicit pick, and the pick always precedes mutation.**
@@ -161,7 +161,9 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 | `headless` | Yes (silent) | No (returns JSON) | N/A | No |
 | `report-only` | **No** | No | N/A | No |
 
-Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` line (step 12). Tier definitions live in `references/severity.md`, referenced, not duplicated. After any edit, run unit tests + lint; on failure revert the applied edits and surface the regression.
+Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` line (step 12). Tier definitions live in `references/severity.md`, referenced, not duplicated.
+
+**Post-review check** (`references/post-review-check.md`). Ask `$SKILL_DIR/scripts/ensemble-verification-receipt` first: a valid receipt skips lint, typecheck and tests, which is only possible when nothing was applied. Otherwise run lint, typecheck and the graph-selected set (`test_changed_command`), revert the applied edits on failure, and on success record `lint`, `typecheck` and `targeted_tests` for `/en-ship`. `report-only` never runs it.
 
 ## JSON envelope shape
 
@@ -236,7 +238,7 @@ verification_pass: not-run (no-p0-p1-addressed)
 
 Every run: `references/host-detect.md` (`PEER_*`), `references/peer-brief.md` (dimensions; the prompt builder reads them), `references/peer-contract.md`, `references/severity.md` (routing), `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md` (effort), `references/diff-signal-detection.md` (`is_low_risk`, `is_small_and_safe`, lite-gate reason ids), `references/review-confidence-gating.md` and `references/tech-debt-tracker-format.md` (filing sub-threshold findings), `$SKILL_DIR/scripts/ensemble-build-peer-prompt`, `$SKILL_DIR/scripts/ensemble-peer-invoke` with `$SKILL_DIR/scripts/peer-findings.schema.json`.
 
-Gated, read only under `--cross` or `--host`: `references/persona-dispatch.md` (roster, batch, reconciliation) and `references/research-dispatch.md` (`learnings-research`). Under `--lite`, and on the verification pass: `references/peer-brief-lite.md`.
+Gated, read only under `--cross` or `--host`: `references/persona-dispatch.md` (roster, batch, reconciliation) and `references/research-dispatch.md` (`learnings-research`). Under `--lite`, and on the verification pass: `references/peer-brief-lite.md`. At the post-review check: `references/post-review-check.md`.
 
 ## Failure protocol
 
