@@ -1013,7 +1013,7 @@ fi
 # from the generated index. The required-field check already excluded them; this
 # loop did not, and an edit that was reported as applying to both silently
 # matched only one.
-setup_tmp
+setup_minimum
 mkdir -p "$TMP/docs/learnings" "$TMP/docs/generated"
 cat > "$TMP/docs/learnings/index.md" <<'EOF'
 ---
