@@ -421,6 +421,59 @@ else
   pass "EN01 accepted as valid <PREFIX><NN> plan_id"
 fi
 
+# --- Retired FR prefix is not a live plan prefix ------------------------------
+# get_plan_prefixes used to seed its alternation with `FR` unconditionally. A
+# repo that renumbered its plans to EM and kept docs/features/FR<NN>-*.md for
+# history then saw every mention of those docs flagged as a broken plan
+# citation (185 P1s on one repo, 2026-09-06). Prefixes now come only from
+# foundation `plan_id_prefix:` and observed plan filenames. FR07 must pass while
+# EM99, a live prefix with no file, must still fire.
+setup_minimum
+sed -i.bak 's/^depth: standard$/depth: standard\nplan_id_prefix: EM/' "$TMP/docs/foundation.md" && rm -f "$TMP/docs/foundation.md.bak"
+cat > "$TMP/docs/plans/completed/EM01-feature_x.md" <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: EM01
+title: Renumbered plan
+status: completed
+location: completed
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# EM01
+EOF
+echo "- [\`EM01-feature_x.md\`](../plans/completed/EM01-feature_x.md) — fixture" >> "$TMP/docs/generated/plan-index.md"
+mkdir -p "$TMP/docs/features"
+printf 'Historical note. Superseded FR07; see also EM99.\n' > "$TMP/docs/features/FR07-history.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "FR07 cited but no plan file"; then
+  fail "retired FR prefix is not treated as a live plan prefix" "$(echo "$output" | grep FR07)"
+else
+  pass "retired FR prefix is not treated as a live plan prefix"
+fi
+if echo "$output" | grep -qF "EM99 cited but no plan file"; then
+  pass "live EM prefix still fires cross-link.broken-fr for a missing plan"
+else
+  fail "live EM prefix still fires cross-link.broken-fr for a missing plan" "$(echo "$output" | head -5)"
+fi
+
+# No plan_id_prefix and no plans at all: the alternation is empty. The rule must
+# skip rather than build \b()[0-9]{2,3}\b, and no FR mention may fire.
+setup_minimum
+mkdir -p "$TMP/docs/features"
+printf 'Mentions FR07 with no plans anywhere.\n' > "$TMP/docs/features/note.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qE "cross-link.broken-fr|grep: "; then
+  fail "empty prefix set skips the plan-ID check cleanly" "$(echo "$output" | grep -E 'broken-fr|grep: ')"
+else
+  pass "empty prefix set skips the plan-ID check cleanly"
+fi
+
 # --- unit.risk-class: new-style plan missing Risk fires P1 ---
 setup_minimum
 cat > "$TMP/docs/plans/active/FR60-no-risk.md" <<EOF
@@ -960,7 +1013,7 @@ fi
 # from the generated index. The required-field check already excluded them; this
 # loop did not, and an edit that was reported as applying to both silently
 # matched only one.
-setup_tmp
+setup_minimum
 mkdir -p "$TMP/docs/learnings" "$TMP/docs/generated"
 cat > "$TMP/docs/learnings/index.md" <<'EOF'
 ---
