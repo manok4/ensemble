@@ -102,22 +102,24 @@ get_plan_id() {
 }
 
 # --- Helper: derive the set of plan-ID prefixes in use ---
-# Sources: foundation.md `plan_id_prefix:` + every prefix observed in plans/{active,completed}/ filenames + legacy `FR`.
-# Output: a `|`-separated alternation suitable for use inside an extended-regex bracket group.
+# Sources: foundation.md `plan_id_prefix:` + every prefix observed in plans/{active,completed}/ filenames.
+# There is no built-in seed. A repo that still files plans under the original
+# `FR` prefix has FR in its plan filenames, so the scan picks it up; a repo that
+# renumbered its plans to another prefix and kept `FR<NN>` feature docs for
+# history must not have every mention of them read as a broken plan citation.
+# Output: a `|`-separated alternation suitable for use inside an extended-regex
+# group, or the empty string when neither source yields a prefix.
 get_plan_prefixes() {
-  local prefixes="FR"
+  local prefixes=""
   if [ -f docs/foundation.md ]; then
-    local p; p=$(get_field docs/foundation.md plan_id_prefix)
-    if [ -n "$p" ]; then
-      prefixes="${prefixes}|${p}"
-    fi
+    prefixes=$(get_field docs/foundation.md plan_id_prefix)
   fi
   for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
     [ -f "$plan" ] || continue
     local base; base=$(basename "$plan")
     local pfx; pfx=$(printf '%s' "$base" | grep -oE '^[A-Z]{2,3}' | head -1)
     [ -z "$pfx" ] && continue
-    case "|$prefixes|" in *"|$pfx|"*) ;; *) prefixes="${prefixes}|${pfx}" ;; esac
+    case "|$prefixes|" in *"|$pfx|"*) ;; *) prefixes="${prefixes:+$prefixes|}$pfx" ;; esac
   done
   printf '%s' "$prefixes"
 }
@@ -462,12 +464,15 @@ check_cross_links() {
   esac
 
   # Plan-IDs: must resolve to an existing plan filename. Prefix set comes from
-  # foundation.md `plan_id_prefix:` plus any prefix already in use under plans/
-  # (and legacy `FR`). Rule code retains the `broken-fr` name for back-compat.
+  # foundation.md `plan_id_prefix:` plus any prefix already in use under plans/.
+  # Rule code retains the `broken-fr` name for back-compat. With no prefix from
+  # either source there is nothing to cite, so skip rather than build `\b()`.
   local plan_prefixes; plan_prefixes=$(get_plan_prefixes)
-  local plan_id_pattern="\\b(${plan_prefixes})[0-9]{2,3}\\b"
-  local fr_ids
-  fr_ids=$(grep -oE "$plan_id_pattern" "$file" | sort -u || true)
+  local fr_ids=""
+  if [ -n "$plan_prefixes" ]; then
+    local plan_id_pattern="\\b(${plan_prefixes})[0-9]{2,3}\\b"
+    fr_ids=$(grep -oE "$plan_id_pattern" "$file" | sort -u || true)
+  fi
   while IFS= read -r frid; do
     [ -z "$frid" ] && continue
     if ! ls docs/plans/active/${frid}-*.md 2>/dev/null 1>&2 \

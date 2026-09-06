@@ -37,7 +37,7 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 |---|---|---|
 | `cross-link.broken-r` | P1 | `(see R<N>)` resolves to nothing in foundation |
 | `cross-link.broken-u` | P1 | `(see U<N>)` resolves to nothing in the cited plan |
-| `cross-link.broken-fr` | P1 | `(see FR<NN>)` resolves to no plan file |
+| `cross-link.broken-fr` | P1 | `(see <PREFIX><NN>)` resolves to no plan file; `<PREFIX>` is the foundation `plan_id_prefix:` or any prefix observed in plan filenames |
 | `cross-link.broken-path` | P1 | Markdown link to a path that doesn't exist |
 | `cross-link.broken-td` | P1 | `(see TD<N>)` or `Resolves: TD<N>` resolves to nothing |
 
