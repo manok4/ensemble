@@ -1,5 +1,6 @@
 ---
 name: repo-research
+description: "Scans the project codebase for patterns, conventions, file paths, and existing implementations relevant to a planning or analysis task. Read-only. Returns structured findings (patterns, conventions, file lists, prior art), or a gist plus an evidence-dossier path for large result sets. Dispatched by en-plan (Standard/Deep), en-foundation (retrofits), en-sweep (architecture drift), and en-debug (fallback when a hypothesis cannot anchor to source)."
 model: sonnet
 ---
 

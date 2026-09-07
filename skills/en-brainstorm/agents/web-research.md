@@ -1,5 +1,6 @@
 ---
 name: web-research
+description: "Researches external sources: library and framework documentation (Context7) and best-practice content (WebSearch), with URL fetch when a source is named. Read-only. Returns citations with quotes and a short synthesis. Dispatched conditionally by en-plan (a third-party library with known footguns) and en-brainstorm (round-1 opt-in)."
 model: sonnet
 ---
 
