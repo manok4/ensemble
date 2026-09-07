@@ -173,6 +173,11 @@ rule "volatile CLI"                        "the reason tiers are not model IDs i
 # a model Codex cannot select. A policy that does not say which host it binds on
 # reads as universal and is wrong half the time.
 rule "only Claude Code"                    "the tier binding names the host it applies to"
+
+# The fallback reads the agent file and used to discard its `model:` line, so a
+# name that failed to resolve ran on the session model with the declaration
+# intact and unread. The fallback must carry the tier it can see.
+rule "value as the Agent tool's \`model\` parameter" "the fallback passes the file's own tier"
 rule "take the default model and select nothing" \
                                            "Codex takes its default, as stated policy"
 rule "a second mapping to maintain"        "the reason for not mapping on Codex is recorded"
