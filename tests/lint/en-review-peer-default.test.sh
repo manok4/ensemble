@@ -232,6 +232,23 @@ k: survives')"                                                "unrelated nested 
 rm -f "$CT/r/.ensemble/config.local.yaml"
 echo '{ broken' > "$CT/h/.ensemble/config.json"
 assert_eq "DFLT" "$(cg k --default DFLT)" "malformed JSON falls through"
+# Fail-soft is not fail-silent: malformed JSON discards every operator key, and
+# one unquoted hand-edited value did exactly that for a whole /en-plan run
+# (2026-09-06) with nothing printed. One stderr line names the file; stdout
+# and the exit code stay as they were.
+err=$(cg k --default DFLT 2>&1 >/dev/null)
+case "$err" in
+  *"is not valid JSON"*) pass "malformed JSON warns on stderr, naming the file" ;;
+  *) fail "malformed JSON warns on stderr, naming the file" "stderr was: [$err]" ;;
+esac
+printf '%s\n' "$err" | grep -qF "$CT/h/.ensemble/config.json" \
+  && pass "the warning names the offending file" \
+  || fail "the warning names the offending file" "$err"
+echo '{"k":"fine"}' > "$CT/h/.ensemble/config.json"
+err=$(cg k 2>&1 >/dev/null)
+[ -z "$err" ] && pass "valid JSON prints nothing to stderr" \
+              || fail "valid JSON prints nothing to stderr" "$err"
+echo '{ broken' > "$CT/h/.ensemble/config.json"
 echo '["not","an","object"]' > "$CT/h/.ensemble/config.json"
 assert_eq "DFLT" "$(cg k --default DFLT)" "non-object JSON root falls through"
 cg k --default DFLT >/dev/null 2>&1
