@@ -51,17 +51,17 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
    **A file target is not a diff.** Its findings carry no base ref, the spec axis (step 7c) does not apply, and Coverage names the target shape so a file review is never read as a branch review.
 5. **Read context.**
-   - `git diff <base>...HEAD` — the full diff under review.
+   - `git diff <base>...HEAD > /tmp/ensemble/en-review/<run-id>/diff.patch`, then read `git diff --stat <base>...HEAD` and open hunks from the file as findings need them. **Do not read the whole diff into the window**: a 250KB branch diff is about 65k tokens re-read on every turn until the next compaction, the personas and the peer each read the file themselves (step 8, step 9), and the detection scans in step 7 are greps over it.
    - Plan(s) referenced by the branch (per branch name `<plan_id>-<slug>` or commit messages citing the plan ID, e.g. `EN03`).
    - `AGENTS.md`, `CLAUDE.md`, project conventions.
-6. **Pre-flight lint.** Run `bin/ensemble-lint --scope docs/` on the changed `docs/` paths and surface its failures as P1 findings before any dispatch.
+6. **Pre-flight lint.** Run `bin/ensemble-lint --scope <path>` **once per changed `docs/` path** and surface its failures as P1 findings before any dispatch. Scope is a file or a directory: one file is seconds, `--scope docs/` walks the tree and took 68s a run on this repo, five runs a build.
 7. **Conditional persona detection.** Per `references/persona-dispatch.md`:
 
    **Peer-sole short-circuit (`--peer`, the default).** Unless `--cross` or `--host` was passed, **run the detection scans below but dispatch no persona**: the conditional-persona heuristics and the diff-signal classification are greps over the diff and cost nothing, and step 7b's effort ladder reads them (a security diff must still resolve `high` when the peer is the only reviewer). Skip the roster in 7a and the persona batch in step 8, and proceed to step 9, where the cross-agent Outside Voice peer is the sole reviewer.
 
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
-   - Plus `learnings-research` to query `docs/learnings/` for relevant prior terms, decisions, and solutions.
+   - Plus `learnings-research` to query `docs/learnings/` for relevant prior terms, decisions, and solutions. **Unless step 5's plan already cites `docs/learnings/` paths**: read those files directly, skip the agent, and record `learnings: from-plan (<n> cited)`. `/en-plan` ran that pass and the plan carries its result; a second agent rediscovers citations already on disk.
 
    **7a. Lite (`--lite`).** A lite run is a lighter review by whichever reviewers the mode runs. Under `--peer` the peer gets `references/peer-brief-lite.md` (correctness, regression risk, standards visible in the diff; one turn). Under `--host` the roster collapses to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens**, skipping `testing`, `maintainability`, `learnings` and all conditionals. Under `--cross`, both. **Fail closed on risk:** when `references/diff-signal-detection.md` finds a risk signal (`is_low_risk` false), or any conditional persona fired above, the **full brief and full roster run regardless of `--lite`** — the gate wins, the flag is advisory. Size does not gate: a quick fix with its test and changelog line is lite. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `references/persona-dispatch.md`).
 
@@ -96,14 +96,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 10. **Synthesize.** With one source — `--peer` or `--host` — there is nothing to reconcile: validate, collect, and report. Say which single source produced the findings so nobody reads a one-source pass as a corroborated one.
 
     **Under `--cross`, reconcile the two sources** and **report the `corroborated` bucket first**: two independent reads agreeing is the strongest signal available, so it leads. The other three buckets are still reported below it, never dropped — `peer-only` is what the host missed and is usually the reason to run a peer at all, and `host-only` is where project context lives. Per `references/persona-dispatch.md`:
-    - Validate each response (drop malformed).
-    - Collect findings; preserve persona attribution and tag `source: host | peer`.
-    - Dedup **within** the host set by location + title-similarity ≥ 0.7 (merge personas; same-source overlap boosts confidence +1).
-    - **Two-source reconciliation** (when a peer ran): one global pass over a shared consumption pool — **conflict stage first** (contradictory cross-source pairs at a `location`, consumed first so a similarity match never masks a contradiction), then **corroboration** on the remainder (same `>= 0.7` predicate, one-to-one, greedy by descending similarity), then **singles**. Ties break on ascending `finding_id`. Emit `reconciliation[]` records with `bucket` / `sources[]` / `canonical` / `contributing[]` per `references/finding-schema.md`.
-    - **Assert the partition invariant:** the total `contributing[]` count across all records equals the raw finding count. Every finding lands in exactly one record; none is both corroborated and conflicting, and none is dropped.
-    - Cross-source corroboration boosts confidence **+2** (capped at 10) versus **+1** for same-source, because independent architectures agreeing is stronger evidence than two same-stack personas agreeing. `fast-pass` findings remain barred from corroboration promotion.
-    - Rank `corroborated` first, then surface `peer-only` prominently. `conflicting` records surface both sides and are **never auto-applied** (they are excluded from the frozen authorized set in step 12).
-    - Severity reorder: P0 → P3, then confidence, then persona priority.
+    **Two-source reconciliation** is `references/persona-dispatch.md`'s algorithm, in full and not restated here: validate each response and drop malformed ones, dedup within the host set, then the single global pass over one consumption pool (conflict stage first, then corroboration, then singles) that emits `reconciliation[]` records and must satisfy its partition invariant. Three rules bind this step's callers, so they are repeated here: `conflicting` records are **never auto-applied** and step 12 excludes them from the frozen authorized set; the rank is `corroborated` first, then P0 → P3, then confidence, then persona priority; and `fast-pass` findings are barred from corroboration promotion.
 11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. Per `references/review-confidence-gating.md`. In `report-only` nothing is filed; sub-threshold findings return in the envelope under `sub_threshold_findings: []`.
 12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
 
@@ -222,17 +215,9 @@ verification_pass: not-run (no-p0-p1-addressed)
   - `src/auth/refresh.ts:42`
   - Two requests can race during rotation; second invalidates the first.
   - Fix: serialize per-user via singleFlight cache.
-
-### Medium (P2)
-
-- **U3 — Missing test for expired-token path** (testing; conf 7)
-  - `tests/auth/refresh.test.ts`
-  - Coverage gap on the most-likely production path.
-
-### Advisory
-
-- **U2 — Variable name `tmp` in src/lib/redis.ts:18** (maintainability; conf 6)
 ```
+
+One `###` section per severity present, P0 first, each finding carrying its U-ID, personas, confidence, location, why and fix.
 
 ## Reference files
 

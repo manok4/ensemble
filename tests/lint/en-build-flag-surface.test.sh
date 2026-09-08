@@ -50,8 +50,9 @@ grep -qE '^# --- en-build standing policy ---' "$CFG" || missing="$missing secti
 # --- 3. a config-set skip is as visible as a flag-set one ---
 # This is the condition that made moving them safe. Without it, policy set once
 # and forgotten silently degrades every future build.
-if grep -qiE 'carries its reason when it is anything but .completed.' "$SKILL" \
-   && grep -qiE 'as visible here as a flag typed' "$SKILL"; then
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"   # step 10 detail moved here (D107)
+if grep -qiE 'carries its reason when it is anything but .completed.' "$SKILL" "$PB" \
+   && grep -qiE 'as visible here as a flag typed' "$SKILL" "$PB"; then
   pass "the audit surfaces why a gate was skipped, config or flag alike"
 else
   fail "the audit must surface the reason a gate was skipped" \

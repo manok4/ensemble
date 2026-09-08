@@ -359,7 +359,8 @@ else
 fi
 
 # 16. en-build SKILL.md has end-of-build peer-evidence audit.
-if grep -qE "[Pp]eer-evidence audit|end-of-build.*invariant|invariant.*peer" "$SKILL"; then
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"   # step 10 detail moved here (D107)
+if grep -qE "[Pp]eer-evidence audit|end-of-build.*invariant|invariant.*peer" "$SKILL" "$PB"; then
   pass "en-build SKILL.md has end-of-build peer-evidence audit"
 else
   fail "en-build SKILL.md should have an end-of-build peer-evidence audit"

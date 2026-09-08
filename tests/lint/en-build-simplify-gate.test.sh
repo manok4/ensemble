@@ -23,10 +23,11 @@ else
 fi
 
 # --- reason REQUIRED for not_applicable / failed, with the concrete reasons ---
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"   # step 10 detail moved here (D107)
 reason_ok=1
-grep -qiE "reason.*REQUIRED|REQUIRED.*reason" "$EN_BUILD" || reason_ok=0
-grep -qF "docs-only" "$EN_BUILD" || reason_ok=0
-grep -qF "trivial:<10-lines" "$EN_BUILD" || reason_ok=0   # all-destructive-gated cannot occur since D52
+grep -qiE "reason.*REQUIRED|REQUIRED.*reason" "$EN_BUILD" "$PB" || reason_ok=0
+grep -qF "docs-only" "$EN_BUILD" "$PB" || reason_ok=0
+grep -qF "trivial:<10-lines" "$EN_BUILD" "$PB" || reason_ok=0   # all-destructive-gated cannot occur since D52
 if [ "$reason_ok" -eq 1 ]; then
   pass "not_applicable / failed require a recorded reason (docs-only, --no-simplify, etc.)"
 else
@@ -87,8 +88,8 @@ else
 fi
 
 # --- fallback review mapping: single-agent path only a fallback, records why ---
-if grep -qiE "fallback_completed" "$EN_BUILD" \
-   && grep -qiE "ONLY a fallback|only.*fallback.*/en-review|reviewer.*IS the recorded reason|records which fallback" "$EN_BUILD"; then
+if grep -qiE "fallback_completed" "$EN_BUILD" "$PB" \
+   && grep -qiE "ONLY a fallback|only.*fallback.*/en-review|reviewer.*IS the recorded reason|records which fallback" "$EN_BUILD" "$PB"; then
   pass "fallback review maps to fallback_completed and must record which fallback"
 else
   fail "must document the fallback-review mapping (single-agent path is a recorded fallback for /en-review)"

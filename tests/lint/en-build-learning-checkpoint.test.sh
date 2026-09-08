@@ -38,7 +38,8 @@ else
 fi
 
 # --- deferral when peer-evidence audit failed ---
-if grep -qiE "defer" "$EN_BUILD" && grep -qiE "peer-evidence audit failed" "$EN_BUILD"; then
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"   # step 10 detail moved here (D107)
+if grep -qiE "defer" "$EN_BUILD" "$PB" && grep -qiE "peer-evidence audit failed" "$EN_BUILD" "$PB"; then
   pass "en-build defers the checkpoint when the peer-evidence audit failed"
 else
   fail "en-build must defer the checkpoint on a failed peer-evidence audit"

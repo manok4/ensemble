@@ -29,13 +29,16 @@ TEST_NAME="skill size budget"
 
 BUDGET=24576
 
-# skill  bytes-on-2026-09-03  (over budget; may only shrink; delete when under)
+# skill  bytes  (over budget; may only shrink; delete the row when under)
+# Re-pinned 2026-09-08 after D107 moved en-build's post-build protocol to a
+# reference and en-ship's test selection to a script: a pin left at the old
+# number is 10KB of room for the same weight to come back.
 BASELINE='
-en-build 55599
-en-plan 40199
-en-review 30997
-en-setup 31772
-en-ship 32409
+en-build 46095
+en-plan 40193
+en-review 30715
+en-setup 30301
+en-ship 27407
 '
 
 baseline_for() { printf '%s\n' "$BASELINE" | awk -v s="$1" '$1==s {print $2}'; }
