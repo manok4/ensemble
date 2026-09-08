@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-09-02
-total_entries: 14
+updated: 2026-09-07
+total_entries: 15
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 14
 
 ## Active
 
-_(none)_
+- [`EN16-improvement_agent-model-control.md`](../plans/active/EN16-improvement_agent-model-control.md) — **EN16** Per-host agent model control and en-plan cost fixes (in progress)
 
 ## Completed
 
