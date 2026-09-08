@@ -56,16 +56,11 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
    - Project `lint` command (from `AGENTS.md`).
    - Project `typecheck` command if applicable.
-   - **Targeted tests — resolve the set in this fixed order, first match wins:**
-     1. **`test_changed_command:` from `AGENTS.md`**, if the project declares one. It wins outright, and it is the tier a project should fill with its stack's dependency-graph tooling (`jest --findRelatedTests`, `pytest-testmon`, Go's package graph, `nx affected`). Report `selection: graph`.
-     2. **The `test_impact:` prefix map from `AGENTS.md`**, mapping source directories to test directories. Report `selection: approximate`.
-     3. **The sibling-filename heuristic** — same path with `.test.` / `.spec.` / `_test.` inserted. The fallback for projects that have declared nothing. Report `selection: approximate`.
+   - **Targeted tests — the set is resolved, never guessed (D105):** `eval "$(bash "$SKILL_DIR/scripts/ensemble-test-select" --range origin/<base>...HEAD)"`. It resolves the set in this fixed order, first match wins, and returns the tier that chose it: `graph` from the project's `test_changed_command:` (its stack's own dependency-graph tool, `jest --findRelatedTests`, `pytest-testmon`, `nx affected`), `impact-map` from its `test_impact:` prefix map, `sibling` from the sibling-filename heuristic, `full-suite` when the selection passed sixty percent of the suite, and `empty` when nothing matched. `/en-build` calls the same helper at its phase boundary, so one set of rules answers both.
 
-     **Report why each test was selected** — which rule matched, and for the map, which prefix. A selection nobody can audit is one nobody will notice is wrong. The tier travels into the PR body (step 12), so a reviewer can tell a graph-selected run from a guessed one.
+     **Report why each test was selected** — `$TEST_SELECT_TIER` and `$TEST_SELECT_REASON`, verbatim. A selection nobody can audit is one nobody will notice is wrong. `graph` reports `selection: graph`, the two path tiers report `selection: approximate`, and the tier travels into the PR body (step 12), so a reviewer can tell a graph-selected run from a guessed one.
 
-     **An empty selection is reported as empty, never as a pass.** In any layout where tests do not sit beside sources, the heuristic matches nothing, runs nothing, and used to report success. Zero tests found is a finding about the project's configuration, not a green check.
-
-     **Above about sixty percent of the suite, run the suite.** A selection that large has stopped paying for itself, and a full run is the stronger evidence.
+     **An empty selection is reported as empty, never as a pass.** In any layout where tests do not sit beside sources the heuristic matches nothing, runs nothing, and used to report success. Zero tests found is a finding about the project's configuration, not a green check.
    - On any failure → stop; surface; offer to run `/en-review` or `/en-qa` to triage.
    - **On success, write a receipt for what this run proved:** `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check lint=passed --check typecheck=passed --check targeted_tests=passed --base origin/<base> --by en-ship`, plus `--dep <path>` per lockfile. It records `targeted_tests`, never `full_suite`, so a pre-push hook that requires the suite still runs it. Never fatal: a failed write is a warning.
 6. **Secret scan on diff.** Per `references/secret-patterns.md`. Match against high-confidence regexes + file-name red flags.

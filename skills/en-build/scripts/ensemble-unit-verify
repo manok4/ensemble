@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# ensemble-unit-verify — one call that proves a unit, and one exit code the
+# commit can be gated on.
+#
+# The EN16 build ran the unit loop in about 120 turns per unit and 425 Bash
+# calls for six units: a test run, a lint run, a grep, another test run, each
+# its own turn, each leaving its full output in the context window until the
+# next compaction. 1.3M characters of that output was Bash results. Three
+# commits also landed with a red assertion, because "run the tests" and "commit"
+# were separate acts of attention.
+#
+# So: resolve the unit's test selection (sibling ensemble-test-select), run
+# lint, typecheck and tests, write every byte to a log file, print a line per
+# check plus the tail of whatever failed, and exit non-zero if anything did.
+# `ensemble-unit-verify --unit U3 && git commit ...` is then a gate that cannot
+# be passed by inattention.
+#
+# Usage:
+#   ensemble-unit-verify --unit <U-ID> [--working | --range <a>..<b> | --files <p> ...]
+#                        [--repo-root <dir>] [--agents-file <path>] [--log-dir <dir>]
+#                        [--prefer-full-when-cheap] [--cheap-seconds <n>]
+#                        [--tail <n>] [--no-lint] [--no-typecheck] [--no-tests]
+#
+# Commands come from AGENTS.md's project-shape block (`- **Test:**`, `- **Lint:**`,
+# `- **Typecheck:**`); `<unset>` means the project declared none and that check
+# is skipped, loudly. Path-tier selections run as `<test command> <paths>`; a
+# runner that does not take paths declares `test_changed_command:` instead.
+#
+# A command containing `{files}` gets the changed paths substituted in, and
+# `{tests}` gets the selected test paths; either is skipped when its list is
+# empty. That is how a whole-tree lint becomes an incremental one:
+# `lint_changed_command:` in AGENTS.md wins over `- **Lint:**` for this call. On
+# the EN16 build the docs lint ran over the whole tree five times at 68s a run;
+# the same lint over one changed file is 3s. A runner whose targeted form is not
+# `<test command> <paths>` declares `test_paths_command:` with `{tests}` in it.
+#
+# Exit codes:
+#   0  every check that could run passed
+#   1  a check failed (the tail of it is on stdout; the whole log is on disk)
+#   3  the test selection was empty although the project has tests — a finding
+#      about the selection, never a green light
+#   4  nothing was verifiable (AGENTS.md declares no commands)
+#   2  usage error
+
+set -u
+
+UNIT=""; SELECT_ARGS=""; REPO_ROOT=""; AGENTS_FILE=""; LOG_DIR=""
+TAIL_LINES=40; DO_LINT=true; DO_TYPECHECK=true; DO_TESTS=true
+PREFER_FULL=""; CHEAP_SECONDS=""
+
+usage() {
+  echo "usage: ensemble-unit-verify --unit <U-ID> [--working | --range <a>..<b> | --files <path>] [--repo-root <dir>] [--agents-file <path>] [--log-dir <dir>] [--prefer-full-when-cheap] [--cheap-seconds <n>] [--tail <n>] [--no-lint] [--no-typecheck] [--no-tests]" >&2
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --unit)      [ $# -ge 2 ] || { usage; exit 2; }; UNIT="$2"; shift 2 ;;
+    --working)   SELECT_ARGS="$SELECT_ARGS --working"; shift ;;
+    --range)     [ $# -ge 2 ] || { usage; exit 2; }; SELECT_ARGS="$SELECT_ARGS --range $2"; shift 2 ;;
+    --files)     [ $# -ge 2 ] || { usage; exit 2; }; SELECT_ARGS="$SELECT_ARGS --files $2"; shift 2 ;;
+    --repo-root) [ $# -ge 2 ] || { usage; exit 2; }; REPO_ROOT="$2"; shift 2 ;;
+    --agents-file) [ $# -ge 2 ] || { usage; exit 2; }; AGENTS_FILE="$2"; shift 2 ;;
+    --log-dir)   [ $# -ge 2 ] || { usage; exit 2; }; LOG_DIR="$2"; shift 2 ;;
+    --tail)      [ $# -ge 2 ] || { usage; exit 2; }; TAIL_LINES="$2"; shift 2 ;;
+    --prefer-full-when-cheap) PREFER_FULL="--prefer-full-when-cheap"; shift ;;
+    --cheap-seconds) [ $# -ge 2 ] || { usage; exit 2; }; CHEAP_SECONDS="$2"; shift 2 ;;
+    --no-lint)      DO_LINT=false; shift ;;
+    --no-typecheck) DO_TYPECHECK=false; shift ;;
+    --no-tests)     DO_TESTS=false; shift ;;
+    -h|--help)   sed -n '2,38p' "$0" >&2; exit 0 ;;
+    *) usage; exit 2 ;;
+  esac
+done
+
+[ -n "$UNIT" ] || { usage; exit 2; }
+case "$TAIL_LINES" in ''|*[!0-9]*) usage; exit 2 ;; esac
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT="$PWD"
+fi
+[ -d "$REPO_ROOT" ] || { usage; exit 2; }
+cd "$REPO_ROOT" 2>/dev/null || { usage; exit 2; }
+[ -n "$AGENTS_FILE" ] || AGENTS_FILE="AGENTS.md"
+
+agents_field() {  # <label> -> the backticked command, empty when unset
+  [ -f "$AGENTS_FILE" ] || return 0
+  sed -n "s/^- \*\*$1:\*\* *\`\(.*\)\`.*/\1/p" "$AGENTS_FILE" | head -1 | sed 's/^<unset>$//'
+}
+
+# --- where the full output goes ---------------------------------------------
+if [ -z "$LOG_DIR" ]; then
+  git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) || git_dir=""
+  if [ -n "$git_dir" ]; then LOG_DIR="$git_dir/ensemble/runs"; else LOG_DIR="${TMPDIR:-/tmp}/ensemble/runs"; fi
+fi
+mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR="${TMPDIR:-/tmp}"
+LOG="$LOG_DIR/$UNIT-$(date -u +%Y%m%dT%H%M%SZ).log"
+: > "$LOG" 2>/dev/null || LOG="/dev/null"
+
+# --- the test selection ------------------------------------------------------
+TEST_SELECT_TIER=""; TEST_SELECT_COMMAND=""; TEST_SELECT_PATHS=""
+TEST_SELECT_COUNT=""; TEST_SELECT_TOTAL=""; TEST_SELECT_REASON=""; TEST_SELECT_CHANGED=""
+# Always resolved, even under --no-tests: the changed list is what `{files}`
+# substitutes into, so an incremental lint needs it too.
+sel_cmd="$SELF_DIR/ensemble-test-select --repo-root $REPO_ROOT --agents-file $AGENTS_FILE"
+[ -n "$PREFER_FULL" ] && sel_cmd="$sel_cmd $PREFER_FULL"
+[ -n "$CHEAP_SECONDS" ] && sel_cmd="$sel_cmd --cheap-seconds $CHEAP_SECONDS"
+sel_out=$(bash $sel_cmd $SELECT_ARGS 2>>"$LOG") || sel_out=""
+[ -n "$sel_out" ] && eval "$sel_out"
+
+agents_key() {  # <key> in a yaml block, outer quotes stripped
+  [ -f "$AGENTS_FILE" ] || return 0
+  sed -n "s/^ *$1: *//p" "$AGENTS_FILE" | head -1 | sed 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//'
+}
+
+TEST_CMD=$(agents_field Test)
+LINT_CMD=$(agents_key lint_changed_command)
+[ -n "$LINT_CMD" ] || LINT_CMD=$(agents_field Lint)
+TYPECHECK_CMD=$(agents_field Typecheck)
+
+test_command() {
+  case "$TEST_SELECT_TIER" in
+    graph|full-suite) printf '%s' "$TEST_SELECT_COMMAND" ;;
+    impact-map|sibling)
+      [ -n "$TEST_SELECT_PATHS" ] || return 0
+      pc=$(agents_key test_paths_command)
+      if [ -n "$pc" ]; then printf '%s' "$pc"
+      elif [ -n "$TEST_CMD" ]; then printf '%s %s' "$TEST_CMD" "$TEST_SELECT_PATHS"
+      fi ;;
+    *) : ;;
+  esac
+}
+
+# --- run one check -----------------------------------------------------------
+FAILED=""; RAN=0; LINES=""
+
+run_check() {  # <label> <command>
+  local label="$1" cmd="$2" start end rc
+  [ -n "$cmd" ] || { LINES="$LINES
+  $label: not declared in AGENTS.md"; return 0; }
+  case "$cmd" in
+    *"{files}"*)
+      if [ -z "$TEST_SELECT_CHANGED" ]; then
+        LINES="$LINES
+  $label: skipped (nothing changed)"; return 0
+      fi
+      cmd=$(printf '%s' "$cmd" | sed "s|{files}|$(printf '%s' "$TEST_SELECT_CHANGED" | sed 's/[&|\\]/\\&/g')|g")
+      ;;
+  esac
+  case "$cmd" in
+    *"{tests}"*)
+      if [ -z "$TEST_SELECT_PATHS" ]; then
+        LINES="$LINES
+  $label: skipped (no test paths selected)"; return 0
+      fi
+      cmd=$(printf '%s' "$cmd" | sed "s|{tests}|$(printf '%s' "$TEST_SELECT_PATHS" | sed 's/[&|\\]/\\&/g')|g")
+      ;;
+  esac
+  start=$(date +%s)
+  {
+    printf '\n===== %s =====\n$ %s\n' "$label" "$cmd"
+  } >> "$LOG" 2>/dev/null
+  sh -c "$cmd" >> "$LOG" 2>&1 </dev/null
+  rc=$?
+  end=$(date +%s)
+  RAN=$((RAN + 1))
+  if [ "$rc" -eq 0 ]; then
+    LINES="$LINES
+  $label: pass ($((end - start))s)"
+  else
+    LINES="$LINES
+  $label: FAIL rc=$rc ($((end - start))s)"
+    FAILED="$FAILED $label"
+  fi
+}
+
+[ "$DO_LINT" = true ]      && run_check lint "$LINT_CMD"
+[ "$DO_TYPECHECK" = true ] && run_check typecheck "$TYPECHECK_CMD"
+if [ "$DO_TESTS" = true ]; then
+  run_check tests "$(test_command)"
+fi
+
+# --- report ------------------------------------------------------------------
+printf 'unit-verify %s\n' "$UNIT"
+printf '%s\n' "${LINES#
+}" | sed '/^$/d'
+if [ "$DO_TESTS" = true ]; then
+  printf '  selection: %s (%s)' "${TEST_SELECT_TIER:-none}" "${TEST_SELECT_REASON:-none}"
+  [ -n "$TEST_SELECT_COUNT" ] && [ -n "$TEST_SELECT_TOTAL" ] \
+    && printf ' %s of %s test files' "$TEST_SELECT_COUNT" "$TEST_SELECT_TOTAL"
+  printf '\n'
+fi
+printf '  log: %s\n' "$LOG"
+
+if [ -n "$FAILED" ]; then
+  printf '\nlast %s lines:\n' "$TAIL_LINES"
+  tail -n "$TAIL_LINES" "$LOG" 2>/dev/null
+  exit 1
+fi
+
+if [ "$RAN" -eq 0 ]; then
+  printf '  nothing verifiable: AGENTS.md declares no Test, Lint or Typecheck command\n'
+  exit 4
+fi
+if [ "$DO_TESTS" = true ] && [ "$TEST_SELECT_TIER" = "empty" ]; then
+  printf '  no tests ran: the selection was empty. Zero tests found is a finding about the\n'
+  printf '  project layout, not a pass. Name the tests for this unit yourself, or declare\n'
+  printf '  test_changed_command / test_impact / test_full_seconds in AGENTS.md.\n'
+  exit 3
+fi
+exit 0

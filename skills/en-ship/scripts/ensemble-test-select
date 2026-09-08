@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# ensemble-test-select — which tests cover this change, decided mechanically.
+#
+# `/en-ship` had this as prose and `/en-build` had "the tests covering the files
+# this phase touched", which is a judgment call. On the EN16 build that judgment
+# picked suites by name and missed two tests that anchor on file CONTENT; both
+# stayed red for two hours and surfaced as P1s in review. A name no human picked
+# cannot be missed, so the selection is resolved here and reported with the tier
+# that produced it.
+#
+# Tiers, first match wins:
+#
+#   full-suite   --prefer-full-when-cheap AND AGENTS.md declares a
+#                `test_full_seconds:` at or under --cheap-seconds. A suite that
+#                cheap beats every approximation, including on the tests no
+#                path heuristic can find.
+#   graph        AGENTS.md `test_changed_command:` — the project's own
+#                dependency-graph tool (jest --findRelatedTests, pytest-testmon,
+#                nx affected). It wins outright.
+#   impact-map   AGENTS.md `test_impact:` prefix map, source prefix -> test prefix.
+#   sibling      same path with .test. / .spec. / _test. inserted, or test_<base>.
+#                The fallback for projects that declared nothing.
+#   full-suite   again, when a path tier selected more than --max-fraction of the
+#                repo's test files: that selection has stopped paying for itself.
+#   empty        a Test command exists, nothing matched. Reported as empty,
+#                NEVER as a pass: in a layout where tests do not sit beside
+#                sources the heuristic matches nothing and used to read green.
+#   none-declared  AGENTS.md declares no Test command; nothing to select from.
+#
+# A changed file that is itself a test always selects itself, in every path tier.
+#
+# Usage:
+#   ensemble-test-select [--working | --range <a>..<b> | --files <p> [--files <p>...]]
+#                        [--repo-root <dir>] [--agents-file <path>]
+#                        [--prefer-full-when-cheap] [--cheap-seconds <n>]
+#                        [--max-fraction <0-100>]
+#
+# Emits eval-able lines (same contract as ensemble-agent-model):
+#   TEST_SELECT_TIER='full-suite|graph|impact-map|sibling|empty|none-declared'
+#   TEST_SELECT_COMMAND='<command to run, empty for path tiers>'
+#   TEST_SELECT_PATHS='<space-separated test paths, empty otherwise>'
+#   TEST_SELECT_COUNT='<selected test files>'
+#   TEST_SELECT_TOTAL='<test files in the repo, empty when not counted>'
+#   TEST_SELECT_REASON='<why this tier>'
+#   TEST_SELECT_CHANGED='<the changed files the selection was derived from>'
+#
+# Fail-soft: every resolution problem exits 0 with a tier that says so. Exit 2
+# only for a usage error, so a caller never loses its selection to a typo.
+
+set -u
+
+MODE="working"; RANGE=""; FILES=""; REPO_ROOT=""; AGENTS_FILE=""
+PREFER_FULL=false; CHEAP_SECONDS=300; MAX_FRACTION=60
+
+usage() {
+  echo "usage: ensemble-test-select [--working | --range <a>..<b> | --files <path>] [--repo-root <dir>] [--agents-file <path>] [--prefer-full-when-cheap] [--cheap-seconds <n>] [--max-fraction <n>]" >&2
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --working)   MODE="working"; shift ;;
+    --range)     [ $# -ge 2 ] || { usage; exit 2; }; MODE="range"; RANGE="$2"; shift 2 ;;
+    --files)     [ $# -ge 2 ] || { usage; exit 2; }; MODE="files"; FILES="$FILES $2"; shift 2 ;;
+    --repo-root) [ $# -ge 2 ] || { usage; exit 2; }; REPO_ROOT="$2"; shift 2 ;;
+    --agents-file) [ $# -ge 2 ] || { usage; exit 2; }; AGENTS_FILE="$2"; shift 2 ;;
+    --prefer-full-when-cheap) PREFER_FULL=true; shift ;;
+    --cheap-seconds) [ $# -ge 2 ] || { usage; exit 2; }; CHEAP_SECONDS="$2"; shift 2 ;;
+    --max-fraction)  [ $# -ge 2 ] || { usage; exit 2; }; MAX_FRACTION="$2"; shift 2 ;;
+    -h|--help)   sed -n '2,47p' "$0" >&2; exit 0 ;;
+    *) usage; exit 2 ;;
+  esac
+done
+
+case "$CHEAP_SECONDS" in ''|*[!0-9]*) usage; exit 2 ;; esac
+case "$MAX_FRACTION" in ''|*[!0-9]*) usage; exit 2 ;; esac
+
+if [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT="."
+fi
+[ -d "$REPO_ROOT" ] || { usage; exit 2; }
+cd "$REPO_ROOT" 2>/dev/null || { usage; exit 2; }
+[ -n "$AGENTS_FILE" ] || AGENTS_FILE="AGENTS.md"
+
+# Single-quote a value for the eval-able output.
+sq() { printf "%s" "$1" | sed "s/'/'\\\\''/g"; }
+
+CHANGED=""
+emit() {  # <tier> <command> <paths> <count> <total> <reason>
+  printf "TEST_SELECT_TIER='%s'\n"    "$(sq "$1")"
+  printf "TEST_SELECT_COMMAND='%s'\n" "$(sq "$2")"
+  printf "TEST_SELECT_PATHS='%s'\n"   "$(sq "$3")"
+  printf "TEST_SELECT_COUNT='%s'\n"   "$(sq "$4")"
+  printf "TEST_SELECT_TOTAL='%s'\n"   "$(sq "$5")"
+  printf "TEST_SELECT_REASON='%s'\n"  "$(sq "$6")"
+  printf "TEST_SELECT_CHANGED='%s'\n" "$(sq "$(printf '%s' "$CHANGED" | tr '\n' ' ')")"
+  exit 0
+}
+
+# --- what AGENTS.md declares ------------------------------------------------
+# `- **Test:** `cmd`` in the project-shape block; `<unset>` is the template's
+# own placeholder and means the project never filled it in.
+agents_field() {  # <label> -> the backticked command, empty when unset
+  [ -f "$AGENTS_FILE" ] || return 0
+  sed -n "s/^- \*\*$1:\*\* *\`\(.*\)\`.*/\1/p" "$AGENTS_FILE" | head -1 | sed 's/^<unset>$//'
+}
+
+# A scalar key in a yaml block: `key: value`, quotes stripped.
+agents_key() {  # <key>
+  [ -f "$AGENTS_FILE" ] || return 0
+  sed -n "s/^ *$1: *//p" "$AGENTS_FILE" | head -1 | sed 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//'
+}
+
+# The `test_impact:` block: indented `src-prefix: test-prefix` lines under it,
+# stopping at the first line that is not indented and not blank.
+impact_map() {
+  [ -f "$AGENTS_FILE" ] || return 0
+  awk '
+    /^ *test_impact: *$/ { inblock=1; next }
+    inblock {
+      if ($0 ~ /^ *$/) next
+      if ($0 !~ /^[ \t]+/) { inblock=0; next }
+      if ($0 ~ /^ *```/) { inblock=0; next }
+      line=$0
+      sub(/^[ \t]+/, "", line)
+      n=index(line, ":")
+      if (n == 0) next
+      src=substr(line, 1, n-1); dst=substr(line, n+1)
+      gsub(/^[ \t]+|[ \t]+$/, "", dst)
+      gsub(/"/, "", src); gsub(/"/, "", dst)
+      if (src != "" && dst != "") print src "\t" dst
+    }
+  ' "$AGENTS_FILE"
+}
+
+TEST_CMD=$(agents_field Test)
+CHANGED_CMD=$(agents_key test_changed_command)
+FULL_SECONDS=$(agents_key test_full_seconds)
+
+# --- what changed ------------------------------------------------------------
+changed_files() {
+  case "$MODE" in
+    files) printf '%s\n' $FILES ;;
+    range) git diff --name-only "$RANGE" 2>/dev/null ;;
+    *)     { git diff --name-only HEAD 2>/dev/null
+             git ls-files --others --exclude-standard 2>/dev/null; } ;;
+  esac
+}
+
+# Only paths that still exist: a deleted file cannot be linted or tested by
+# path, and `{files}` consumers would choke on it.
+CHANGED=$(changed_files | awk 'NF' | sort -u | while IFS= read -r p; do [ -e "$p" ] && printf '%s\n' "$p"; done)
+
+# --- is this path a test file? ----------------------------------------------
+# Kept deliberately broad: a false positive costs one extra test run, a false
+# negative is the EN16 failure this helper exists to prevent.
+is_test_path() {
+  local base
+  case "$1" in
+    */tests/*|tests/*|*/test/*|test/*|*/spec/*|spec/*|*/__tests__/*) return 0 ;;
+  esac
+  base=${1##*/}
+  case "$base" in
+    *.test.*|*.spec.*|*_test.*|test_*|*Test.*|*Tests.*) return 0 ;;
+  esac
+  return 1
+}
+
+# --- the full-suite escape hatch, when the project says the suite is cheap ---
+if [ "$PREFER_FULL" = true ] && [ -n "$TEST_CMD" ] && [ -n "$FULL_SECONDS" ]; then
+  case "$FULL_SECONDS" in
+    ''|*[!0-9]*) : ;;
+    *) [ "$FULL_SECONDS" -le "$CHEAP_SECONDS" ] \
+         && emit full-suite "$TEST_CMD" "" "" "" "full-suite-cheap:${FULL_SECONDS}s" ;;
+  esac
+fi
+
+# --- tier 1: the project's own graph tool ------------------------------------
+[ -n "$CHANGED_CMD" ] && emit graph "$CHANGED_CMD" "" "" "" "test_changed_command"
+
+if [ -z "$TEST_CMD" ] && [ -z "$CHANGED_CMD" ]; then
+  emit none-declared "" "" 0 "" "no-test-command-in-agents-md"
+fi
+
+[ -n "$CHANGED" ] || emit empty "$TEST_CMD" "" 0 "" "no-changed-files"
+
+# --- tier 2: the impact map --------------------------------------------------
+MAP=$(impact_map)
+selected=""
+add() { case " $selected " in *" $1 "*) : ;; *) selected="$selected $1" ;; esac; }
+
+# A changed file that is itself a test selects itself, in every path tier.
+SELF_SELECTED=false
+for f in $CHANGED; do
+  [ -e "$f" ] || continue
+  is_test_path "$f" && { add "$f"; SELF_SELECTED=true; }
+done
+
+TIER=""
+if [ -n "$MAP" ]; then
+  matched=false
+  for f in $CHANGED; do
+    is_test_path "$f" && continue
+    while IFS="$(printf '\t')" read -r src dst; do
+      [ -n "$src" ] || continue
+      case "$f" in
+        "$src"*) [ -e "$dst" ] && { add "$dst"; matched=true; } ;;
+      esac
+    done <<MAPEOF
+$MAP
+MAPEOF
+  done
+  [ "$matched" = true ] && TIER="impact-map"
+fi
+
+# --- tier 3: the sibling heuristic -------------------------------------------
+if [ -z "$TIER" ]; then
+  for f in $CHANGED; do
+    is_test_path "$f" && continue
+    dir=${f%/*}; [ "$dir" = "$f" ] && dir="."
+    base=${f##*/}
+    stem=${base%.*}; ext=${base##*.}
+    [ "$stem" = "$base" ] && ext=""
+    for cand in "$dir/$stem.test.$ext" "$dir/$stem.spec.$ext" "$dir/${stem}_test.$ext" "$dir/test_$stem.$ext"; do
+      cand=${cand%.}
+      [ -e "$cand" ] && { add "$cand"; TIER="sibling"; }
+    done
+  done
+fi
+
+selected=$(printf '%s\n' $selected | awk 'NF' | sort -u | tr '\n' ' ')
+selected=${selected% }
+COUNT=$(printf '%s\n' $selected | awk 'NF' | wc -l | tr -d ' ')
+
+if [ -z "$selected" ]; then
+  emit empty "$TEST_CMD" "" 0 "" "no-test-file-matched-the-change"
+fi
+REASON="$TIER"
+if [ -z "$TIER" ]; then
+  TIER="sibling"
+  [ "$SELF_SELECTED" = true ] && REASON="changed-test-files-select-themselves" || REASON="sibling"
+fi
+
+# --- the 60% rule: a selection that large has stopped paying for itself ------
+TOTAL=$(git ls-files 2>/dev/null | while IFS= read -r p; do is_test_path "$p" && printf '%s\n' "$p"; done | wc -l | tr -d ' ')
+case "$TOTAL" in ''|*[!0-9]*) TOTAL="" ;; esac
+if [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ] && [ -n "$TEST_CMD" ]; then
+  if [ $((COUNT * 100)) -gt $((TOTAL * MAX_FRACTION)) ]; then
+    emit full-suite "$TEST_CMD" "$selected" "$COUNT" "$TOTAL" "selection-over-${MAX_FRACTION}pct-of-suite"
+  fi
+fi
+
+emit "$TIER" "" "$selected" "$COUNT" "$TOTAL" "$REASON"
