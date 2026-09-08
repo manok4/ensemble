@@ -53,18 +53,25 @@ P3=0
 # Temp files, explicitly placed. A bare `mktemp` on macOS silently falls back
 # to the per-user temp dir when TMPDIR is unusable, and under a sandbox that
 # fallback may be the one path that is not writable; the result was an empty
-# TMP_FINDINGS and an unbound-variable trace rather than a message. This tries
-# TMPDIR, then /tmp (overridable for tests via ENSEMBLE_LINT_TMP_FALLBACK) with
-# one stderr line, and otherwise exits 3 naming both paths.
-lint_mktemp() {
-  local root="${TMPDIR:-/tmp}" fallback="${ENSEMBLE_LINT_TMP_FALLBACK:-/tmp}" f
-  if f=$(mktemp "${root%/}/ensemble-lint.XXXXXX" 2>/dev/null); then printf '%s' "$f"; return 0; fi
-  if [ "${fallback%/}" != "${root%/}" ] && f=$(mktemp "${fallback%/}/ensemble-lint.XXXXXX" 2>/dev/null); then
+# TMP_FINDINGS and an unbound-variable trace rather than a message. The root
+# is chosen ONCE, at top level (a flag set inside `$(...)` would not survive
+# the subshell): TMPDIR, then /tmp (overridable for tests via
+# ENSEMBLE_LINT_TMP_FALLBACK) with one stderr line, else exit 3 naming both.
+_lint_pick_tmp_root() {
+  local root="${TMPDIR:-/tmp}" fallback="${ENSEMBLE_LINT_TMP_FALLBACK:-/tmp}" probe
+  if probe=$(mktemp "${root%/}/ensemble-lint.XXXXXX" 2>/dev/null); then rm -f "$probe"; printf '%s' "${root%/}"; return 0; fi
+  if [ "${fallback%/}" != "${root%/}" ] && probe=$(mktemp "${fallback%/}/ensemble-lint.XXXXXX" 2>/dev/null); then
+    rm -f "$probe"
     printf 'ensemble-lint: TMPDIR=%s is not writable; using %s\n' "$root" "$fallback" >&2
-    printf '%s' "$f"; return 0
+    printf '%s' "${fallback%/}"; return 0
   fi
   printf 'ensemble-lint: cannot create a temp file under %s or %s\n' "$root" "$fallback" >&2
   return 1
+}
+LINT_TMP_ROOT=$(_lint_pick_tmp_root) || exit 3
+lint_mktemp() {
+  mktemp "$LINT_TMP_ROOT/ensemble-lint.XXXXXX" 2>/dev/null \
+    || { printf 'ensemble-lint: cannot create a temp file under %s\n' "$LINT_TMP_ROOT" >&2; return 1; }
 }
 TMP_FINDINGS=$(lint_mktemp) || exit 3
 trap 'rm -f "$TMP_FINDINGS"' EXIT
