@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# ensemble-run-metrics — record what a /en-plan run can observe (EN16 U11).
+#
+# One JSON file per run under $(git rev-parse --git-dir)/ensemble/runs/, next
+# to the verification receipt: never committed, no .gitignore entry, gone with
+# the clone. Events are what the skill can see: agent dispatches with the model
+# the resolver chose, peer passes with the peer_decision and token counts when
+# the CLI reports them, lint runs, and findings per severity per pass.
+# Compaction count and dollar cost are not observable from inside a run and
+# are not recorded.
+#
+# Usage:
+#   ensemble-run-metrics start  --plan <plan_id> [--run-id <id>]   -> prints the file path
+#   ensemble-run-metrics event  <file> --kind <dispatch|peer|lint|findings|note> --json '<object>'
+#   ensemble-run-metrics finish <file>
+#   ensemble-run-metrics summary <file>   -> "N dispatches, M peer passes, K lint runs"
+#
+# NEVER BLOCKS A RUN. Outside a git repo, without jq, or on a malformed
+# payload it prints one stderr line and exits 0; `start` then prints nothing,
+# and every later call with an empty file argument is a no-op.
+
+set -u
+
+note() { printf 'ensemble-run-metrics: %s\n' "$*" >&2; }
+
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+case "$cmd" in start|event|finish|summary) ;; -h|--help|"") sed -n '2,20p' "$0" >&2; exit 0 ;; *) note "unknown command: $cmd"; exit 0 ;; esac
+
+command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this run"; exit 0; }
+
+if [ "$cmd" = "start" ]; then
+  plan="" run_id=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --plan)   plan="${2:-}"; shift 2 ;;
+      --run-id) run_id="${2:-}"; shift 2 ;;
+      *) note "unknown flag for start: $1"; exit 0 ;;
+    esac
+  done
+  [ -n "$plan" ] || { note "start needs --plan <plan_id>"; exit 0; }
+  # Absolute: `--git-dir` answers `.git` from the top level, and later calls
+  # come from wherever the skill happens to be when it records an event.
+  git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) \
+    || git_dir=$(d=$(git rev-parse --git-dir 2>/dev/null) && cd "$d" 2>/dev/null && pwd) \
+    || { note "not inside a git repository; metrics disabled"; exit 0; }
+  dir="$git_dir/ensemble/runs"
+  mkdir -p "$dir" 2>/dev/null || { note "cannot create $dir; metrics disabled"; exit 0; }
+  [ -n "$run_id" ] || run_id=$(date -u +%Y%m%dT%H%M%SZ)
+  file="$dir/$plan-$run_id.json"
+  if jq -n --arg p "$plan" --arg r "$run_id" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{plan_id:$p, run_id:$r, started:$t, finished:null, events:[]}' > "$file" 2>/dev/null; then
+    printf '%s\n' "$file"
+  else
+    note "cannot write $file; metrics disabled"; rm -f "$file"
+  fi
+  exit 0
+fi
+
+file="${1:-}"; [ $# -gt 0 ] && shift
+[ -n "$file" ] || exit 0                      # metrics were disabled at start: silent no-op
+[ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
+
+# Append via a temp file in the same directory, so a failed jq never truncates.
+_write() {  # <jq filter> [jq args...]
+  local tmp; tmp=$(mktemp "$(dirname "$file")/.metrics.XXXXXX" 2>/dev/null) || { note "cannot write beside $file"; return 0; }
+  if jq "$@" "$file" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv -f "$tmp" "$file"; else rm -f "$tmp"; note "update failed; file unchanged"; fi
+}
+
+case "$cmd" in
+  event)
+    kind="" payload=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --kind) kind="${2:-}"; shift 2 ;;
+        --json) payload="${2:-}"; shift 2 ;;
+        *) note "unknown flag for event: $1"; exit 0 ;;
+      esac
+    done
+    case "$kind" in dispatch|peer|lint|findings|note) ;; *) note "event --kind must be dispatch|peer|lint|findings|note (got '$kind')"; exit 0 ;; esac
+    if ! printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1; then
+      note "event --json must be a JSON object; file unchanged"; exit 0
+    fi
+    _write --arg k "$kind" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$payload" \
+      '.events += [ {kind:$k, at:$t} + $p ]'
+    ;;
+  finish)
+    _write --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.finished = $t'
+    ;;
+  summary)
+    jq -r '[
+      ([.events[] | select(.kind=="dispatch")] | length | tostring) + " dispatches",
+      ([.events[] | select(.kind=="peer")]     | length | tostring) + " peer passes",
+      ([.events[] | select(.kind=="lint")]     | length | tostring) + " lint runs"
+    ] | join(", ")' "$file" 2>/dev/null || note "cannot summarise $file"
+    ;;
+esac
+exit 0

@@ -32,6 +32,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - **`--from-legacy <path>`** (explicit) — mint a *new* plan from an archived legacy plan, which is never modified or moved. **Read `references/plan-from-legacy.md` when this flag is passed**; it owns the confirmation, the `migrated_from:` frontmatter and the legacy README back-reference.
    - **Auto-resume** (heuristic) — if a plan in `docs/plans/active/` already matches the user's request by title or `related_design`, offer to resume rather than create a new one.
    - **Create** — no match; mint a new plan.
+
+   Then `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)` and record at the call points in `references/run-metrics.md`; it never blocks a run.
 4. **Source the request.** Identify input, reading the candidates below in one message, since none depends on another:
    - Brainstorm design doc (`docs/designs/*.md`) — pre-explored, recommendation already on the table.
    - `docs/foundation.md` — pulling a requirement (R-ID) for the next slice of work.
@@ -244,18 +246,13 @@ The cap is 1 at every depth because a single-shot peer re-reviewing a whole arti
 | `--resume <plan-path>` | See the resume-or-create step. |
 | `--from-legacy <path>` | See the resume-or-create step. |
 
-When peer is available:
-
-- Cross-agent (both CLIs installed) → peer is the other agent.
-- Single-agent fallback → fresh subprocess of the host's CLI; the prompt builder adds the fallback note for that mode.
-
 ## Tech-debt resolution
 
 If the user mentions a tech-debt item or the plan addresses one:
 
 1. Read `docs/plans/tech-debt-tracker.md`.
 2. Cite the TD-ID(s) in the plan's per-unit metadata: `Resolves: TD7, TD12`.
-3. Frontmatter: append to the plan's `resolves:` field (if extending the schema for the project).
+3. Frontmatter: append to the plan's `resolves:` field.
 4. Don't delete the tech-debt entry — `/en-learn` will mark it resolved when the plan ships.
 
 ## State-2 retrofit fallback
@@ -286,6 +283,7 @@ Research: repo-research, learnings-research
 Peer review: cross-agent (codex). Verdict: revise. Applied 2 of 3 findings (1 deferred to TD8).
 
 Default-branch checkpoint: auto_branched (created EN07-auth-rotation from main)
+metrics: <path> (2 dispatches, 2 peer passes)
 
 Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 ```
@@ -300,6 +298,7 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 - `references/finding-schema.md` — peer JSON shape
 - `references/research-dispatch.md` — when to dispatch which research agent
 - `references/stable-ids.md` — U-ID stability rules
+- `references/run-metrics.md` — per-run metrics file: what is recorded, where, and when
 
 Gated — read only when its step's gate fires, never up front:
 
@@ -320,5 +319,5 @@ Gated — read only when its step's gate fires, never up front:
 | Re-review surfaces a finding the user previously disagreed with | Append finding to "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early. |
 | Auto-commit refused due to unrelated staged changes | Surface and skip the commit step; user finalizes manually. Plan still flips to `open`; just isn't tracked yet. `/en-build` pre-flight will offer auto-commit on next attempt. |
 | Plan structure violates phase invariant (low-risk depends on higher-risk) | Refuse to write. Surface the offending dependency and the three remediation options (remove dependency / promote risk / split unit). |
-| Plan-number collision (race condition) | Re-scan; increment; retry. Lint will catch if it actually slips through |
+| Plan-number collision | Re-scan, increment, retry; the lint catches a slip. |
 | `bin/ensemble-lint` is not present in the project | Check frontmatter, per-unit `risk:` and the phase invariant by hand; continue; say the lint is missing and that `/en-setup` installs it. |
