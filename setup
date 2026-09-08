@@ -12,6 +12,7 @@ HOST_PREF="auto"
 COPY_MODE="symlink"
 VERIFY_ONLY="false"
 QUIET="false"
+RENDER_FAILURES=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -115,6 +116,67 @@ if [ "$VERIFY_ONLY" = "true" ]; then
   exit 0
 fi
 
+# Codex custom agents are TOML (EN16 U5, D103): ~/.codex/agents/<name>.toml
+# with name, description, developer_instructions, and model /
+# model_reasoning_effort when the operator configured them. The markdown this
+# script used to symlink there was never read by Codex. Rendered from the
+# GLOBAL config only (--global-only): the file is machine-wide and must not
+# pick up whichever checkout setup happened to run from; a repo that wants a
+# different Codex model for one agent uses Codex's project scope,
+# .codex/agents/<name>.toml. Scalars are TOML basic strings (backslash and
+# double quote escaped); the body is a literal multi-line string, which cannot
+# hold ''' and is refused with a named error rather than rendered broken.
+toml_basic() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+yaml_unescape() {  # the escapes a YAML double-quoted scalar can carry: \" and \\
+  local in="$1" out="" c i n=${#1}
+  for ((i = 0; i < n; i++)); do
+    c="${in:i:1}"
+    if [ "$c" = '\' ] && [ "$i" -lt $((n - 1)) ]; then i=$((i + 1)); out="$out${in:i:1}"; else out="$out$c"; fi
+  done
+  printf '%s' "$out"
+}
+frontmatter_field() {  # <file> <field> -> value; a quoted scalar is unquoted and unescaped
+  local v
+  v="$(awk -v f="$2" '
+    NR==1 && $0!="---" { exit }
+    NR>1 && /^---$/ { exit }
+    NR>1 && index($0, f ":") == 1 { s = $0; sub("^" f ":[ \t]*", "", s); print s; exit }' "$1")"
+  case "$v" in
+    \"*\") v="${v#\"}"; v="${v%\"}"; v="$(yaml_unescape "$v")" ;;
+    \'*\') v="${v#\'}"; v="${v%\'}" ;;
+  esac
+  printf '%s' "$v"
+}
+render_codex_agent() {  # <agent.md> <dst.toml> -> 0 rendered, 1 refused (reason logged)
+  local src="$1" dst="$2" name desc body model="" effort="" tmp
+  name="$(frontmatter_field "$src" name)"
+  desc="$(frontmatter_field "$src" description)"
+  case "$name" in
+    ''|*[!A-Za-z0-9_-]*) echo "  ✗ $(basename "$src"): name '$name' is not [A-Za-z0-9_-]+; not rendered" >&2; return 1 ;;
+  esac
+  if printf '%s%s' "$name" "$desc" | tr -d '\t' | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    echo "  ✗ $(basename "$src"): control character in name or description; not rendered" >&2; return 1
+  fi
+  body="$(awk 'NR==1 && $0!="---" {p=1} p {print; next} NR>1 && /^---$/ {p=1}' "$src" | sed '/./,$!d')"
+  case "$body" in
+    *"'''"*) echo "  ✗ $(basename "$src"): body contains ''' which a TOML literal string cannot hold; not rendered" >&2; return 1 ;;
+  esac
+  local AGENT_MODEL="" AGENT_EFFORT="" AGENT_TIER="" AGENT_MODEL_SOURCE=""
+  eval "$("$SOURCE_DIR/skills/en-review/scripts/ensemble-agent-model" --agent "$name" --host codex --agent-file "$src" --global-only --home "$HOME" 2>/dev/null)" || true
+  model="$AGENT_MODEL"; effort="$AGENT_EFFORT"
+  tmp="$(mktemp "$(dirname "$dst")/.$name.toml.XXXXXX")"
+  {
+    printf '# Rendered by Ensemble setup from skills/*/agents/%s.md; edit the source, then re-run ./setup.\n' "$name"
+    printf 'name = "%s"\n' "$(toml_basic "$name")"
+    printf 'description = "%s"\n' "$(toml_basic "$desc")"
+    if [ -n "$model" ];  then printf 'model = "%s"\n' "$(toml_basic "$model")"; fi
+    if [ -n "$effort" ]; then printf 'model_reasoning_effort = "%s"\n' "$(toml_basic "$effort")"; fi
+    printf "developer_instructions = '''\n%s\n'''\n" "$body"
+  } > "$tmp" && mv -f "$tmp" "$dst"
+  log "  rendered agents/$name.toml (model: ${model:-inherit}, effort: ${effort:-inherit}; source ~/.ensemble/config.json)"
+  return 0
+}
+
 install_into() {
   local target_root="$1"  # e.g., $HOME/.claude
   local label="$2"
@@ -208,6 +270,20 @@ install_into() {
     agent_name="$(basename "$agent_file")"
     local dst="$target_root/agents/$agent_name"
 
+    if [ "$target_slug" = "codex" ]; then
+      dst="$target_root/agents/${agent_name%.md}.toml"
+      if grep -qxF "$dst" "$manifest_tmp" 2>/dev/null; then continue; fi   # union: same bytes from another skill
+      if [ -e "$dst" ] || [ -L "$dst" ]; then
+        log "  ⚠ $dst already exists (not from a prior Ensemble install); skipping."; continue
+      fi
+      if render_codex_agent "$agent_file" "$dst"; then
+        echo "$dst" >> "$manifest_tmp"; agent_count=$((agent_count + 1))
+      else
+        RENDER_FAILURES="$RENDER_FAILURES ${agent_name%.md}"
+      fi
+      continue
+    fi
+
     if [ -e "$dst" ] || [ -L "$dst" ]; then
       # Already published by an earlier skill this run: identical bytes, so this
       # is the expected union case, not a conflict. Anything else is a foreign
@@ -227,7 +303,11 @@ install_into() {
     echo "$dst" >> "$manifest_tmp"
     agent_count=$((agent_count + 1))
   done
-  log "  Installed $agent_count agent(s) into $target_root/agents/ ($COPY_MODE)"
+  if [ "$target_slug" = "codex" ]; then
+    log "  Rendered $agent_count agent(s) as TOML into $target_root/agents/ (Codex reads TOML only)"
+  else
+    log "  Installed $agent_count agent(s) into $target_root/agents/ ($COPY_MODE)"
+  fi
 
   # Publish the manifest only now that the install is complete.
   mv "$manifest_tmp" "$manifest_file"
@@ -336,6 +416,11 @@ if [ "$QUIET" != "true" ]; then
   $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "ping"
   $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "ping"
   log ""
+fi
+
+if [ -n "$RENDER_FAILURES" ]; then
+  echo "✗ Codex agents not rendered:$RENDER_FAILURES. Fix the source files named above and re-run ./setup." >&2
+  exit 3
 fi
 
 log "Done. Next steps:"
