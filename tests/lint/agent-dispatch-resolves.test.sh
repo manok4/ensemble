@@ -177,10 +177,21 @@ rule "only Claude Code"                    "the tier binding names the host it a
 # The fallback reads the agent file and used to discard its `model:` line, so a
 # name that failed to resolve ran on the session model with the declaration
 # intact and unread. The fallback must carry the tier it can see.
-rule "value as the Agent tool's \`model\` parameter" "the fallback passes the file's own tier"
-rule "take the default model and select nothing" \
-                                           "Codex takes its default, as stated policy"
-rule "a second mapping to maintain"        "the reason for not mapping on Codex is recorded"
+rule "as the Agent tool's \`model\` parameter" "the fallback passes the resolved model"
+
+# EN16 U4: the operator's choice reaches every dispatch. Both paths pass the
+# resolver's value, so a name that fails to resolve and a name that resolves
+# run on the same model; call sites choose nothing themselves.
+rule "scripts/ensemble-agent-model"        "the dispatch doc names the resolver"
+rule "Both dispatch paths below pass \`model: \$AGENT_MODEL\`" "both paths pass the resolved model"
+rule "pass what the resolver returns and choose nothing themselves" "call sites defer to the resolver"
+rule "never dispatches bare"               "the fallback can no longer inherit the session model by omission"
+# Codex binds per agent file at install time; a Codex session selects nothing
+# per call. The old "take the default and select nothing" rule described the
+# per-call half only and read as if Codex could not be bound at all.
+rule "Codex binds per agent file"          "the Codex binding point is stated"
+rule "renders that TOML from the markdown" "setup is named as the Codex binder"
+rule "A Codex session passes no model"     "the per-call half of the Codex rule survives"
 
 # The table and the frontmatter must agree. This is the drift that matters: a
 # tier row is documentation, a `model:` line is what actually binds, and nothing
@@ -204,7 +215,7 @@ done
 [ -z "$mismatch" ] \
   && pass "every agent's declared model matches the tier row it is listed in" \
   || fail "every agent's declared model matches the tier row it is listed in" "$mismatch"
-rule "omit any model override"             "call sites let the declaration decide"
+rule "the declaration still decides by default" "call sites let the declaration decide when the operator set nothing"
 rule "only retrieves"                      "the retrieve-vs-decide line is named"
 
 # The no-concrete-model-ID rule, enforced rather than asserted. A model ID is a
