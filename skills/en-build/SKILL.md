@@ -25,12 +25,7 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 3. **Confirm the implementer.** The host, on any host: `/en-build` never hands authoring to another agent. `/en-review` decides at step 10.3 whether the branch-level review is cross-agent, single-agent fallback, or skipped; that never changes who writes the code.
 4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked, and each unit carrying Goal, Files, Approach, Test scenarios, **Risk, Gated**. **Then resolve the plan's state against the pre-flight sub-state matrix in `references/build-preflight.md`**, which owns every buildable and refused combination and the recovery prompt. It returns one of four:
 
-   | Outcome | When |
-   |---|---|
-   | Proceed | `status: open`, verdict `approve` or `null`, no unresolved findings, plan tracked |
-   | Offer auto-commit, then proceed | the same, but the plan file is untracked |
-   | Offer finalize-and-build (one prompt) | `status: draft` + verdict `revise` with every finding resolved |
-   | **Refuse** | unresolved draft findings, no verdict, `reject`, `completed`, `abandoned` |
+   **Proceed** on `status: open` with verdict `approve` or `null` and no unresolved findings. **Offer auto-commit, then proceed** when that plan file is untracked. **Offer finalize-and-build**, one prompt, on `status: draft` + `revise` with every finding resolved. **Refuse** on unresolved draft findings, a missing verdict, `reject`, `completed` or `abandoned`.
 
    Declining at a prompt is how you skip it; `--finalize-only` runs the finalize and stops without building. A plan with no `peer_review_verdict` field at all is a legacy plan: `references/build-legacy-plans.md` owns its inference and may refuse.
 
@@ -74,11 +69,7 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
     | `risk: high` AND `build.strict_destructive` | Literal-string confirmation `"run unit U<N>"`. (Skipped when the unit is part of an active P3 phase already group-confirmed via `"run phase 3"`.) |
     | Anything else | No mandatory gate at the unit level. |
 
-    The primary safety boundary, deliberately **two narrow categories, nothing more**:
-    - **`risk: destructive`** — its own literal-string category, for irreversible data loss.
-    - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated: 9d's verification gate and step 10's review cover them, not user prompts.
-
-    Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `build.pause_between_phases`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
+    **Two narrow categories, nothing more**: `risk: destructive`, its own literal-string category for irreversible data loss, and `gated: true` for production-state-changing actions. `references/unit-loop.md` lists what qualifies as each and what explicitly does not. Everything outside them advances autonomously; the phase-level prompts group a phase's confirmations when phasing is on, and the unit-level gate fires instead when it is off.
 
     **Preflight gate summary.** Before entering the unit loop (step 9), surface a one-line count so gates are never a surprise mid-build: *"Plan has N gated/destructive units that will pause: U<a> (gated), U<b> (destructive). The remaining M units run autonomously."* If N is 0, say so: *"No gated or destructive units — this plan runs fully autonomously."*
 
@@ -186,17 +177,15 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 
 ## Reference files
 
-- `references/finding-schema.md` — shape of the findings envelope `/en-review` returns
-- `references/severity.md` — apply / defer / disagree routing
-- `references/post-build-protocol.md` — step 10's mechanics: the receipt, the two trailer schemas, the audit's report shape, the learning checkpoint's steps
-- `references/unit-loop.md` — phase classification, the phase invariant, implementing a unit, the system-wide check, the phase boundary; read at step 8
+- `references/build-preflight.md` — the payload check, the plan sub-state matrix, the plan-hash baseline (step 4)
+- `references/unit-loop.md` — phase classification, the phase invariant, the gated categories, implementing a unit, the system-wide check, the phase boundary (steps 8 and 9)
+- `references/post-build-protocol.md` — the receipt, both trailer schemas, what `/en-review` returns, the audit's report, the checkpoint's steps (step 10)
 - `references/build-reporting.md` — the per-unit line and the build summary's shape
-- `references/build-preflight.md` — the payload check, the sub-state matrix and the plan-hash baseline; read at step 4
-- `references/build-failures.md` — the full failure table; read when something fails
-- `references/build-legacy-plans.md` — **gated**: read only for a plan with no `peer_review_verdict` field or a unit with no `risk:` (pre-D37 plans); owns the legacy inference table and the ordered risk classifier
-- `references/run-metrics.md` — the run ledger's call points, shared with `/en-plan`; the helper is `$SKILL_DIR/scripts/ensemble-run-metrics`
-- `$SKILL_DIR/scripts/ensemble-unit-verify` — step 9d's single call, and the gate 9e's commit hangs on. It calls `$SKILL_DIR/scripts/ensemble-test-select`, which is also what the phase boundary asks for its tier.
-- `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` — mechanical gate at step 10.6's audit. Run with `--branch-coverage <range> --require-simplify`: it enumerates the U-IDs covered by the branch's `review-verdict:` trailers and derives `simplify_pass` / `branch_review_pass`. Branch coverage is its only mode (D83).
+- `references/build-failures.md` — the full failure table
+- `references/run-metrics.md` — the run ledger's call points, shared with `/en-plan`
+- `references/build-legacy-plans.md` — **gated**: read only for a pre-D37 plan with no `peer_review_verdict` or no `risk:`
+- `references/severity.md`, `references/finding-schema.md`, `references/peer-contract.md` — how `/en-review`'s findings are graded, shaped and routed
+- `$SKILL_DIR/scripts/ensemble-unit-verify` (9d's call, 9e's gate; it calls `ensemble-test-select`), `$SKILL_DIR/scripts/ensemble-plan-hash` (4a and the boundary), `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` (10.6's audit, `--branch-coverage <range> --require-simplify`), `$SKILL_DIR/scripts/ensemble-run-metrics` (the ledger)
 
 ## Failure protocol
 

@@ -42,3 +42,15 @@ A "yes" that the unit's tests do not cover is a gap to close here, not a finding
 - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
 - Surface phase summary (units, commits, any gate confirmations the phase required).
 - If `build.pause_between_phases` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
+
+## What the two gated categories cover
+
+The universal-safety-gate table and its typed confirmations live in `SKILL.md`.
+This is the bar each category is drawn at, which plan authors and peer review enforce at plan
+time and `/en-plan`'s template carries.
+
+The primary safety boundary, deliberately **two narrow categories, nothing more**:
+- **`risk: destructive`** — its own literal-string category, for irreversible data loss.
+- **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated: 9d's verification gate and step 10's review cover them, not user prompts.
+
+Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `build.pause_between_phases`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
