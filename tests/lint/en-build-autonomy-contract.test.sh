@@ -79,7 +79,8 @@ for skill_file in "$EN_BUILD" "$EN_QA"; do
 done
 
 # --- All seven en-build pause cases enumerated ---
-for case_phrase in "Working tree dirty at branch setup" "Plan-review concerns surfaced at start" "risk: destructive.* unit at step 9a" "gated: true.* unit at step 9a" "P4 phase-level confirmation" '`build.pause_between_phases` set' "Failure protocol fires"; do
+# The two phase-level cases went with phasing (D108): every gate is per unit now.
+for case_phrase in "Working tree dirty at branch setup" "Plan-review concerns surfaced at start" "risk: destructive.* unit at step 9a" "gated: true.* unit at step 9a" "Failure protocol fires"; do
   if grep -qE "$case_phrase" "$EN_BUILD"; then
     pass "en-build enumerates pause case: $(echo "$case_phrase" | head -c 50)..."
   else

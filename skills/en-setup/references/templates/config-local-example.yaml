@@ -58,7 +58,6 @@ default_branch_fallback: main
 # build:
 #   worktree: false              # run every build in ../<repo>-<plan_id>/
 #   strict_destructive: false    # extend the typed confirmation to risk: high and P3
-#   pause_between_phases: false  # prompt between phases instead of auto-rolling
 #   learning_checkpoint: true    # run the structured learning checkpoint at step 10.6
 
 # --- Lint ---

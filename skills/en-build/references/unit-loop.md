@@ -1,17 +1,8 @@
 # The unit loop (`/en-build` steps 8 and 9)
 
-How a plan becomes commits: which phase a unit lands in, what implementing one
-unit involves, and what the phase boundary proves. `SKILL.md` keeps the gates,
-the loop's shape and the exit codes it acts on; this file is read when the build
-enters step 8, and again by anyone who needs the detail behind a step.
-
-## Which phase a unit lands in
-
-**Phase classification** (when phasing is on): each unit maps to one of P1 (Measurement, `risk: low`), P2 (Additive, `risk: medium` except migration/backfill/schema-evolution categories), P3 (Migration / Backfill, `risk: high` OR `risk: medium` + migration/backfill/schema-evolution category), P4 (Destructive, `risk: destructive`). `risk:` is the single source of truth for phase placement; `category:` only carves out the `medium → P3` case for migrations. **Empty phases are collapsed silently.**
-
-**Inference fallback** (a legacy plan whose units lack `risk:`): read `references/build-legacy-plans.md`, which owns the ordered classifier (destructive patterns first, then migrations, backfills, read-only paths, then `medium`) and the confirmation it surfaces before the build proceeds on inferred classes.
-
-**Dependency-vs-phase invariant.** For every dependency edge `U → V`, verify `phase(V) <= phase(U)`. If a low-risk unit depends on a higher-risk unit (so `phase(V) > phase(U)`), **reject the plan as a structural error** with three remediation options (remove the dependency, promote `U.risk:`, or split `U`). Never silently bury the unit in a higher phase: it would land after a confirmation typed for destructive work.
+What implementing one unit involves, what the checkpoint proves, and the bar each
+gated category is drawn at. `SKILL.md` keeps the gates, the loop's shape and the
+exit codes it acts on; this file is read when the build enters step 8.
 
 ## Implementing one unit
 
@@ -31,17 +22,15 @@ enters step 8, and again by anyone who needs the detail behind a step.
 
 A "yes" that the unit's tests do not cover is a gap to close here, not a finding to leave for step 10.
 
-## The phase boundary
+## The checkpoint (9f)
 
-- **After-phase verification.** `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit P<N> --range <phase-base>..HEAD --prefer-full-when-cheap`: lint, typecheck, and **the tests covering the files this phase touched** — not the full suite. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
+- **Before the first `risk: destructive` or `gated: true` unit, and once after the last unit commits**, run `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit checkpoint --range <first-unit-commit>^..HEAD --prefer-full-when-cheap`: lint, typecheck, and the tests covering everything built so far. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** enter the unit the checkpoint was guarding.
 
-  **The selection is resolved, never guessed (D105).** `ensemble-test-select` reports the tier that chose it: `graph` from the project's own `test_changed_command`, `impact-map` from its `test_impact:` prefixes, `sibling` from the filename heuristic, or `full-suite` when `test_full_seconds` says the whole suite is under five minutes. **Surface the tier**: a selection nobody can audit is one nobody will notice is wrong. The cheap-suite tier covers what no heuristic can: a test anchored on file *content* is unreachable from the path that changed.
+  **Why here and not everywhere (D108).** The checkpoint used to fire at each phase boundary, which meant it fired on a schedule the risk did not follow. Attaching it to the risk event is the same protection with none of the grouping: everything reversible is proven immediately before anything irreversible runs. Every unit is already verified at 9d, so the checkpoint's job is cross-unit breakage, not the unit's own logic.
 
-  **Why targeted rather than full (D53).** The full suite runs once, at 10.4, after remediation. The trade, named rather than hidden: a phase-3 change that breaks a phase-1 test outside the targeted set surfaces at 10.4 rather than at the boundary.
-- **Plan-hash check.** Re-compute via `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
-- **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
-- Surface phase summary (units, commits, any gate confirmations the phase required).
-- If `build.pause_between_phases` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
+  **Why targeted rather than full (D53).** The full suite runs once, at 10.4, after remediation. The trade, named rather than hidden: a change that breaks an earlier unit's test outside the targeted set surfaces at 10.4 instead of at the checkpoint.
+
+- **Plan-hash check** and the **working-tree contract** run with it: a plan edited externally during a build, or a dirty tree or unexpected branch, refuses to advance.
 
 ## What the two gated categories cover
 
@@ -53,4 +42,4 @@ The primary safety boundary, deliberately **two narrow categories, nothing more*
 - **`risk: destructive`** — its own literal-string category, for irreversible data loss.
 - **`gated: true`** — limited **explicitly to production-state-changing actions**: customer-facing feature-flag flips, production data backfills / data mutation, real-side-effect third-party API calls against **production** endpoints, API contract breaks, and production config changes with behavior impact. **Non-production external side effects** (PR/branch automation, issue/comment writes, local workflow or CI-config changes, sandbox/staging API calls, reversible repo operations) are explicitly **NOT** gated: 9d's verification gate and step 10's review cover them, not user prompts.
 
-Everything outside these two categories advances autonomously. Phase-level prompts (P4 `"run phase 4"`, opt-in `build.pause_between_phases`) are conveniences that group multiple units' confirmations when phasing is active. With phasing off (or `--unit` selecting a destructive unit alone), the unit-level gate fires instead.
+Everything outside these two categories advances autonomously, and every gate inside them is per unit: nothing group-confirms them (D108).

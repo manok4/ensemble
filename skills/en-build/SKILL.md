@@ -12,7 +12,7 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 
 > **Hard preconditions.** A plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`; `<PREFIX>` from foundation's `plan_id_prefix`, default `FR`) with `status: open` (or `in_progress` when resuming), all U-IDs present, no unblocked dependencies. A recoverable `status: draft` is offered one finalize-and-build prompt instead of being refused.
 >
-> **Universal safety gates** (EVERY code path: phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See step 8b.
+> **Universal safety gates** (EVERY code path: the unit loop, `--unit`, `--from`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See step 8b.
 >
 > **Peer contract.** Severity, confidence, autofix class and the `peer_decision` object are defined once in `references/peer-contract.md`, byte-identical across every skill that exchanges findings. What this skill does with a finding is its own policy.
 
@@ -29,11 +29,11 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 
    Declining at a prompt is how you skip it; `--finalize-only` runs the finalize and stops without building. A plan with no `peer_review_verdict` field at all is a legacy plan: `references/build-legacy-plans.md` owns its inference and may refuse.
 
-   **4a. Plan-hash baseline.** Record `peer_review_plan_hash` as the build's baseline for the phase-boundary check. Absent (legacy plan) → compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>`, record it, skip the boundary check this run, surface a notice. **Always that helper, never your own canonicalization**, or the baseline and the check will disagree and refuse a plan nobody edited.
+   **4a. Plan-hash baseline.** Record `peer_review_plan_hash` as the build's baseline for the checkpoint at 9f. Absent (legacy plan) → compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>`, record it, skip the boundary check this run, surface a notice. **Always that helper, never your own canonicalization**, or the baseline and the check will disagree and refuse a plan nobody edited.
 
    **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 
-   **4c. Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)`, then record at the call points in `references/run-metrics.md`: unit and phase start/end, every full-suite run, and the review pass. Fire-and-forget: it never blocks a build (D106).
+   **4c. Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)`, then record at the call points in `references/run-metrics.md`: unit start/end, each checkpoint, every full-suite run, and the review pass. Fire-and-forget: it never blocks a build (D106).
 5. **Set up branch.**
    - If on default branch → create `<plan_id>-<slug>` feature branch.
    - If on a feature branch → use it.
@@ -41,35 +41,24 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
    - **Worktree** (D28): if user passed `--worktree`, create one at `../<repo>-<plan_id>/` and build in there.
 6. **Read context, bounded.** In one message, `AGENTS.md`, `CLAUDE.md`, project conventions, and the plans this plan names in `related:`; none depends on another's result. From `docs/foundation.md` read the frontmatter, then `grep -n '^#' docs/foundation.md` for the section index, then only the Functional Requirements entries for the R-IDs in the plan's `covers_requirements`. **Never read it whole**; the plan already carries the approach and file list the build needs.
 7. **Plan review with user.** Surface concerns: "Plan touches 12 files; some intersect with EN05 (in-flight). Continue, pause, or split?" Address before starting.
-8. **Determine batch size.** Per A2 / D25 — derive from the plan:
-   - Independent units → larger batch (3–5).
-   - Tightly-coupled units → smaller batch (1–2).
-   - Auth/payments/migrations → batch alone.
+8. **Order the units.** Build them **in the order the plan lists them**, respecting `Depends:` edges. The plan's order is the plan's decision; the build does not re-sort it. Two rules apply:
+   - **Irreversible work runs last.** A `risk: destructive` unit must not precede a non-destructive one. `/en-plan`'s lint enforces this at plan time (`unit.destructive-order`); if a plan reaches the build violating it, **refuse** and name the units, because the point of the rule is that everything reversible is proven before anything irreversible runs.
+   - **Batch size** (A2 / D25) is how many units to work through before surfacing: independent units 3-5, tightly-coupled 1-2, auth / payments / migrations alone.
 
-8a. **Phasing decision.** Compute `phasing_required` from these triggers (any one fires → phasing on):
-    - Unit count `>= 8`.
-    - `depth: deep` in plan frontmatter.
-    - Any unit with `risk: destructive`.
-    - `>= 2` units with `risk: high`.
-    - `>= 2` units with `category: migration | migration-additive`.
-    - `data_scale: large` in plan frontmatter.
-
-    User overrides: `--no-phasing` forces off, `--unit U<N>` and `--from U<N>` bypass phasing entirely (universal safety gates still apply per unit — see below).
-
-    **Phase classification, the inference fallback for legacy plans, and the dependency-vs-phase invariant are `references/unit-loop.md`'s.** Read it here. Two of its rules bind this step: `risk:` is the single source of truth for phase placement, and a plan whose dependency edge would put a unit in a *higher* phase than the unit it depends on is **rejected as a structural error**, never silently buried.
-
-8b. **Universal safety gates** (apply on EVERY execution path — phasing on/off, `--unit`, `--from`, `--from-phase`, manual resume; **no flag disables them**):
+8b. **Universal safety gates** (apply on EVERY execution path — the unit loop, `--unit`, `--from`, manual resume; **no flag disables them**):
 
     For every unit selected for execution, classify it (using `risk:` or the ordered inference fallback) and enforce:
 
     | Classification | Gate |
     |---|---|
-    | `risk: destructive` | Literal-string confirmation `"run unit U<N>"` typed verbatim, with goal/files/approach surfaced first. (When the unit is part of an active P4 phase already group-confirmed via `"run phase 4"`, this per-unit gate is skipped — see step 9.) |
-    | `gated: true` | y/skip/abort confirmation, with goal and approach surfaced first. (Always per-unit; never group-confirmed.) |
-    | `risk: high` AND `build.strict_destructive` | Literal-string confirmation `"run unit U<N>"`. (Skipped when the unit is part of an active P3 phase already group-confirmed via `"run phase 3"`.) |
+    | `risk: destructive` | Literal-string confirmation `"run unit U<N>"` typed verbatim, with goal/files/approach surfaced first. |
+    | `gated: true` | y/skip/abort confirmation, with goal and approach surfaced first. |
+    | `risk: high` AND `build.strict_destructive` | Literal-string confirmation `"run unit U<N>"`. |
     | Anything else | No mandatory gate at the unit level. |
 
-    **Two narrow categories, nothing more**: `risk: destructive`, its own literal-string category for irreversible data loss, and `gated: true` for production-state-changing actions. `references/unit-loop.md` lists what qualifies as each and what explicitly does not. Everything outside them advances autonomously; the phase-level prompts group a phase's confirmations when phasing is on, and the unit-level gate fires instead when it is off.
+    **Every gate is per unit. Nothing group-confirms them**: one typed string covering three irreversible units is weaker than three typed strings, which is why the phase-level group confirmation was removed (D108).
+
+    **Two narrow categories, nothing more**: `risk: destructive`, its own literal-string category for irreversible data loss, and `gated: true` for production-state-changing actions. `references/unit-loop.md` lists what qualifies as each and what explicitly does not. Everything outside them advances autonomously.
 
     **Preflight gate summary.** Before entering the unit loop (step 9), surface a one-line count so gates are never a surprise mid-build: *"Plan has N gated/destructive units that will pause: U<a> (gated), U<b> (destructive). The remaining M units run autonomously."* If N is 0, say so: *"No gated or destructive units — this plan runs fully autonomously."*
 
@@ -87,9 +76,7 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 2. **Plan-review concerns surfaced at start** (step 7) — continue / pause / split. *(outside the window)*
 3. **`risk: destructive` unit at step 9a** — typed `"run unit U<N>"`.
 4. **`gated: true` unit at step 9a** — y/skip/abort.
-5. **P4 phase-level confirmation** (step 9, phasing on) — typed `"run phase 4"`.
-6. **`build.pause_between_phases` set** (step 9, opt-in) — y/pause/n between phases.
-7. **Failure protocol fires** — each row has its own handler.
+5. **Failure protocol fires** — each row has its own handler.
 
 ### Anti-patterns (explicitly forbidden), each with its tell
 
@@ -99,31 +86,21 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 
 **The right response to uncertainty is advance, not ask.** Uncertainty is not a pause case: continue per the contract. The verification gates and the failure protocol are the safety net; a self-inserted checkpoint adds friction, not protection. A real concern goes in the per-unit progress report as a `Note:` line, which is informational and does not gate the build.
 
-9. **Phase loop (when phasing is on).** For each phase in `[P1, P2, P3, P4]`:
-   - Skip empty phases silently.
-   - Surface phase plan to user (units, files, risk summary).
-   - **Phase-level mandatory gates** (cannot be bypassed by any flag):
-     - If phase == P4: require literal-string `"run phase 4"`. Accepting covers all destructive units in the phase; per-unit destructive gates are NOT re-prompted within P4.
-     - If `build.strict_destructive` AND phase == P3: require literal-string `"run phase 3"`. Same group-cover semantics.
-   - **Opt-in per-phase pause** (`build.pause_between_phases`, default off): ask y/pause/n. Default behavior is auto-roll into the next phase.
-   - For each unit in the phase (dependency order):
-     - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Classify the unit (`risk:`, or the ordered classifier when absent; `gated:` defaults to `false`) and apply the 8b table before doing any work, surfacing goal, files and approach first. A phase already group-confirmed by `"run phase 3"` / `"run phase 4"` covers its units' typed gates; `gated: true` is never group-covered. Any other input at a typed gate records the unit `skipped` and advances; `abort` stops the build per the abort protocol. Identical on the phase loop, phasing-off, `--unit U<N>`, `--from U<N>`, `--from-phase` and manual resume; **no flag suppresses it**.
+9. **Unit loop.** For each unit, in plan order:
+     - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Classify the unit (`risk:`, or the ordered classifier when absent; `gated:` defaults to `false`) and apply the 8b table before doing any work, surfacing goal, files and approach first. Any other input at a typed gate records the unit `skipped` and advances; `abort` stops the build per the abort protocol. Identical on the full loop, `--unit U<N>`, `--from U<N>` and manual resume; **no flag suppresses it**.
      - **9b. Honor execution note** (test-first / characterization-first / pragmatic).
      - **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent. Say in one line which unit is starting and its goal before the first edit. **The unit's scope is the deliverable**: a pre-existing bug or behaviour the unit does not mention is a `Note:` in the progress report and a follow-up, not a fix here, unless the unit's own behaviour cannot work without it. **Check first whether the unit is already done** and record it as already-satisfied rather than reimplementing. `references/unit-loop.md` owns the rest, including the five-question system-wide check that runs before a feature-bearing unit is called done.
      - **9d. Verification gate.** One call, not a sequence: `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit U<N> --working --prefer-full-when-cheap --cheap-seconds 120`. It resolves the unit's tests through `$SKILL_DIR/scripts/ensemble-test-select`, runs lint, typecheck and that selection, writes every byte to a log under `.git/ensemble/runs/`, and prints one line per check plus the tail of whatever failed. A test file the unit just wrote selects itself, so a unit that ships tests is covered without the project declaring anything. **Read the exit code, it is the gate:** `0` green; `1` a check failed, fix it before committing; `3` the selection was empty, so name the unit's tests yourself and run them (zero tests found is a finding about the project, never a pass); `4` AGENTS.md declares no commands, so verify by hand and say so in the progress report.
-     - **9e. Commit.** **Only after 9d exited 0**, with nothing edited since. If anything changed after that call, re-run it joined to the commit (`ensemble-unit-verify --unit U<N> --working && git commit …`) so a red assertion cannot reach a commit through inattention. Conventional subject + U-ID + `phase: P<N>` trailer. **Stage only the unit's own files**, never `git add .`, which absorbs whatever was already in the index. If the unit needed a file that was already dirty, ask once whether to include or exclude it, and record the answer in the progress report.
+     - **9e. Commit.** **Only after 9d exited 0**, with nothing edited since. If anything changed after that call, re-run it joined to the commit (`ensemble-unit-verify --unit U<N> --working && git commit …`) so a red assertion cannot reach a commit through inattention. Conventional subject + the U-ID. **Stage only the unit's own files**, never `git add .`, which absorbs whatever was already in the index. If the unit needed a file that was already dirty, ask once whether to include or exclude it, and record the answer in the progress report.
 
        No peer trailers here: step 10's branch-level `review-verdict:` covers every unit, gated and destructive alike.
-   - **After-phase verification.** `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit P<N> --range <phase-base>..HEAD --prefer-full-when-cheap`: lint, typecheck, and **the tests covering the files this phase touched** — not the full suite. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** advance to next phase.
+
+   **9f. Checkpoint, before the risk and at the end (D108).** Run `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit checkpoint --range <first-unit-commit>^..HEAD --prefer-full-when-cheap` at two moments: **immediately before the first `risk: destructive` or `gated: true` unit**, and **once after the last unit commits**. The first is the one that matters: everything reversible is proven before anything irreversible runs. On failure: stop; surface; offer investigate / `--commit-wip` / abort, and **do not enter the gated unit**.
 
      **The selection is resolved, never guessed (D105).** `ensemble-test-select` reports the tier that chose it (`graph`, `impact-map`, `sibling`, or `full-suite` when `test_full_seconds` says the suite is cheap). **Surface the tier**: a selection nobody can audit is one nobody will notice is wrong. `references/unit-loop.md` owns the tiers and the D53 trade this makes.
 
-   - **Plan-hash check.** Re-compute via `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
-   - **Working-tree contract.** Verify clean tree, expected feature branch, up to the previous phase's last commit. Any divergence → refuse to advance; surface state.
-   - Surface phase summary (units, commits, any gate confirmations the phase required).
-   - If `build.pause_between_phases` AND not last phase: ask y/pause/n for next phase. Default: roll forward.
-
-   **Phasing-off path** (no trigger fired, `--no-phasing`, `--unit U<N>`, `--from U<N>`): the same per-unit loop 9a–9e with no phase grouping or phase-level prompts. **Step 9a runs verbatim** on every selected unit, the `phase: P<N>` trailer is still written from the unit's classification, and the post-build phase still runs over the resulting branch diff.
+   - **Plan-hash check**, at every checkpoint. Re-compute via `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` (it covers the immutable plan inputs and excludes the iteration log, per-unit `status` and `peer_review_resolutions`). On mismatch with the build's baseline → refuse to advance; surface that the plan was edited externally during build. (User can re-baseline with `/en-build --re-baseline` after reviewing the diff.)
+   - **Working-tree contract**, at every checkpoint. Verify clean tree, expected feature branch, up to the last unit's commit. Any divergence → refuse to advance; surface state.
 
 10. **Post-build phase (branch-level simplify → review → audit → learn).** Runs ONCE after all units commit, over the branch diff rather than per unit (D52). **`references/post-build-protocol.md` owns the mechanics**: the receipt, both trailer schemas, what `/en-review` returns, the audit's report shape and the learning checkpoint's steps. Read it here. Six gates, in order:
 
@@ -136,7 +113,7 @@ The contract governs **the inter-unit main loop**: the window from the start of 
     5. **Commit the simplify + review changes** (if any) with **both** a `review-verdict:` trailer AND a `simplify-verdict:` trailer (EN07). No working-tree changes → an empty commit (`--allow-empty`) carrying both, so the branch records both passes. Schemas are in the reference; `simplify-verdict.outcome` is one of `completed` / `not_applicable` / `failed`, with a reason required for the last two. Two rules bind here: a **missing** `simplify-verdict:` is not a legitimate skip, and `--no-simplify` / `--review none` are recorded as explicit, visible opt-outs, never silence.
     6. **End-of-build evidence audit (mandatory, mechanical).** `$SKILL_DIR/scripts/ensemble-verify-peer-evidence --branch-coverage <merge-base>..HEAD --require-simplify --json` → `covered_units`, `simplify_pass` and `branch_review_pass`. `--require-simplify` makes it **exit non-zero** when either gate is `missing`/`failed`. Confirm every plan U-ID appears in `covered_units`; one branch-level review covers every unit, so a U-ID missing from it is a genuine gap. **Surface the per-unit table and the two gate lines** (shape in the reference). **The two gate lines are mandatory in every build summary**, each carrying its reason when it is anything but `completed`. A missing unit or a `missing`/`failed` gate makes the verdict `failed`; the audit surfaces but never auto-reverts, and while it fails the success path is **blocked**: the next step is `/en-review --peer <sha>` on the failing units, then re-audit.
 
-    - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict. Per-phase summary if phasing was on.
+    - Summary: completion status per U-ID, deviations, branch-level simplifier + review verdict.
     - **Learning checkpoint** (structured, non-droppable - A3, D26). **The SOLE learning-capture point in the lifecycle**: it fires here, after the branch-level simplify, review and evidence audit, so capture reflects the fully reviewed build. No other skill prompts for learnings. **Deferral guard: deferred whenever the evidence audit failed**, which includes a `missing`/`failed` `simplify_pass` or `branch_review_pass`, with a one-line note naming the gate; the seven steps are in the reference. It emits one `learning_checkpoint:` outcome line in the build summary, one of `captured (N learnings)` / `intentionally_skipped` / `up_to_date` (zero commits since the last capture: idempotency, no prompt) / `ci_environment` (`CI=true`: no prompt), never the bare word `skipped`.
     - Suggest next: `/en-review` → `/en-qa` → `/en-ship` — but only if the audit passed. Otherwise: `/en-review --peer <sha>` on the failing commits.
 
@@ -147,17 +124,15 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 | `--no-simplify` | Skip step 10.2. Records `simplify-verdict: {"outcome":"not_applicable","reason":"--no-simplify",...}`: a visible, recorded opt-out that passes the audit, never a silent skip. |
 | `--review cross\|peer\|none` | What runs at 10.3. **Default `cross`** — peer plus host personas (D46). **`peer`** runs the peer alone, cheaper, and the peer is mandatory either way. **`none`** skips 10.3 **entirely**, peer and personas both; the audit then reports `branch_review_pass: missing` and **fails**. Since D52 this is the build's only review, so `none` leaves every unit unreviewed. |
 | `--unit U<N>` | Build only the named unit; don't auto-advance. |
-| `--no-phasing` | Force phasing off for this run. No `--phasing` counterpart: phasing turns on from six triggers, and when none fired the plan is small enough not to need it. |
 | `--dry-run` | Show what would happen; don't write or commit. |
 | `--from U<N>` | Resume from a specific unit (skip earlier ones). |
-| `--from-phase P<N>` | Resume at phase N. Verifies prior phases' commits and a clean tree before starting. |
 | `--finalize-only` | Run the finalize loop and stop without building. |
-| `--commit-wip` | After a stopped run, create a `wip/<plan_id>-phase<N>` branch and commit current state. Explicit user invocation only, never automatic. |
+| `--commit-wip` | After a stopped run, create a `wip/<plan_id>` branch and commit current state. Explicit user invocation only, never automatic. |
 | `--re-baseline` | After reviewing an external plan-file diff, accept the new state as the build's baseline `peer_review_plan_hash`. |
 
-**Standing policy lives in `.ensemble/config.local.yaml`, not here**: `build.worktree`, `build.strict_destructive`, `build.pause_between_phases`, `build.learning_checkpoint`. Config-set skips are surfaced in the 10.6 audit exactly like flag-set ones.
+**Standing policy lives in `.ensemble/config.local.yaml`, not here**: `build.worktree`, `build.strict_destructive`, `build.learning_checkpoint`. Config-set skips are surfaced in the 10.6 audit exactly like flag-set ones.
 
-**No flag disables universal safety gates.** Every flag changes phasing, pacing or selection; none turn off destructive or gated confirmations.
+**No flag disables universal safety gates.** Every flag changes pacing or selection; none turn off destructive or gated confirmations.
 
 ## Reporting
 
@@ -178,7 +153,7 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 ## Reference files
 
 - `references/build-preflight.md` — the payload check, the plan sub-state matrix, the plan-hash baseline (step 4)
-- `references/unit-loop.md` — phase classification, the phase invariant, the gated categories, implementing a unit, the system-wide check, the phase boundary (steps 8 and 9)
+- `references/unit-loop.md` — the gated categories, implementing a unit, the system-wide check, the checkpoint (steps 8 and 9)
 - `references/post-build-protocol.md` — the receipt, both trailer schemas, what `/en-review` returns, the audit's report, the checkpoint's steps (step 10)
 - `references/build-reporting.md` — the per-unit line and the build summary's shape
 - `references/build-failures.md` — the full failure table
@@ -196,8 +171,8 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 | Unit needs files outside its `Files` list | **Stop before making the change.** Name what the unit needs and why its scope cannot deliver it, then ask: widen, split, or abort. Do not quietly widen: the `Files` list is what the plan was reviewed against. |
 | Unit's `Approach` is too thin to implement | Stop and ask. Pre-flight checks the field is present, not that it is sufficient, and a guessed interpretation passes tests written to match the guess. |
 | Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
-| After-phase verification fails | Stop. Do **not** advance to the next phase. Surface failing tests; offer investigate / `--commit-wip` / abort. |
-| Ctrl-C or abort mid-unit | **Stop cleanly. No signal-time git operations.** Surface branch, current unit, dirty files, last successful commit and the resume command (`--from U<N>` / `--from-phase P<M>`). WIP capture is opt-in via `--commit-wip`, never automatic. |
+| A 9f checkpoint fails | Stop. Do **not** enter the gated or destructive unit it was guarding. Surface failing tests; offer investigate / `--commit-wip` / abort. |
+| Ctrl-C or abort mid-unit | **Stop cleanly. No signal-time git operations.** Surface branch, current unit, dirty files, last successful commit and the resume command (`--from U<N>`). WIP capture is opt-in via `--commit-wip`, never automatic. |
 
 ## What this skill never does
 

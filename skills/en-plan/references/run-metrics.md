@@ -35,8 +35,8 @@ Two analyses of real builds, on 2026-09-06 and 2026-09-08, had to be reconstruct
 |---|---|
 | Step 4a, once the plan id and baseline hash are known | `METRICS=$(run_metrics start --plan <plan_id>)` |
 | Entering a unit at 9c, and again after 9e commits | `run_metrics event "$METRICS" --kind unit --json '{"unit":"U<N>","event":"start"}'` then `'{"unit":"U<N>","event":"end","commit":"<sha>","verify_exit":<n>,"selection_tier":"<TEST_SELECT_TIER>"}'` |
-| Entering a phase, and after its boundary check | `run_metrics event "$METRICS" --kind phase --json '{"phase":"P<N>","event":"start"}'` / `'{"phase":"P<N>","event":"end","units":<n>,"outcome":"passed\|failed"}'` |
-| Any full-suite run (the cheap-suite tier at a boundary, and step 10.4) | `run_metrics event "$METRICS" --kind suite --json '{"where":"boundary\|post-build","seconds":<n>,"outcome":"passed\|failed"}'` |
+| Each 9f checkpoint | `run_metrics event "$METRICS" --kind phase --json '{"checkpoint":"before-U<N>\|end-of-loop","event":"end","units":<n>,"outcome":"passed\|failed"}'` |
+| Any full-suite run (the cheap-suite tier at a checkpoint, and step 10.4) | `run_metrics event "$METRICS" --kind suite --json '{"where":"checkpoint\|post-build","seconds":<n>,"outcome":"passed\|failed"}'` |
 | Around step 10.3's `/en-review` invocation | `run_metrics event "$METRICS" --kind review --json '{"event":"start"}'` then `'{"event":"end","reviewer":"<envelope.reviewer>","findings":<n>,"personas":[{"dimension":"testing","seconds":<n or null>}]}'` |
 | Step 10.6, after the audit | `run_metrics finish "$METRICS"`, then `run_metrics summary "$METRICS"` for the report line |
 

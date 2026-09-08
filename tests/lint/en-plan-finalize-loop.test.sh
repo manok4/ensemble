@@ -44,8 +44,8 @@ BRIEF="$REPO_ROOT/skills/en-plan/references/peer-brief.md"
 grep -qF "### Severity on a plan" "$BRIEF" \
   && pass "the brief has a severity-on-a-plan block" \
   || fail "the brief must define severity for a plan" "no '## Severity on a plan' heading"
-grep -qE '^\- \*\*P1\*\* is a defect that changes what gets built or fails a phase check' "$BRIEF" \
-  && pass "P1 is defined by build impact, naming /en-build's phase check" \
+grep -qE '^\- \*\*P1\*\* is a defect that changes what gets built or fails a build gate' "$BRIEF" \
+  && pass "P1 is defined by build impact, naming /en-build's gates" \
   || fail "P1 must be defined by build impact"
 grep -qF "Deduplicate overlapping findings into one" "$BRIEF" \
   && pass "the peer is told to deduplicate" \

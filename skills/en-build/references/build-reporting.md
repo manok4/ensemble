@@ -9,8 +9,8 @@ carries; this file is the shape they take.
 After each unit commits, surface a one-line summary, and append the same record to `/tmp/ensemble/en-build/<run-id>/ledger.json` (unit, outcome, commit, tests, notes). The final summary and the step 10.6 audit table are derived from that file: a build runs long enough for the context to be compacted, and `--from U<N>` recovers git state but not what was reported.
 
 ```
-✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight  [P2 / risk: medium]
-  Tests: 7 added, 7 passing | Commit: a3f1b9c (trailer: phase: P2)
+✓ U3 — feat(auth): wrap rotateRefreshToken in singleFlight  [risk: medium]
+  Tests: 7 added, 7 passing | Commit: a3f1b9c
 ```
 
 Simplify and review results appear once, in the final summary: they run over the branch, not per unit.

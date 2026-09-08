@@ -34,8 +34,8 @@ BUDGET=24576
 # reference and en-ship's test selection to a script: a pin left at the old
 # number is 10KB of room for the same weight to come back.
 BASELINE='
-en-build 29134
-en-plan 40193
+en-build 26623
+en-plan 40191
 en-review 30715
 en-setup 30301
 en-ship 27407

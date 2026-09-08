@@ -53,7 +53,7 @@ q_ok=1
 for d in "achieve the goal" "Unit decomposition" "Test scenarios" "Stated assumptions"; do
   printf '%s' "$P1OUT" | grep -qF "$d" || q_ok=0
 done
-for d in "risk: correctness" "Dependency-vs-phase" "gated: correctness"; do
+for d in "risk: correctness" "Ordering violations" "gated: correctness"; do
   printf '%s' "$P1OUT" | grep -qF "$d" || q_ok=0
 done
 if [ "$q_ok" -eq 1 ]; then
