@@ -481,3 +481,7 @@ single-file lint scope in en-plan's verify step, run metrics limited to what
 the skill can observe. The cap change and the zsh fix are reproduce-then-decide
 units at the end. Research default is `sonnet` on Claude; the Codex research
 model stays unset (inherit) until the reproduction unit passes.
+
+### Reproductions recorded during the EN16 build
+
+- **Root cause 9, detached peer invoke under zsh (U13, 2026-09-07).** Not reproduced. `tests/portability/peer-detached-zsh.test.sh` runs the whole detached lifecycle (`ensemble_peer_start`, `ensemble_peer_wait`, `ensemble_peer_result`) under `zsh 5.9 (arm64-apple-darwin25.0)` with a stub peer and under bash as the control: 22 assertions pass on both, including the slow-peer `running` path and the missing `--job-dir` usage error. The 2026-09-06 failure therefore came from something the stub does not model (the real `codex exec` under the Claude Code sandbox, or the shell state of that particular tool call), not from zsh sourcing or the detached form itself. No code change; the test stays as the guard so a zsh-specific regression is a red test rather than a lost run.
