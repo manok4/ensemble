@@ -20,43 +20,23 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 
 ## Process
 
-1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex; it is used for the confirmation prompts at 9a. That is all en-build needs from the host: it resolves no peer variables and runs no host-detection script, since D52 it dispatches no peer, and `/en-review` resolves its own at step 10.3.
+1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex, for the confirmation prompts at 9a. That is all en-build needs from the host: it resolves no peer variables and runs no host-detection script.
 
-   **Plugin-install preflight (fail-fast).** Confirm each of these exists. A partial install carrying only `SKILL.md` leaves peer review to degrade silently:
-
-   - `references/severity.md`
-   - `references/finding-schema.md`
-   - `$SKILL_DIR/scripts/ensemble-verify-peer-evidence`
-
-   If any are missing, **fail at start with a clear error** — do not proceed with a degraded build. Surface the exact paths missing and tell the user to re-run `/en-setup` or sync the plugin.
-
-2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip step 10.3's review. The host still implements and commits every unit; only step 10.3's branch-level review is skipped, and the branch records `review-verdict: {"verdict":"skipped","reviewer":"recursion-guard-active",...}` so the step 10.6 audit reads a reason rather than an absence.
+   **Payload check, fail-fast.** Confirm the files `references/build-preflight.md` lists are present. Any missing → **fail at start with a clear error**, naming the paths, and tell the user to re-run `/en-setup` or sync the plugin. A degraded build is never started.
+2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip step 10.3's review and record `review-verdict: {"verdict":"skipped","reviewer":"recursion-guard-active",...}`, so the step 10.6 audit reads a reason rather than an absence. Every unit is still implemented and committed.
 3. **Confirm the implementer.** The host, on any host: `/en-build` never hands authoring to another agent. `/en-review` decides at step 10.3 whether the branch-level review is cross-agent, single-agent fallback, or skipped; that never changes who writes the code.
-4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked. Verify each unit has Goal, Files, Approach, Test scenarios, **Risk, Gated** (or fall back to inference for legacy plans without `risk:`).
+4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked, and each unit carrying Goal, Files, Approach, Test scenarios, **Risk, Gated**. **Then resolve the plan's state against the pre-flight sub-state matrix in `references/build-preflight.md`**, which owns every buildable and refused combination and the recovery prompt. It returns one of four:
 
-    **Pre-flight sub-state matrix** — read `peer_review_verdict` and the count of unresolved entries in `peer_review_resolutions:` (an entry is "unresolved" when its `status` is absent or anything other than `applied | deferred | disagreed | superseded`):
+   | Outcome | When |
+   |---|---|
+   | Proceed | `status: open`, verdict `approve` or `null`, no unresolved findings, plan tracked |
+   | Offer auto-commit, then proceed | the same, but the plan file is untracked |
+   | Offer finalize-and-build (one prompt) | `status: draft` + verdict `revise` with every finding resolved |
+   | **Refuse** | unresolved draft findings, no verdict, `reject`, `completed`, `abandoned` |
 
-    | status | verdict | unresolved findings | git tracked | Pre-flight action |
-    |---|---|---|---|---|
-    | `open` | `approve` | 0 | yes | Proceed to step 4a |
-    | `open` | `approve` | 0 | **no** | Offer auto-commit (one prompt), then proceed |
-    | `draft` | `revise` | 0 | yes or no | **Offer finalize-and-build:** one prompt to re-run the peer pass via `/en-plan`'s finalize loop, on `approve` flip to `open`, auto-commit, then proceed |
-    | `draft` | `revise` | > 0 | any | Refuse; list the unresolved findings; ask the user to apply/defer/disagree first via `/en-plan --resume` |
-    | `open` | `null` | n/a | yes | Proceed (the plan was made with `/en-plan --no-peer`; no peer verdict expected) |
-    | `open` | `null` | n/a | **no** | Offer auto-commit, then proceed |
-    | `draft` | `null` | n/a | any | Refuse; peer review never ran. Suggest `/en-plan --resume <plan-path>`. |
-    | `draft` | `reject` | any | any | Refuse; user must take over. Surface `peer_review_resolutions:` for context. |
-    | `completed` / `abandoned` | any | any | any | Refuse |
+   Declining at a prompt is how you skip it; `--finalize-only` runs the finalize and stops without building. A plan with no `peer_review_verdict` field at all is a legacy plan: `references/build-legacy-plans.md` owns its inference and may refuse.
 
-    **Legacy inference** (a plan with no `peer_review_verdict` field at all): read `references/build-legacy-plans.md`, which owns the inference table; it maps the old iteration-log signals onto the matrix above or refuses.
-
-    Recovery prompt (when offering finalize-and-build):
-
-    > Plan is in draft. Findings from the last peer review (verdict: revise) appear to be applied (resolutions: 8 applied, 0 deferred, 0 disagreed). I can finalize now: re-run the peer pass, flip to `open` on approve, and commit the plan. Then proceed with `/en-build`. (y / n / details)
-
-    Declining the offer at the prompt is how you skip it; `--finalize-only` runs finalize and stops without building.
-
-   **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.
+   **4a. Plan-hash baseline.** Record `peer_review_plan_hash` as the build's baseline for the phase-boundary check. Absent (legacy plan) → compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>`, record it, skip the boundary check this run, surface a notice. **Always that helper, never your own canonicalization**, or the baseline and the check will disagree and refuse a plan nobody edited.
 
    **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 
@@ -272,6 +252,8 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 - `references/finding-schema.md` — shape of the findings envelope `/en-review` returns
 - `references/severity.md` — apply / defer / disagree routing
 - `references/post-build-protocol.md` — step 10's mechanics: the receipt, the two trailer schemas, the audit's report shape, the learning checkpoint's steps
+- `references/build-preflight.md` — the payload check, the sub-state matrix and the plan-hash baseline; read at step 4
+- `references/build-failures.md` — the full failure table; read when something fails
 - `references/build-legacy-plans.md` — **gated**: read only for a plan with no `peer_review_verdict` field or a unit with no `risk:` (pre-D37 plans); owns the legacy inference table and the ordered risk classifier
 - `references/run-metrics.md` — the run ledger's call points, shared with `/en-plan`; the helper is `$SKILL_DIR/scripts/ensemble-run-metrics`
 - `$SKILL_DIR/scripts/ensemble-unit-verify` — step 9d's single call, and the gate 9e's commit hangs on. It calls `$SKILL_DIR/scripts/ensemble-test-select`, which is also what the phase boundary asks for its tier.
@@ -279,23 +261,15 @@ The `simplify_pass:` and `branch_review_pass:` lines are **mandatory** (EN07) - 
 
 ## Failure protocol
 
+**`references/build-failures.md` owns the table**: one row per failure, what to do, and the rule they share — a failure surfaces, never auto-reverts, auto-commits or auto-stashes, and the user decides. Five of them stop the build where it stands:
+
 | Failure | Behavior |
 |---|---|
-| Plan has unmet dependency (`Depends: U7` but U7 not present) | Stop; surface; suggest plan revision |
-| Unit needs files outside its `Files` list | **Stop before making the change.** Name what the unit needs and why the listed scope cannot deliver it, then ask: widen this unit, split the work into a new one, or abort. Do not quietly widen — the `Files` list is what the plan was reviewed against, and silent sprawl is invisible until step 10 reads a diff nobody scoped. |
-| Unit's `Approach` is too thin to implement | Stop and ask. Pre-flight checks the field is present, not that it is sufficient, and a guessed interpretation of a thin unit is the expensive kind of wrong: it passes tests written to match the guess. |
-| Plan structure violates phase invariant (low-risk depends on higher-risk) | Reject the plan with three remediation options: remove the dependency, promote the unit's `risk:`, or split the unit. Never silently bury units across phases. |
-| Plan in `status: draft` with unresolved `peer_review_resolutions:` | Refuse build; list unresolved findings; suggest `/en-plan --resume`. |
-| Plan in `status: draft + revise` with all resolutions cleared | Offer finalize-and-build single prompt (recovery flow). On y, run `/en-plan` finalize loop, flip to `open`, commit, then proceed. |
-| Plan untracked in git but `status: open` and verdict cleared | Offer auto-commit single prompt; on y, commit and proceed. |
-| Plan-hash mismatch at phase boundary | Refuse to advance; surface that immutable plan-input fields changed during build; ask user to re-baseline (`--re-baseline`) or abort. |
-| Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the test output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
-| After-phase verification fails (targeted tests / lint / typecheck) | Stop. Do not advance to next phase. Surface failing tests; offer investigate / `--commit-wip` / abort. |
-| Branch-level review verdict = `reject` | Pause and surface to the user before the post-build commit; never proceed to the audit as if approved |
-| Peer subprocess attempts to modify files (D30 violation) | Detect via git status; revert; do not trust this round of findings; log violation |
-| `git restore` fails on a revert | Surface; abort the build; do not leave the working tree corrupted |
-| User Ctrl-C mid-phase / mid-unit | **Stop cleanly. No signal-time git operations.** Surface: current branch, current unit (with completion state), dirty files, last successful commit. Provide explicit resume instructions (`/en-build --from U<N>` or `--from-phase P<M>`). User invokes `/en-build --commit-wip` separately if a WIP commit is desired. |
-| User asks to abort mid-unit | **Stop cleanly. Surface state and resume instructions.** Do NOT auto-commit, auto-stash, or auto-create a WIP branch — `abort` is a request to stop, not to preserve partial progress. WIP capture is opt-in via a separate `/en-build --commit-wip` invocation; the user must explicitly request it. |
+| Unit needs files outside its `Files` list | **Stop before making the change.** Name what the unit needs and why its scope cannot deliver it, then ask: widen, split, or abort. Do not quietly widen: the `Files` list is what the plan was reviewed against. |
+| Unit's `Approach` is too thin to implement | Stop and ask. Pre-flight checks the field is present, not that it is sufficient, and a guessed interpretation passes tests written to match the guess. |
+| Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
+| After-phase verification fails | Stop. Do **not** advance to the next phase. Surface failing tests; offer investigate / `--commit-wip` / abort. |
+| Ctrl-C or abort mid-unit | **Stop cleanly. No signal-time git operations.** Surface branch, current unit, dirty files, last successful commit and the resume command (`--from U<N>` / `--from-phase P<M>`). WIP capture is opt-in via `--commit-wip`, never automatic. |
 
 ## What this skill never does
 
