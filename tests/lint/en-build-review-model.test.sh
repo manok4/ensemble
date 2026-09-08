@@ -124,7 +124,8 @@ else
 fi
 
 # --- review-verdict trailer emitted with units_covered ---
-if grep -qF "review-verdict:" "$SKILL" && grep -qF "units_covered" "$SKILL"; then
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"   # step 10 detail moved here (D107)
+if grep -qF "review-verdict:" "$SKILL" "$PB" && grep -qF "units_covered" "$SKILL" "$PB"; then
   pass "post-build emits review-verdict with units_covered"
 else
   fail "post-build must emit review-verdict with units_covered"

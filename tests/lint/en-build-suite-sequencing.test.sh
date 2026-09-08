@@ -112,7 +112,8 @@ fi
 
 # Two properties that keep the receipt an optimisation rather than a new way to
 # fail a build, and keep "a receipt exists" equivalent to "something passed".
-if grep -qF 'Only on a passing suite, and never fatal' "$EN_BUILD_SKILL"; then
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"   # step 10 detail moved here (D107)
+if grep -qF 'Only on a passing suite, and never fatal' "$EN_BUILD_SKILL" "$PB"; then
   pass "the receipt is written only on a pass, and a failed write is not fatal"
 else
   fail "the receipt is written only on a pass, and a failed write is not fatal"

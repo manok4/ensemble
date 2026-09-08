@@ -91,6 +91,30 @@ test_impact:
   frontend/src/: frontend/tests/
 ```
 
+Two more keys, both optional, both read by `ensemble-test-select` and
+`ensemble-unit-verify`:
+
+```yaml
+test_full_seconds: 230
+lint_changed_command: "eslint {files}"
+test_paths_command: "pytest {tests}"
+```
+
+`test_full_seconds` is the measured wall time of the whole suite. When it is at
+or under five minutes, `/en-build` runs the suite at a phase boundary instead of
+approximating one, because a cheap suite finds the tests no path heuristic can:
+the ones that anchor on file content rather than on a filename. Measure it, do
+not budget it, and re-measure when the suite gets slow.
+
+`lint_changed_command` is the incremental form of the `Lint:` command. `{files}`
+is replaced with the changed paths, space separated, and the check is skipped
+when nothing changed.
+
+`test_paths_command` is how the map and heuristic tiers run when
+`<test command> <paths>` is not the right shape for the runner. `{tests}` is
+replaced with the selected test paths. Declare it when the runner takes a
+pattern or a flag rather than a list; leave it out when it takes paths.
+
 This lives here rather than in `.ensemble/config.local.yaml` because it must be
 shared with the team and with CI, and `config.local.yaml` is gitignored.
 

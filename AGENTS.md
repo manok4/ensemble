@@ -22,6 +22,32 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 - **Typecheck:** `<unset>`
 - **Dev server:** `<unset>`
 
+## Test impact
+
+```yaml
+test_full_seconds: 230
+lint_changed_command: 'for f in {files}; do case "$f" in docs/*.md|AGENTS.md|CLAUDE.md) bin/ensemble-lint --scope "$f" || exit 1 ;; esac; done'
+test_paths_command: 'for t in {tests}; do ./tests/run.sh -k "$t" || exit 1; done'
+```
+
+`test_full_seconds` is a measurement, not a budget: 226s for 146 files on
+2026-09-08. It is under `/en-build`'s cheap-suite threshold, so a phase boundary
+runs the whole suite rather than approximating one. That is the right call here
+because many tests anchor on file *content* (`grep` for a clause in a SKILL.md),
+and no path-based selection can find those from the file that changed. Re-measure
+it when the suite crosses five minutes.
+
+`lint_changed_command` runs the doc lint over the changed markdown only. The
+whole-`docs/` run is 68s and a single file is 3s. Its `case` matches the same
+paths as `.github/workflows/ensemble-lint.yml`, and for the same reason: pointed
+at a template under `skills/`, the lint reports the `{{TODAY}}` placeholders as
+malformed dates, which is correct for a document and wrong for a template.
+
+`test_paths_command` exists because `./tests/run.sh` takes `-k <pattern>` and not
+a list of paths, so the default `<test command> <paths>` form would hand it a
+flag it rejects. A unit that edits or adds a test file then runs exactly those
+files, in under a second.
+
 ## Where things live
 
 | Topic | Source of truth |

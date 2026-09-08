@@ -10,6 +10,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-learn checkpoint"
 
 EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
+# The checkpoint's steps moved to en-build's post-build reference (D107); the
+# contract is the pair, so the clauses that moved are asserted against both.
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"
 EN_QA="$REPO_ROOT/skills/en-qa/SKILL.md"
 EN_LEARN="$REPO_ROOT/skills/en-learn/SKILL.md"
 LOG_FORMAT="$REPO_ROOT/skills/en-learn/references/learn-log-format.md"
@@ -24,7 +27,7 @@ fi
 
 # --- All four canonical outcome values present in en-build ---
 for outcome in "captured" "intentionally_skipped" "up_to_date" "ci_environment"; do
-  if grep -qF "learning_checkpoint: $outcome" "$EN_BUILD"; then
+  if grep -qF "learning_checkpoint: $outcome" "$EN_BUILD" "$PB"; then
     pass "en-build documents outcome: $outcome"
   else
     fail "en-build missing outcome: $outcome"
@@ -47,7 +50,7 @@ else
 fi
 
 # --- --no-learning-checkpoint flag is documented in en-build ---
-if grep -qF -- "--no-learning-checkpoint" "$EN_BUILD"; then
+if grep -qF -- "--no-learning-checkpoint" "$EN_BUILD" "$PB"; then
   pass "en-build documents --no-learning-checkpoint flag"
 else
   fail "en-build missing --no-learning-checkpoint flag"
@@ -104,12 +107,12 @@ else
 fi
 
 # --- en-build baseline detection uses git log <sha>..HEAD precisely, with legacy date fallback ---
-if grep -qE "git log <sha>\.\.HEAD|git log <baseline-sha>\.\.HEAD|<head-sha>.*for scope|<head-sha>.*entry" "$EN_BUILD"; then
+if grep -qE "git log <sha>\.\.HEAD|git log <baseline-sha>\.\.HEAD|<head-sha>.*for scope|<head-sha>.*entry" "$EN_BUILD" "$PB"; then
   pass "en-build baseline uses precise sha..HEAD scan"
 else
   fail "en-build checkpoint should use 'git log <sha>..HEAD' for precise scan"
 fi
-if grep -qE "imprecise-baseline|legacy.*fallback|since=<date>" "$EN_BUILD"; then
+if grep -qE "imprecise-baseline|legacy.*fallback|since=<date>" "$EN_BUILD" "$PB"; then
   pass "en-build documents legacy date-based fallback"
 else
   fail "en-build should document the legacy date-based fallback for SHA-less entries"
@@ -136,7 +139,7 @@ else
 fi
 
 # --- Idempotency rule documented: re-runs yield up_to_date, not double-prompt ---
-if grep -qiE "(up_to_date.*skip|zero commits|skip the prompt silently)" "$EN_BUILD"; then
+if grep -qiE "(up_to_date.*skip|zero commits|skip the prompt silently)" "$EN_BUILD" "$PB"; then
   pass "en-build documents idempotency (zero commits yield up_to_date)"
 else
   fail "en-build should document idempotency for re-runs"

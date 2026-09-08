@@ -88,7 +88,8 @@ fi
 # --- targeted-test selection (EN15 U8) ---------------------------------------
 # The old heuristic assumed tests sit beside sources. In a layout where they do
 # not, it matched nothing, ran nothing, and reported a pass — the silent case.
-has "$S" "resolve the set in this fixed order" "test selection has a fixed resolution order"
+has "$S" "scripts/ensemble-test-select" "the selection comes from the shared helper, not from re-derived prose"
+has "$S" "the set in this fixed order" "test selection has a fixed resolution order"
 has "$S" "test_changed_command:" "a project command wins outright"
 has "$S" "test_impact:" "the prefix map is the second tier"
 has "$S" "sibling-filename heuristic" "the heuristic remains the fallback"
@@ -96,18 +97,23 @@ has "$S" "Report why each test was selected" "the selection is auditable"
 has "$S" "An empty selection is reported as empty, never as a pass" \
                                               "zero tests found is not a green check"
 
-# The order is asserted structurally, so a later edit cannot silently promote the
-# heuristic above a map the project actually declared.
-cmd_line=$(grep -n 'test_changed_command:' "$S" | head -1 | cut -d: -f1)
-map_line=$(grep -n 'The `test_impact:` prefix map' "$S" | head -1 | cut -d: -f1)
-heur_line=$(grep -n 'sibling-filename heuristic' "$S" | head -1 | cut -d: -f1)
-if [ -n "$cmd_line" ] && [ -n "$map_line" ] && [ -n "$heur_line" ] \
-   && [ "$cmd_line" -lt "$map_line" ] && [ "$map_line" -lt "$heur_line" ]; then
-  pass "command beats map beats heuristic, in that order"
-else
-  fail "command beats map beats heuristic, in that order" \
-       "cmd=$cmd_line map=$map_line heuristic=$heur_line"
-fi
+# The order is asserted where it now lives, in the helper, on a throwaway repo,
+# so a later edit cannot silently promote the heuristic above a map the project
+# actually declared. The skill's own line is checked for the same order, by
+# offset, because all three tiers are named in one sentence there.
+SEL="$REPO_ROOT/skills/en-ship/scripts/ensemble-test-select"
+line=$(grep -F 'ensemble-test-select' "$S" | head -1)
+order=$(printf '%s' "$line" | awk '{ c=index($0,"test_changed_command"); m=index($0,"test_impact"); h=index($0,"sibling"); print (c>0 && m>c && h>m) ? "ok" : "no" }')
+assert_eq "ok" "$order" "the skill names command, then map, then heuristic, in that order"
+
+W=$(mktemp -d); mkdir -p "$W/src" "$W/spec"; (cd "$W" && git init -q)
+: > "$W/src/a.js"; : > "$W/src/a.test.js"; : > "$W/spec/a.spec.js"
+tier() { (cd "$W" && bash "$SEL" --files src/a.js) | sed -n "s/^TEST_SELECT_TIER='\(.*\)'$/\1/p"; }
+printf -- '- **Test:** `jest`\n\n```yaml\ntest_impact:\n  src/: spec/\n```\n' > "$W/AGENTS.md"
+assert_eq "impact-map" "$(tier)" "a declared map beats the sibling heuristic"
+printf -- '- **Test:** `jest`\n\n```yaml\ntest_changed_command: "jest --findRelatedTests"\ntest_impact:\n  src/: spec/\n```\n' > "$W/AGENTS.md"
+assert_eq "graph" "$(tier)" "a declared command beats the map"
+rm -rf "$W"
 
 # The schema has to exist where a project can actually declare it, in both
 # carriers of the template. A rule with nowhere to be written is decorative.
