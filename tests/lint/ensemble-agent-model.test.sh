@@ -52,6 +52,24 @@ assert_eq "evidence|gpt-x|medium|tier" "$(res repo-research codex)" "Codex tier 
 Y 'agent_effort_override_repo-research_codex: high'
 assert_eq "evidence|gpt-x|high|tier" "$(res repo-research codex)" "Codex effort override applies while the model still comes from the tier"
 
+# --- Claude effort (D104): tier and override keys, invalid values ignored ---
+clear_cfg
+J '{"agent_effort_claude_evidence":"medium"}'
+assert_eq "evidence|sonnet|medium|frontmatter" "$(res repo-research claude-code)" "Claude tier effort resolves; model still from frontmatter"
+Y 'agent_effort_override_repo-research_claude: xhigh'
+assert_eq "evidence|sonnet|xhigh|frontmatter" "$(res repo-research claude-code)" "Claude per-agent effort override beats the tier"
+assert_eq "evidence|sonnet|medium|frontmatter" "$(res web-research claude-code)" "the effort override is per agent"
+J '{"agent_effort_claude_evidence":"turbo"}'; clear_cfg; J '{"agent_effort_claude_evidence":"turbo"}'
+assert_eq "evidence|sonnet||frontmatter" "$(res repo-research claude-code)" "an invalid Claude effort is treated as unset"
+
+# --- review_host_model_alias is read as the legacy spelling of the ceiling tier (D104) ---
+printf -- '---\nname: dimension-reviewer\ndescription: "x"\nmodel: opus\neffort: high\n---\n# body\n' > "$W/agents/dimension-reviewer.md"
+clear_cfg
+J '{"review_host_model_alias":"fable"}'
+assert_eq "ceiling|fable||tier" "$(res dimension-reviewer claude-code)" "a legacy review_host_model_alias binds the ceiling tier"
+J '{"review_host_model_alias":"fable","agent_model_claude_ceiling":"opus"}'
+assert_eq "ceiling|opus||tier" "$(res dimension-reviewer claude-code)" "the new ceiling key beats the legacy host alias"
+
 # --- an alias outside the table: no tier, overrides still honoured ---
 clear_cfg
 J '{"agent_model_claude_evidence":"opus"}'

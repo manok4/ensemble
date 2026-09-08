@@ -41,22 +41,22 @@ Config keys are **flat**, matching every existing key in `~/.ensemble/config.jso
 
 | Key | Meaning |
 |---|---|
-| `peer_effort_override` | Pins the peer's effort tier, bypassing the ladder |
-| `peer_model_alias` | Pins the Claude peer's model tier alias |
-| `peer_codex_model` | Pins a Codex peer's `-m` model; unset inherits `~/.codex/config.toml` |
-| `review_host_model_alias` | Passed as the Agent tool's `model` to every host persona under `--cross`/`--host`; unset leaves the agent's frontmatter in force |
+| `peer_model_claude` | The Claude peer's model alias; unset means the documented default alias (`sonnet`) |
+| `peer_effort_claude` | The Claude peer's effort; unset means the ladder here and inherit in a document review |
+| `peer_model_codex` | The Codex peer's `-m` model ID; unset inherits `~/.codex/config.toml` |
+| `peer_effort_codex` | The Codex peer's `model_reasoning_effort`; unset as above |
 
-All four are unset by default, so the ladder and the agent frontmatter govern. **Deprecated spellings.** The three peer keys were `review_peer_effort_override`, `review_peer_model_alias` and `review_peer_codex_model` until EN16 (D103); they are read as fallbacks through `ensemble-config-get <key> --legacy <old-key>` for one release and then dropped. Key precedence outranks layer precedence: the new name in either layer beats the old name in either layer. The host key keeps its name because only review personas consume it. Values in these files are the operator's and may be full model IDs; Ensemble's own defaults stay aliases. `setup` writes and merges them (see `$SKILL_DIR/scripts/ensemble-config-get` and the `setup` merge, which owns that block).
+Only the pair for the peer's host is live on a run. The host personas have no key of their own: they are the `dimension-reviewer` agent, the ceiling tier, so `agent_model_claude_ceiling` (or a per-agent override) sets their model through the same resolver every other agent uses, and `agent_effort_claude_ceiling` is rendered into the installed file's `effort:` by `setup` (D104). All keys are unset by default, so the ladder and the agent frontmatter govern. **Deprecated spellings**, read as fallbacks through `ensemble-config-get <key> --legacy <old-key>...` for one release and then dropped together (TD12): `review_peer_model_alias` and `peer_model_alias` for `peer_model_claude`; `review_peer_codex_model` and `peer_codex_model` for `peer_model_codex`; `review_peer_effort_override` and `peer_effort_override` for both effort keys; `review_host_model_alias` for `agent_model_claude_ceiling`. Key precedence outranks layer precedence: the new name in either layer beats an old name in either layer. Values in these files are the operator's and may be full model IDs; Ensemble's own defaults stay aliases. `setup` writes and merges them (see `$SKILL_DIR/scripts/ensemble-config-get` and the `setup` merge, which owns that block).
 
 ## (c) Model binding
 
 **Claude peer: pin a tier alias.** `claude --model <alias>` resolves an alias to the latest model of that tier, so an alias is drift-free and inherits upgrades without an Ensemble change.
 
-**Codex peer: pin nothing by default.** `codex exec -m` takes a concrete model ID, and concrete IDs go stale on every vendor release, so Ensemble's own files never name one; the peer inherits the operator's `~/.codex/config.toml` model, and Ensemble overrides `model_reasoning_effort`. An operator who wants a fixed Codex peer sets `peer_codex_model` in their config, which the translator passes as `-m`; that ID lives in their file, not in Ensemble.
+**Codex peer: pin nothing by default.** `codex exec -m` takes a concrete model ID, and concrete IDs go stale on every vendor release, so Ensemble's own files never name one; the peer inherits the operator's `~/.codex/config.toml` model, and Ensemble overrides `model_reasoning_effort`. An operator who wants a fixed Codex peer sets `peer_model_codex` in their config, which the translator passes as `-m`; that ID lives in their file, not in Ensemble.
 
-**Host personas: model per call, effort per definition.** The Agent tool accepts a `model` parameter per invocation and nothing for effort, so `review_host_model_alias` reaches every persona at dispatch while effort comes from the `dimension-reviewer` frontmatter (`effort: high`, the Ensemble default). A repo that wants a different host effort places a copy of that agent at `.claude/agents/dimension-reviewer.md` with its own `effort:`; a project-level agent outranks the plugin's copy of the same name. This is the one asymmetry between the two reviewers, and it is the host's, not Ensemble's: there is no per-call effort to pass.
+**Host personas: model per call, effort per installed file.** The Agent tool accepts a `model` parameter per invocation and nothing for effort. The resolver's model for `dimension-reviewer` (ceiling tier) reaches every persona at dispatch; effort is whatever `effort:` the installed agent file carries, which is `high` as shipped, `agent_effort_claude_ceiling` when `setup` rendered one (D104), or a repo copy at `.claude/agents/dimension-reviewer.md`. A file with no `effort:` inherits the session's level. This is the one asymmetry between the two reviewers and it is the host's, not Ensemble's.
 
-`peer_model_alias` resolves through the same owner and the same chain as effort (layers 2, 3, then the documented default alias). There is deliberately **no `--model` run flag** on `/en-review`: model choice is an operator setting, not a per-run one. On a Codex peer the alias is **ignored by design** and `peer_codex_model` governs instead, so neither key is silently unused.
+`peer_model_claude` resolves through the same owner and the same chain as effort (layers 2, 3, then the documented default alias). There is deliberately **no `--model` run flag** on `/en-review`: model choice is an operator setting, not a per-run one. On a Codex peer the alias is **ignored by design** and `peer_model_codex` governs instead, so neither key is silently unused.
 
 ## (d) Fail-soft, and its owner
 
