@@ -182,6 +182,34 @@ d_dir=$(cd "$TMP" && "$LINT" --scope docs/designs 2>&1 | grep -c "cross-link.bro
 [ "$d_single" -ge 1 ] && assert_eq "$d_dir" "$d_single" "a design doc scoped alone reports the same cross-link findings as its directory" \
   || fail "a design doc scoped alone must run its per-file rules" "single=$d_single dir=$d_dir"
 
+# --- temp files are placed explicitly (EN16 U14) ------------------------------
+# Three bare `mktemp` calls relied on the platform default. macOS falls back to
+# the per-user temp dir when TMPDIR is unusable, and a sandbox can make that
+# fallback the one unwritable path, leaving TMP_FINDINGS empty and the run
+# ending in an unbound-variable trace. The lint now tries TMPDIR, then /tmp
+# with one stderr line, and otherwise exits 3 naming both paths.
+setup_minimum
+TMPWORK=$(mktemp -d)
+mkdir -p "$TMPWORK/ro"; chmod 500 "$TMPWORK/ro"
+before=$(ls /tmp/ensemble-lint.* 2>/dev/null | wc -l | tr -d ' ')
+err=$(cd "$TMP" && env -u TMPDIR "$LINT" --scope docs/ 2>&1 >/dev/null)
+after=$(ls /tmp/ensemble-lint.* 2>/dev/null | wc -l | tr -d ' ')
+[ -z "$err" ] && pass "TMPDIR unset: no stderr" || fail "TMPDIR unset: no stderr" "$err"
+assert_eq "$before" "$after" "TMPDIR unset: no temp file left behind"
+err=$(cd "$TMP" && TMPDIR="$TMPWORK/nonexistent" "$LINT" --scope docs/ 2>&1 >/dev/null); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$err" | grep -q "is not writable; using /tmp" \
+  && pass "TMPDIR nonexistent: completes on /tmp with one stderr line" \
+  || fail "TMPDIR nonexistent: completes on /tmp with one stderr line" "rc=$rc err=$err"
+assert_eq "1" "$(printf '%s\n' "$err" | grep -c .)" "TMPDIR nonexistent: exactly one stderr line"
+err=$(cd "$TMP" && TMPDIR="$TMPWORK/ro" ENSEMBLE_LINT_TMP_FALLBACK="$TMPWORK/ro" "$LINT" --scope docs/ 2>&1 >/dev/null); rc=$?
+[ "$rc" -eq 3 ] && printf '%s' "$err" | grep -q "cannot create a temp file under $TMPWORK/ro or $TMPWORK/ro" \
+  && pass "TMPDIR and fallback read-only: exit 3 naming both paths" \
+  || fail "TMPDIR and fallback read-only: exit 3 naming both paths" "rc=$rc err=$err"
+printf '%s' "$err" | grep -q "unbound variable" \
+  && fail "no unbound-variable trace when temp creation fails" "$err" \
+  || pass "no unbound-variable trace when temp creation fails"
+chmod 700 "$TMPWORK/ro"; rm -rf "$TMPWORK"
+
 # --- cross-link.broken-u ---
 setup_minimum
 cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF

@@ -50,7 +50,23 @@ VIOLATIONS=0
 P1=0
 P2=0
 P3=0
-TMP_FINDINGS=$(mktemp)
+# Temp files, explicitly placed. A bare `mktemp` on macOS silently falls back
+# to the per-user temp dir when TMPDIR is unusable, and under a sandbox that
+# fallback may be the one path that is not writable; the result was an empty
+# TMP_FINDINGS and an unbound-variable trace rather than a message. This tries
+# TMPDIR, then /tmp (overridable for tests via ENSEMBLE_LINT_TMP_FALLBACK) with
+# one stderr line, and otherwise exits 3 naming both paths.
+lint_mktemp() {
+  local root="${TMPDIR:-/tmp}" fallback="${ENSEMBLE_LINT_TMP_FALLBACK:-/tmp}" f
+  if f=$(mktemp "${root%/}/ensemble-lint.XXXXXX" 2>/dev/null); then printf '%s' "$f"; return 0; fi
+  if [ "${fallback%/}" != "${root%/}" ] && f=$(mktemp "${fallback%/}/ensemble-lint.XXXXXX" 2>/dev/null); then
+    printf 'ensemble-lint: TMPDIR=%s is not writable; using %s\n' "$root" "$fallback" >&2
+    printf '%s' "$f"; return 0
+  fi
+  printf 'ensemble-lint: cannot create a temp file under %s or %s\n' "$root" "$fallback" >&2
+  return 1
+}
+TMP_FINDINGS=$(lint_mktemp) || exit 3
 trap 'rm -f "$TMP_FINDINGS"' EXIT
 
 emit() {
@@ -408,7 +424,7 @@ check_frontmatter_enums_and_dates() {
 # Rule names retain the `fr-` prefix for back-compat with downstream consumers.
 check_fr_id_collisions() {
   [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
-  local seen_fr_file=$(mktemp)
+  local seen_fr_file; seen_fr_file=$(lint_mktemp) || exit 3
   trap "rm -f $seen_fr_file" RETURN
   for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
     [ -f "$plan" ] || continue
@@ -813,7 +829,7 @@ check_plan_phase_invariant() {
 
   # Build U-ID -> risk map first.
   local map_file
-  map_file=$(mktemp)
+  map_file=$(lint_mktemp) || exit 3
   while IFS='|' read -r uid risk cat _ _; do
     [ -z "$uid" ] && continue
     [ -z "$risk" ] && continue
