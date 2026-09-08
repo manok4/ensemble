@@ -21,6 +21,13 @@
 # JSON/YAML, absent jq, null/empty value, or a value outside --allowed all
 # fall through to the next layer. This never exits non-zero for a config
 # problem — a bad config must never take down a review.
+#
+# Fail-soft is not fail-silent. A config.json that does not parse discards
+# EVERY key the operator set, and the default it falls back to can be the
+# session's most expensive model. One hand-edited unquoted value did exactly
+# that for a whole /en-plan run (2026-09-06). So malformed JSON prints one
+# line to stderr naming the file and the parse error, then falls through as
+# before; stdout and the exit code are unchanged.
 
 set -u
 
@@ -136,6 +143,10 @@ fi
 # Non-object roots, malformed JSON, and absent jq all fall through.
 GLOBAL_FILE="$HOME_DIR/.ensemble/config.json"
 if [ -n "$HOME_DIR" ] && [ -r "$GLOBAL_FILE" ] && command -v jq >/dev/null 2>&1; then
+  if ! parse_err=$(jq empty "$GLOBAL_FILE" 2>&1); then
+    printf 'ensemble-config-get: %s is not valid JSON (%s); every key in it is ignored until it parses\n' \
+      "$GLOBAL_FILE" "$(printf '%s' "$parse_err" | head -1)" >&2
+  fi
   # `// empty` would discard a literal `false` as well as null, because jq's
   # alternative operator treats both as "empty". A boolean key set to false
   # (e.g. skip_peer_on_lightweight) must resolve to "false", not fall through
