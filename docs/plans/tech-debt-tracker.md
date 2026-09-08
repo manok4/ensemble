@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-08-26
+updated: 2026-09-08
 ---
 
 # Tech debt tracker
@@ -380,3 +380,25 @@ things in practice rather than only in principle. The lint now scopes the rule t
 
 - **Severity:** P3 — historical record, no action.
 - **Logged:** 2026-08-29.
+
+### TD11. A Codex session cannot dispatch a bundled agent by name, so the rendered TOML model does not bind
+
+Found 2026-09-08 by EN16 U6, reproducing Codex custom-agent dispatch from a skill.
+
+`./setup` now renders `~/.codex/agents/<name>.toml` for every bundled agent with
+`model` and `model_reasoning_effort` from the operator's config (EN16 U5), which is
+the format Codex documents for custom agents. But in Codex CLI 0.153.2 the
+`spawn_agent` tool a session gets takes `task_name`, `fork_turns` and `message`
+only: no agent, role or model selector. A child spawned for `repo-research` had
+`agent_role: null` and ran on the parent's `gpt-6-astra` at `high`, not the TOML's
+`gpt-5.6-sol` at `low`. So on a Codex host the research agents run on the session
+model, the way they did on Claude before PR #85, and the per-host binding EN16
+built reaches Claude Code only.
+
+- **Source:** en-build on EN16-U6 (live reproduction, two `codex exec` runs)
+- **Severity:** P2
+- **Confidence:** 9/10 (rollout evidence; interactive TUI not exercised)
+- **Location:** `skills/*/references/agent-dispatch.md` (the Codex paragraph), `setup` (`render_codex_agent`)
+- **Why it matters:** an operator who sets `agent_model_codex_*` sees the value in the rendered TOML and reasonably believes it binds; on a Codex host it does not, and the cost control EN16 was built for is absent there.
+- **Suggested fix:** when Codex's spawn tool gains an agent or role selector, dispatch by the TOML's `name` from the Codex half of `agent-dispatch.md` and re-run the U6 reproduction; until then, have the Codex session pass the resolver's `AGENT_MODEL` in the spawned agent's instructions as a request, and keep the TOML as the operator default. Its own plan, with the reproduction as the first unit.
+- **Logged:** 2026-09-08
