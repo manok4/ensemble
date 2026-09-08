@@ -4,6 +4,35 @@
 
 set -u
 
+# --models: print the model and effort every bundled agent resolves to on each
+# host for this operator's config, so the binding is visible without a
+# dispatch (EN16 U3). Resolves from the Ensemble checkout this script lives in.
+if [ "${1:-}" = "--models" ]; then
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+  src_root="$(cd "$self_dir/.." && pwd)"
+  # Any carrier's copy would do; en-review is pinned because the parity test
+  # guarantees every skill that carries agents/ carries this script byte-identical.
+  resolver="$src_root/skills/en-review/scripts/ensemble-agent-model"
+  [ -x "$resolver" ] || { echo "check-health --models: $resolver not found" >&2; exit 2; }
+  printf '%-20s %-10s %-12s %-14s %-8s %s\n' AGENT TIER HOST MODEL EFFORT SOURCE
+  seen=""
+  resolve_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  for f in "$src_root"/skills/*/agents/*.md; do
+    [ -f "$f" ] || continue
+    name="$(basename "$f" .md)"
+    case " $seen " in *" $name "*) continue ;; esac
+    seen="$seen $name"
+    for host in claude-code codex; do
+      # Reset before each eval: a resolver that exits non-zero emits nothing, and
+      # a no-op eval would print the previous agent's binding under this name.
+      AGENT_TIER=""; AGENT_MODEL=""; AGENT_EFFORT=""; AGENT_MODEL_SOURCE=""
+      if out=$("$resolver" --agent "$name" --host "$host" --agent-file "$f" --repo-root "$resolve_root" 2>/dev/null); then eval "$out"; else AGENT_MODEL_SOURCE="unresolved"; fi
+      printf '%-20s %-10s %-12s %-14s %-8s %s\n' "$name" "${AGENT_TIER:-?}" "$host" "${AGENT_MODEL:-inherit}" "${AGENT_EFFORT:-inherit}" "${AGENT_MODEL_SOURCE:-unresolved}"
+    done
+  done
+  exit 0
+fi
+
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 

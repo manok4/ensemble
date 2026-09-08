@@ -35,7 +35,9 @@ fi
 # Stated anywhere else it is trivia; stated here it is a precondition.
 inv=$(grep -n 'The host authors; the peer only reviews' "$SKILL" | head -1 | cut -d: -f1)
 peer=$(grep -n 'Outside Voice review with finalize loop' "$SKILL" | head -1 | cut -d: -f1)
-invoke=$(grep -n 'Invoke via' "$SKILL" | head -1 | cut -d: -f1)
+# Anchored on the script name, not the bullet's lead-in: the wording changed once
+# (EN16 U2) and the guard went red while the invariant it pins stayed correct.
+invoke=$(grep -niF 'scripts/ensemble-peer-invoke' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$inv" ] && [ -n "$peer" ] && [ -n "$invoke" ] \
    && [ "$inv" -gt "$peer" ] && [ "$inv" -lt "$invoke" ]; then
   pass "the invariant sits inside the peer step, before the invocation"

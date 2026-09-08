@@ -6,6 +6,8 @@ description: "Simplify recently changed code for clarity, reuse and efficiency w
 
 # `/en-simplify`
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
 > **Dispatching a bundled agent.** This skill carries its agents in `agents/`. Dispatch by name as usual; when the name is not registered (a lone skill directory), resolve it from the bundled definition per `references/agent-dispatch.md`.
 
 
@@ -29,7 +31,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
    **This is a kind gate, never a size gate.** A three-line change the user explicitly named still runs; a thousand-line lockfile diff does not. Size thresholds belong to the caller, and applying one here would silently decline work someone asked for. The cost of getting this wrong is three agents reading a lockfile.
 
-4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex): `agents/code-simplifier.md` once per dimension. Each receives the resolved scope (the full diff or the file set); its dimension's rubric below, **passed verbatim**, since a rubric re-rendered from memory loses the gating rules that keep the pass behaviour-preserving; the project's `CLAUDE.md` and `AGENTS.md`; and the read-only constraint with the exact-functionality requirement. Omit any model override so the agent's declared tier applies.
+4. **Dispatch three review agents in parallel.** Single message, three `Agent` calls (Claude Code) / `spawn_agent` (Codex): `agents/code-simplifier.md` once per dimension. Each receives the resolved scope (the full diff or the file set); its dimension's rubric below, **passed verbatim**, since a rubric re-rendered from memory loses the gating rules that keep the pass behaviour-preserving; the project's `CLAUDE.md` and `AGENTS.md`; and the read-only constraint with the exact-functionality requirement. Pass `model: $AGENT_MODEL` from `$SKILL_DIR/scripts/ensemble-agent-model --agent code-simplifier --host "$HOST" --agent-file "$SKILL_DIR/agents/code-simplifier.md"` per `references/agent-dispatch.md`; the resolver returns the declared tier unless the operator set one.
 
    **The reviewers are read-only in this skill,** by the agent's own definition (D86) and restated in the prompt. State the read-only constraint in each dispatch prompt: three run **concurrently on one working tree**, and three writers on the same files is a race whose losing edits vanish without an error. Each returns findings; **step 5 applies them, in the parent**. Because they only find and never write, this is evidence-tier work rather than ceiling: the judgement that becomes an edit is made by the parent at step 5.
 

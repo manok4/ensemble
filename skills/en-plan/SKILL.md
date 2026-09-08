@@ -32,6 +32,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - **`--from-legacy <path>`** (explicit) — mint a *new* plan from an archived legacy plan, which is never modified or moved. **Read `references/plan-from-legacy.md` when this flag is passed**; it owns the confirmation, the `migrated_from:` frontmatter and the legacy README back-reference.
    - **Auto-resume** (heuristic) — if a plan in `docs/plans/active/` already matches the user's request by title or `related_design`, offer to resume rather than create a new one.
    - **Create** — no match; mint a new plan.
+
+   Then `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)` and record at the call points in `references/run-metrics.md`; it never blocks a run.
 4. **Source the request.** Identify input, reading the candidates below in one message, since none depends on another:
    - Brainstorm design doc (`docs/designs/*.md`) — pre-explored, recommendation already on the table.
    - `docs/foundation.md` — pulling a requirement (R-ID) for the next slice of work.
@@ -64,6 +66,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Deep: 10+ units, structural change, multi-week work.
    Depth is asked or inferred; default Standard.
 6. **Phase 1 research (parallel).** Per `references/research-dispatch.md`:
+
+   **`--research <path>`.** Per the *User-supplied research* rule there: an unreadable path stops the run before any dispatch; otherwise its first 200 lines stand in for `repo-research` and `web-research` and neither is dispatched. `learnings-research` keeps its own rule. Report `research: user-supplied (<path>)`.
    - `repo-research` — patterns, conventions, file paths, prior art (Standard/Deep always).
    - `docs/learnings/index.md` — read it inline first; it is an index and rarely more than a screen. Dispatch `learnings-research` only when the index lists more than ~5 candidate entries touching the topic, so the drill-down is worth a round trip; it then runs in the same parallel batch as `repo-research`.
    - `web-research` — only if a 3rd-party library not used elsewhere AND the library has known footguns AND the user hasn't said "skip web research". Recognising the library's name is not knowing its current state: a name from a fast-moving area is a reason to fire, not to skip.
@@ -156,12 +160,12 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     If `PEER_AVAILABLE=true` (and `--no-peer` not set):
     - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
-    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one.
+    - **Resolve the peer's model and effort, then invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`. Read `peer_effort_override` (`--allowed low,medium,high,xhigh`), `peer_model_alias` and `peer_codex_model`, each with `--legacy review_<key>`, through `$SKILL_DIR/scripts/ensemble-config-get`; `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort "${override:-inherit}" --peer-cmd "$PEER_CMD" --model-alias "$alias" --codex-model "$codex")"`; pass `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, the prompt file, and `--peer-mode "$PEER_MODE"` (see `references/peer-brief.md`). The helper owns timeout, failure classification, retry and fallback (D41); do not restate them. It returns a `peer_decision` per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer never reads as normal.
     - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
       - On `verdict: approve` → exit the loop. Proceed to the status-flip step.
-      - On `verdict: revise` → walk findings, apply / defer / disagree per `references/peer-brief.md` (en-plan's own policy), each application a surgical edit to the plan file, never a rewrite of it. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$SKILL_DIR/scripts/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
+      - On `verdict: revise` → walk findings, apply / defer / disagree per `references/peer-brief.md` (en-plan's own policy), each application a surgical edit to the plan file, never a rewrite of it. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Run `bin/ensemble-lint --scope <plan-path>` (one file; cross-link checks included) so a broken citation surfaces now, not at promotion. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$SKILL_DIR/scripts/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
         - **Severity gate on the re-loop.** Re-invoke the peer **only if at least one finding this pass was `P0` or `P1`** (`references/peer-contract.md`). When the pass returned **only `P2`/`P3`** findings — naming inconsistencies, style preferences, "consider X later" — apply what's cheap, record the rest in `peer_review_resolutions:`, and **exit the loop**; a second full peer pass to confirm a typo fix is not worth its latency. Record `reloop_skipped: advisory-only` alongside the resolutions so the exit is auditable.
         - **Iteration cap: 1 at every depth** — at most **two** peer passes total (the initial pass plus one verification pass). `--max-iterations <N>` raises it when a plan genuinely warrants more; `--no-reloop` runs the initial pass only and never re-invokes.
         - **Cap-hit behavior:** Surface the latest findings; ask the user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control.
@@ -176,7 +180,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - Loop hit the iteration cap with `verdict: revise` AND the user chose "accept as-is" at the cap-hit prompt (per failure protocol).
     - Peer returned `verdict: reject` AND the user explicitly overrode the rejection (per failure protocol).
 
-    **Validate first.** Run `bin/ensemble-lint --scope docs/plans/active` and fix what it flags on this file, re-running until clean. Its P1 rules (`unit.risk-class`, the phase invariant, the filename shape) are what `/en-build` refuses later, and the peer does not lint. If the lint is not installed, check the frontmatter fields, `risk:` on every unit and the phase invariant by hand, and say so (`/en-setup` installs it).
+    **Validate first.** Run `bin/ensemble-lint --scope docs/plans/active` once here (the directory scope also catches a plan-ID collision with a sibling) and fix what it flags on this file, re-running until clean. Its P1 rules (`unit.risk-class`, the phase invariant, the filename shape) are what `/en-build` refuses later, and the peer does not lint. If the lint is not installed, check the frontmatter fields, `risk:` on every unit and the phase invariant by hand, and say so (`/en-setup` installs it).
 
     On promotion: compute `peer_review_plan_hash` by running `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>`, write its output to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. **Do not canonicalize the fields yourself.** The helper owns the covered-field list and the canonicalization, so producer and consumer cannot drift; deriving the hash from prose is not merely slower, it is unimplementable, since no model computes sha256 and each ad-hoc shell attempt canonicalizes differently. `/en-build` re-computes with the same helper at every phase boundary, so a mismatch means a real edit rather than a formatting difference (D41). The file stays in `active/` (the directory; not to be confused with status — there is no `status: active` value).
 
@@ -205,7 +209,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       Verdict: approve. Generated by /en-plan.
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
-19. **Capture-from-synthesis reflex (D21).** If a non-obvious connection or pattern emerged during planning, soft-prompt to capture as a learning.
+19. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning.
 20. **Hand off to `/en-build`.** Suggest the build command:
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build docs/plans/active/EN07-feature_auth-rotation.md`?"
 
@@ -238,22 +242,18 @@ The cap is 1 at every depth because a single-shot peer re-reviewing a whole arti
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
 | `--max-iterations <N>` | Raise the re-loop cap above 1. |
 | `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
+| `--research <path>` | Prior research replaces the two research dispatches (Phase 1 research). |
 | `--resume <plan-path>` | See the resume-or-create step. |
 | `--from-legacy <path>` | See the resume-or-create step. |
 
-When peer is available:
-
-- Cross-agent (both CLIs installed) → peer is the other agent.
-- Single-agent fallback → fresh subprocess of the host's CLI; the prompt builder adds the fallback note for that mode.
-
 ## Tech-debt resolution
 
-If the user mentions a tech-debt item or the plan addresses one:
+If the plan addresses a tech-debt item:
 
 1. Read `docs/plans/tech-debt-tracker.md`.
-2. Cite the TD-ID(s) in the plan's per-unit metadata: `Resolves: TD7, TD12`.
-3. Frontmatter: append to the plan's `resolves:` field (if extending the schema for the project).
-4. Don't delete the tech-debt entry — `/en-learn` will mark it resolved when the plan ships.
+2. Cite them in per-unit metadata: `Resolves: TD7, TD12`.
+3. Frontmatter: append to the plan's `resolves:` field.
+4. Don't delete the entry; `/en-learn` marks it resolved at ship.
 
 ## State-2 retrofit fallback
 
@@ -261,7 +261,7 @@ If `docs/foundation.md` doesn't exist yet (the user is using `/en-plan` before `
 
 - Set `covers_requirements: []` and `requirements_pending: true` in the plan's frontmatter.
 - Surface the gap: "No `docs/foundation.md` yet. Plan will reference requirements as `requirements_pending: true`. Run `/en-foundation --retrofit` later to back-fill R-IDs."
-- `bin/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements` based on plan content.
+- `bin/ensemble-lint` emits a P3 advisory (not a P1 blocker) for plans in this state. Once foundation has R-IDs, the rule upgrades to P1 and `/en-learn` back-fills `covers_requirements`.
 
 ## Output
 
@@ -279,9 +279,11 @@ Units:
   - U4: Migration for refresh_token_rotated_at column (characterization-first)
   - U5: Update tests covering AE2, AE3 (test-first)
 
+Research: repo-research, learnings-research
 Peer review: cross-agent (codex). Verdict: revise. Applied 2 of 3 findings (1 deferred to TD8).
 
 Default-branch checkpoint: auto_branched (created EN07-auth-rotation from main)
+metrics: <path> (2 dispatches, 2 peer passes)
 
 Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 ```
@@ -296,6 +298,7 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 - `references/finding-schema.md` — peer JSON shape
 - `references/research-dispatch.md` — when to dispatch which research agent
 - `references/stable-ids.md` — U-ID stability rules
+- `references/run-metrics.md` — per-run metrics file: what is recorded, where, and when
 
 Gated — read only when its step's gate fires, never up front:
 
@@ -307,14 +310,14 @@ Gated — read only when its step's gate fires, never up front:
 | Failure | Behavior |
 |---|---|
 | User declines the plan file, then asks to `/en-build` it | There is no file to build. Offer to write the plan now; do not synthesize one silently from the conversation, because it would carry no peer verdict and no hash. |
-| Plan touches > 30 files | Surface size warning; offer to split into multiple plans |
+| Plan touches > 30 files | Warn about size; offer a split into several plans |
 | Design doc matching the topic is `superseded` | Do not carry its decisions; treat the request as unexplored and apply the brainstorm soft-nudge. |
-| Two units claim the same file with conflicting changes | Flag as a planning bug; don't write the plan |
-| User accepts plan but peer review hasn't returned yet | Wait for peer (with timeout); if peer times out, plan is written without peer verdict; surface "peer review timed out" in the report |
+| Two units claim the same file with conflicting changes | A planning bug; don't write the plan |
+| User accepts plan but peer review hasn't returned yet | Wait for the peer; on timeout write the plan without a verdict and say so in the report |
 | Peer rejects the plan (verdict: reject) | Pause and surface the reject reason; leave `status: draft`. If the user explicitly overrides the rejection ("proceed anyway"), treat as approved: run the **status-flip step** (compute hash, flip `status: draft → open`, write `peer_review_verdict: reject` + a `peer_review_overridden: true` marker for audit) and continue to the **auto-commit step**. The valid post-flip status is **`open`** — `active/` is the directory the file lives in, not a status value. |
 | Finalize loop hits iteration cap with `verdict: revise` | Surface latest findings; ask user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control. |
-| Re-review surfaces a finding the user previously disagreed with | Append finding to "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early. |
-| Auto-commit refused due to unrelated staged changes | Surface and skip the commit step; user finalizes manually. Plan still flips to `open`; just isn't tracked yet. `/en-build` pre-flight will offer auto-commit on next attempt. |
+| Re-review surfaces a finding the user previously disagreed with | Add it to the next prompt's "do not re-flag" list; a third appearance counts as the cap hit. |
+| Auto-commit refused due to unrelated staged changes | Skip the commit and say so; the plan still flips to `open`, and `/en-build` pre-flight offers the commit next time. |
 | Plan structure violates phase invariant (low-risk depends on higher-risk) | Refuse to write. Surface the offending dependency and the three remediation options (remove dependency / promote risk / split unit). |
-| Plan-number collision (race condition) | Re-scan; increment; retry. Lint will catch if it actually slips through |
+| Plan-number collision | Re-scan, increment, retry; the lint catches a slip. |
 | `bin/ensemble-lint` is not present in the project | Check frontmatter, per-unit `risk:` and the phase invariant by hand; continue; say the lint is missing and that `/en-setup` installs it. |

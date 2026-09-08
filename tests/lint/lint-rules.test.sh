@@ -150,6 +150,72 @@ requirements_pending: false
 Cites R99 which doesn't exist in foundation.md.
 EOF
 assert_rule_fires "cross-link.broken-r" "missing R-ID"
+# A single-file scope must fire the same cross-link finding as the directory
+# scope. /en-plan's finalize loop lints the plan file alone between passes
+# (EN16 U10); if someone later gates check_cross_links on `docs/` the way the
+# collision and index checks are, that loop would report clean on a broken
+# citation and the defect would surface only at promotion.
+single=$(cd "$TMP" && "$LINT" --scope docs/plans/active/FR50-test.md 2>&1)
+if printf '%s' "$single" | grep -qF "cross-link.broken-r"; then
+  pass "single-file scope still fires cross-link.broken-r"
+else
+  fail "single-file scope must still fire cross-link.broken-r" "$(printf '%s' "$single" | head -3)"
+fi
+dir_count=$(cd "$TMP" && "$LINT" --scope docs/plans/active 2>&1 | grep -c "cross-link.broken-r")
+single_count=$(printf '%s' "$single" | grep -c "cross-link.broken-r")
+assert_eq "$dir_count" "$single_count" "directory and single-file scopes agree on the cross-link finding"
+# The same holds for a file outside docs/plans/: a design doc scoped alone runs
+# its per-file rules and reports the same as the directory run.
+mkdir -p "$TMP/docs/designs"
+cat > "$TMP/docs/designs/2026-01-01-x.md" <<EOF
+---
+type: design
+created: 2026-01-01
+topic: x
+status: open
+related_plan:
+---
+Cites R98 which does not exist.
+EOF
+d_single=$(cd "$TMP" && "$LINT" --scope docs/designs/2026-01-01-x.md 2>&1 | grep -c "cross-link.broken-r")
+d_dir=$(cd "$TMP" && "$LINT" --scope docs/designs 2>&1 | grep -c "cross-link.broken-r")
+[ "$d_single" -ge 1 ] && assert_eq "$d_dir" "$d_single" "a design doc scoped alone reports the same cross-link findings as its directory" \
+  || fail "a design doc scoped alone must run its per-file rules" "single=$d_single dir=$d_dir"
+
+# --- temp files are placed explicitly (EN16 U14) ------------------------------
+# Three bare `mktemp` calls relied on the platform default. macOS falls back to
+# the per-user temp dir when TMPDIR is unusable, and a sandbox can make that
+# fallback the one unwritable path, leaving TMP_FINDINGS empty and the run
+# ending in an unbound-variable trace. The lint now tries TMPDIR, then /tmp
+# with one stderr line, and otherwise exits 3 naming both paths.
+setup_minimum
+TMPWORK=$(mktemp -d)
+mkdir -p "$TMPWORK/ro" "$TMPWORK/ro2"; chmod 500 "$TMPWORK/ro" "$TMPWORK/ro2"
+before=$(ls /tmp/ensemble-lint.* 2>/dev/null | wc -l | tr -d ' ')
+err=$(cd "$TMP" && env -u TMPDIR "$LINT" --scope docs/ 2>&1 >/dev/null)
+after=$(ls /tmp/ensemble-lint.* 2>/dev/null | wc -l | tr -d ' ')
+[ -z "$err" ] && pass "TMPDIR unset: no stderr" || fail "TMPDIR unset: no stderr" "$err"
+assert_eq "$before" "$after" "TMPDIR unset: no temp file left behind"
+err=$(cd "$TMP" && TMPDIR="$TMPWORK/nonexistent" "$LINT" --scope docs/ 2>&1 >/dev/null); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$err" | grep -q "is not writable; using /tmp" \
+  && pass "TMPDIR nonexistent: completes on /tmp with one stderr line" \
+  || fail "TMPDIR nonexistent: completes on /tmp with one stderr line" "rc=$rc err=$err"
+assert_eq "1" "$(printf '%s\n' "$err" | grep -c .)" "TMPDIR nonexistent: exactly one stderr line"
+# Two DISTINCT read-only roots: with equal paths the fallback probe is skipped by
+# the picker's own guard and the arm under test never runs. chmod does not bind
+# root, so the case is skipped there rather than inverted.
+if [ "$(id -u)" -eq 0 ]; then
+  pass "SKIPPED — running as root; chmod cannot make a path unwritable"
+else
+  err=$(cd "$TMP" && TMPDIR="$TMPWORK/ro" ENSEMBLE_LINT_TMP_FALLBACK="$TMPWORK/ro2" "$LINT" --scope docs/ 2>&1 >/dev/null); rc=$?
+  [ "$rc" -eq 3 ] && printf '%s' "$err" | grep -q "cannot create a temp file under $TMPWORK/ro or $TMPWORK/ro2" \
+    && pass "TMPDIR and fallback read-only: exit 3 naming both paths" \
+    || fail "TMPDIR and fallback read-only: exit 3 naming both paths" "rc=$rc err=$err"
+  printf '%s' "$err" | grep -q "unbound variable" \
+    && fail "no unbound-variable trace when temp creation fails" "$err" \
+    || pass "no unbound-variable trace when temp creation fails"
+fi
+chmod 700 "$TMPWORK/ro" "$TMPWORK/ro2"; rm -rf "$TMPWORK"
 
 # --- cross-link.broken-u ---
 setup_minimum

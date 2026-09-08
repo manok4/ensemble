@@ -22,6 +22,17 @@ E. Dependency-vs-phase violations (a low-risk unit depending on a higher-risk on
 F. gated: correctness. gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag gated:true on an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state.
 G. Stated assumptions. Flag anything the plan bets on without saying so, especially claims that something does not already exist.
 
+### Severity on a plan
+
+The wire scale is `references/peer-contract.md`; this is what each level means when the artifact is a plan, so the routing below has something to route on. Severity is set by impact and evidence alone. There is no quota and no per-unit ratio: a cap would demote real P1s and would bias the counts the loop-cap decision reads.
+
+- **P0** is a plan `/en-build` must not run: a destructive change classified below `destructive`, a phase-invariant violation, a unit that cannot be implemented as written.
+- **P1** is a defect that changes what gets built or fails a phase check: a goal no unit covers, a wrong `risk:`, a signature one unit produces and another consumes under a different name, a feature unit with no scenarios, a bet the plan states nowhere. Name in each P1 what would be built wrongly or which phase check would fail.
+- **P2** is consistency: naming, wording and cross-reference issues that do not change a signature another unit consumes.
+- **P3** is advisory.
+
+Deduplicate overlapping findings into one before returning; the host batches its apply edits per unit rather than one cycle per finding, so a pass costs what its distinct defects cost.
+
 Do NOT flag: prose style, heading format, markdown formatting, unit ID numbering, or wording preferences. This is a plan, not a document review.
 
 ## Where a finding points
@@ -63,9 +74,19 @@ Re-invoke only when the pass returned at least one P0 or P1 — a second full ro
 to confirm a typo fix is not worth its latency. On cap-hit with findings outstanding, ask the user to accept
 or stay in draft; never flip to `open` on the skill's own judgement.
 
-## Effort
+## Effort and model
 
-A plan review is a reading task on a bounded document, so it does not need the
-diff-shaped effort ladder `/en-review` uses. It runs at the peer's default tier.
-en-plan carries no effort resolver: that chain (`--effort`, the config keys, the
-ladder) is `/en-review`'s, and `review_peer_effort_override` does not apply here.
+A plan review is a reading task on a bounded document, so it does not run the
+diff-shaped effort ladder `/en-review` uses. It does honour the operator's keys
+(EN16 U2, D103), read through `scripts/ensemble-config-get` (repo file, then
+`~/.ensemble/config.json`; the `review_peer_*` spellings resolve for one release):
+
+- `peer_effort_override` pins the tier. Unset means `--effort inherit`: the peer
+  runs at its CLI default and no effort fragment is sent.
+- `peer_model_alias` is the Claude peer's alias; unset means the translator's
+  documented default alias (`sonnet`), not the CLI's own default. `peer_codex_model`
+  is a Codex peer's `-m`; unset inherits `~/.codex/config.toml`.
+
+`scripts/ensemble-peer-flags` translates the three into `$PEER_MODEL` and
+`$PEER_EFFORT`; `scripts/ensemble-peer-invoke` degrades a rejected fragment
+rather than failing the pass, and the `peer_decision` records what ran.
