@@ -90,4 +90,31 @@ for k in dispatch peer lint findings; do
 done
 grep -qi "compaction count and dollar cost are not" "$R" && pass "the reference says what is not observable" || fail "the reference says what is not observable"
 
+# --- the build kinds (D106) --------------------------------------------------
+# /en-build's own cost analyses were reconstructed by hand twice, and the
+# persona timings came out Unknown both times because nothing recorded them.
+b=$(cd "$WORK/repo" && bash "$M" start --plan EN97 --run-id b1)
+(cd "$WORK/repo" && bash "$M" event "$b" --kind unit  --json '{"unit":"U1","event":"start"}' \
+                 && bash "$M" event "$b" --kind unit  --json '{"unit":"U1","event":"end","commit":"abc"}' \
+                 && bash "$M" event "$b" --kind phase --json '{"phase":"P1","event":"end"}' \
+                 && bash "$M" event "$b" --kind suite --json '{"where":"post-build","seconds":226}' \
+                 && bash "$M" event "$b" --kind review --json '{"event":"end","reviewer":"cross-agent"}') 2>"$WORK/err"
+assert_eq "" "$(cat "$WORK/err")" "unit, phase, suite and review events append silently"
+assert_eq "5" "$(jq '.events | length' "$b")" "five build events recorded"
+assert_eq "1 dispatches, 0 peer passes, 0 lint runs, 1 units, 1 phases, 1 suite runs" \
+  "$( (cd "$WORK/repo" && bash "$M" event "$b" --kind dispatch --json '{}' >/dev/null; bash "$M" summary "$b") )" \
+  "the summary appends the build counts after the three it always reports"
+# A start event without its end is work still in flight, not a finished unit.
+(cd "$WORK/repo" && bash "$M" event "$b" --kind unit --json '{"unit":"U2","event":"start"}')
+assert_contains "$(cd "$WORK/repo" && bash "$M" summary "$b")" "1 units" "an unfinished unit is not counted as done"
+
+B="$REPO_ROOT/skills/en-build/SKILL.md"; BR="$REPO_ROOT/skills/en-build/references/run-metrics.md"
+grep -qF "scripts/ensemble-run-metrics" "$B" && pass "en-build names the helper" || fail "en-build names the helper"
+grep -qF "references/run-metrics.md" "$B" && pass "en-build points at the run-metrics reference" || fail "en-build points at the run-metrics reference"
+grep -qF "metrics: <path>" "$B" && pass "the report line is in en-build" || fail "the report line is in en-build"
+for k in unit phase suite review; do
+  grep -qF -- "--kind $k" "$BR" && pass "the reference documents the $k call point" || fail "the reference documents the $k call point"
+done
+grep -qF "never estimated" "$BR" && pass "an unmeasured duration is recorded as unmeasured" || fail "an unmeasured duration is recorded as unmeasured"
+
 report
