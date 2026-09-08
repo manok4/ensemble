@@ -78,15 +78,16 @@ or stay in draft; never flip to `open` on the skill's own judgement.
 
 A plan review is a reading task on a bounded document, so it does not run the
 diff-shaped effort ladder `/en-review` uses. It does honour the operator's keys
-(EN16 U2, D103), read through `scripts/ensemble-config-get` (repo file, then
-`~/.ensemble/config.json`; the `review_peer_*` spellings resolve for one release):
+(EN16 U2, D103, D104), read through `scripts/ensemble-config-get` (repo file,
+then `~/.ensemble/config.json`; the retired `peer_*` and `review_peer_*`
+spellings resolve for one release). Only the pair for the peer's host applies:
 
-- `peer_effort_override` pins the tier. Unset means `--effort inherit`: the peer
+- `peer_effort_<peer>` pins the tier. Unset means `--effort inherit`: the peer
   runs at its CLI default and no effort fragment is sent.
-- `peer_model_alias` is the Claude peer's alias; unset means the translator's
-  documented default alias (`sonnet`), not the CLI's own default. `peer_codex_model`
+- `peer_model_claude` is the Claude peer's alias; unset means the translator's
+  documented default alias (`sonnet`), not the CLI's own default. `peer_model_codex`
   is a Codex peer's `-m`; unset inherits `~/.codex/config.toml`.
 
-`scripts/ensemble-peer-flags` translates the three into `$PEER_MODEL` and
+`scripts/ensemble-peer-flags` translates the pair into `$PEER_MODEL` and
 `$PEER_EFFORT`; `scripts/ensemble-peer-invoke` degrades a rejected fragment
 rather than failing the pass, and the `peer_decision` records what ran.

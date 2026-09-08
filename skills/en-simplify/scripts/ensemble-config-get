@@ -10,15 +10,16 @@
 # Owning the cascade here means consumers never re-implement layering.
 #
 # Usage:
-#   ensemble-config-get <key> [--legacy <old-key>] [--default <value>]
+#   ensemble-config-get <key> [--legacy <old-key>]... [--default <value>]
 #                             [--allowed <v1,v2,...>] [--repo-root <dir>] [--home <dir>]
 #
-# --legacy names a retired spelling of <key> (EN16 U1 renamed review_peer_*
-# to peer_*). KEY PRECEDENCE OUTRANKS LAYER PRECEDENCE: <key> is tried across
-# both layers first, then <old-key> across both layers, so an operator who
-# set the new name globally is not shadowed by a stale repo-local legacy line.
+# --legacy names a retired spelling of <key>; repeat it for each generation
+# (review_peer_* became peer_* in EN16, then the symmetric peer_<thing>_<host>
+# names in D104). KEY PRECEDENCE OUTRANKS LAYER PRECEDENCE: <key> is tried
+# across both layers first, then each <old-key> in the order given, so an
+# operator who set the new name globally is not shadowed by a stale legacy line.
 #
-# Keys are FLAT (peer_effort_override, not peer.effort_override),
+# Keys are FLAT (peer_effort_codex, not peer.effort.codex),
 # matching every existing key in config.json and the `jq -r '.<key>'` read
 # pattern in $SKILL_DIR/scripts/ensemble-detect-host.
 #
@@ -44,13 +45,13 @@ REPO_ROOT="."
 HOME_DIR="${HOME:-}"
 
 usage() {
-  echo "usage: ensemble-config-get <key> [--legacy <old-key>] [--default <value>] [--allowed <v1,v2,...>] [--repo-root <dir>] [--home <dir>]" >&2
+  echo "usage: ensemble-config-get <key> [--legacy <old-key>]... [--default <value>] [--allowed <v1,v2,...>] [--repo-root <dir>] [--home <dir>]" >&2
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --default)   [ $# -ge 2 ] || { usage; exit 2; }; DEFAULT="$2"; shift 2 ;;
-    --legacy)    [ $# -ge 2 ] || { usage; exit 2; }; LEGACY="$2"; shift 2 ;;
+    --legacy)    [ $# -ge 2 ] || { usage; exit 2; }; LEGACY="$LEGACY $2"; shift 2 ;;
     --allowed)   [ $# -ge 2 ] || { usage; exit 2; }; ALLOWED="$2"; shift 2 ;;
     --repo-root) [ $# -ge 2 ] || { usage; exit 2; }; REPO_ROOT="$2"; shift 2 ;;
     --home)      [ $# -ge 2 ] || { usage; exit 2; }; HOME_DIR="$2"; shift 2 ;;
@@ -183,7 +184,7 @@ lookup() {
 }
 
 lookup "$KEY" && exit 0
-if [ -n "$LEGACY" ]; then lookup "$LEGACY" && exit 0; fi
+for _old in $LEGACY; do lookup "$_old" && exit 0; done
 
 # --- layer 3: caller default ---------------------------------------------
 if [ -n "$DEFAULT" ]; then printf '%s\n' "$DEFAULT"; exit 0; fi

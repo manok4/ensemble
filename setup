@@ -197,6 +197,35 @@ render_codex_agent() {  # <agent.md> <dst.toml> -> 0 rendered, 1 refused (reason
   return 0
 }
 
+# Claude Code reads a subagent's effort from the `effort:` line of the installed
+# agent file and nowhere else (the Agent tool has no effort parameter), so an
+# operator's agent_effort_claude_* key can only bind at install time (D104).
+# When a key applies to an agent, the file is published as a COPY with the
+# line injected; otherwise the symlink stays and the checkout remains the
+# source of truth. Rendered from the global config only, like the Codex TOML.
+render_claude_agent() {  # <agent.md> <dst.md> -> 0 rendered (copy), 1 no effort applies (caller links as usual)
+  local src="$1" dst="$2" name effort="" resolved=""
+  name="$(frontmatter_field "$src" name)"
+  local resolver="$SOURCE_DIR/skills/en-review/scripts/ensemble-agent-model"
+  local AGENT_MODEL="" AGENT_EFFORT="" AGENT_TIER="" AGENT_MODEL_SOURCE=""
+  [ -x "$resolver" ] || return 1
+  resolved="$("$resolver" --agent "$name" --host claude-code --agent-file "$src" --global-only --home "$HOME" 2>/dev/null)" || return 1
+  eval "$resolved"; effort="$AGENT_EFFORT"
+  [ -n "$effort" ] || return 1
+  local tmp; tmp="$(mktemp "$(dirname "$dst")/.$name.md.XXXXXX" 2>/dev/null)" || { echo "  ✗ $(basename "$src"): cannot create a temp file in $(dirname "$dst"); linked without effort" >&2; return 1; }
+  # Replace an existing effort: line inside the frontmatter, else add one after model:.
+  if ! awk -v eff="$effort" '
+      NR==1 && $0=="---" { fm=1; print; next }
+      fm && /^---$/ { if (!done) { print "effort: " eff; done=1 } fm=0; print; next }
+      fm && /^effort:/ { if (!done) { print "effort: " eff; done=1 } next }
+      { print }' "$src" > "$tmp"; then
+    rm -f "$tmp"; echo "  ✗ $(basename "$src"): could not render effort; linked without it" >&2; return 1
+  fi
+  mv -f "$tmp" "$dst" || { rm -f "$tmp"; return 1; }
+  log "  rendered agents/$name.md as a copy with effort: $effort (source ~/.ensemble/config.json)"
+  return 0
+}
+
 install_into() {
   local target_root="$1"  # e.g., $HOME/.claude
   local label="$2"
@@ -330,7 +359,9 @@ install_into() {
       continue
     fi
 
-    if [ "$COPY_MODE" = "copy" ]; then
+    if [ "$target_slug" = "claude" ] && render_claude_agent "$agent_file" "$dst"; then
+      :   # copy with effort: injected (D104)
+    elif [ "$COPY_MODE" = "copy" ]; then
       cp "$agent_file" "$dst"
     else
       ln -s "$agent_file" "$dst"
@@ -375,18 +406,21 @@ config_defaults() {
   "skip_peer_on_lightweight": true,
   "default_branch_fallback": "main",
   "learnings_cross_project": false,
-  "peer_model_alias": null,
-  "peer_codex_model": null,
-  "peer_effort_override": null,
-  "review_host_model_alias": null,
+  "peer_model_claude": null,
+  "peer_effort_claude": null,
+  "peer_model_codex": null,
+  "peer_effort_codex": null,
   "agent_model_claude_retrieval": null,
+  "agent_effort_claude_retrieval": null,
   "agent_model_claude_evidence": null,
+  "agent_effort_claude_evidence": null,
   "agent_model_claude_ceiling": null,
+  "agent_effort_claude_ceiling": null,
   "agent_model_codex_retrieval": null,
-  "agent_model_codex_evidence": null,
-  "agent_model_codex_ceiling": null,
   "agent_effort_codex_retrieval": null,
+  "agent_model_codex_evidence": null,
   "agent_effort_codex_evidence": null,
+  "agent_model_codex_ceiling": null,
   "agent_effort_codex_ceiling": null
 }
 EOF
@@ -419,12 +453,18 @@ else
       if mv "$cfg_tmp" "$CONFIG_FILE" 2>/dev/null; then
         cfg_tmp=""
         log "  Config: $CONFIG_FILE has all current keys"
-        # EN16 U1: the review_peer_* spellings are read for one release (D103,
-        # TD12). Say so here, on the path every operator already runs, rather
-        # than in a comment in a file they have no reason to reopen.
-        legacy_keys="$(jq -r 'keys[] | select(startswith("review_peer_"))' "$CONFIG_FILE" 2>/dev/null || true)"
+        # Retired spellings are read for one release (D103, D104, TD12). Say so
+        # here, on the path every operator already runs, rather than in a
+        # comment in a file they have no reason to reopen.
+        legacy_keys="$(jq -r 'keys[] | select(test("^(review_peer_|peer_model_alias$|peer_codex_model$|peer_effort_override$|review_host_model_alias$)"))' "$CONFIG_FILE" 2>/dev/null || true)"
         for legacy in $legacy_keys; do
-          new_name="${legacy#review_}"
+          case "$legacy" in
+            review_peer_model_alias|peer_model_alias)         new_name="peer_model_claude" ;;
+            review_peer_codex_model|peer_codex_model)         new_name="peer_model_codex" ;;
+            review_peer_effort_override|peer_effort_override) new_name="peer_effort_codex (and peer_effort_claude for a Claude peer)" ;;
+            review_host_model_alias)                          new_name="agent_model_claude_ceiling" ;;
+            *) new_name="its D104 name" ;;
+          esac
           log "  ⚠ $legacy is a deprecated spelling; rename it to $new_name. The old name stops being read next release."
         done
       else

@@ -6,8 +6,8 @@
 # frontmatter: haiku is retrieval, sonnet is evidence, opus is ceiling. This
 # maps the alias to the tier and consults flat operator keys, first hit wins:
 #
-#   1. agent_model_override_<agent>_<host>   (and agent_effort_override_<agent>_codex)
-#   2. agent_model_<host>_<tier>             (and agent_effort_codex_<tier>)
+#   1. agent_model_override_<agent>_<host>   (and agent_effort_override_<agent>_<host>)
+#   2. agent_model_<host>_<tier>             (and agent_effort_<host>_<tier>)
 #   3. the agent file's own `model:`         (Claude only; it is a Claude alias)
 #   4. inherit                               (empty: the host decides)
 #
@@ -21,8 +21,11 @@
 # falls through to the next source rather than reaching a dispatch:
 #   Claude  model: one of the aliases the Agent tool accepts (CLAUDE_ALIASES)
 #   Codex   model: ^[A-Za-z0-9._-]{1,64}$ (an operator ID; Ensemble names none)
-#   Codex   effort: low | medium | high | xhigh
-# Claude has no per-call effort, so AGENT_EFFORT is always empty there.
+#   effort (both hosts): low | medium | high | xhigh
+# Claude Code has no per-call effort: a dispatch ignores AGENT_EFFORT there, and
+# `setup` renders it into the installed agent file's `effort:` instead (D104),
+# which is the one place the host reads a subagent's effort. A file without
+# one inherits the session's effort level.
 #
 # Usage:
 #   ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path>
@@ -127,7 +130,10 @@ if [ "$HOST_KEY" = claude ]; then
   v=$(cfg "agent_model_override_${AGENT}_claude" --allowed "$CLAUDE_ALIASES")
   if [ -n "$v" ]; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="override"
   else
-    [ -n "$TIER" ] && v=$(cfg "agent_model_claude_${TIER}" --allowed "$CLAUDE_ALIASES") || v=""
+    # review_host_model_alias (D100) was the ceiling tier by another name; read
+    # it as the legacy spelling of agent_model_claude_ceiling for one release.
+    if [ "$TIER" = ceiling ]; then v=$(cfg "agent_model_claude_ceiling" --legacy review_host_model_alias --allowed "$CLAUDE_ALIASES")
+    elif [ -n "$TIER" ]; then v=$(cfg "agent_model_claude_${TIER}" --allowed "$CLAUDE_ALIASES"); else v=""; fi
     if [ -n "$v" ]; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="tier"
     else
       # The frontmatter rung is validated like the others: an alias outside the
@@ -138,6 +144,9 @@ if [ "$HOST_KEY" = claude ]; then
       esac
     fi
   fi
+  e=$(cfg "agent_effort_override_${AGENT}_claude" --allowed low,medium,high,xhigh)
+  if [ -z "$e" ] && [ -n "$TIER" ]; then e=$(cfg "agent_effort_claude_${TIER}" --allowed low,medium,high,xhigh); fi
+  AGENT_EFFORT="$e"
 else
   v=$(cfg "agent_model_override_${AGENT}_codex")
   if valid_codex_id "$v"; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="override"

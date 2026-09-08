@@ -10,7 +10,7 @@
 
 ## Which model a bundled agent runs on
 
-Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites** pass what the resolver returns and choose nothing themselves: with no operator key set the resolver returns the declaration, so the declaration still decides by default, and with one set the operator decides, never the caller. `/en-review` reads `review_host_model_alias` first for its personas and lets the resolver decide when it is unset. Effort has no per-call parameter on Claude Code; an agent that needs one declares `effort:` in its frontmatter, and a repo overrides it with a project-level copy under `.claude/agents/` (D100).
+Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites** pass what the resolver returns and choose nothing themselves: with no operator key set the resolver returns the declaration, so the declaration still decides by default, and with one set the operator decides, never the caller. `/en-review`'s personas are `dimension-reviewer`, resolved like any other agent (ceiling tier). Effort has no per-call parameter on Claude Code: the installed agent file's `effort:` decides, which `setup` renders from `agent_effort_<host>_<tier>` or a per-agent override at install time (D104), a repo overrides with a project-level copy under `.claude/agents/`, and a file with no `effort:` inherits the session's level.
 
 | Tier | For | Ours |
 |---|---|---|
