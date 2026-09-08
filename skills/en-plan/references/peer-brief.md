@@ -24,6 +24,17 @@ G. Stated assumptions. Flag anything the plan bets on without saying so, especia
 
 Do NOT flag: prose style, heading format, markdown formatting, unit ID numbering, or wording preferences. This is a plan, not a document review.
 
+### Severity on a plan
+
+The wire scale is `references/peer-contract.md`; this is what each level means when the artifact is a plan, so the routing below has something to route on. Severity is set by impact and evidence alone. There is no quota and no per-unit ratio: a cap would demote real P1s and would bias the counts the loop-cap decision reads.
+
+- **P0** is a plan `/en-build` must not run: a destructive change classified below `destructive`, a phase-invariant violation, a unit that cannot be implemented as written.
+- **P1** is a defect that changes what gets built or fails a phase check: a goal no unit covers, a wrong `risk:`, a signature one unit produces and another consumes under a different name, a feature unit with no scenarios, a bet the plan states nowhere. Name in each P1 what would be built wrongly or which phase check would fail.
+- **P2** is consistency: naming, wording and cross-reference issues that do not change a signature another unit consumes.
+- **P3** is advisory.
+
+Deduplicate overlapping findings into one before returning; the host batches its apply edits per unit rather than one cycle per finding, so a pass costs what its distinct defects cost.
+
 ## Where a finding points
 
 Use the unit id (e.g. "U3") when the finding is about a unit, the section name for plan-level issues, or "global".
