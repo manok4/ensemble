@@ -6,8 +6,11 @@ install this is the only path.
 
 **When the name does not resolve** — a lone skill directory, copied in on its own
 with nothing to register it — read `agents/<name>.md` from this skill and dispatch
-a general-purpose agent with that body as its prompt, task appended. Same
-contract, same output shape: it is the file the registry would have used.
+a general-purpose agent with that body as its prompt, task appended, and the
+file's `model:` value as the Agent tool's `model` parameter. Same contract, same
+output shape: it is the file the registry would have used, and its tier is part
+of that contract. A general-purpose dispatch with no `model` argument inherits
+the session model, the most expensive tier, reached by omission.
 
 **Only after the named dispatch fails.** Falling back unconditionally would hide
 a broken registry publish behind a path that happens to work. The fallback is
@@ -18,10 +21,12 @@ directory carries agent definitions nothing can reach.
 
 Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this
 table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites**
-omit any model override so the declaration, not the caller, decides, with one
-exception: a skill that reads an operator-configured alias for its agents
+omit any model override so the declaration, not the caller, decides, with two
+exceptions. A skill that reads an operator-configured alias for its agents
 (`/en-review`'s `review_host_model_alias`) passes it as the Agent tool's `model`,
-because that is the operator deciding, not the caller. Effort has no per-call
+because that is the operator deciding, not the caller. The name-does-not-resolve
+fallback above passes the file's own `model:`, because no registry will read it
+on that path and the declaration would otherwise be lost. Effort has no per-call
 parameter; an agent that needs one declares `effort:` in its frontmatter, and a
 repo overrides it with a project-level copy under `.claude/agents/` (D100).
 

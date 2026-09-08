@@ -173,6 +173,11 @@ rule "volatile CLI"                        "the reason tiers are not model IDs i
 # a model Codex cannot select. A policy that does not say which host it binds on
 # reads as universal and is wrong half the time.
 rule "only Claude Code"                    "the tier binding names the host it applies to"
+
+# The fallback reads the agent file and used to discard its `model:` line, so a
+# name that failed to resolve ran on the session model with the declaration
+# intact and unread. The fallback must carry the tier it can see.
+rule "value as the Agent tool's \`model\` parameter" "the fallback passes the file's own tier"
 rule "take the default model and select nothing" \
                                            "Codex takes its default, as stated policy"
 rule "a second mapping to maintain"        "the reason for not mapping on Codex is recorded"
@@ -213,6 +218,26 @@ done
 [ -z "$badmodel" ] \
   && pass "no agent pins a concrete model ID" \
   || fail "no agent pins a concrete model ID" "$badmodel"
+
+# Claude Code registers an agent only when its frontmatter has BOTH `name:` and
+# `description:`; a file with one and not the other is skipped, with the reason
+# written only to the debug log. EN14 (#46) dropped `description:` from seven
+# research agents and nothing here noticed: the tier check below kept passing on
+# a `model:` line no loader ever read, and every dispatch fell through to a
+# general-purpose agent on the session model. Two research dispatches on one
+# /en-plan run cost $67 that way (2026-09-06). Check the field the loader needs,
+# not the one that looks like a decision.
+unregistered=""
+for f in "$REPO_ROOT"/skills/*/agents/*.md; do
+  [ -f "$f" ] || continue
+  fm=$(awk 'NR==1 && $0!="---" {exit} NR>1 && /^---$/ {exit} NR>1 {print}' "$f")
+  printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]*[^[:space:]]' \
+    && printf '%s\n' "$fm" | grep -qE '^description:[[:space:]]*[^[:space:]]' \
+    || unregistered="$unregistered $(basename "$(dirname "$(dirname "$f")")")/$(basename "$f")"
+done
+[ -z "$unregistered" ] \
+  && pass "every agent declares name and description, the two fields the loader requires" \
+  || fail "every agent declares name and description, the two fields the loader requires" "$unregistered"
 
 # Every agent must declare SOME tier: an agent with no model line inherits the
 # orchestrator's, which is the most expensive tier reached by omission rather

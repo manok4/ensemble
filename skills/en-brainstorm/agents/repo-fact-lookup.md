@@ -1,5 +1,6 @@
 ---
 name: repo-fact-lookup
+description: "Answers specific questions about what this repository contains by quoting it: which dependency, table, endpoint, handler, or config option exists, and whether a claimed absence holds. Retrieval only; never interprets, proposes, or edits. Dispatched by en-brainstorm during Q&A for facts the user should not be asked, and at synthesis to verify the design doc's absence-claims."
 model: haiku
 ---
 
