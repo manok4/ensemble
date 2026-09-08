@@ -50,6 +50,26 @@ grep -q "kind must be" "$WORK/err" && cmp -s "$f" "$WORK/before.json" \
   && pass "an unknown kind is rejected and the file is unchanged" \
   || fail "an unknown kind is rejected and the file is unchanged" "$(cat "$WORK/err")"
 
+# --- a flag with no value must not hang (correctness: shift 2 on one arg is a no-op, so the loop spun forever) ---
+for args in "start --plan" "start --plan P1 --run-id" "event $f --kind" "event $f --kind note --json"; do
+  ( cd "$WORK/repo" && timeout 5 bash "$M" $args >/dev/null 2>"$WORK/err" ); rc=$?
+  [ "$rc" -eq 0 ] && grep -q "needs a value" "$WORK/err" && pass "'$args' exits 0 with a stderr note instead of hanging" \
+    || fail "'$args' exits 0 with a stderr note instead of hanging" "rc=$rc err=$(cat "$WORK/err")"
+done
+
+# --- two starts in the same second get distinct files; a caller-supplied id never truncates (peer 1-4) ---
+f1=$(cd "$WORK/repo" && bash "$M" start --plan EN98); f2=$(cd "$WORK/repo" && bash "$M" start --plan EN98)
+[ -n "$f1" ] && [ -n "$f2" ] && [ "$f1" != "$f2" ] && pass "two starts in the same second write distinct files" || fail "two starts in the same second write distinct files" "$f1 $f2"
+before=$(cat "$f")
+out=$(cd "$WORK/repo" && bash "$M" start --plan EN99 --run-id t1 2>"$WORK/err")
+[ -z "$out" ] && grep -q "already exists" "$WORK/err" && [ "$before" = "$(cat "$f")" ] \
+  && pass "a repeated --run-id refuses to truncate the existing run" || fail "a repeated --run-id refuses to truncate the existing run" "out=$out err=$(cat "$WORK/err")"
+# concurrent writers: twenty events from two background writers all land
+for i in $(seq 1 10); do (cd "$WORK/repo" && bash "$M" event "$f" --kind note --json "{\"n\":$i}") & done; wait
+for i in $(seq 11 20); do (cd "$WORK/repo" && bash "$M" event "$f" --kind note --json "{\"n\":$i}") & done; wait
+assert_eq "23" "$(jq '.events | length' "$f")" "twenty concurrent events all land (3 earlier + 20)"
+[ -d "$f.lock" ] && fail "no lock directory left behind" || pass "no lock directory left behind"
+
 # --- outside a git repo: disabled, never fatal ---
 mkdir -p "$WORK/nogit"
 out=$(cd "$WORK/nogit" && bash "$M" start --plan EN99 2>"$WORK/err"); rc=$?

@@ -190,7 +190,7 @@ d_dir=$(cd "$TMP" && "$LINT" --scope docs/designs 2>&1 | grep -c "cross-link.bro
 # with one stderr line, and otherwise exits 3 naming both paths.
 setup_minimum
 TMPWORK=$(mktemp -d)
-mkdir -p "$TMPWORK/ro"; chmod 500 "$TMPWORK/ro"
+mkdir -p "$TMPWORK/ro" "$TMPWORK/ro2"; chmod 500 "$TMPWORK/ro" "$TMPWORK/ro2"
 before=$(ls /tmp/ensemble-lint.* 2>/dev/null | wc -l | tr -d ' ')
 err=$(cd "$TMP" && env -u TMPDIR "$LINT" --scope docs/ 2>&1 >/dev/null)
 after=$(ls /tmp/ensemble-lint.* 2>/dev/null | wc -l | tr -d ' ')
@@ -201,14 +201,21 @@ err=$(cd "$TMP" && TMPDIR="$TMPWORK/nonexistent" "$LINT" --scope docs/ 2>&1 >/de
   && pass "TMPDIR nonexistent: completes on /tmp with one stderr line" \
   || fail "TMPDIR nonexistent: completes on /tmp with one stderr line" "rc=$rc err=$err"
 assert_eq "1" "$(printf '%s\n' "$err" | grep -c .)" "TMPDIR nonexistent: exactly one stderr line"
-err=$(cd "$TMP" && TMPDIR="$TMPWORK/ro" ENSEMBLE_LINT_TMP_FALLBACK="$TMPWORK/ro" "$LINT" --scope docs/ 2>&1 >/dev/null); rc=$?
-[ "$rc" -eq 3 ] && printf '%s' "$err" | grep -q "cannot create a temp file under $TMPWORK/ro or $TMPWORK/ro" \
-  && pass "TMPDIR and fallback read-only: exit 3 naming both paths" \
-  || fail "TMPDIR and fallback read-only: exit 3 naming both paths" "rc=$rc err=$err"
-printf '%s' "$err" | grep -q "unbound variable" \
-  && fail "no unbound-variable trace when temp creation fails" "$err" \
-  || pass "no unbound-variable trace when temp creation fails"
-chmod 700 "$TMPWORK/ro"; rm -rf "$TMPWORK"
+# Two DISTINCT read-only roots: with equal paths the fallback probe is skipped by
+# the picker's own guard and the arm under test never runs. chmod does not bind
+# root, so the case is skipped there rather than inverted.
+if [ "$(id -u)" -eq 0 ]; then
+  pass "SKIPPED — running as root; chmod cannot make a path unwritable"
+else
+  err=$(cd "$TMP" && TMPDIR="$TMPWORK/ro" ENSEMBLE_LINT_TMP_FALLBACK="$TMPWORK/ro2" "$LINT" --scope docs/ 2>&1 >/dev/null); rc=$?
+  [ "$rc" -eq 3 ] && printf '%s' "$err" | grep -q "cannot create a temp file under $TMPWORK/ro or $TMPWORK/ro2" \
+    && pass "TMPDIR and fallback read-only: exit 3 naming both paths" \
+    || fail "TMPDIR and fallback read-only: exit 3 naming both paths" "rc=$rc err=$err"
+  printf '%s' "$err" | grep -q "unbound variable" \
+    && fail "no unbound-variable trace when temp creation fails" "$err" \
+    || pass "no unbound-variable trace when temp creation fails"
+fi
+chmod 700 "$TMPWORK/ro" "$TMPWORK/ro2"; rm -rf "$TMPWORK"
 
 # --- cross-link.broken-u ---
 setup_minimum

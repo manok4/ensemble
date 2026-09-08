@@ -44,6 +44,7 @@ for f in "$PLAN" "$FOUND"; do
   has "$f" 'scripts/ensemble-peer-flags --effort "${override:-inherit}"' "$n: translates with inherit as the floor"
   has "$f" 'peer_effort_override' "$n: reads the effort override"
   has "$f" 'peer_codex_model'     "$n: reads the codex model"
+  has "$f" 'each with `--legacy review_<key>`' "$n: the legacy spelling is read for all three keys, not only effort (review found effort alone)"
   has "$f" '$PEER_MODEL`, `$PEER_EFFORT`' "$n: passes both fragments to the invoke"
   has "$f" 'scripts/ensemble-config-get' "$n: reads through the shared config reader"
 done

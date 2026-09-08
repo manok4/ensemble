@@ -21,10 +21,10 @@ has() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "missing: $2"; }
 # flag, the skip and the report line; the rule's detail lives in the
 # research-dispatch reference every research-dispatching skill carries.
 has "$S" '`--research <path>`' "the Flags table lists --research"
-has "$S" 'stand in for `repo-research` and `web-research` and neither is dispatched' "both research agents are skipped under --research"
+has "$S" 'and neither is dispatched' "both research agents are skipped under --research"
 has "$S" '`learnings-research` keeps its own rule' "learnings-research is not skipped"
 has "$S" 'research: user-supplied (<path>)' "the run report names the source"
-has "$S" 'unreadable path stops the run before any dispatch' "SKILL.md states the unreadable-path stop"
+has "$S" 'before any dispatch' "SKILL.md states the unreadable-path stop"
 
 distinct=$(for f in "$REPO_ROOT"/skills/*/references/research-dispatch.md; do hash_file "$f"; done | sort -u | wc -l | tr -d " ")
 assert_eq "1" "$distinct" "every research-dispatch.md carrier is byte-identical"

@@ -22,8 +22,6 @@ E. Dependency-vs-phase violations (a low-risk unit depending on a higher-risk on
 F. gated: correctness. gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag gated:true on an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state.
 G. Stated assumptions. Flag anything the plan bets on without saying so, especially claims that something does not already exist.
 
-Do NOT flag: prose style, heading format, markdown formatting, unit ID numbering, or wording preferences. This is a plan, not a document review.
-
 ### Severity on a plan
 
 The wire scale is `references/peer-contract.md`; this is what each level means when the artifact is a plan, so the routing below has something to route on. Severity is set by impact and evidence alone. There is no quota and no per-unit ratio: a cap would demote real P1s and would bias the counts the loop-cap decision reads.
@@ -34,6 +32,8 @@ The wire scale is `references/peer-contract.md`; this is what each level means w
 - **P3** is advisory.
 
 Deduplicate overlapping findings into one before returning; the host batches its apply edits per unit rather than one cycle per finding, so a pass costs what its distinct defects cost.
+
+Do NOT flag: prose style, heading format, markdown formatting, unit ID numbering, or wording preferences. This is a plan, not a document review.
 
 ## Where a finding points
 
@@ -83,8 +83,9 @@ diff-shaped effort ladder `/en-review` uses. It does honour the operator's keys
 
 - `peer_effort_override` pins the tier. Unset means `--effort inherit`: the peer
   runs at its CLI default and no effort fragment is sent.
-- `peer_model_alias` is the Claude peer's alias; `peer_codex_model` is a Codex
-  peer's `-m`. Unset inherits the CLI's model.
+- `peer_model_alias` is the Claude peer's alias; unset means the translator's
+  documented default alias (`sonnet`), not the CLI's own default. `peer_codex_model`
+  is a Codex peer's `-m`; unset inherits `~/.codex/config.toml`.
 
 `scripts/ensemble-peer-flags` translates the three into `$PEER_MODEL` and
 `$PEER_EFFORT`; `scripts/ensemble-peer-invoke` degrades a rejected fragment

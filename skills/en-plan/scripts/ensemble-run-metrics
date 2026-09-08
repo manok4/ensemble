@@ -32,8 +32,8 @@ if [ "$cmd" = "start" ]; then
   plan="" run_id=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --plan)   plan="${2:-}"; shift 2 ;;
-      --run-id) run_id="${2:-}"; shift 2 ;;
+      --plan)   [ $# -ge 2 ] || { note "--plan needs a value"; exit 0; };   plan="$2"; shift 2 ;;
+      --run-id) [ $# -ge 2 ] || { note "--run-id needs a value"; exit 0; }; run_id="$2"; shift 2 ;;
       *) note "unknown flag for start: $1"; exit 0 ;;
     esac
   done
@@ -45,8 +45,13 @@ if [ "$cmd" = "start" ]; then
     || { note "not inside a git repository; metrics disabled"; exit 0; }
   dir="$git_dir/ensemble/runs"
   mkdir -p "$dir" 2>/dev/null || { note "cannot create $dir; metrics disabled"; exit 0; }
-  [ -n "$run_id" ] || run_id=$(date -u +%Y%m%dT%H%M%SZ)
+  # Exclusive creation: two runs started in the same second must not share a
+  # file, and a caller-supplied --run-id must never truncate an existing run.
+  [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   file="$dir/$plan-$run_id.json"
+  if ! ( set -C; : > "$file" ) 2>/dev/null; then
+    [ -n "$run_id" ] && note "metrics file already exists: $file; metrics disabled for this run"; exit 0
+  fi
   if jq -n --arg p "$plan" --arg r "$run_id" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{plan_id:$p, run_id:$r, started:$t, finished:null, events:[]}' > "$file" 2>/dev/null; then
     printf '%s\n' "$file"
@@ -60,10 +65,18 @@ file="${1:-}"; [ $# -gt 0 ] && shift
 [ -n "$file" ] || exit 0                      # metrics were disabled at start: silent no-op
 [ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
 
-# Append via a temp file in the same directory, so a failed jq never truncates.
+# Append via a temp file in the same directory, so a failed jq never truncates,
+# under a per-file lock (mkdir is atomic on every filesystem this runs on; flock
+# is not on macOS) so two concurrent writers cannot lose each other's event.
 _write() {  # <jq filter> [jq args...]
-  local tmp; tmp=$(mktemp "$(dirname "$file")/.metrics.XXXXXX" 2>/dev/null) || { note "cannot write beside $file"; return 0; }
+  local lock="$file.lock" i=0
+  until mkdir "$lock" 2>/dev/null; do
+    i=$((i + 1)); [ "$i" -lt 50 ] || { note "lock busy for 5s on $file; event dropped"; return 0; }
+    sleep 0.1
+  done
+  local tmp; tmp=$(mktemp "$(dirname "$file")/.metrics.XXXXXX" 2>/dev/null) || { rmdir "$lock"; note "cannot write beside $file"; return 0; }
   if jq "$@" "$file" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv -f "$tmp" "$file"; else rm -f "$tmp"; note "update failed; file unchanged"; fi
+  rmdir "$lock" 2>/dev/null || true
 }
 
 case "$cmd" in
@@ -71,8 +84,8 @@ case "$cmd" in
     kind="" payload=""
     while [ $# -gt 0 ]; do
       case "$1" in
-        --kind) kind="${2:-}"; shift 2 ;;
-        --json) payload="${2:-}"; shift 2 ;;
+        --kind) [ $# -ge 2 ] || { note "--kind needs a value"; exit 0; }; kind="$2"; shift 2 ;;
+        --json) [ $# -ge 2 ] || { note "--json needs a value"; exit 0; }; payload="$2"; shift 2 ;;
         *) note "unknown flag for event: $1"; exit 0 ;;
       esac
     done

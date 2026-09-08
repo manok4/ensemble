@@ -432,7 +432,7 @@ check_frontmatter_enums_and_dates() {
 check_fr_id_collisions() {
   [ "$SCOPE" = "docs/" ] || [ "$SCOPE" = "docs" ] || return 0
   local seen_fr_file; seen_fr_file=$(lint_mktemp) || exit 3
-  trap "rm -f $seen_fr_file" RETURN
+  trap 'rm -f "$seen_fr_file"' RETURN   # single-quoted: the path is env-derived now, and a double-quoted trap re-parses it as code
   for plan in docs/plans/active/*.md docs/plans/completed/*.md; do
     [ -f "$plan" ] || continue
     local fr

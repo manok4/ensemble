@@ -59,6 +59,11 @@ assert_eq "|fable||frontmatter" "$(res odd-agent claude-code)" "fable: no tier, 
 J '{"agent_model_override_odd-agent_claude":"opus"}'
 assert_eq "|opus||override" "$(res odd-agent claude-code)" "fable: a per-agent override still applies"
 
+# --- a frontmatter alias outside the Agent tool's set never reaches a dispatch (security) ---
+printf -- '---\nname: hostile\ndescription: "x"\nmodel: sonnet; touch /tmp/PWNED\n---\n# body\n' > "$W/agents/hostile.md"
+clear_cfg
+assert_eq "|||inherit" "$(res hostile claude-code)" "a frontmatter alias outside CLAUDE_ALIASES resolves to inherit, not to the dispatch"
+
 # --- --global-only skips the repo layer ---
 clear_cfg
 Y 'agent_model_claude_evidence: opus'

@@ -6,16 +6,22 @@ It records only what the skill can observe. Compaction count and dollar cost are
 
 ## Call points
 
+The rows below use a shorthand; bind it once in the same shell, anchored on the skill directory (`references/script-invocation.md`), because a bare `event` resolves against the user's project and exits 127:
+
+```bash
+run_metrics() { bash "$SKILL_DIR/scripts/ensemble-run-metrics" "$@"; }
+```
+
 Every call is fire-and-forget: outside a git repo, without `jq`, or on a bad payload the helper prints one stderr line and exits 0, and a run is never blocked by its own bookkeeping.
 
 | When | Call |
 |---|---|
-| Right after the plan id is known (resume or create) | `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)` |
-| Each research dispatch, once it returns | `event "$METRICS" --kind dispatch --json '{"agent":"repo-research","host":"<HOST>","model":"<AGENT_MODEL or null>","model_source":"<AGENT_MODEL_SOURCE or null>","started":<epoch>,"ended":<epoch>}'` |
-| Each peer pass | `event "$METRICS" --kind peer --json '{"iteration":<N>,"peer_decision":<the object the invoke printed>,"tokens":{"input":<n or null>,"output":<n or null>}}'`. Codex `--json` reports `token_count`; a Claude peer reports `usage`; absent counts are `null`, never guessed. |
-| Each lint run | `event "$METRICS" --kind lint --json '{"scope":"<scope>","seconds":<n>}'` |
-| After parsing a pass's findings | `event "$METRICS" --kind findings --json '{"iteration":<N>,"P0":<n>,"P1":<n>,"P2":<n>,"P3":<n>}'` |
-| Promotion or any terminal stop | `finish "$METRICS"`, then `summary "$METRICS"` for the report line |
+| Right after the plan id is known (resume or create) | `METRICS=$(run_metrics start --plan <plan_id>)` |
+| Each research dispatch, once it returns | `run_metrics event "$METRICS" --kind dispatch --json '{"agent":"repo-research","host":"<HOST>","model":"<AGENT_MODEL or null>","model_source":"<AGENT_MODEL_SOURCE or null>","started":<epoch>,"ended":<epoch>}'` |
+| Each peer pass | `run_metrics event "$METRICS" --kind peer --json '{"iteration":<N>,"peer_decision":<the object the invoke printed>,"tokens":{"input":<n or null>,"output":<n or null>}}'`. Codex `--json` reports `token_count`; a Claude peer reports `usage`; absent counts are `null`, never guessed. |
+| Each lint run | `run_metrics event "$METRICS" --kind lint --json '{"scope":"<scope>","seconds":<n>}'` |
+| After parsing a pass's findings | `run_metrics event "$METRICS" --kind findings --json '{"iteration":<N>,"P0":<n>,"P1":<n>,"P2":<n>,"P3":<n>}'` |
+| Promotion or any terminal stop | `run_metrics finish "$METRICS"`, then `run_metrics summary "$METRICS"` for the report line |
 
 `<AGENT_MODEL>` and `<AGENT_MODEL_SOURCE>` come from the agent-model resolver (`ensemble-agent-model`, EN16 U3) when a dispatch resolved through it; a dispatch that passed no model records `null` and the source `inherit`.
 

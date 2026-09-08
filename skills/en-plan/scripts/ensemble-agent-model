@@ -129,7 +129,13 @@ if [ "$HOST_KEY" = claude ]; then
   else
     [ -n "$TIER" ] && v=$(cfg "agent_model_claude_${TIER}" --allowed "$CLAUDE_ALIASES") || v=""
     if [ -n "$v" ]; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="tier"
-    elif [ -n "$FRONT_ALIAS" ]; then AGENT_MODEL="$FRONT_ALIAS"; AGENT_MODEL_SOURCE="frontmatter"
+    else
+      # The frontmatter rung is validated like the others: an alias outside the
+      # set the Agent tool accepts resolves to inherit rather than reaching a
+      # dispatch (the eval-able surface stays narrow by construction).
+      case ",$CLAUDE_ALIASES," in
+        *",$FRONT_ALIAS,"*) AGENT_MODEL="$FRONT_ALIAS"; AGENT_MODEL_SOURCE="frontmatter" ;;
+      esac
     fi
   fi
 else

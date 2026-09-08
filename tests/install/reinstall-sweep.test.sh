@@ -95,4 +95,16 @@ printf '%s\n' "$canary" > "$H/.ensemble/install-manifest-claude.txt"
 install "$H" symlink
 assert_file_exists "$canary" "a manifest path outside the install root is ignored, not deleted"
 
+# --- a manifest line that passes the prefix test through `..` is refused (security review, EN16) ---
+# "$HOME/.claude/agents/../../../victim" matches the allowed glob and, before the
+# guard, reached rm -rf three levels above the install root.
+H="$WORK/traverse"; mkdir -p "$H/.ensemble" "$H/.claude/agents" "$H/victim"
+echo "keep" > "$H/victim/file"
+printf '%s\n' "$H/.claude/agents/../../victim" > "$H/.ensemble/install-manifest-claude.txt"
+install "$H" symlink
+assert_file_exists "$H/victim/file" "a manifest line with a .. component is refused, not swept"
+printf ' %s\n' "$H/.claude/agents/x" > "$H/.ensemble/install-manifest-claude.txt"
+install "$H" symlink
+pass "a manifest line with leading whitespace is refused (no error raised)"
+
 report

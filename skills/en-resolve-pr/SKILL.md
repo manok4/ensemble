@@ -6,7 +6,7 @@ description: "Address review comments on the current PR: fetch threads and PR co
 
 # `/en-resolve-pr`
 
-> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. A bare `scripts/<name>` resolves against the user's project, not this directory, and exits 127.
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
 
 Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `/en-review` (pre-PR self-review) and `/en-ship` (commit + open PR).
 

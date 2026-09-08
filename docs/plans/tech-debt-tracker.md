@@ -402,3 +402,17 @@ built reaches Claude Code only.
 - **Why it matters:** an operator who sets `agent_model_codex_*` sees the value in the rendered TOML and reasonably believes it binds; on a Codex host it does not, and the cost control EN16 was built for is absent there.
 - **Suggested fix:** when Codex's spawn tool gains an agent or role selector, dispatch by the TOML's `name` from the Codex half of `agent-dispatch.md` and re-run the U6 reproduction; until then, have the Codex session pass the resolver's `AGENT_MODEL` in the spawned agent's instructions as a request, and keep the TOML as the operator default. Its own plan, with the reproduction as the first unit.
 - **Logged:** 2026-09-08
+
+### TD12. Remove the one-release `review_peer_*` legacy read and the `--legacy` call sites
+
+Filed 2026-09-08 from the EN16 branch review (migrations dimension): the policy promises the old spellings are read "for one release and then dropped", and nothing enforced either end.
+
+`ensemble-config-get --legacy <old-key>` (all eight copies) reads `review_peer_model_alias`, `review_peer_codex_model` and `review_peer_effort_override` as fallbacks. The call sites carrying `--legacy` are `skills/en-review/SKILL.md` step 2b, `skills/en-plan/SKILL.md` step 16 and `skills/en-foundation/SKILL.md` step 11 (`each with --legacy review_<key>`). `setup` now logs each legacy key it finds after the config merge, so operators are nudged on the path they already run.
+
+- **Source:** en-review --cross on EN16 (migrations persona), applied as a filed item
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** the three call sites above; `skills/en-review/references/peer-model-policy.md` (b), "Deprecated spellings"
+- **Why it matters:** an unremoved fallback makes the second spelling permanent; a removal nobody was reminded of silently drops an operator's setting, and the reader is fail-soft so the loss surfaces as a peer running on a different model.
+- **Suggested fix:** in the release after EN16 ships, delete the three `--legacy` clauses and the policy's deprecation paragraph, keep `--legacy` in the reader (it is generic), and add a lint assertion that no `review_peer_` spelling remains in skills/ or setup.
+- **Logged:** 2026-09-08

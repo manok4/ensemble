@@ -161,19 +161,39 @@ render_codex_agent() {  # <agent.md> <dst.toml> -> 0 rendered, 1 refused (reason
   case "$body" in
     *"'''"*) echo "  ✗ $(basename "$src"): body contains ''' which a TOML literal string cannot hold; not rendered" >&2; return 1 ;;
   esac
-  local AGENT_MODEL="" AGENT_EFFORT="" AGENT_TIER="" AGENT_MODEL_SOURCE=""
-  eval "$("$SOURCE_DIR/skills/en-review/scripts/ensemble-agent-model" --agent "$name" --host codex --agent-file "$src" --global-only --home "$HOME" 2>/dev/null)" || true
+  if printf '%s' "$body" | tr -d '\t\n' | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    echo "  ✗ $(basename "$src"): control character in the body, which a TOML literal string cannot hold; not rendered" >&2; return 1
+  fi
+  # Any carrier's copy would do; en-review is pinned because the parity test
+  # guarantees every skill that carries agents/ carries this script byte-identical.
+  local resolver="$SOURCE_DIR/skills/en-review/scripts/ensemble-agent-model" source_note="source ~/.ensemble/config.json"
+  local AGENT_MODEL="" AGENT_EFFORT="" AGENT_TIER="" AGENT_MODEL_SOURCE="" resolved=""
+  if [ -x "$resolver" ]; then
+    if resolved="$("$resolver" --agent "$name" --host codex --agent-file "$src" --global-only --home "$HOME" 2>&1)"; then
+      eval "$resolved"
+    else
+      echo "  ⚠ $(basename "$src"): resolver failed ($(printf '%s' "$resolved" | head -1)); rendering without model" >&2
+      source_note="source: inherit (resolver failed)"
+    fi
+  else
+    echo "  ⚠ $resolver not found; Codex agents render without model or effort" >&2
+    source_note="source: inherit (resolver unavailable)"
+  fi
   model="$AGENT_MODEL"; effort="$AGENT_EFFORT"
-  tmp="$(mktemp "$(dirname "$dst")/.$name.toml.XXXXXX")"
-  {
+  tmp="$(mktemp "$(dirname "$dst")/.$name.toml.XXXXXX" 2>/dev/null)" \
+    || { echo "  ✗ $(basename "$src"): cannot create a temp file in $(dirname "$dst"); not rendered" >&2; return 1; }
+  if ! {
     printf '# Rendered by Ensemble setup from skills/*/agents/%s.md; edit the source, then re-run ./setup.\n' "$name"
     printf 'name = "%s"\n' "$(toml_basic "$name")"
     printf 'description = "%s"\n' "$(toml_basic "$desc")"
     if [ -n "$model" ];  then printf 'model = "%s"\n' "$(toml_basic "$model")"; fi
     if [ -n "$effort" ]; then printf 'model_reasoning_effort = "%s"\n' "$(toml_basic "$effort")"; fi
     printf "developer_instructions = '''\n%s\n'''\n" "$body"
-  } > "$tmp" && mv -f "$tmp" "$dst"
-  log "  rendered agents/$name.toml (model: ${model:-inherit}, effort: ${effort:-inherit}; source ~/.ensemble/config.json)"
+  } > "$tmp"; then
+    rm -f "$tmp"; echo "  ✗ $(basename "$src"): write to $tmp failed; not rendered" >&2; return 1
+  fi
+  mv -f "$tmp" "$dst" || { rm -f "$tmp"; echo "  ✗ $(basename "$src"): cannot move into place at $dst; not rendered" >&2; return 1; }
+  log "  rendered agents/$name.toml (model: ${model:-inherit}, effort: ${effort:-inherit}; $source_note)"
   return 0
 }
 
@@ -203,11 +223,26 @@ install_into() {
   # a --copy install therefore left every copied directory in place, the
   # "already exists, not ours" guard skipped them, and the user got a silent
   # no-op that looked like a successful reinstall.
+  if [ ! -f "$manifest_file" ] && [ "$target_slug" = "codex" ]; then
+    # A pre-manifest install linked markdown here, which Codex never read (EN16 U5).
+    # Without a manifest nothing proves Ensemble wrote them, so they are named, not removed.
+    for stale in "$target_root"/agents/*.md; do
+      [ -L "$stale" ] || continue
+      case "$(readlink "$stale")" in "$SOURCE_DIR"/skills/*/agents/*) log "  ⚠ leftover markdown agent from a pre-TOML install (Codex ignores it): $stale" ;; esac
+    done
+  fi
   if [ -f "$manifest_file" ]; then
     while IFS= read -r prior_path; do
       [ -n "$prior_path" ] || continue
       # Refuse to walk outside the directories this installer owns, so a
       # corrupted or hand-edited manifest cannot turn into an arbitrary rm -rf.
+      # A prefix test alone does not stop `..`: "$target_root/agents/../../x"
+      # matches the allowed glob and reaches rm -rf three levels up. Reject any
+      # dot-dot component and any leading whitespace before the prefix test.
+      case "/$prior_path/" in
+        */../*|" "*|"	"*) log "  ⚠ manifest path contains .. or leading whitespace; ignoring: $prior_path"
+           continue ;;
+      esac
       case "$prior_path" in
         "$target_root"/skills/*|"$target_root"/agents/*) ;;
         *) log "  ⚠ manifest lists a path outside $target_root/{skills,agents}; ignoring: $prior_path"
@@ -362,7 +397,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
   log "Created $CONFIG_FILE with defaults"
 elif ! command -v jq >/dev/null 2>&1; then
   log "  ⚠ jq not found; leaving $CONFIG_FILE unchanged."
-  log "    Add these keys by hand if absent: peer_model_alias, peer_codex_model, peer_effort_override, review_host_model_alias"
+  keys_list=$(config_defaults | grep -o '"[a-z_]*":' | tr -d '":' | paste -sd ',' - | sed 's/,/, /g')
+  log "    Add these keys by hand if absent: $keys_list"
 else
   # Merge defaults into the existing file: defaults first, existing second, so
   # `.[0] * .[1]` lets every user value (and any unknown user-added key) win.
@@ -383,6 +419,14 @@ else
       if mv "$cfg_tmp" "$CONFIG_FILE" 2>/dev/null; then
         cfg_tmp=""
         log "  Config: $CONFIG_FILE has all current keys"
+        # EN16 U1: the review_peer_* spellings are read for one release (D103,
+        # TD12). Say so here, on the path every operator already runs, rather
+        # than in a comment in a file they have no reason to reopen.
+        legacy_keys="$(jq -r 'keys[] | select(startswith("review_peer_"))' "$CONFIG_FILE" 2>/dev/null || true)"
+        for legacy in $legacy_keys; do
+          new_name="${legacy#review_}"
+          log "  ⚠ $legacy is a deprecated spelling; rename it to $new_name. The old name stops being read next release."
+        done
       else
         log "  ⚠ Could not replace $CONFIG_FILE; left unchanged."
       fi

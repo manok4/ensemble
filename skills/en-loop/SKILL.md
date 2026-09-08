@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # `/en-loop`
 
-> **Running a bundled script.** Anchor every call to this skill's own directory:
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
 > `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`.
 > The trailing `;` is load-bearing. en-loop carries one script, `scripts/ensemble-detect-host`.
 

@@ -87,6 +87,30 @@ grep -q "bad-agent" "$WORK/out" && pass "the refusal names the agent" || fail "t
 [ -f "$H3/.codex/agents/repo-research.toml" ] && pass "other agents are still rendered" || fail "other agents are still rendered"
 rm -f "$BAD"
 
+# --- 3b. a body with a control character is refused the same way ---
+CC="$SRC/skills/en-plan/agents/cc-agent.md"
+printf -- '---\nname: cc-agent\ndescription: "x"\nmodel: sonnet\n---\n# cc\n\nA form feed \f here.\n' > "$CC"
+H3b="$WORK/h3b"; run_setup "$H3b" --host codex; rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$H3b/.codex/agents/cc-agent.toml" ] && grep -q "cc-agent" "$WORK/out" \
+  && pass "a body with a control character is refused by name and no TOML is written" \
+  || fail "a body with a control character is refused by name and no TOML is written" "rc=$rc"
+rm -f "$CC"
+
+# --- 3c. a write failure is reported, not logged as rendered (peer 1-2, correctness, migrations) ---
+if [ "$(id -u)" -eq 0 ]; then
+  pass "SKIPPED — running as root; chmod cannot make a path unwritable"
+else
+  H3c="$WORK/h3c"; mkdir -p "$H3c/.codex/agents" "$H3c/.claude"; chmod 500 "$H3c/.codex/agents"
+  ( cd "$WORK" && HOME="$H3c" bash "$SRC/setup" --host codex --copy ) >"$WORK/out3c" 2>&1; rc=$?
+  chmod 700 "$H3c/.codex/agents"
+  [ "$rc" -ne 0 ] && pass "an unwritable agents dir makes setup exit non-zero (rc=$rc)" || fail "an unwritable agents dir makes setup exit non-zero" "rc=$rc"
+  grep -q "rendered agents/" "$WORK/out3c" && fail "nothing is logged as rendered when the write failed" "$(grep 'rendered agents/' "$WORK/out3c" | head -1)" || pass "nothing is logged as rendered when the write failed"
+  grep -q "not rendered" "$WORK/out3c" && pass "the failure names the agent and the reason" || fail "the failure names the agent and the reason" "$(tail -3 "$WORK/out3c")"
+  [ -f "$H3c/.ensemble/install-manifest-codex.txt" ] && grep -q "\.toml" "$H3c/.ensemble/install-manifest-codex.txt" \
+    && fail "no TOML path is recorded in the manifest for an agent that was not written" || pass "no TOML path is recorded in the manifest for an agent that was not written"
+  assert_eq "0" "$(ls -a "$H3c/.codex/agents" 2>/dev/null | grep -c '^\..*\.toml\.')" "no temp file is left behind after a failed write"
+fi
+
 # --- 4. scalar escaping round-trips a quote and a backslash ---
 ESC="$SRC/skills/en-plan/agents/esc-agent.md"
 printf -- '---\nname: esc-agent\ndescription: "Says \\"hi\\" and C:\\\\path"\nmodel: sonnet\n---\n# esc\n\nBody line.\n' > "$ESC"
