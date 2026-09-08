@@ -74,9 +74,18 @@ Re-invoke only when the pass returned at least one P0 or P1 — a second full ro
 to confirm a typo fix is not worth its latency. On cap-hit with findings outstanding, ask the user to accept
 or stay in draft; never flip to `open` on the skill's own judgement.
 
-## Effort
+## Effort and model
 
-A plan review is a reading task on a bounded document, so it does not need the
-diff-shaped effort ladder `/en-review` uses. It runs at the peer's default tier.
-en-plan carries no effort resolver: that chain (`--effort`, the config keys, the
-ladder) is `/en-review`'s, and `peer_effort_override` does not apply here.
+A plan review is a reading task on a bounded document, so it does not run the
+diff-shaped effort ladder `/en-review` uses. It does honour the operator's keys
+(EN16 U2, D103), read through `scripts/ensemble-config-get` (repo file, then
+`~/.ensemble/config.json`; the `review_peer_*` spellings resolve for one release):
+
+- `peer_effort_override` pins the tier. Unset means `--effort inherit`: the peer
+  runs at its CLI default and no effort fragment is sent.
+- `peer_model_alias` is the Claude peer's alias; `peer_codex_model` is a Codex
+  peer's `-m`. Unset inherits the CLI's model.
+
+`scripts/ensemble-peer-flags` translates the three into `$PEER_MODEL` and
+`$PEER_EFFORT`; `scripts/ensemble-peer-invoke` degrades a rejected fragment
+rather than failing the pass, and the `peer_decision` records what ran.

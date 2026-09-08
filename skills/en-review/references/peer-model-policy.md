@@ -24,7 +24,7 @@ An **ordered first-match cascade**. `high` is evaluated first, so a change that 
 
 ## (b) Resolution order, and its single owner
 
-**`/en-review` is the only resolver.** It walks the chain below, produces **one final tier** and **one final model alias**, and passes them to `$SKILL_DIR/scripts/ensemble-peer-flags`.
+**Every skill that invokes a peer resolves through `$SKILL_DIR/scripts/ensemble-peer-flags`; only `/en-review` runs the ladder.** `/en-review` walks the chain below and produces **one final tier** and **one final model alias**. `/en-plan` and `/en-foundation` review a document, not a diff, so they read layers 2 and 3 only and pass `--effort inherit` when no override is set; their peer briefs state it (EN16 U2, D103).
 
 | Order | Layer | How |
 |---|---|---|

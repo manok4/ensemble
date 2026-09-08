@@ -80,7 +80,7 @@ for spec in "1:--effort" "2:config.local.yaml" "3:config.json" "4:ladder"; do
 done
 [ "$order_ok" -eq 1 ] && pass "policy lists the four resolution layers in order"
 
-has "$POLICY" "only resolver" "policy names /en-review as the sole resolver"
+has "$POLICY" "only \`/en-review\` runs the ladder" "policy names /en-review as the sole ladder owner (every peer-invoking skill translates)"
 has "$POLICY" "never reads config" "policy states peer-flags reads no config"
 has "$POLICY" "ensemble-cli-smoke" "fail-soft reuses the EN10 classifier"
 has "$POLICY" "peer_effort_override" "flat effort key spelling"
