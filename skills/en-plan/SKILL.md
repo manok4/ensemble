@@ -64,6 +64,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Deep: 10+ units, structural change, multi-week work.
    Depth is asked or inferred; default Standard.
 6. **Phase 1 research (parallel).** Per `references/research-dispatch.md`:
+
+   **`--research <path>`.** Per the *User-supplied research* rule there: an unreadable path stops the run before any dispatch; otherwise its first 200 lines stand in for `repo-research` and `web-research` and neither is dispatched. `learnings-research` keeps its own rule. Report `research: user-supplied (<path>)`.
    - `repo-research` — patterns, conventions, file paths, prior art (Standard/Deep always).
    - `docs/learnings/index.md` — read it inline first; it is an index and rarely more than a screen. Dispatch `learnings-research` only when the index lists more than ~5 candidate entries touching the topic, so the drill-down is worth a round trip; it then runs in the same parallel batch as `repo-research`.
    - `web-research` — only if a 3rd-party library not used elsewhere AND the library has known footguns AND the user hasn't said "skip web research". Recognising the library's name is not knowing its current state: a name from a fast-moving area is a reason to fire, not to skip.
@@ -238,6 +240,7 @@ The cap is 1 at every depth because a single-shot peer re-reviewing a whole arti
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
 | `--max-iterations <N>` | Raise the re-loop cap above 1. |
 | `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint for non-interactive runs (CI / automation). No effect when the current branch isn't the detected default branch. |
+| `--research <path>` | Prior research replaces the two research dispatches (Phase 1 research). |
 | `--resume <plan-path>` | See the resume-or-create step. |
 | `--from-legacy <path>` | See the resume-or-create step. |
 
@@ -279,6 +282,7 @@ Units:
   - U4: Migration for refresh_token_rotated_at column (characterization-first)
   - U5: Update tests covering AE2, AE3 (test-first)
 
+Research: repo-research, learnings-research
 Peer review: cross-agent (codex). Verdict: revise. Applied 2 of 3 findings (1 deferred to TD8).
 
 Default-branch checkpoint: auto_branched (created EN07-auth-rotation from main)

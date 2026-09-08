@@ -17,15 +17,17 @@ How `en-brainstorm`, `en-plan`, and `en-foundation` decide whether to spawn `rep
 | `en-brainstorm` | Lightweight | never | never | skip unless asked |
 | `en-brainstorm` | Standard | never | never | round-1 item; default skip |
 | `en-brainstorm` | Deep | never | never | round-1 item; default skip |
-| `en-plan` | Lightweight | optional | index inline | optional |
-| `en-plan` | Standard | **always** | index inline; agent when ~5+ candidates | conditional |
-| `en-plan` | Deep | **always** | index inline; agent when ~5+ candidates | conditional |
+| `en-plan` | Lightweight | optional¹ | index inline | optional¹ |
+| `en-plan` | Standard | **always**¹ | index inline; agent when ~5+ candidates | conditional¹ |
+| `en-plan` | Deep | **always**¹ | index inline; agent when ~5+ candidates | conditional¹ |
 | `en-foundation` | (any) | **always** for retrofits, optional for greenfield | never | optional |
 | `en-learn` | (any) | never | on a genuinely broad overlap search only | never |
 | `en-debug` | (any) | fallback only, when span-to-source cannot anchor | never | never |
 | `en-setup` | (any) | never | never | never |
 | `en-sweep` | (any) | **always**, for architecture drift | never | never |
 | `en-review` | (any) | never | **always** | never |
+
+¹ **User-supplied research.** `/en-plan --research <path>` replaces the `repo-research` and `web-research` columns for that run. Before any dispatch: if the path is missing or unreadable, stop with a one-line error naming it, before any agent and before round 1; a silent fall-through to paid research is the failure the flag exists to prevent. Otherwise read the file once, bounded to its first 200 lines (say so in the report when it is longer; nothing past line 200 enters context), treat it as the `repo-research` and `web-research` result, and dispatch neither. `learnings-research` is unaffected: it is cheap and reads a store the user's research did not. The run report says `research: user-supplied (<path>)`, and the plan's `## Decisions, assumptions & risks` gets an `Assumption:` bullet naming the file and date and stating the findings were not re-verified.
 
 **`en-sweep` dispatches only `repo-research`**, for its architecture-drift check. Its wiki-graph check runs `/en-learn --lint`, and a lint wants the whole graph rather than the handful of entries a scout returns, so it never dispatches `learnings-research`.
 
