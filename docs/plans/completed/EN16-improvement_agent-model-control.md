@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN16
 title: Per-host agent model control and en-plan cost fixes
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-09-07
-shipped:
+shipped: 2026-09-08
 deepened:
 covers_requirements: []
 requirements_pending: true
