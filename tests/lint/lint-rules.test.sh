@@ -150,6 +150,37 @@ requirements_pending: false
 Cites R99 which doesn't exist in foundation.md.
 EOF
 assert_rule_fires "cross-link.broken-r" "missing R-ID"
+# A single-file scope must fire the same cross-link finding as the directory
+# scope. /en-plan's finalize loop lints the plan file alone between passes
+# (EN16 U10); if someone later gates check_cross_links on `docs/` the way the
+# collision and index checks are, that loop would report clean on a broken
+# citation and the defect would surface only at promotion.
+single=$(cd "$TMP" && "$LINT" --scope docs/plans/active/FR50-test.md 2>&1)
+if printf '%s' "$single" | grep -qF "cross-link.broken-r"; then
+  pass "single-file scope still fires cross-link.broken-r"
+else
+  fail "single-file scope must still fire cross-link.broken-r" "$(printf '%s' "$single" | head -3)"
+fi
+dir_count=$(cd "$TMP" && "$LINT" --scope docs/plans/active 2>&1 | grep -c "cross-link.broken-r")
+single_count=$(printf '%s' "$single" | grep -c "cross-link.broken-r")
+assert_eq "$dir_count" "$single_count" "directory and single-file scopes agree on the cross-link finding"
+# The same holds for a file outside docs/plans/: a design doc scoped alone runs
+# its per-file rules and reports the same as the directory run.
+mkdir -p "$TMP/docs/designs"
+cat > "$TMP/docs/designs/2026-01-01-x.md" <<EOF
+---
+type: design
+created: 2026-01-01
+topic: x
+status: open
+related_plan:
+---
+Cites R98 which does not exist.
+EOF
+d_single=$(cd "$TMP" && "$LINT" --scope docs/designs/2026-01-01-x.md 2>&1 | grep -c "cross-link.broken-r")
+d_dir=$(cd "$TMP" && "$LINT" --scope docs/designs 2>&1 | grep -c "cross-link.broken-r")
+[ "$d_single" -ge 1 ] && assert_eq "$d_dir" "$d_single" "a design doc scoped alone reports the same cross-link findings as its directory" \
+  || fail "a design doc scoped alone must run its per-file rules" "single=$d_single dir=$d_dir"
 
 # --- cross-link.broken-u ---
 setup_minimum
