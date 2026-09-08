@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# ensemble-agent-model — which model and effort does agent X run on host Y for
+# this operator (EN16 U3, D103).
+#
+# Every bundled agent declares its tier through the `model:` alias in its
+# frontmatter: haiku is retrieval, sonnet is evidence, opus is ceiling. This
+# maps the alias to the tier and consults flat operator keys, first hit wins:
+#
+#   1. agent_model_override_<agent>_<host>   (and agent_effort_override_<agent>_codex)
+#   2. agent_model_<host>_<tier>             (and agent_effort_codex_<tier>)
+#   3. the agent file's own `model:`         (Claude only; it is a Claude alias)
+#   4. inherit                               (empty: the host decides)
+#
+# <host> is `claude` or `codex` in the key and `claude-code` or `codex` on the
+# command line. Keys are read through the sibling ensemble-config-get, so the
+# repo-then-global layering lives in one place. --global-only skips the repo
+# layer, for callers that produce a machine-wide artifact (setup rendering
+# ~/.codex/agents/*.toml) and must not pick up whichever checkout they ran from.
+#
+# Values are validated PER HOST before they are selected, and an invalid value
+# falls through to the next source rather than reaching a dispatch:
+#   Claude  model: one of the aliases the Agent tool accepts (CLAUDE_ALIASES)
+#   Codex   model: ^[A-Za-z0-9._-]{1,64}$ (an operator ID; Ensemble names none)
+#   Codex   effort: low | medium | high | xhigh
+# Claude has no per-call effort, so AGENT_EFFORT is always empty there.
+#
+# Usage:
+#   ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path>
+#                        [--repo-root <dir>] [--home <dir>] [--global-only]
+#
+# Emits eval-able lines (same contract as ensemble-detect-host):
+#   AGENT_TIER='retrieval|evidence|ceiling|'
+#   AGENT_MODEL='<alias|id|>'
+#   AGENT_EFFORT='<low|medium|high|xhigh|>'
+#   AGENT_MODEL_SOURCE='override|tier|frontmatter|inherit'
+#
+# Exit 0 on every config problem (fail-soft, like the reader). Exit 2 only for
+# a missing or unreadable --agent-file, an unknown --host, or missing flags.
+
+set -u
+
+# The aliases the Claude Code Agent tool accepts as `model`, checked 2026-09-07.
+# Aliases, never model IDs: the host owns this set and resolves each to the
+# current model of its tier. Add here when the host adds one.
+CLAUDE_ALIASES="haiku,sonnet,opus,fable"
+
+AGENT=""; HOST=""; AGENT_FILE=""; REPO_ROOT="."; HOME_DIR="${HOME:-}"; GLOBAL_ONLY=false
+
+usage() {
+  echo "usage: ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path> [--repo-root <dir>] [--home <dir>] [--global-only]" >&2
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent)       [ $# -ge 2 ] || { usage; exit 2; }; AGENT="$2"; shift 2 ;;
+    --host)        [ $# -ge 2 ] || { usage; exit 2; }; HOST="$2"; shift 2 ;;
+    --agent-file)  [ $# -ge 2 ] || { usage; exit 2; }; AGENT_FILE="$2"; shift 2 ;;
+    --repo-root)   [ $# -ge 2 ] || { usage; exit 2; }; REPO_ROOT="$2"; shift 2 ;;
+    --home)        [ $# -ge 2 ] || { usage; exit 2; }; HOME_DIR="$2"; shift 2 ;;
+    --global-only) GLOBAL_ONLY=true; shift ;;
+    -h|--help)     usage; exit 0 ;;
+    *)             usage; exit 2 ;;
+  esac
+done
+
+[ -n "$AGENT" ] && [ -n "$HOST" ] && [ -n "$AGENT_FILE" ] || { usage; exit 2; }
+case "$HOST" in
+  claude-code) HOST_KEY="claude" ;;
+  codex)       HOST_KEY="codex" ;;
+  *) echo "ensemble-agent-model: unknown --host '$HOST' (expected claude-code|codex)" >&2; exit 2 ;;
+esac
+[ -r "$AGENT_FILE" ] || { echo "ensemble-agent-model: cannot read --agent-file $AGENT_FILE" >&2; exit 2; }
+
+# ${BASH_SOURCE[0]:-$0}: BASH_SOURCE is bash-only; zsh sets $0. Same contract
+# as the other helpers in this directory.
+_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+CFG="$_self_dir/ensemble-config-get"
+
+# Frontmatter `model:` — the first `---` block only, first occurrence wins.
+FRONT_ALIAS=$(awk '
+  NR==1 && $0!="---" { exit }
+  NR>1 && /^---$/ { exit }
+  NR>1 && /^model:[[:space:]]*/ {
+    sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+#.*$/, ""); gsub(/^["'\''`]|["'\''`]$/, "")
+    print; exit
+  }' "$AGENT_FILE")
+
+case "$FRONT_ALIAS" in
+  haiku)  TIER="retrieval" ;;
+  sonnet) TIER="evidence" ;;
+  opus)   TIER="ceiling" ;;
+  *)      TIER="" ;;
+esac
+
+# The reader warns once per invocation about an unparseable global file, and
+# this script invokes it several times; say it once here instead and keep the
+# reader quiet below. Same wording, same fail-soft: resolution continues from
+# the next source.
+GLOBAL_FILE="$HOME_DIR/.ensemble/config.json"
+if [ -n "$HOME_DIR" ] && [ -r "$GLOBAL_FILE" ] && command -v jq >/dev/null 2>&1 \
+   && ! parse_err=$(jq empty "$GLOBAL_FILE" 2>&1); then
+  printf 'ensemble-agent-model: %s is not valid JSON (%s); every key in it is ignored until it parses\n' \
+    "$GLOBAL_FILE" "$(printf '%s' "$parse_err" | head -1)" >&2
+fi
+
+# cfg <key> [--allowed a,b]: the shared reader, repo layer skipped under
+# --global-only (a --repo-root with no .ensemble/ beneath it).
+cfg() {
+  local key="$1"; shift
+  local root="$REPO_ROOT"
+  [ "$GLOBAL_ONLY" = true ] && root="/dev/null"
+  [ -x "$CFG" ] || return 0
+  "$CFG" "$key" "$@" --repo-root "$root" --home "$HOME_DIR" 2>/dev/null
+}
+
+valid_codex_id() {
+  case "$1" in
+    '') return 1 ;;
+    *[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  [ "${#1}" -le 64 ]
+}
+
+AGENT_MODEL=""; AGENT_EFFORT=""; AGENT_MODEL_SOURCE="inherit"
+
+if [ "$HOST_KEY" = claude ]; then
+  v=$(cfg "agent_model_override_${AGENT}_claude" --allowed "$CLAUDE_ALIASES")
+  if [ -n "$v" ]; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="override"
+  else
+    [ -n "$TIER" ] && v=$(cfg "agent_model_claude_${TIER}" --allowed "$CLAUDE_ALIASES") || v=""
+    if [ -n "$v" ]; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="tier"
+    elif [ -n "$FRONT_ALIAS" ]; then AGENT_MODEL="$FRONT_ALIAS"; AGENT_MODEL_SOURCE="frontmatter"
+    fi
+  fi
+else
+  v=$(cfg "agent_model_override_${AGENT}_codex")
+  if valid_codex_id "$v"; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="override"
+  else
+    [ -n "$TIER" ] && v=$(cfg "agent_model_codex_${TIER}") || v=""
+    if valid_codex_id "$v"; then AGENT_MODEL="$v"; AGENT_MODEL_SOURCE="tier"; fi
+  fi
+  e=$(cfg "agent_effort_override_${AGENT}_codex" --allowed low,medium,high,xhigh)
+  if [ -z "$e" ] && [ -n "$TIER" ]; then e=$(cfg "agent_effort_codex_${TIER}" --allowed low,medium,high,xhigh); fi
+  AGENT_EFFORT="$e"
+fi
+
+shellesc() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"; }
+printf 'AGENT_TIER=%s\n'         "$(shellesc "$TIER")"
+printf 'AGENT_MODEL=%s\n'        "$(shellesc "$AGENT_MODEL")"
+printf 'AGENT_EFFORT=%s\n'       "$(shellesc "$AGENT_EFFORT")"
+printf 'AGENT_MODEL_SOURCE=%s\n' "$(shellesc "$AGENT_MODEL_SOURCE")"
+exit 0

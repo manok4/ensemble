@@ -263,7 +263,16 @@ config_defaults() {
   "peer_model_alias": null,
   "peer_codex_model": null,
   "peer_effort_override": null,
-  "review_host_model_alias": null
+  "review_host_model_alias": null,
+  "agent_model_claude_retrieval": null,
+  "agent_model_claude_evidence": null,
+  "agent_model_claude_ceiling": null,
+  "agent_model_codex_retrieval": null,
+  "agent_model_codex_evidence": null,
+  "agent_model_codex_ceiling": null,
+  "agent_effort_codex_retrieval": null,
+  "agent_effort_codex_evidence": null,
+  "agent_effort_codex_ceiling": null
 }
 EOF
 }

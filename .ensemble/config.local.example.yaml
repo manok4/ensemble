@@ -87,6 +87,29 @@ default_branch_fallback: main
 # Migration: the three peer keys were review_peer_* before EN16; the old
 # spellings still resolve for one release. Rename them here and in
 # ~/.ensemble/config.json when convenient.
+
+# Bundled-agent models per host (EN16, D103; flat keys, read by every skill
+# that dispatches an agent through its scripts/ensemble-agent-model). Each
+# agent declares a tier via its frontmatter alias: haiku = retrieval,
+# sonnet = evidence, opus = ceiling. Resolution: per-agent override, then the
+# tier value for the host, then the agent's own frontmatter, then inherit.
+# Claude values are aliases (haiku | sonnet | opus | fable); Codex values are
+# your model IDs and efforts (low | medium | high | xhigh). Unset = inherit.
+# agent_model_claude_retrieval:          # e.g. haiku
+# agent_model_claude_evidence:           # e.g. sonnet
+# agent_model_claude_ceiling:            # e.g. opus
+# agent_model_codex_retrieval:           # your Codex model ID
+# agent_model_codex_evidence:
+# agent_model_codex_ceiling:
+# agent_effort_codex_retrieval:          # low | medium | high | xhigh
+# agent_effort_codex_evidence:
+# agent_effort_codex_ceiling:
+# Per-agent overrides, <agent> is the file's name: (e.g. web-research)
+# agent_model_override_<agent>_claude:
+# agent_model_override_<agent>_codex:
+# agent_effort_override_<agent>_codex:
+# Codex binds at install time: setup renders ~/.codex/agents/<name>.toml from
+# ~/.ensemble/config.json only (never this file); re-run ./setup after a change.
 # Host persona effort is the dimension-reviewer agent's `effort:` frontmatter
 # (high); override per repo with a copy at .claude/agents/dimension-reviewer.md.
 # The scheduled sweep's model and effort are `sweep.model` / `sweep.effort`

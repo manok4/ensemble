@@ -19,6 +19,8 @@ directory carries agent definitions nothing can reach.
 
 ## Which model a bundled agent runs on
 
+`$SKILL_DIR/scripts/ensemble-agent-model --agent <name> --host "$HOST" --agent-file "$SKILL_DIR/agents/<name>.md"` answers which model and effort an agent runs on for this operator: a per-agent override for the host, then the operator's value for the agent's tier, then the file's own `model:`, then inherit (D103). It reads the flat keys through the sibling `scripts/ensemble-config-get` and emits `AGENT_TIER`, `AGENT_MODEL`, `AGENT_EFFORT` and `AGENT_MODEL_SOURCE`.
+
 Three layers, the same separation `peer-model-policy.md` uses. **Policy** (this
 table) owns the stable tier. **Binding** owns the per-host syntax. **Call sites**
 omit any model override so the declaration, not the caller, decides, with two

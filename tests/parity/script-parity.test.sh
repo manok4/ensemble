@@ -18,9 +18,6 @@ for script in ensemble-config-get ensemble-peer-flags ensemble-agent-model; do
   copies=$(ls "$REPO_ROOT"/skills/*/scripts/"$script" 2>/dev/null)
   n=$(printf '%s\n' "$copies" | grep -c . )
   if [ "$n" -eq 0 ]; then
-    if [ "$script" = ensemble-agent-model ]; then
-      pass "SKIPPED — $script not yet shipped (EN16 U3)"; continue
-    fi
     fail "$script has at least one carrier" "none found"; continue
   fi
   distinct=$(for f in $copies; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
@@ -45,5 +42,14 @@ for f in "$REPO_ROOT"/skills/*/scripts/ensemble-peer-flags; do
   d=$(dirname "$f"); [ -f "$d/ensemble-config-get" ] || missing_reader="$missing_reader $(basename "$(dirname "$d")")"
 done
 assert_eq "" "$(echo $missing_reader)" "every carrier of ensemble-peer-flags also carries ensemble-config-get"
+
+# A skill that dispatches agents resolves their model through the resolver, and
+# the resolver reads through the config reader; both travel with the agents.
+no_resolver=""
+for d in "$REPO_ROOT"/skills/*/; do
+  s=$(basename "${d%/}"); [ -d "$d/agents" ] || continue
+  [ -f "$d/scripts/ensemble-agent-model" ] && [ -f "$d/scripts/ensemble-config-get" ] || no_resolver="$no_resolver $s"
+done
+assert_eq "" "$(echo $no_resolver)" "every skill that carries agents/ carries ensemble-agent-model and ensemble-config-get"
 
 report
