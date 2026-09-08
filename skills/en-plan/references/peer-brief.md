@@ -79,4 +79,4 @@ or stay in draft; never flip to `open` on the skill's own judgement.
 A plan review is a reading task on a bounded document, so it does not need the
 diff-shaped effort ladder `/en-review` uses. It runs at the peer's default tier.
 en-plan carries no effort resolver: that chain (`--effort`, the config keys, the
-ladder) is `/en-review`'s, and `review_peer_effort_override` does not apply here.
+ladder) is `/en-review`'s, and `peer_effort_override` does not apply here.

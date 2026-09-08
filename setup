@@ -260,8 +260,10 @@ config_defaults() {
   "skip_peer_on_lightweight": true,
   "default_branch_fallback": "main",
   "learnings_cross_project": false,
-  "review_peer_model_alias": null,
-  "review_peer_effort_override": null
+  "peer_model_alias": null,
+  "peer_codex_model": null,
+  "peer_effort_override": null,
+  "review_host_model_alias": null
 }
 EOF
 }
@@ -271,7 +273,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
   log "Created $CONFIG_FILE with defaults"
 elif ! command -v jq >/dev/null 2>&1; then
   log "  ⚠ jq not found; leaving $CONFIG_FILE unchanged."
-  log "    Add these keys by hand if absent: review_peer_model_alias, review_peer_effort_override"
+  log "    Add these keys by hand if absent: peer_model_alias, peer_codex_model, peer_effort_override, review_host_model_alias"
 else
   # Merge defaults into the existing file: defaults first, existing second, so
   # `.[0] * .[1]` lets every user value (and any unknown user-added key) win.

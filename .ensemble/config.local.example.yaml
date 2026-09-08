@@ -80,10 +80,13 @@ default_branch_fallback: main
 # Reviewer models and effort (flat keys; read by /en-review through
 # ensemble-config-get, this file first, then ~/.ensemble/config.json).
 # Aliases (sonnet, opus, haiku, fable) or a full model ID; your file, your value.
-# review_peer_model_alias: sonnet        # Claude peer; ignored when the peer is Codex
-# review_peer_codex_model:               # Codex peer `-m`; unset inherits ~/.codex/config.toml
-# review_peer_effort_override:           # low | medium | high | xhigh; unset lets the ladder decide
+# peer_model_alias: sonnet               # Claude peer; ignored when the peer is Codex
+# peer_codex_model:                      # Codex peer `-m`; unset inherits ~/.codex/config.toml
+# peer_effort_override:                  # low | medium | high | xhigh; unset lets the ladder decide
 # review_host_model_alias:               # every host persona under --cross / --host; unset uses the agent frontmatter
+# Migration: the three peer keys were review_peer_* before EN16; the old
+# spellings still resolve for one release. Rename them here and in
+# ~/.ensemble/config.json when convenient.
 # Host persona effort is the dimension-reviewer agent's `effort:` frontmatter
 # (high); override per repo with a copy at .claude/agents/dimension-reviewer.md.
 # The scheduled sweep's model and effort are `sweep.model` / `sweep.effort`
