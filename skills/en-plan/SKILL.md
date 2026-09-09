@@ -40,24 +40,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Direct rough description from the user.
    - Bug report or tracked debt item (`Resolves: TD<N>`).
 
-   **Bounded foundation read.** Never read `docs/foundation.md` whole — it routinely runs past 2,000 lines. Read the **frontmatter** (for `plan_id_prefix`), then `grep -n '^#' docs/foundation.md` for the section index, then `sed -n '<start>,<end>p'` on the sections you actually need: **Functional Requirements** for R-IDs and acceptance examples, **Technical Direction** when the plan makes stack or dependency choices. Nothing else.
-
-   **Consume the design doc; don't re-interview across it.** When a `docs/designs/*.md` matches this topic with `status: open` or `accepted`, its settled decisions are **already answered** — architecture, scope boundaries, rejected alternatives, and the recommendation. Read it, carry those decisions into the plan (record the path in `related_design:`), and put **only what the doc left open** to the user in the planning questions. Re-asking a question the design doc settled is the most common way this seam wastes the user's time. The doc's `## Assumptions & unverified claims` section is the exception: those are explicitly *not* settled — verify them against the repo or carry them forward as plan-level assumptions.
-
-   **Context-sufficiency check.** Before planning, judge whether you have enough to plan *from* — not whether a design doc happens to exist. Skip this entirely for a bug/TD fix or a `--resume`/`--from-legacy` run, and skip it when a matching design doc was consumed above (that doc already did this work).
-
-   The request is **insufficient** when one or more of these is genuinely unresolved, and nothing in the foundation, research, or the request itself settles it:
-
-   - **The problem is unstated.** You know what to build but not what it's for or who for — so no unit can claim a requirement and "done" has no definition.
-   - **The approach is genuinely open.** Two or more materially different designs are viable and there is no basis in context to choose. Planning here picks an architecture by accident.
-   - **Scope has no edges.** You cannot tell what's in and what's out, so units can't be sized and the plan will either sprawl or miss half the work.
-
-   **Insufficient → offer the brainstorm, and mean it:**
-   > *"I don't have enough to plan from yet — <the specific gap, in one clause>. `/en-brainstorm` would settle that in a few questions and hand back a design doc. Brainstorm first, or plan anyway on my assumptions? (brainstorm / plan anyway)"*
-
-   Recommend `brainstorm` — but **proceeding is always allowed** and remains the default on any non-answer; this is never a hard gate (gating-shrink philosophy — encourage, don't block). If the user proceeds anyway, record each unresolved gap in the plan's `## Decisions, assumptions & risks` section as an explicit assumption, so the guess is visible rather than buried in a unit's `Approach:`.
-
-   **Sufficient but no design doc → one-line soft nudge only:** *"No design doc for this — want to `/en-brainstorm` first, or go straight to planning? (brainstorm / proceed)."* Default proceed. A well-specified request does not need to be talked out of being well-specified.
+   **Read `references/plan-intake.md` here.** It owns the bounded foundation read (`docs/foundation.md` routinely runs past 2,000 lines and is never read whole: section index first, then the sections you need), the rule that a matching design doc's decisions are already settled and must not be re-asked, the context-sufficiency check that offers `/en-brainstorm` when the problem, the approach or the scope is genuinely unresolved, and the brainstorm soft-nudge for a request that is merely undocumented. Proceeding is always allowed; neither is a hard gate.
 
    **Infer `plan_type`** from the request — `feature` (net-new behavior), `improvement` (refactor / perf / DX work, including TD), or `bug` (fix). Default `feature` when unclear; confirm with the user when the request is ambiguous.
 5. **Right-size depth.**
@@ -92,13 +75,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Auth/payments/migrations always get their own unit even if small.
    - **Never renumber after assignment** (per `references/stable-ids.md`).
 
-   **Wide refactors are the exception to all of the above.** A wide refactor is one mechanical change — rename a column, retype a shared symbol — whose blast radius fans across the codebase, so a single edit breaks hundreds of call sites at once and no self-contained unit can land green. Do not force it into one. Sequence it **expand → migrate → contract**:
+   **Wide refactors are the exception to all of the above**, because one mechanical change whose blast radius fans across the codebase cannot be a single unit that lands green. Sequence it expand → migrate → contract per `references/wide-refactors.md`, which owns the batching and the risk split.
 
-   - **Expand:** add the new form beside the old so nothing breaks. Its own unit.
-   - **Migrate:** move call sites over in batches sized by blast radius (per package, per directory), each batch its own unit depending on the expand. The old form still exists, so every batch lands green.
-   - **Contract:** delete the old form once no caller remains, in a unit depending on every migrate batch.
-
-   Only the contract unit is destructive: give it `category: removal` and the `risk:` its blast radius earns, while the batches stay additive at their own lower risk. `unit.destructive-order` then holds for free, since the one destructive unit is also the last one. When even a single batch cannot stay green alone, keep the sequence and say so in the plan: the batches share a branch and only the final unit promises green.
 9. **Per-unit metadata.** For each U-ID:
    - **Goal:** one line.
    - **Requirements covered:** R-IDs and AE-IDs from foundation. (For State-2 retrofit projects without a foundation yet, leave `covers_requirements: []` and set `requirements_pending: true`.)
@@ -264,17 +242,10 @@ Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 
 ## Failure protocol
 
+**`references/plan-failures.md` owns the table**: one row per failure and what to do. Three of them stop the run rather than degrade it.
+
 | Failure | Behavior |
 |---|---|
-| User declines the plan file, then asks to `/en-build` it | There is no file to build. Offer to write the plan now; do not synthesize one silently from the conversation, because it would carry no peer verdict and no hash. |
-| Plan touches > 30 files | Warn about size; offer a split into several plans |
-| Design doc matching the topic is `superseded` | Do not carry its decisions; treat the request as unexplored and apply the brainstorm soft-nudge. |
-| Two units claim the same file with conflicting changes | A planning bug; don't write the plan |
-| User accepts plan but peer review hasn't returned yet | Wait for the peer; on timeout write the plan without a verdict and say so in the report |
-| Peer rejects the plan (verdict: reject) | Pause and surface the reject reason; leave `status: draft`. If the user explicitly overrides the rejection ("proceed anyway"), treat as approved: run the **status-flip step** (compute hash, flip `status: draft → open`, write `peer_review_verdict: reject` + a `peer_review_overridden: true` marker for audit) and continue to the **auto-commit step**. The valid post-flip status is **`open`** — `active/` is the directory the file lives in, not a status value. |
-| Finalize loop hits iteration cap with `verdict: revise` | Surface latest findings; ask user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control. |
-| Re-review surfaces a finding the user previously disagreed with | Add it to the next prompt's "do not re-flag" list; a third appearance counts as the cap hit. |
-| Auto-commit refused due to unrelated staged changes | Skip the commit and say so; the plan still flips to `open`, and `/en-build` pre-flight offers the commit next time. |
+| Two units claim the same file with conflicting changes | A planning bug. Do not write the plan. |
 | A `risk: destructive` unit is ordered before a non-destructive one | Refuse to write. Surface the two units and the fix: move the destructive unit later, or raise the other's risk. |
-| Plan-number collision | Re-scan, increment, retry; the lint catches a slip. |
-| `bin/ensemble-lint` is not present in the project | Check frontmatter, per-unit `risk:` and the destructive ordering by hand; continue; say the lint is missing and that `/en-setup` installs it. |
+| Peer rejects the plan (verdict: reject) | Pause and surface the reject reason; leave `status: draft`. If the user explicitly overrides the rejection ("proceed anyway"), treat as approved: run the **status-flip step** (compute hash, flip `status: draft → open`, write `peer_review_verdict: reject` + a `peer_review_overridden: true` marker for audit) and continue to the **auto-commit step**. The valid post-flip status is **`open`** — `active/` is the directory the file lives in, not a status value. |

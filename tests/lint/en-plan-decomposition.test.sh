@@ -28,6 +28,18 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-plan decomposition"
 
 SKILL="$REPO_ROOT/skills/en-plan/SKILL.md"
+WIDE="$REPO_ROOT/skills/en-plan/references/wide-refactors.md"
+
+# --- 0. the break-into-units step reaches the wide-refactor sequence ---
+# Scoped to the step: the exception has to be in front of the planner while it
+# is drawing unit boundaries, not findable somewhere else in the skill.
+step=$(awk '/^8\. \*\*Break into units/{f=1} f&&/^9\. \*\*/{exit} f' "$SKILL")
+if printf '%s' "$step" | grep -qF 'references/wide-refactors.md'; then
+  pass "the break-into-units step points at the wide-refactor sequence"
+else
+  fail "the break-into-units step must cite references/wide-refactors.md" \
+       "without the pointer a wide refactor gets forced into one unit again"
+fi
 
 # --- 1. the boundary test is operational, not a restatement ---
 if grep -qiE 'reject this unit while approving its neighbour' "$SKILL"; then
@@ -39,9 +51,10 @@ fi
 # --- 2. all three phases of the sequence are named ---
 missing=""
 for ph in 'Expand:' 'Migrate:' 'Contract:'; do
-  grep -qF "**$ph**" "$SKILL" || missing="$missing $ph"
+  grep -qF "**$ph**" "$WIDE" || missing="$missing $ph"
 done
-grep -qiE 'blast radius' "$SKILL" || missing="$missing blast-radius"
+grep -qiE 'blast radius' "$WIDE" || missing="$missing blast-radius"
+grep -qiE 'expand . migrate . contract' "$SKILL" || missing="$missing skill-names-the-sequence"
 [ -z "$missing" ] \
   && pass "wide refactors sequence expand/migrate/contract, batched by blast radius" \
   || fail "the expand-migrate-contract sequence is incomplete" "missing:$missing"
@@ -49,9 +62,9 @@ grep -qiE 'blast radius' "$SKILL" || missing="$missing blast-radius"
 # --- 3. the risk assignment that keeps unit.destructive-order satisfied ---
 # This is the half that silently breaks: marking the batches destructive puts a
 # destructive unit ahead of a non-destructive one and the rule rejects the plan.
-if grep -qiE 'Only the contract unit is destructive' "$SKILL" \
-   && grep -qiE 'batches stay additive' "$SKILL" \
-   && grep -qiE 'destructive-order.{0,14}then holds' "$SKILL"; then
+if grep -qiE 'Only the contract unit is destructive' "$WIDE" \
+   && grep -qiE 'batches stay additive' "$WIDE" \
+   && grep -qiE 'destructive-order.{0,14}then holds' "$WIDE"; then
   pass "only the contract unit carries the destructive risk, satisfying unit.destructive-order"
 else
   fail "the risk split must be stated, with its destructive-order consequence" \
