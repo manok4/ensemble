@@ -6,7 +6,7 @@ exit codes it acts on; this file is read when the build enters step 8.
 
 ## Implementing one unit
 
-- **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent. Say in one line which unit is starting and its goal before the first edit. Edit files surgically; rewrite one only when it is short or most of it changes. **The unit's scope is the deliverable.** A pre-existing bug, a performance concern or behaviour the unit does not mention is a `Note:` in the progress report and a follow-up, not a fix in this unit, unless the unit's own behaviour cannot work without it. Commit tests the unit's `Test scenarios` call for, sized like the neighbouring test files; scratch checks are not kept.
+- **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent. Say in one line which unit is starting and its goal before the first edit. Edit files surgically; rewrite one only when it is short or most of it changes. **The unit's scope is the deliverable.** A pre-existing bug, a performance concern or behaviour the unit does not mention is a `Note:` in the progress report and a follow-up, not a fix in this unit, unless the unit's own behaviour cannot work without it. Commit tests the unit's `Test scenarios` call for, sized like the neighbouring test files; scratch checks are not kept. **Read `references/good-tests.md` before writing the first one**: it defines what a test at the plan's seams is worth, and the five anti-patterns each carry the tell that catches them.
 
   **First, check whether the unit is already done.** If its `Files` exist with the expected capability, or its `Verification` criteria already pass against the current code, the work landed on a prior branch or an earlier run of this build. Confirm it matches the unit's intent, record it as already-satisfied in the progress report, and move on. **Do not silently reimplement.** `--from U<N>` and `--from-phase P<N>` both resume into work that may already exist.
 
@@ -15,7 +15,7 @@ exit codes it acts on; this file is read when the build enters step 8.
 | Ask | What to actually do |
 |---|---|
 | **What fires when this runs?** | Trace two levels out. Read the code, not the docs, for callbacks, middleware, observers, hooks on anything the unit touches. |
-| **Do the tests exercise the real chain?** | If every dependency is mocked, the test proves the logic in isolation and says nothing about the interaction. At least one test should run real objects through the chain. |
+| **Do the tests exercise the real chain?** | If every dependency is mocked, the test proves the logic in isolation and says nothing about the interaction. At least one test should run real objects through the chain, and mocks stop at system boundaries (`references/good-tests.md`). |
 | **Can failure leave orphaned state?** | If state is persisted before a risky call, trace the failure path: does it clean up, and is retry idempotent? |
 | **What other interfaces expose this?** | Grep for the behaviour in sibling classes and alternate entry points. If parity is needed, it belongs in this unit, not a follow-up. |
 | **Do error strategies agree across layers?** | List the error classes each layer raises and rescues. Retry middleware plus an application fallback can double-execute. |
