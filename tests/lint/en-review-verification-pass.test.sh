@@ -19,6 +19,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-review verification pass"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
+REPORT="$REPO_ROOT/skills/en-review/references/review-report.md"
 CONTRACT="$REPO_ROOT/skills/en-review/CONTRACT.md"
 BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
 BUILDER="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
@@ -43,8 +44,8 @@ fi
 for r in no-p0-p1-addressed peer-failure; do
   grep -qF "$r" "$SKILL" && pass "not-run reason $r is named" || fail "not-run reason $r must be named"
 done
-if grep -qF '"verification_pass": {"outcome"' "$SKILL" \
-   && sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "verification_pass:"; then
+if grep -qF '"verification_pass": {"outcome"' "$REPORT" \
+   && sed -n '/## Markdown summary/,$p' "$REPORT" | grep -qF "verification_pass:"; then
   pass "envelope carries the structured object and the summary example shows the line"
 else
   fail "the envelope must carry verification_pass and the summary example must show the line"

@@ -16,6 +16,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
+REPORT="$REPO_ROOT/skills/en-review/references/review-report.md"
 DIFFSIG="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
 # Reads /en-review's copy: it owns persona dispatch. D52 removed en-build's,
 # which arrived through a peer-brief citation rather than anything en-build ran.
@@ -74,7 +75,7 @@ else
 fi
 
 # --- markdown-summary example shows a lite_gate line ---
-if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "lite_gate:"; then
+if sed -n '/## Markdown summary/,$p' "$REPORT" | grep -qF "lite_gate:"; then
   pass "markdown-summary example includes a lite_gate line"
 else
   fail "the markdown-summary example must include a lite_gate line"
@@ -92,7 +93,7 @@ else
 fi
 
 # --- applied_fixes[] envelope field with the entry shape ---
-if grep -qF '"applied_fixes"' "$SKILL" && grep -qE '\{finding_id, tier, files\[\]\}|"finding_id": "rev' "$SKILL"; then
+if grep -qF '"applied_fixes"' "$REPORT" && grep -qF '{finding_id, tier, files[]}' "$SKILL"; then
   pass "envelope carries applied_fixes[] with {finding_id, tier, files[]} entries"
 else
   fail "the JSON envelope must carry applied_fixes[] entries {finding_id, tier, files[]}"
@@ -162,7 +163,7 @@ else
 fi
 
 # --- markdown-summary example shows a review_fixes line ---
-if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "review_fixes:"; then
+if sed -n '/## Markdown summary/,$p' "$REPORT" | grep -qF "review_fixes:"; then
   pass "markdown-summary example includes a review_fixes line"
 else
   fail "the markdown-summary example must include a review_fixes line"
@@ -191,10 +192,10 @@ fi
 # --- CR-03: the normative examples are internally coherent ---
 # The JSON example's applied_fixes finding IDs must match the markdown example's
 # review_fixes line, and applied_safe_auto_count must equal the safe_auto entries.
-json_ids=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -oE '"finding_id": "[^"]+"' | grep -oE 'rev-[0-9-]+' | sort)
-md_ids=$(sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -F "review_fixes:" | grep -oE 'rev-[0-9-]+' | sort)
-count_field=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -oE '"applied_safe_auto_count": [0-9]+' | grep -oE '[0-9]+')
-json_safe_auto=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -c '"tier": "safe_auto"')
+json_ids=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$REPORT" | grep -oE '"finding_id": "[^"]+"' | grep -oE 'rev-[0-9-]+' | sort)
+md_ids=$(sed -n '/## Markdown summary/,$p' "$REPORT" | grep -F "review_fixes:" | grep -oE 'rev-[0-9-]+' | sort)
+count_field=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$REPORT" | grep -oE '"applied_safe_auto_count": [0-9]+' | grep -oE '[0-9]+')
+json_safe_auto=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$REPORT" | grep -c '"tier": "safe_auto"')
 if [ -n "$json_ids" ] && [ "$json_ids" = "$md_ids" ]; then
   pass "example coherence: JSON applied_fixes IDs match the markdown review_fixes line"
 else
@@ -204,6 +205,16 @@ if [ -n "$count_field" ] && [ "$count_field" = "$json_safe_auto" ]; then
   pass "example coherence: applied_safe_auto_count ($count_field) equals safe_auto entries ($json_safe_auto)"
 else
   fail "applied_safe_auto_count must equal the number of safe_auto applied_fixes entries" "count=$count_field entries=$json_safe_auto"
+fi
+
+# --- the output step reaches the reference that owns both examples ---
+# Scoped to the step: the envelope and the summary are only normative if the
+# run that emits them opens the file that defines them.
+step=$(awk '/^13\. \*\*Output report/{f=1} f&&/^## /{exit} f' "$SKILL")
+if printf '%s' "$step" | grep -qF 'references/review-report.md'; then
+  pass "the output-report step points at the reference that owns the envelope"
+else
+  fail "the output-report step must cite references/review-report.md"
 fi
 
 # === U3: foundation D42 ===

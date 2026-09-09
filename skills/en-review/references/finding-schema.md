@@ -61,4 +61,4 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 
 ## Aggregated envelopes
 
-When `/en-review` runs host personas alongside the peer, the envelope it emits keeps this shape and gains `personas[]`, `peer_decision` (defined in `references/peer-contract.md`) and `reconciliation[]`. Those fields, the bucket semantics and the partition invariant are defined in the persona-dispatch reference that `/en-review` carries; nothing outside `/en-review` produces or parses them.
+When `/en-review` runs host personas alongside the peer, the envelope it emits keeps this shape and gains `personas[]`, `peer_decision` (defined in `references/peer-contract.md`) and `reconciliation[]`. The envelope's full shape is defined in the report reference that `/en-review` carries, and the bucket semantics and partition invariant in its persona-dispatch reference; nothing outside `/en-review` produces or parses them.

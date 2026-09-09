@@ -126,7 +126,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
     - **One pass, never a loop.** A P0/P1 the verification pass reports, unfixed or new, is surfaced with its id and **never applied in this run**: the frozen set closed in step 12, and a third pass mostly resamples the second (D49). Fixing it is a new run.
     - **`--verify [<envelope-path>]`** runs this pass alone, for fixes made after a previous run (a P0 that halted mutation, a `manual` fix, `/en-build`'s batch). Bare `--verify` takes the newest `/tmp/ensemble/en-review/*/envelope.json` whose `diff_base` matches the current target; none or several candidates is reported, and the run stops.
     - **Mandatory `verification_pass:` outcome line.** EVERY run emits exactly ONE: `verification_pass: clean` (ran; no P0/P1 remain), `verification_pass: new-findings (<id>/<severity>, …)` (ran; these remain), or `verification_pass: not-run (<reason>)` with `<reason>` one of `no-p0-p1-addressed`, `peer-failure`. When the pass ran, the envelope's `verdict` is its verdict. The JSON envelope carries the structured `verification_pass` object; the line is DERIVED from it, never composed independently.
-13. **Output report.** Markdown summary (for human consumption) plus JSON envelope (for programmatic callers). Write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json` and name the path in the summary; `--verify` reads it. Both include a `sub_threshold_filed_count` line indicating how many findings were filed as TD entries (or surfaced separately in `report-only`).
+13. **Output report.** Per `references/review-report.md`, which owns the envelope shape and the markdown summary: write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json`, emit the markdown summary alongside it in every mode including `headless` and `report-only`, and name the path in the summary so `--verify` can read it. Both carry `sub_threshold_filed_count`, how many findings were filed as TD entries (or surfaced separately in `report-only`).
 
 ## Flags
 
@@ -157,67 +157,6 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` line (step 12). Tier definitions live in `references/severity.md`, referenced, not duplicated.
 
 **Post-review check** (`references/post-review-check.md`). Ask `$SKILL_DIR/scripts/ensemble-verification-receipt` first: a valid receipt skips lint, typecheck and tests, which is only possible when nothing was applied. Otherwise run lint, typecheck and the graph-selected set (`test_changed_command`), revert the applied edits on failure, and on success record `lint`, `typecheck` and `targeted_tests` for `/en-ship`. `report-only` never runs it.
-
-## JSON envelope shape
-
-```json
-{
-  "verdict": "approve | revise | reject",
-  "summary": "<2-3 sentence overall>",
-  "personas": ["correctness", "testing", "maintainability", "standards", "security"],
-  "host_model": "<the resolver's model for dimension-reviewer> | null",
-  "mode": "interactive | headless | report-only",
-  "lite_gate": {"outcome": "applied | overridden | not-requested", "reasons": []},
-  "verification_pass": {"outcome": "clean | new-findings | not-run", "reason": "no-p0-p1-addressed | peer-failure | null", "finding_ids": []},
-  "diff_base": "main",
-  "diff_files_count": 12,
-  "lint_findings_count": 0,
-  "applied_safe_auto_count": 3,
-  "applied_fixes": [
-    {"finding_id": "rev-1-2", "tier": "safe_auto", "files": ["src/auth/refresh.ts"]},
-    {"finding_id": "rev-1-5", "tier": "safe_auto", "files": ["src/lib/redis.ts"]},
-    {"finding_id": "rev-1-8", "tier": "safe_auto", "files": ["tests/auth/refresh.test.ts"]}
-  ],
-  "findings": [
-    {
-      "severity": "P1",
-      "confidence": 9,
-      "title": "...",
-      "location": "src/auth/refresh.ts:42",
-      "personas": ["correctness", "security"],
-      "why_it_matters": "...",
-      "suggested_fix": "...",
-      "autofix_class": "manual",
-      "applied": false
-    }
-  ]
-}
-```
-
-## Markdown summary
-
-Always emit a markdown summary alongside the JSON, even in `headless`/`report-only`. Example:
-
-```markdown
-## Code review — FR07-auth-rotation
-
-**Verdict:** revise (3 findings)
-**Personas fired:** correctness, testing, maintainability, standards, security (host_model: opus)
-**Pre-flight lint:** clean
-**Auto-applied:** 3 safe_auto fixes
-lite_gate: not-requested
-review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto)
-verification_pass: not-run (no-p0-p1-addressed)
-
-### High (P1)
-
-- **U3 — Refresh token race in concurrent path** (correctness, security; conf 9)
-  - `src/auth/refresh.ts:42`
-  - Two requests can race during rotation; second invalidates the first.
-  - Fix: serialize per-user via singleFlight cache.
-```
-
-One `###` section per severity present, P0 first, each finding carrying its U-ID, personas, confidence, location, why and fix.
 
 ## Reference files
 
