@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-ship plan-completion checkpoint"
 
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
+PLANC="$REPO_ROOT/skills/en-ship/references/plan-completion.md"
 EN_LEARN="$REPO_ROOT/skills/en-learn/SKILL.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
@@ -47,7 +48,7 @@ fi
 # production gate and HAD been reviewed still reported as an unfinished build.
 for outcome in "completed_and_moved" "skipped_by_user" "up_to_date" "not_applicable" \
                "complete_evidence_missing" "incomplete_unexpected" "partial_expected"; do
-  if grep -qF "plan_completion_checkpoint: $outcome" "$EN_SHIP"; then
+  if grep -qF "plan_completion_checkpoint: $outcome" "$PLANC"; then
     pass "checkpoint documents outcome: $outcome"
   else
     fail "checkpoint missing outcome: $outcome"
@@ -55,7 +56,7 @@ for outcome in "completed_and_moved" "skipped_by_user" "up_to_date" "not_applica
 done
 
 # 4. details is non-terminal (re-prompts; doesn't produce a report value)
-if grep -qE "details.*(re-prompt|Re-prompt|loop until terminal)" "$EN_SHIP"; then
+if grep -qE "details.*(re-prompt|Re-prompt|loop until terminal)" "$PLANC"; then
   pass "details is documented as non-terminal (re-prompts, no report value)"
 else
   fail "details option should be non-terminal (re-prompt + loop)"
@@ -63,7 +64,7 @@ fi
 
 # 5. Bare 'completed', 'done', 'skipped', 'flipped' MUST NOT appear as report values
 for bare in "completed$" "done$" "skipped$" "flipped$"; do
-  if grep -qE "plan_completion_checkpoint:[[:space:]]+$bare" "$EN_SHIP"; then
+  if grep -qE "plan_completion_checkpoint:[[:space:]]+$bare" "$PLANC"; then
     fail "checkpoint uses non-canonical bare outcome: $bare"
   else
     pass "checkpoint doesn't use non-canonical bare outcome: $bare"
@@ -96,7 +97,7 @@ fi
 
 # The plan-side field that makes partial_expected reachable. Without it the outcome can never fire,
 # which would make it decorative — the exact defect this campaign keeps finding.
-if grep -qF "Ship scope: deferred" "$EN_SHIP"; then
+if grep -qF "Ship scope: deferred" "$PLANC"; then
   pass "partial_expected is anchored to a real plan-side declaration"
 else
   fail "partial_expected must read a plan-side Ship scope declaration, or it can never fire"
@@ -117,7 +118,7 @@ else
 fi
 
 # 10. Idempotency (re-runs yield up_to_date)
-if grep -qE "Idempotency|silently passes|completed.*up_to_date" "$EN_SHIP"; then
+if grep -qE "Idempotency|silently passes|completed.*up_to_date" "$PLANC"; then
   pass "idempotency documented (re-runs yield up_to_date)"
 else
   fail "idempotency should be documented"
@@ -131,7 +132,7 @@ else
 fi
 
 # 12. Output template includes plan_completion_checkpoint line
-if grep -qE "plan_completion_checkpoint:.*completed_and_moved|✓ plan_completion_checkpoint" "$EN_SHIP"; then
+if grep -qE "plan_completion_checkpoint:.*completed_and_moved|✓ plan_completion_checkpoint" "$PLANC"; then
   pass "output template includes plan_completion_checkpoint example"
 else
   fail "output template should include a plan_completion_checkpoint example"
@@ -212,6 +213,13 @@ else
 fi
 
 # --- build-completeness accepts branch-level review coverage (FR01 U2) ---
+step8=$(awk '/^8\. \*\*Plan completion checkpoint/{f=1} f&&/^9\. \*\*/{exit} f' "$EN_SHIP")
+if printf '%s' "$step8" | grep -qF 'references/plan-completion.md'; then
+  pass "the checkpoint step reaches the file defining its outcomes"
+else
+  fail "step 8 must cite references/plan-completion.md" "the outcomes are unreadable without it"
+fi
+
 if grep -qF -- "--branch-coverage" "$EN_SHIP"; then
   pass "build-completeness check accepts branch-level coverage (--branch-coverage)"
 else

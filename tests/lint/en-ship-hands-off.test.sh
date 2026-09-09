@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-ship hands-off"
 
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
+PLANC="$REPO_ROOT/skills/en-ship/references/plan-completion.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- hands-off default documented ---
@@ -49,9 +50,10 @@ fi
 # outcomes. It kept passing only because a historical note still mentions the old
 # name — so the clause was asserting the presence of a comment, not a behaviour.
 # It now names the outcomes that actually exist on each branch of the decision.
-if grep -qiE "auto-select \`y\`|auto-\`y\`" "$EN_SHIP" \
-   && grep -qF "plan_completion_checkpoint: complete" "$EN_SHIP" \
-   && grep -qF "plan_completion_checkpoint: incomplete_unexpected" "$EN_SHIP"; then
+if grep -qiE "auto-select \`y\`|auto-\`y\`" "$PLANC" \
+   && grep -qF "plan_completion_checkpoint: complete" "$PLANC" \
+   && grep -qF "plan_completion_checkpoint: incomplete_unexpected" "$PLANC" \
+   && grep -qiE "auto-flips a verifiably-complete plan" "$EN_SHIP"; then
   pass "en-ship plan-completion auto-resolves (auto-y on complete / informational otherwise)"
 else
   fail "en-ship plan-completion must auto-resolve under hands-off"
