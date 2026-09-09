@@ -141,13 +141,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
     6. **Exit in exactly one named state**, with its evidence. Never improvise a closing sentence, and never say "safe to merge" - that is the reader's call.
 
-       | State | When | Line |
-       |---|---|---|
-       | `clean` | green checks, no unresolved threads | `PR is green and clean — <n> checks passed, 0 open threads. Ready for your review.` |
-       | `escalated` | cycle cap or watch timeout hit with findings open | `Cap reached after <n> repair cycles. <k> findings left as needs-human: <ids>.` |
-       | `blocked` | doctor failed, a fork/permission wall, or the watch could not poll | `Blocked: <SHIP_WATCH_REASON>. No repair attempted.` |
-       | `settled-externally` | merged or closed while watching | `PR was <merged\|closed> externally. Stopped watching. <k> unresolved trusted findings: <ids>` (or `none open`) |
-       | `not-watched` | `--no-watch` | `PR opened; watch loop skipped by --no-watch.` |
+       Its five states and their exact lines are in `references/ship-reporting.md`.
 
     7. **Never auto-merges.** The loop leaves merging to you (or to `--auto-merge`, below). `--no-watch` opens the PR and stops.
 14. **Auto-merge (`--auto-merge`).** Opt-in. **Arm it only after the watch loop reaches a clean state** (step 13.6 `clean`: green checks AND no unresolved trusted review findings) — arming it before then can merge the PR while review-model findings are still open, unless the review model is itself a **required, blocking** status check. Once clean, run `gh pr merge --auto --squash` (or `--rebase` per repo convention) so GitHub lands it when required checks pass and approvals clear. If `--no-watch` is combined with `--auto-merge`, warn that no local loop will gate the merge and rely on required checks. Requires the repo to allow auto-merge (Settings → Pull Requests → Allow auto-merge). **Default OFF** - the default stops at a green, mergeable PR for you to merge.
@@ -171,40 +165,6 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 ## Cross-review
 
 **Off.** By this point, `/en-review` and `/en-qa` have already passed. Re-running cross-review costs more than it surfaces.
-
-## Output
-
-```
-Branch: fr07-auth-rotation
-Diff:   12 files changed, 247 insertions, 38 deletions
-
-Pre-flight (hands-off):
-  ✓ Lint · Typecheck (skipped: receipt by en-build covers full_suite, 6m old)
-  ✓ Targeted tests (8 changed files; 14 tests passed; selection: graph)
-  ✓ Secret scan (clean)
-  ✓ Base: origin/main fetched; 0 behind, 5 ahead; no predicted conflicts
-  ✓ Staging: 12 tracked files in scope; 2 unrelated files preserved and excluded
-  ✓ plan_completion_checkpoint: completed_and_moved (FR07-auth-rotation → completed/)
-
-Commit: feat(auth): rotate refresh token on every access - U1-U5
-Pushed to origin/fr07-auth-rotation.
-
-PR opened: https://github.com/manok4/ensemble/pull/42
-Auto-merge: disabled (pass --auto-merge to enable)
-
-Watch:
-  doctor: ok · repair cycles used: 1 of 2
-  CI: green (7 checks) · Review threads: 0 open
-
-State: clean
-PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
-```
-
-## Reference files
-
-- `references/conventional-commits.md` — message format
-- `references/secret-patterns.md` — secret-scan regex catalog
-- `references/verification-receipt.md` — **gated**: read when a project asks how its own pre-push hook can consume a receipt. The script emits every validity reason itself.
 
 ## Failure protocol
 
