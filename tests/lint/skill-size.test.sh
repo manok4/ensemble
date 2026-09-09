@@ -42,9 +42,11 @@ BUDGET=24576
 # with the peer loop stated once and four gated blocks moved to references.
 # en-review followed the same day: 30,715 down, one envelope instead of three,
 # the outcome-line rule stated once, and the mutation protocol in a reference.
+# en-ship's row went on 2026-09-09, and it is the interesting one: it shrank
+# from 27,407 while GAINING three helpers, because a bundled script displaces
+# more prose than it costs.
 BASELINE='
 en-setup 30301
-en-ship 27407
 '
 
 baseline_for() { printf '%s\n' "$BASELINE" | awk -v s="$1" '$1==s {print $2}'; }
