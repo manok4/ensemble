@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-ship watch loop"
 
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
+WATCH="$REPO_ROOT/skills/en-ship/scripts/ensemble-ship-watch"
 GETPR="$REPO_ROOT/skills/en-resolve-pr/scripts/get-pr-comments"
 
 # --- default is a LOCAL watch-and-fix loop ---
@@ -144,11 +145,19 @@ fi
 # maintenance counterpart's "doctor again after any failed drive". en-ship had
 # the ingredients (same-repo, head SHA, auth) scattered inside the trust gate,
 # where they gated acting on a FINDING rather than driving the PR at all.
-hasf() { grep -qF "$2" "$1" && pass "$3" || fail "$3" "not in en-ship SKILL.md"; }
+#
+# The doctor now lives in ensemble-ship-watch, which runs it before the first
+# poll and again each round, so these check the script for the mechanism and the
+# skill for the pointer. A prose doctor the agent re-derived every run is what
+# produced the forty-minute silent hang in the first place.
+hasf() { grep -qF "$2" "$1" && pass "$3" || fail "$3" "not in $(basename "$1")"; }
 
-hasf "$EN_SHIP" "Doctor — is this PR worth driving?" "the loop opens with a doctor check"
-hasf "$EN_SHIP" "again after any cycle that failed"  "the doctor re-runs after a failed cycle"
-hasf "$EN_SHIP" "It does not consume a repair cycle" "a doctor failure costs no repair budget"
+hasf "$WATCH" "doctor: never drive a PR you have not health-checked" \
+                                                     "the script opens with a doctor check"
+hasf "$WATCH" "Re-doctor each round"                 "the doctor re-runs every round"
+hasf "$EN_SHIP" "scripts/ensemble-ship-watch"        "the loop drives the bundled watch script"
+hasf "$EN_SHIP" "Do not hand-write a poll loop"      "the skill forbids re-deriving the loop"
+hasf "$EN_SHIP" "does not consume a repair cycle"    "a doctor failure costs no repair budget"
 
 # --- feedback before CI, with the reason recorded ----------------------------
 # The reason has to be in the file. Without it the ordering reads as arbitrary
@@ -177,7 +186,11 @@ hasf "$EN_SHIP" "A cycle is a repair-and-push iteration, not a poll" \
                                                      "the cycle unit is a repair, not a poll"
 hasf "$EN_SHIP" "Waiting on unchanged CI consumes nothing" \
                                                      "waiting does not spend the budget"
-hasf "$EN_SHIP" "15s, then 30s, then 60s"            "polling backs off rather than fixed cadence"
+hasf "$WATCH" "Back off toward one minute"           "polling backs off rather than fixed cadence"
+# Silence was the actual defect: a loop that cannot tell "CI running" from
+# "cannot reach GitHub" reports nothing either way.
+hasf "$WATCH" "SILENCE IS A BUG"                     "the script heartbeats on wall-clock time"
+hasf "$EN_SHIP" "needs outbound network access"      "the skill says the watch needs network access"
 
 # --- delegate authority, bounded both ways -----------------------------------
 # From ce-resolve-pr-feedback: "Being invoked by an orchestrator is not itself

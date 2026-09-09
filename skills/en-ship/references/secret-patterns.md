@@ -44,25 +44,21 @@ These match common keys/tokens but have false positives. Surface as warnings, no
 
 ## Implementation
 
-`/en-ship` runs the scan as a pre-flight step:
+The `ensemble-secret-scan` helper that `/en-ship` bundles implements this table. **This file stays the source of truth for the list**, and `tests/lint/ensemble-secret-scan.test.sh` fails when a pattern documented here is missing from the scanner.
 
 ```bash
-# Gather staged diff
-diff_text=$(git diff --cached)
-
-# Run high-confidence patterns
-violations=$(printf '%s' "$diff_text" | grep -nE '<concatenated-high-confidence-regexes>' || true)
-
-if [ -n "$violations" ]; then
-  echo "ERROR: potential secrets in staged diff." >&2
-  printf '%s\n' "$violations" >&2
-  echo "" >&2
-  echo "If these are intentional (test fixtures, public examples), confirm with --allow-secrets." >&2
-  exit 1
-fi
+ensemble-secret-scan [--staged | --working | --range <a>..<b>] [--allow-secrets] [--json]
+#  exit 0  no blocking match (warnings may still be reported)
+#  exit 1  a high-confidence pattern or a red-flag filename matched
 ```
 
-`--allow-secrets` exists for legitimate cases (cryptographic test vectors, documentation examples that intentionally show key shapes). Use sparingly.
+Three properties are worth knowing before changing it:
+
+- **It never prints the credential.** Output is the pattern name, the path, the line and a preview masked after four characters. The sketch that used to live here was `grep -n`, which prints the matching line: that moves the secret from the diff into the terminal, the PR body and the transcript.
+- **`grep -E` cannot do this table.** There is no portable inline case-insensitive flag, so every `(?i)` pattern above is silently case-sensitive in a hand-rolled scan. The helper uses Python's `re`.
+- **Added lines only.** A credential already in history is a real problem and refusing this push does not fix it; blocking on it trains people to pass `--allow-secrets` by reflex.
+
+`--allow-secrets` exists for legitimate cases (cryptographic test vectors, documentation examples that intentionally show key shapes). It **downgrades blocking matches to warnings**, never silences them. Use sparingly; the per-line pragma is narrower and reviewable.
 
 ## False-positive handling
 
@@ -91,6 +87,6 @@ The `/en-ship` scan is a last-mile guard, not the primary defense.
 When a new credential format emerges (a vendor changes their token shape):
 
 1. Add the regex to this file.
-2. Update the secret-scan helper, if and when it is split out as a separate binary.
-3. Add a test fixture under `tests/secret-scan/` with one match and one non-match.
-4. Bump version in `package.json`; note in `CHANGELOG.md`.
+2. Add it to the `ensemble-secret-scan` helper in the same order, so the two read as one list.
+3. Add a case to `tests/lint/ensemble-secret-scan.test.sh` with one match and one non-match.
+4. Copy the script byte-identical to every carrier (`tests/parity/script-parity.test.sh` checks this).
