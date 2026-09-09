@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# ensemble-pr-body — compose the PR body from evidence that already exists.
+#
+# Three of its four sections are derived, not written: the commit list, the
+# receipt, and the plan path all exist by the time the PR opens. Leaving the
+# composition to prose meant retyping them each run, and retyping is where the
+# Test plan section goes wrong: an agent with a changed-file list and no test
+# result will write a plausible checklist. A checkbox nobody executed reads to a
+# reviewer exactly like one that passed. That is a claim without evidence, and
+# it is worse than an empty section because it displaces the question.
+#
+# So this script will print "No test run recorded for this branch" and will not
+# invent an alternative. The Summary is the one section a model still writes,
+# because summarising intent is the part no artifact holds; pass it with
+# --summary, or accept the commit subjects.
+#
+# Usage:
+#   ensemble-pr-body --base <ref> [--summary <line>]... [--plan <path>]
+#                    [--tests <line>] [--selection <tier>] [--qa <line>]
+#
+# Prints the body on stdout. Nothing here touches the network or the index.
+
+set -u
+
+BASE=""; PLAN=""; TESTS=""; SELECTION=""; QA=""; SUMMARY=""
+die() { printf '%s\n' "$*" >&2; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base)      [ $# -ge 2 ] || die "--base needs a ref";  BASE="$2"; shift 2 ;;
+    --summary)   [ $# -ge 2 ] || die "--summary needs text"; SUMMARY="$SUMMARY$2
+"; shift 2 ;;
+    --plan)      [ $# -ge 2 ] || die "--plan needs a path";  PLAN="$2"; shift 2 ;;
+    --tests)     [ $# -ge 2 ] || die "--tests needs text";   TESTS="$2"; shift 2 ;;
+    --selection) [ $# -ge 2 ] || die "--selection needs a tier"; SELECTION="$2"; shift 2 ;;
+    --qa)        [ $# -ge 2 ] || die "--qa needs text";      QA="$2"; shift 2 ;;
+    *) die "ensemble-pr-body: unknown argument $1" ;;
+  esac
+done
+[ -n "$BASE" ] || die "ensemble-pr-body: --base <ref> is required"
+git rev-parse --git-dir >/dev/null 2>&1 || die "ensemble-pr-body: not a git repository"
+git rev-parse --verify --quiet "$BASE" >/dev/null || die "ensemble-pr-body: cannot resolve base '$BASE'"
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+printf '## Summary\n\n'
+if [ -n "$SUMMARY" ]; then
+  printf '%s' "$SUMMARY" | while IFS= read -r line; do
+    [ -n "$line" ] && printf -- '- %s\n' "$line"
+  done
+else
+  # Commit subjects are evidence; a summary invented from the diff is not.
+  git log --reverse --format='- %s' "$BASE"..HEAD | head -20
+fi
+
+printf '\n## Test plan\n\n'
+if [ -n "$TESTS" ]; then
+  printf -- '- %s\n' "$TESTS"
+  [ -n "$SELECTION" ] && printf -- '- selection: %s\n' "$SELECTION"
+  [ -n "$QA" ] && printf -- '- %s\n' "$QA"
+else
+  # The one line this script exists to protect. See the header.
+  printf 'No test run recorded for this branch.\n'
+fi
+
+printf '\n## Verified locally\n\n'
+receipt="$SELF_DIR/ensemble-verification-receipt"
+if [ -x "$receipt" ] && rj=$("$receipt" show --json 2>/dev/null); then
+  printf '%s' "$rj" | python3 -c '
+import json, sys
+try:
+    r = json.load(sys.stdin)
+except ValueError:
+    sys.exit(1)
+checks = ", ".join(sorted(r.get("checks") or {})) or "none recorded"
+print("- checks: {}".format(checks))
+print("- tree fingerprint: `{}`".format((r.get("source_fingerprint") or "")[:16]))
+print("- recorded by: {} at {}".format(r.get("written_by", "?"), r.get("written_at", "?")))
+' 2>/dev/null || printf -- '- no verification receipt for this tree\n'
+else
+  printf -- '- no verification receipt for this tree\n'
+fi
+printf -- '\nCI does not trust this section. It is here so a reader can correlate the tree CI tested with the one that passed locally, which is what makes an escaped defect diagnosable.\n'
+
+if [ -n "$PLAN" ]; then
+  printf '\nCloses plan: %s\n' "$PLAN"
+fi

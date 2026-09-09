@@ -21,6 +21,7 @@ TEST_NAME="en-ship preflight"
 cd "$REPO_ROOT"
 
 S=skills/en-ship/SKILL.md
+BODY=skills/en-ship/scripts/ensemble-pr-body
 
 has() { grep -qF "$2" "$1" && pass "$3" || fail "$3" "not in $(basename "$1")"; }
 
@@ -77,7 +78,7 @@ fi
 
 # --- the PR body claims only what ran ----------------------------------------
 has "$S" "what was **actually run**"      "the test plan reports what actually ran"
-has "$S" "No test run recorded for this branch" \
+has "$BODY" "No test run recorded for this branch." \
                                           "an absent test run is stated, not filled in"
 if grep -qF "otherwise generated from changed files" "$S"; then
   fail "the test plan is never synthesised from the changed files"
@@ -168,7 +169,8 @@ printf '%s' "$step7" | grep -qF 'staging_case' && printf '%s' "$step7" | grep -q
 step8=$(sed -n '/^8\. \*\*Plan completion checkpoint/,/^9\. /p' "$S")
 printf '%s' "$step8" | grep -qF 'scripts/ensemble-plan-checkpoint" --base' \
   && pass "step 8 runs ensemble-plan-checkpoint" || fail "step 8 must run ensemble-plan-checkpoint"
-printf '%s' "$step8" | grep -qF 'plan_path' && grep -qF 'Closes plan: <plan_path>' "$S" \
+printf '%s' "$step8" | grep -qF 'plan_path' \
+  && grep -qF -- '--plan <plan_path>' "$S" && grep -qF 'Closes plan:' "$BODY" \
   && pass "the PR body uses the checkpoint's plan_path" || fail "step 12 must use plan_path from the checkpoint"
 
 # --- D82: selection tier, ratio rule, receipt write, fingerprint, --preflight --

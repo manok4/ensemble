@@ -104,15 +104,13 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 11. **Push.**
    - Feature branch → `git push -u origin <branch>`.
    - Default branch (after explicit confirmation) → `git push origin <default>`.
-12. **Open PR via `gh pr create`.**
-    - Title from commit subject (or summary across commits if multiple).
-    - Body auto-generated:
-      - **Summary** — 1–3 bullets from the commits.
-      - **Test plan** — what was **actually run**, with its result: the targeted tests from step 5 and their count, plus the `/en-qa` report when one exists. If nothing was run, say so — *"No test run recorded for this branch"* — and do not synthesise a plausible list from the changed files. A checkbox list nobody executed reads to a reviewer exactly like one that passed, which is the failure mode: it is a claim without evidence, and it is worse than an empty section because it displaces the question.
-      - **Verified locally** — the receipt's tree fingerprint and checks (`bash "$SKILL_DIR/scripts/ensemble-verification-receipt" show --json`) and the step-5 `selection:` tier. CI never trusts this line; it lets a reader correlate the tree CI tests with the one that passed here, and it is what makes an escaped defect diagnosable.
-      - Plan reference: `Closes plan: <plan_path>` when step 8 returned one, in `completed/` after a flip and `active/` otherwise.
-    - Use HEREDOC for body to preserve formatting.
-    - On PR-creation success → return URL.
+12. **Open PR via `gh pr create`.** Title from the commit subject, or a summary across commits when there are several.
+
+    Body from `bash "$SKILL_DIR/scripts/ensemble-pr-body" --base origin/<base> --tests "<what was **actually run** at step 5, and its result>" --selection "$TEST_SELECT_TIER"`, plus `--plan <plan_path>` when step 8 returned one and `--qa <line>` when an `/en-qa` report exists. It derives Summary from the commits, **Verified locally** from the receipt, and the `Closes plan:` line, then feed it to `gh pr create --body-file`.
+
+    **Pass `--tests` only with a result you actually have.** With none, the helper prints *"No test run recorded for this branch"* and nothing else, which is the point: a checkbox list nobody executed reads to a reviewer exactly like one that passed. It is a claim without evidence, and worse than an empty section because it displaces the question. Add `--summary` bullets when the commit subjects do not carry the intent.
+
+    On PR-creation success → return URL.
 13. **Local watch-and-fix loop (default ON).** After the PR opens, watch it and resolve findings **locally** - the fixing happens on this machine, not in CI (EN04, D38). CI runs tests and lets a review model (the Anthropic Code Review action, CodeRabbit, `/en-sweep`'s review) post findings; en-ship watches for those and fixes them here, in your checkout, with your credentials, which keeps write access and secrets off CI entirely.
 
     **Polling is the script's job.** `eval "$(bash "$SKILL_DIR/scripts/ensemble-ship-watch" --pr <n> --head <sha>)"` blocks until the PR reaches a state worth acting on, then returns `SHIP_WATCH_STATE` and its evidence. **Do not hand-write a poll loop.** The one that produced this step swallowed `gh`'s stderr and looped in silence for forty minutes against a sandbox blocking GitHub with a TLS error; the PR merged with a finding unaddressed. The script owns the doctor check, the backoff, a heartbeat on wall-clock time, and the rule that **two consecutive `gh` failures end the watch with a named reason** rather than reading as "CI still running".
