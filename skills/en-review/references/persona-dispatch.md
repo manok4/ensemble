@@ -16,7 +16,7 @@ Fire on every `en-review` invocation regardless of diff content:
 | Dimension | Focus |
 |---|---|
 | `correctness` | Logic errors, edge cases, state bugs, error propagation, off-by-one |
-| `testing` | Coverage gaps, weak assertions, brittle tests, missing categories |
+| `testing` | Coverage gaps, weak assertions, brittle tests, missing categories. `references/good-tests.md` is the shared definition of what a test is worth, anti-patterns and tells included; `/en-build` writes against the same file. |
 | `maintainability` | Coupling, complexity, naming, dead code, abstraction debt |
 | `standards` | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
 
