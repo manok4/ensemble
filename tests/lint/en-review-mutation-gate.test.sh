@@ -25,10 +25,10 @@ DISPATCH="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
 # === U1: lite-gate transparency ===
 
 # --- exactly-one lite_gate: line on EVERY run, all three outcomes ---
-if grep -qF "lite_gate: applied" "$SKILL" \
-   && grep -qF "lite_gate: overridden" "$SKILL" \
-   && grep -qF "lite_gate: not-requested" "$SKILL" \
-   && grep -qiE "EVERY run emits exactly ONE .?lite_gate" "$SKILL"; then
+if grep -qF "lite_gate: applied" "$REPORT" \
+   && grep -qF "lite_gate: overridden" "$REPORT" \
+   && grep -qF "lite_gate: not-requested" "$REPORT" \
+   && grep -qiE "EVERY run emits exactly ONE" "$REPORT"; then
   pass "lite_gate: line is mandatory on every run with applied/overridden/not-requested"
 else
   fail "SKILL must require exactly one lite_gate: line per run (applied|overridden|not-requested)"
@@ -45,7 +45,7 @@ fi
 enum_ok=1
 # D79 narrowed the gate to risk: size and uncounted files no longer override.
 for rid in "risk-signal" "conditional-persona:"; do
-  grep -qF "$rid" "$SKILL" || enum_ok=0
+  grep -qF "$rid" "$REPORT" || enum_ok=0
   grep -qF "$rid" "$DIFFSIG" || enum_ok=0
 done
 if [ "$enum_ok" -eq 1 ]; then
@@ -56,11 +56,11 @@ fi
 
 # --- deterministic multi-reason grammar (order, dedup, separator, persona encoding) ---
 grammar_ok=1
-grep -qiE "canonical order|fixed table order" "$SKILL" || grammar_ok=0
-grep -qiE "dedup" "$SKILL" || grammar_ok=0
-grep -qiE "comma\+space" "$SKILL" || grammar_ok=0
-grep -qiE "alphabetically.sorted.*\+.*joined" "$SKILL" || grammar_ok=0
-grep -qF "conditional-persona:performance+security" "$SKILL" || grammar_ok=0
+grep -qiE "canonical order|fixed table order" "$REPORT" || grammar_ok=0
+grep -qiE "dedup" "$REPORT" || grammar_ok=0
+grep -qiE "comma\+space" "$REPORT" || grammar_ok=0
+grep -qiE "alphabetically.sorted.*\+.*joined" "$REPORT" || grammar_ok=0
+grep -qF "conditional-persona:performance+security" "$REPORT" || grammar_ok=0
 if [ "$grammar_ok" -eq 1 ]; then
   pass "multi-reason grammar is deterministic (order, dedup, separator, +-joined sorted personas)"
 else
@@ -68,7 +68,7 @@ else
 fi
 
 # --- structured envelope field; markdown line derived from it ---
-if grep -qE '"lite_gate": \{"outcome"' "$SKILL" && grep -qiE "DERIVED from that object|derived from it" "$SKILL"; then
+if grep -qE '"lite_gate": \{"outcome"' "$REPORT" && grep -qiE "DERIVED from its structured envelope object" "$REPORT"; then
   pass "envelope carries structured lite_gate object; markdown line derives from it"
 else
   fail "the JSON envelope must carry the structured lite_gate object and the line must derive from it"
@@ -84,9 +84,9 @@ fi
 # === U2: auditable mutation boundary ===
 
 # --- mandatory review_fixes: line, all three forms ---
-if grep -qE 'review_fixes: applied <N>|review_fixes: applied [0-9]' "$SKILL" \
-   && grep -qF "review_fixes: none" "$SKILL" \
-   && grep -qF "review_fixes: none (report-only)" "$SKILL"; then
+if grep -qE 'review_fixes: applied <N>|review_fixes: applied [0-9]' "$REPORT" \
+   && grep -qF "review_fixes: none" "$REPORT" \
+   && grep -qF "review_fixes: none (report-only)" "$REPORT"; then
   pass "review_fixes: line documented with applied/none/none(report-only) forms"
 else
   fail "SKILL must document all three review_fixes: forms"
@@ -113,10 +113,10 @@ fi
 
 # --- consistency invariants: N == unique entries; line derived; none => empty array ---
 invariants_ok=1
-grep -qiE "MUST equal the count of unique" "$SKILL" || invariants_ok=0
-grep -qiE "DERIVED from the array" "$SKILL" || invariants_ok=0
-grep -qiE "ascending ID order" "$SKILL" || invariants_ok=0
-grep -qiE 'MUST be `\[\]`|applied_fixes.*MUST be' "$SKILL" || invariants_ok=0
+grep -qiE "MUST equal the count of unique" "$REPORT" || invariants_ok=0
+grep -qiE "DERIVED from the array" "$REPORT" || invariants_ok=0
+grep -qiE "ascending ID order" "$REPORT" || invariants_ok=0
+grep -qiE 'MUST be `\[\]`|applied_fixes.*to be' "$REPORT" || invariants_ok=0
 grep -qiE "sorted and deduplicated|sorted \+ dedup" "$SKILL" || invariants_ok=0
 if [ "$invariants_ok" -eq 1 ]; then
   pass "consistency invariants: N==unique count, line derived, ascending order, none=>[] , files sorted+deduped"
@@ -216,6 +216,20 @@ if printf '%s' "$step" | grep -qF 'references/review-report.md'; then
 else
   fail "the output-report step must cite references/review-report.md"
 fi
+
+# --- every step that emits an outcome line reaches the file defining its form ---
+# One rule in one place is only safe while each emitting step opens that place.
+missing=""
+for anchor in "Emit the \`lite_gate:\` outcome line" \
+              "Emit the \`peer_decision:\` outcome line" \
+              "Emit the \`review_fixes:\` outcome line" \
+              "Emit the \`verification_pass:\` outcome line"; do
+  line=$(grep -F "$anchor" "$SKILL" | head -1)
+  printf '%s' "$line" | grep -qF 'references/review-report.md' || missing="$missing '$anchor'"
+done
+[ -z "$missing" ] \
+  && pass "each outcome-line step cites the reference that defines its form" \
+  || fail "an outcome-line step no longer reaches review-report.md" "missing:$missing"
 
 # === U3: foundation D42 ===
 

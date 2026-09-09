@@ -65,13 +65,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
    **7a. Lite (`--lite`).** A lite run is a lighter review by whichever reviewers the mode runs. Under `--peer` the peer gets `references/peer-brief-lite.md` (correctness, regression risk, standards visible in the diff; one turn). Under `--host` the roster collapses to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens**, skipping `testing`, `maintainability`, `learnings` and all conditionals. Under `--cross`, both. **Fail closed on risk:** when `references/diff-signal-detection.md` finds a risk signal (`is_low_risk` false), or any conditional persona fired above, the **full brief and full roster run regardless of `--lite`** — the gate wins, the flag is advisory. Size does not gate: a quick fix with its test and changelog line is lite. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `references/persona-dispatch.md`).
 
-   **Mandatory `lite_gate:` outcome line (EN08).** EVERY run emits exactly ONE `lite_gate:` line in the markdown summary — so a missing line is always distinguishable from a not-requested lite, and the gate's decision is **never a silent override**:
-
-   - `lite_gate: applied` — `--lite` requested, roster collapsed.
-   - `lite_gate: overridden (<reasons>)` — `--lite` requested but the fail-closed gate won. `<reasons>` uses the **canonical override-reason identifiers from `references/diff-signal-detection.md`** (`risk-signal`, `conditional-persona:<names>`), deduplicated, in that fixed canonical order, comma+space separated, with exactly one space before the paren. Persona names in `conditional-persona:` are alphabetically sorted and `+`-joined. Example: `lite_gate: overridden (risk-signal, conditional-persona:performance+security)`.
-   - `lite_gate: not-requested` — the run had no `--lite` flag.
-
-   The JSON envelope carries the structured form (see envelope shape): `"lite_gate": {"outcome": "applied" | "overridden" | "not-requested", "reasons": []}` with `reasons` in the same canonical order (empty for `applied` / `not-requested`); the markdown line is DERIVED from that object, never composed independently.
+   **Emit the `lite_gate:` outcome line** (EN08). Whatever the gate decided, including when `--lite` was never passed, the run says so: the decision is **never a silent override**. Forms and grammar in `references/review-report.md`.
 7b. **Finalize the effort tier against the ladder** (EN11-CR-001). The ladder's inputs — which conditional personas fired, `is_small_and_safe`, and the unit's `risk`/`gated` metadata — only exist once steps 7 and 7a have run, so resolving the tier at step 2 would let a diff resolve `low`/`medium` **before** a security, migration, architectural, destructive, or gated signal established that `high` was required. Resolve here, after classification and before step 8's dispatch:
 
    - If step 2b produced a tier from `--effort` or config, **use it** (higher precedence than the ladder).
@@ -92,7 +86,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → a fresh subprocess of the host's own CLI), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
-9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or degradation never reads as a normal peer run (fail-closed, like `lite_gate:`, D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The markdown line is DERIVED from the envelope's structured `peer_decision` object, never composed independently.
+9a. **Emit the `peer_decision:` outcome line**, so a skip or degradation never reads as a normal peer run (fail-closed, like `lite_gate:`, D42). Its `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e); the format is in `references/review-report.md`.
 10. **Synthesize.** With one source — `--peer` or `--host` — there is nothing to reconcile: validate, collect, and report. Say which single source produced the findings so nobody reads a one-source pass as a corroborated one.
 
     **Under `--cross`, reconcile the two sources** and **report the `corroborated` bucket first**: two independent reads agreeing is the strongest signal available, so it leads. The other three buckets are still reported below it, never dropped — `peer-only` is what the host missed and is usually the reason to run a peer at all, and `host-only` is where project context lives. Per `references/persona-dispatch.md`:
@@ -116,16 +110,13 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
     **Record.** Derive `applied_fixes[]` from the ACTUAL before-vs-after tree delta (baseline vs post-review), excluding pre-existing changes — never from intent. The working-tree delta attributable to the review MUST NOT exceed the recorded `applied_fixes[]`.
 
-    **Mandatory `review_fixes:` outcome line.** Every run emits exactly one:
-    - `review_fixes: applied <N> (<finding-ids with tiers>)` — `<N>` MUST equal the count of unique `applied_fixes[]` entries; the list is DERIVED from the array: finding IDs in ascending ID order, each rendered `<finding_id>/<tier>`, comma+space separated. Example: `review_fixes: applied 2 (rev-1-3/safe_auto, rev-1-7/safe_auto)`.
-    - `review_fixes: none` — nothing applied (and `applied_fixes` MUST be `[]`).
-    - `review_fixes: none (report-only)` — report-only mode (and `applied_fixes` MUST be `[]`).
+    **Emit the `review_fixes:` outcome line**, derived from `applied_fixes[]` and never composed independently. Forms and the count invariant in `references/review-report.md`.
 12a. **Verification pass (severity-gated, one pass).** A fix can be wrong or introduce a new fault, and the findings above describe the code before it. So when this run addressed any **P0 or P1** finding (an `applied_fixes[]` entry whose finding is P0/P1), or `--verify` was passed, review once more:
     - **Same target, mode, review mode and effort tier.** The reviewer gets `references/peer-brief-lite.md` (under `--host`/`--cross`, the lite roster) whatever `lite_gate` said: the pass is narrow by design — confirm the fixes landed, scan the changed hunks for new P0/P1.
     - **Previous-review context.** Write `<run-dir>/previous-review.md` from the envelope: each P0/P1 finding as `applied — verify the fix landed`, each P2/P3 as `deferred — do not re-flag`, with `finding_id`, severity, title, location. Pass it to `$SKILL_DIR/scripts/ensemble-build-peer-prompt` with `--iteration-context-file`; the peer reuses the original ids (`references/outside-voice.md`).
     - **One pass, never a loop.** A P0/P1 the verification pass reports, unfixed or new, is surfaced with its id and **never applied in this run**: the frozen set closed in step 12, and a third pass mostly resamples the second (D49). Fixing it is a new run.
     - **`--verify [<envelope-path>]`** runs this pass alone, for fixes made after a previous run (a P0 that halted mutation, a `manual` fix, `/en-build`'s batch). Bare `--verify` takes the newest `/tmp/ensemble/en-review/*/envelope.json` whose `diff_base` matches the current target; none or several candidates is reported, and the run stops.
-    - **Mandatory `verification_pass:` outcome line.** EVERY run emits exactly ONE: `verification_pass: clean` (ran; no P0/P1 remain), `verification_pass: new-findings (<id>/<severity>, …)` (ran; these remain), or `verification_pass: not-run (<reason>)` with `<reason>` one of `no-p0-p1-addressed`, `peer-failure`. When the pass ran, the envelope's `verdict` is its verdict. The JSON envelope carries the structured `verification_pass` object; the line is DERIVED from it, never composed independently.
+    - **Emit the `verification_pass:` outcome line**, including on a run where the pass did not fire. When the pass ran, the envelope's `verdict` is its verdict. Forms and reasons in `references/review-report.md`.
 13. **Output report.** Per `references/review-report.md`, which owns the envelope shape and the markdown summary: write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json`, emit the markdown summary alongside it in every mode including `headless` and `report-only`, and name the path in the summary so `--verify` can read it. Both carry `sub_threshold_filed_count`, how many findings were filed as TD entries (or surfaced separately in `report-only`).
 
 ## Flags
@@ -157,12 +148,6 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` line (step 12). Tier definitions live in `references/severity.md`, referenced, not duplicated.
 
 **Post-review check** (`references/post-review-check.md`). Ask `$SKILL_DIR/scripts/ensemble-verification-receipt` first: a valid receipt skips lint, typecheck and tests, which is only possible when nothing was applied. Otherwise run lint, typecheck and the graph-selected set (`test_changed_command`), revert the applied edits on failure, and on success record `lint`, `typecheck` and `targeted_tests` for `/en-ship`. `report-only` never runs it.
-
-## Reference files
-
-Every run: `references/host-detect.md` (`PEER_*`), `references/peer-brief.md` (dimensions; the prompt builder reads them), `references/peer-contract.md`, `references/severity.md` (routing), `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md` (effort), `references/diff-signal-detection.md` (`is_low_risk`, `is_small_and_safe`, lite-gate reason ids), `references/review-confidence-gating.md` and `references/tech-debt-tracker-format.md` (filing sub-threshold findings), `$SKILL_DIR/scripts/ensemble-build-peer-prompt`, `$SKILL_DIR/scripts/ensemble-peer-invoke` with `$SKILL_DIR/scripts/peer-findings.schema.json`.
-
-Gated, read only under `--cross` or `--host`: `references/persona-dispatch.md` (roster, batch, reconciliation) and `references/research-dispatch.md` (`learnings-research`). Under `--lite`, and on the verification pass: `references/peer-brief-lite.md`. At the post-review check: `references/post-review-check.md`.
 
 ## Failure protocol
 

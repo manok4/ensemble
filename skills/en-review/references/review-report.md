@@ -38,6 +38,21 @@ Read at the output-report step. This file is the **single owner of the envelope 
 }
 ```
 
+## Mandatory outcome lines
+
+**Four lines, one rule: EVERY run emits exactly ONE of each, and every line is DERIVED from its structured envelope object, never composed independently.** A missing line is then always distinguishable from a decision that went the quiet way, which is the whole point (D42): a gate that can override silently is not auditable.
+
+| Line | Forms |
+|---|---|
+| `lite_gate:` | `lite_gate: applied` · `lite_gate: overridden (<reasons>)` · `lite_gate: not-requested` |
+| `peer_decision:` | `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` is a member of the closed enum in `references/peer-model-policy.md` (e). |
+| `review_fixes:` | `review_fixes: applied <N> (<finding-ids with tiers>)` · `review_fixes: none` · `review_fixes: none (report-only)` |
+| `verification_pass:` | `verification_pass: clean` · `verification_pass: new-findings (<id>/<severity>, …)` · `verification_pass: not-run (<reason>)`, where `<reason>` is `no-p0-p1-addressed` or `peer-failure` |
+
+**`lite_gate: overridden (<reasons>)`.** `<reasons>` uses the **canonical override-reason identifiers from `references/diff-signal-detection.md`** (`risk-signal`, `conditional-persona:<names>`), deduplicated, in that fixed canonical order, comma+space separated, with exactly one space before the paren. Persona names in `conditional-persona:` are alphabetically sorted and `+`-joined. Example: `lite_gate: overridden (risk-signal, conditional-persona:performance+security)`. The envelope's `reasons` array holds the same identifiers in the same canonical order, empty for `applied` and `not-requested`.
+
+**`review_fixes: applied <N> (…)`.** `<N>` MUST equal the count of unique `applied_fixes[]` entries. The list is DERIVED from the array: finding IDs in ascending ID order, each rendered `<finding_id>/<tier>`, comma+space separated. The markdown summary below shows the line for the envelope above. Both `none` forms require `applied_fixes` to be `[]`.
+
 ## Markdown summary
 
 Always emit a markdown summary alongside the JSON, even in `headless`/`report-only`. Example:
