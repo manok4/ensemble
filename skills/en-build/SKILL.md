@@ -14,6 +14,8 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 >
 > **Universal safety gates** (EVERY code path: the unit loop, `--unit`, `--from`, manual resume): every unit with `risk: destructive` or `gated: true` requires explicit confirmation before running. **No flag disables these gates.** See step 8b.
 >
+> **Boundaries.** en-build **never modifies plan content** (units, approach, scope and U-IDs are `/en-plan`'s; the status flip at step 4 and per-unit `status` updates are bookkeeping) and **never opens a PR** (`/en-ship`).
+>
 > **Peer contract.** Severity, confidence, autofix class and the `peer_decision` object are defined once in `references/peer-contract.md`, byte-identical across every skill that exchanges findings. What this skill does with a finding is its own policy.
 
 ## Process
@@ -82,7 +84,7 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 
 - **Agent-initiated "checkpoint before bigger unit" pauses.** The plan was authored and peer-reviewed; complexity is not re-litigated at execution time. *The tell: the reason cites the next unit's size, not this unit's state.*
 - **"Working tree is clean, paused for confirmation" between non-gated units.** A clean tree is the expected state between units. *The tell: the pause reports success and asks nothing answerable.*
-- **"Should I continue?" preambles and "Let me verify with the user before …"** outside the seven cases. *The tell: the question offers no option that changes what happens next.*
+- **"Should I continue?" preambles and "Let me verify with the user before …"** outside the five cases. *The tell: the question offers no option that changes what happens next.*
 
 **Uncertainty is not a pause case: advance, not ask.** The verification gates and the failure protocol are the safety net. A real concern goes in the progress report as an informational `Note:` line, not a prompt.
 
@@ -161,13 +163,3 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 | Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
 | A 9f checkpoint fails | Stop. Do **not** enter the gated or destructive unit it was guarding. Surface failing tests; offer investigate / `--commit-wip` / abort. |
 | Ctrl-C or abort mid-unit | **Stop cleanly. No signal-time git operations.** Surface branch, current unit, dirty files, last successful commit and the resume command (`--from U<N>`). WIP capture is opt-in via `--commit-wip`, never automatic. |
-
-## What this skill never does
-
-- **Never modifies plan content.** Units, approach, scope and U-IDs are `/en-plan` territory. The status flip at step 4 and per-unit `status` updates are bookkeeping, not content.
-- **Never opens a PR** (that is `/en-ship`), **never deletes files outside the unit's scope**, and **never invokes itself recursively** (step 2's guard).
-- **Never inserts agent-initiated checkpoints.** Only the enumerated pause cases are legitimate inside the contract window.
-- **Never bypasses a gate.** Verification gates stop or revert; universal safety gates always confirm, and no flag disables them.
-- **Never auto-commits, auto-stashes or runs any git operation at signal time** on Ctrl-C or abort. WIP capture is user-initiated via `--commit-wip`.
-- **Never lets another agent write the code.** The host implements every unit; the peer enters once, at 10.3, through `/en-review`.
-- **Never declares a build complete with missing review evidence.** The 10.6 audit blocks the success path until every U-ID is covered and both gate lines are recorded.

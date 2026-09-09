@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/lint/en-build-stop-conditions.test.sh
 #
-# en-build's autonomy contract is one-sided by design: it enumerates seven
+# en-build's autonomy contract is one-sided by design: it enumerates five
 # legitimate pauses to stop the agent inserting "let me checkpoint here" between
 # units. That solved over-pausing and left the opposite failure unaddressed —
 # guessing through a blocker rather than asking.
@@ -18,7 +18,7 @@
 #   the guess.
 #
 # They are failure-protocol rows, not new pause authority — the autonomy
-# contract's seventh case already routes there, so the two documents compose
+# contract's last case already routes there, so the two documents compose
 # instead of contradicting. That composition is what clause 3 checks.
 
 set -u
@@ -57,11 +57,12 @@ else
 fi
 
 # --- 3. they compose with the autonomy contract instead of contradicting it ---
-# The contract restricts pauses to seven cases. These are legitimate only
-# because case 7 routes to the failure protocol; if that case were removed, the
-# rows would become the agent-initiated pauses the contract forbids.
+# The contract restricts pauses to five cases (seven until D108 retired the two
+# phase-level ones). These rows are legitimate only because the last case routes
+# to the failure protocol; without it they become the agent-initiated pauses the
+# contract forbids.
 if grep -qiE 'Failure protocol fires' "$SKILL" \
-   && grep -qiE 'seven (enumerated |legitimate )?(pause )?cases|seven cases' "$SKILL"; then
+   && grep -qiE 'five (enumerated |legitimate )?(pause )?cases|five cases' "$SKILL"; then
   pass "the failure-protocol pause case still exists for these rows to route through"
 else
   fail "the autonomy contract must keep its failure-protocol case" \
