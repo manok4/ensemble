@@ -37,8 +37,10 @@ BUDGET=24576
 # en-build's row was deleted the same day. It entered the trim at 46,095 bytes
 # and left it under budget, so the budget checks it now and the row would only
 # have licensed a regression.
+#
+# en-plan's row went the same way on 2026-09-09: 40,191 bytes down to 24,353,
+# with the peer loop stated once and four gated blocks moved to references.
 BASELINE='
-en-plan 40191
 en-review 30715
 en-setup 30301
 en-ship 27407

@@ -8,33 +8,34 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-plan technical-design audit"
 
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
+PREWRITE="$REPO_ROOT/skills/en-plan/references/plan-prewrite.md"
 # Reads /en-plan's copy: it owns the plan template, and D52's payload cut
 # removed en-build's, which it carried for one see-also cross-reference.
 TEMPLATE="$REPO_ROOT/skills/en-plan/references/templates/plan-template.md"
 
 # --- audit documented in en-plan ---
-if grep -qiE "Technical-design load-bearing audit" "$EN_PLAN"; then
+if grep -qiE "Technical-design load-bearing audit" "$PREWRITE"; then
   pass "en-plan documents the technical-design audit"
 else
   fail "en-plan must document the technical-design audit"
 fi
 
 # --- triggers enumerated ---
-if grep -qiE "3 new/changed components|≥3 new" "$EN_PLAN" && grep -qiE "state machine" "$EN_PLAN" && grep -qiE "data-flow stages" "$EN_PLAN"; then
+if grep -qiE "3 new/changed components|≥3 new" "$PREWRITE" && grep -qiE "state machine" "$PREWRITE" && grep -qiE "data-flow stages" "$PREWRITE"; then
   pass "en-plan enumerates the architecture-complexity triggers"
 else
   fail "en-plan must enumerate the complexity triggers"
 fi
 
 # --- pre-write verifies presence when a trigger fired ---
-if grep -qiE "missing section with a fired trigger is .*incomplete|Verify the section is present when a trigger fired" "$EN_PLAN"; then
+if grep -qiE "missing section with a fired trigger is .*incomplete|Verify the section is present when a trigger fired" "$PREWRITE"; then
   pass "pre-write verifies section presence when a trigger fired"
 else
   fail "pre-write must verify section presence when triggered"
 fi
 
 # --- self-gating: not required / not added when no trigger ---
-if grep -qiE "[Ss]elf-gating" "$EN_PLAN" && grep -qiE "must not be added as boilerplate|not required" "$EN_PLAN"; then
+if grep -qiE "[Ss]elf-gating" "$PREWRITE" && grep -qiE "must not be added as boilerplate|not required" "$PREWRITE"; then
   pass "self-gating: no section required/added when no trigger fires"
 else
   fail "must be self-gating (no boilerplate when no trigger)"
@@ -50,6 +51,15 @@ if grep -qiE "ONLY when an architecture-complexity trigger fires|Omit this secti
   pass "template marks Technical design as trigger-gated / omit-when-simple"
 else
   fail "template must mark Technical design as trigger-gated"
+fi
+
+# --- the pre-write step reaches the checks ---
+# Scoped to the step: the audit is worth nothing if the flow never opens the file.
+step=$(awk '/^13\. \*\*Pre-write plan-quality review/{f=1} f&&/^14\. \*\*/{exit} f' "$EN_PLAN")
+if printf '%s' "$step" | grep -qF 'references/plan-prewrite.md'; then
+  pass "the pre-write step points at the checks"
+else
+  fail "the pre-write step must cite references/plan-prewrite.md"
 fi
 
 report
