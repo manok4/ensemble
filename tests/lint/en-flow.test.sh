@@ -15,7 +15,30 @@ if [ -f "$FLOW" ]; then pass "en-flow SKILL.md exists"; else fail "en-flow SKILL
 # The $ENSEMBLE_ROOT helper-resolution header was retired by EN13, when skills
 # became self-contained and stopped resolving paths through an install root. This
 # assertion outlived the convention; it was invisible because the suite had no
-# report call and so could never fail.
+# # --- en-flow knows what en-ship can hand back (D113) --------------------------
+# The orchestrator described the watch loop as "capped at 2 cycles, then
+# escalate" and knew nothing of `blocked`. Since ensemble-ship-watch fails fast
+# on an unreachable GitHub, a run can end having attempted no repair at all,
+# which is not a failure of the build and must not be re-run as one.
+FLOW="$REPO_ROOT/skills/en-flow/SKILL.md"
+missing=""
+for st in clean escalated blocked settled-externally; do
+  grep -qF "$st" "$FLOW" || missing="$missing $st"
+done
+[ -z "$missing" ] \
+  && pass "en-flow names the exit states en-ship can return" \
+  || fail "en-flow must name en-ship's exit states" "missing:$missing"
+
+grep -qiE 'attempted no repair|not evidence about the code' "$FLOW" \
+  && pass "a blocked ship is not read as a failed pipeline stage" \
+  || fail "en-flow must say a blocked exit attempted no repair"
+
+# The exit state has to reach the reader, or knowing it internally buys nothing.
+grep -qiE "exit state with its reason" "$FLOW" \
+  && pass "the terminal report carries en-ship's exit state" \
+  || fail "the terminal report must carry the exit state and reason"
+
+report call and so could never fail.
 if grep -qF "ENSEMBLE_PEER_REVIEW=true" "$FLOW"; then pass "en-flow has recursion guard"; else fail "en-flow missing recursion guard"; fi
 
 # --- manual-invoke only ---

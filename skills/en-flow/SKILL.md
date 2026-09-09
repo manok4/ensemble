@@ -28,7 +28,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
                  │
                  ▼
      [local-only? / --no-ship? ]── en-ship ──▶ PR +      no auto-merge; watch loop → en-resolve-pr
-                                    watch loop            (bounded 2 repair cycles, then escalate)
+                                    watch loop            (2 repair cycles; clean/escalated/blocked)
                  │
                  ▼
               terminal report
@@ -69,10 +69,11 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan → build �
 
 - **If `local_only`** (no remote): make any remaining commits locally and **stop** — surface the local-only summary (branch, commits, "no remote; push manually when ready"). Skip the rest of this stage.
 - **If `--no-ship`:** stop after build/learn; surface what's ready and the suggested `/en-ship` command. Skip shipping.
-- Otherwise invoke `/en-ship`. Per its default, en-ship opens the PR then enters the **bounded watch loop** (poll CI + reviews → `/en-resolve-pr`, capped at 2 cycles, then escalate needs-human). Pass `--no-watch` through when en-flow was invoked with `--no-watch`.
+- Otherwise invoke `/en-ship`. Per its default, en-ship opens the PR then enters the **bounded watch loop** (poll CI + reviews → `/en-resolve-pr`, capped at 2 cycles). Pass `--no-watch` through when en-flow was invoked with `--no-watch`.
+- **Record which of en-ship's five exit states came back; three of them are not failures of this pipeline.** `clean` and `settled-externally` are done. `escalated` means the cycle cap was reached with findings open, so name them. **`blocked` means en-ship could not drive the PR at all** — a doctor failure, a fork, or a watch that could not reach GitHub, which its script now reports in the first minute as `gh-error` rather than burning a timeout. A `blocked` run has attempted no repair and is not evidence about the code: report the reason verbatim and stop, rather than re-running the stage or investigating the build.
 - **No auto-merge.** en-flow never merges; en-ship is invoked without `--auto-merge`. The user merges when the PR is ready.
 
-7. **Terminal report.** From `state.json`, emit a completion summary: plan path, units built, audit verdict, whether a learning was captured, PR URL (or local-only summary). End with an explicit done marker: the last line is `en-flow: done` or `en-flow: stopped at <step> — <reason>`, so a reader can tell a finished run from one that stopped at a gate.
+7. **Terminal report.** From `state.json`, emit a completion summary: plan path, units built, audit verdict, whether a learning was captured, PR URL (or local-only summary), and en-ship's exit state with its reason when it was not `clean`. End with an explicit done marker: the last line is `en-flow: done` or `en-flow: stopped at <step> — <reason>`, so a reader can tell a finished run from one that stopped at a gate.
 
 ## Flags
 
