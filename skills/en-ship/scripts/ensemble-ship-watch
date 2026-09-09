@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+# ensemble-ship-watch — poll an open PR until it reaches a state /en-ship can act
+# on, and FAIL LOUDLY when it cannot poll at all.
+#
+# The failure this exists to prevent: the skill described the loop in prose, so
+# the agent hand-wrote a poll script every run. One of those swallowed `gh`'s
+# stderr and looped in silence for forty minutes against a sandbox that blocks
+# GitHub with a TLS error. The PR merged with a review finding unaddressed. The
+# script had no bug a reader would notice — it just could not tell "CI is still
+# running" from "I cannot reach GitHub", and neither could anyone watching it.
+#
+# So two rules shape everything here:
+#
+#   SILENCE IS A BUG.  A heartbeat goes to stderr on a fixed wall-clock interval
+#   whether or not anything changed, and it names the elapsed time and what is
+#   still pending. A run that prints nothing for ten minutes is reporting a
+#   defect in this script, not a slow CI.
+#
+#   AN ERROR IS NEVER A POLL RESULT.  Two consecutive `gh` failures end the
+#   watch with state gh-error and the captured stderr. A network or certificate
+#   failure is classified by name, because "cannot reach GitHub" and "checks
+#   still pending" need different actions from the caller and look identical
+#   from inside a retry loop.
+#
+#   NOTHING FATAL IS DECIDED INSIDE A COMMAND SUBSTITUTION.  The first draft of
+#   this file called emit() from the gh wrapper, which callers invoke as
+#   `x=$(gh_json ...)`. The exit killed the subshell, the loop carried on, and
+#   the script reproduced the forty-minute hang it was written to prevent. The
+#   wrapper now returns a status and records FATAL_*; only top-level code emits.
+#
+# WHAT IT DOES NOT DO.  It never fixes, comments, pushes, merges or resolves. It
+# reports a state and exits; /en-ship decides. That split is what keeps the
+# trusted-source gate and the repair-cycle cap in the skill, where they are
+# guarded, instead of in a helper that would have to re-implement them.
+#
+# Usage:
+#   ensemble-ship-watch --pr <number> [--repo <owner/repo>] [--head <sha>]
+#                       [--max-seconds <n>] [--heartbeat-seconds <n>]
+#                       [--poll-seconds <n>] [--once]
+#
+# Emits eval-able lines on stdout (progress and heartbeats go to stderr):
+#   SHIP_WATCH_STATE='checks-settled|merged|closed|head-moved|doctor-failed|gh-error|timeout'
+#   SHIP_WATCH_REASON='<why this state, one token or short phrase>'
+#   SHIP_WATCH_PR='<number>'
+#   SHIP_WATCH_HEAD='<head sha the result describes>'
+#   SHIP_WATCH_CHECKS_TOTAL='<n>'
+#   SHIP_WATCH_CHECKS_FAILED='<n>'
+#   SHIP_WATCH_CHECKS_PENDING='<n>'
+#   SHIP_WATCH_FAILED_NAMES='<comma-separated>'
+#   SHIP_WATCH_ELAPSED='<seconds>'
+#   SHIP_WATCH_DETAIL='<captured stderr on gh-error, else empty>'
+#
+# Exit codes:
+#   0  a state the caller can act on (checks-settled, merged, closed, head-moved)
+#   1  the watch could not proceed (doctor-failed, gh-error)
+#   2  timeout — max-seconds elapsed with checks still pending
+#   3  usage error
+#
+# checks-settled means every check has a conclusion, not that they passed. A red
+# check is a settled state: the caller repairs it. Reporting "not clean" as a
+# non-zero exit would make an ordinary CI failure indistinguishable from an
+# inability to look.
+
+set -u
+
+PR=""; REPO=""; EXPECT_HEAD=""; MAX_SECONDS=2400; HEARTBEAT=120; POLL=""; ONCE=false
+
+die() { printf '%s\n' "$*" >&2; exit 3; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pr)                [ $# -ge 2 ] || die "--pr needs a number";     PR="$2";          shift 2 ;;
+    --repo)              [ $# -ge 2 ] || die "--repo needs owner/repo"; REPO="$2";        shift 2 ;;
+    --head)              [ $# -ge 2 ] || die "--head needs a sha";      EXPECT_HEAD="$2"; shift 2 ;;
+    --max-seconds)       [ $# -ge 2 ] || die "--max-seconds needs n";   MAX_SECONDS="$2"; shift 2 ;;
+    --heartbeat-seconds) [ $# -ge 2 ] || die "--heartbeat-seconds n";   HEARTBEAT="$2";   shift 2 ;;
+    --poll-seconds)      [ $# -ge 2 ] || die "--poll-seconds needs n";  POLL="$2";        shift 2 ;;
+    --once)              ONCE=true; shift ;;
+    *) die "ensemble-ship-watch: unknown argument $1" ;;
+  esac
+done
+[ -n "$PR" ] || die "ensemble-ship-watch: --pr <number> is required"
+case "$PR" in ''|*[!0-9]*) die "ensemble-ship-watch: --pr must be a number, got '$PR'" ;; esac
+for n in "$MAX_SECONDS" "$HEARTBEAT"; do
+  case "$n" in ''|*[!0-9]*) die "ensemble-ship-watch: seconds must be numeric, got '$n'" ;; esac
+done
+
+command -v gh >/dev/null 2>&1 || die "ensemble-ship-watch: gh is not installed"
+
+REPO_ARGS=""
+[ -n "$REPO" ] && REPO_ARGS="--repo $REPO"
+
+START=$(date +%s)
+LAST_BEAT=$START
+STATE=""; REASON=""; DETAIL=""
+TOTAL=0; FAILED=0; PENDING=0; FAILED_NAMES=""; HEAD_SHA="${EXPECT_HEAD}"
+
+emit() {  # $1=state $2=reason [$3=detail]
+  STATE="$1"; REASON="$2"; DETAIL="${3:-}"
+  elapsed=$(( $(date +%s) - START ))
+  # Single-quoted values with embedded quotes neutralised: this output is eval'd.
+  esc() { printf '%s' "$1" | tr '\n' ' ' | sed "s/'/'\\\\''/g"; }
+  printf "SHIP_WATCH_STATE='%s'\n"          "$(esc "$STATE")"
+  printf "SHIP_WATCH_REASON='%s'\n"         "$(esc "$REASON")"
+  printf "SHIP_WATCH_PR='%s'\n"             "$PR"
+  printf "SHIP_WATCH_HEAD='%s'\n"           "$(esc "$HEAD_SHA")"
+  printf "SHIP_WATCH_CHECKS_TOTAL='%s'\n"   "$TOTAL"
+  printf "SHIP_WATCH_CHECKS_FAILED='%s'\n"  "$FAILED"
+  printf "SHIP_WATCH_CHECKS_PENDING='%s'\n" "$PENDING"
+  printf "SHIP_WATCH_FAILED_NAMES='%s'\n"   "$(esc "$FAILED_NAMES")"
+  printf "SHIP_WATCH_ELAPSED='%s'\n"        "$elapsed"
+  printf "SHIP_WATCH_DETAIL='%s'\n"         "$(esc "$DETAIL")"
+  case "$STATE" in
+    checks-settled|merged|closed|head-moved) exit 0 ;;
+    timeout)                                 exit 2 ;;
+    *)                                       exit 1 ;;
+  esac
+}
+
+note() { printf '%s\n' "$*" >&2; }
+
+# A gh failure is classified, never swallowed. The sandbox case (a TLS error
+# against an egress proxy) reads as an ordinary empty result otherwise, which is
+# exactly how forty minutes went missing.
+classify_gh_error() {  # $1=stderr text -> a reason token
+  case "$1" in
+    *certificate*|*x509*|*"SSL"*|*"tls"*|*"TLS"*)          printf 'network-tls' ;;
+    *"dial tcp"*|*"no such host"*|*"connection refused"*|*"i/o timeout"*|*"proxy"*)
+                                                           printf 'network-unreachable' ;;
+    *"gh auth login"*|*"authentication"*|*"HTTP 401"*|*"Bad credentials"*)
+                                                           printf 'auth' ;;
+    *"HTTP 403"*|*"rate limit"*)                           printf 'rate-limited' ;;
+    *"could not resolve to a PullRequest"*|*"HTTP 404"*)   printf 'pr-not-found' ;;
+    *)                                                     printf 'gh-failed' ;;
+  esac
+}
+
+ERR_FILE=$(mktemp) || die "ensemble-ship-watch: cannot create a temp file"
+OUT_FILE=$(mktemp) || die "ensemble-ship-watch: cannot create a temp file"
+trap 'rm -f "$ERR_FILE" "$OUT_FILE"' EXIT
+
+consecutive_failures=0
+FATAL_STATE=""; FATAL_REASON=""; FATAL_DETAIL=""
+
+# Writes gh's stdout to $OUT_FILE rather than printing it, so no caller has to
+# wrap this in a command substitution. Returns 0 ok, 1 retryable, 2 fatal — and
+# a fatal result sets FATAL_* for the top-level loop to emit. See the header.
+gh_json() {  # $1..=gh args
+  : > "$ERR_FILE"; : > "$OUT_FILE"
+  gh "$@" >"$OUT_FILE" 2>"$ERR_FILE"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    consecutive_failures=$((consecutive_failures + 1))
+    err=$(tr -d '\r' < "$ERR_FILE" | head -c 400)
+    reason=$(classify_gh_error "$err")
+    note "gh failed (${consecutive_failures}/2): $reason"
+    # One transient failure is tolerated; two in a row is the environment
+    # telling you something, and continuing to poll only hides it.
+    if [ "$consecutive_failures" -ge 2 ]; then
+      case "$reason" in
+        network-tls|network-unreachable)
+          note "the watch loop needs outbound network access to github.com; this environment is blocking it" ;;
+      esac
+      FATAL_STATE="gh-error"; FATAL_REASON="$reason"; FATAL_DETAIL="$err"
+      return 2
+    fi
+    return 1
+  fi
+  consecutive_failures=0
+  return 0
+}
+
+# Emits and exits when the last gh_json was fatal. Called only at top level.
+check_fatal() {
+  [ -n "$FATAL_STATE" ] && emit "$FATAL_STATE" "$FATAL_REASON" "$FATAL_DETAIL"
+  return 0
+}
+
+# --- doctor: never drive a PR you have not health-checked --------------------
+doctor() {
+  gh_json pr view "$PR" $REPO_ARGS --json state,isCrossRepository,headRefOid,headRepositoryOwner || return $?
+  parsed=$(python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d.get("state", ""))
+print("true" if d.get("isCrossRepository") else "false")
+print(d.get("headRefOid", "") or "")
+' < "$OUT_FILE" 2>/dev/null) || {
+    FATAL_STATE="doctor-failed"; FATAL_REASON="unparseable-pr-view"
+    FATAL_DETAIL=$(head -c 200 "$OUT_FILE"); return 2
+  }
+  pr_state=$(printf '%s\n' "$parsed" | sed -n 1p)
+  cross=$(printf   '%s\n' "$parsed" | sed -n 2p)
+  HEAD_SHA=$(printf '%s\n' "$parsed" | sed -n 3p)
+
+  case "$pr_state" in
+    MERGED) emit merged "merged-externally" ;;
+    CLOSED) emit closed "closed-externally" ;;
+    OPEN)   ;;
+    *)      emit doctor-failed "unknown-pr-state:$pr_state" ;;
+  esac
+  # A fork PR is reported, never driven: this loop cannot push to it.
+  [ "$cross" = "true" ] && emit doctor-failed "fork-pr-not-driveable"
+  if [ -n "$EXPECT_HEAD" ] && [ -n "$HEAD_SHA" ] && [ "$EXPECT_HEAD" != "$HEAD_SHA" ]; then
+    emit head-moved "head-moved-to:$HEAD_SHA"
+  fi
+  return 0
+}
+
+# --- one poll of the checks --------------------------------------------------
+poll_checks() {
+  gh_json pr checks "$PR" $REPO_ARGS --json name,state,bucket || return $?
+  summary=$(python3 -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except ValueError:
+    rows = []
+if not isinstance(rows, list):
+    rows = []
+pending_buckets = {"pending"}
+fail_buckets = {"fail", "cancel"}
+total = len(rows)
+pending = [r for r in rows if (r.get("bucket") or "").lower() in pending_buckets]
+failed = [r for r in rows if (r.get("bucket") or "").lower() in fail_buckets]
+print(total)
+print(len(failed))
+print(len(pending))
+print(",".join(sorted(r.get("name", "?") for r in failed)))
+print(",".join(sorted(r.get("name", "?") for r in pending)))
+' < "$OUT_FILE" 2>/dev/null) || {
+    FATAL_STATE="gh-error"; FATAL_REASON="unparseable-checks"
+    FATAL_DETAIL=$(head -c 200 "$OUT_FILE"); return 2
+  }
+  TOTAL=$(printf   '%s\n' "$summary" | sed -n 1p)
+  FAILED=$(printf  '%s\n' "$summary" | sed -n 2p)
+  PENDING=$(printf '%s\n' "$summary" | sed -n 3p)
+  FAILED_NAMES=$(printf '%s\n' "$summary" | sed -n 4p)
+  PENDING_NAMES=$(printf '%s\n' "$summary" | sed -n 5p)
+  return 0
+}
+
+# --- the loop ----------------------------------------------------------------
+note "watching PR #$PR (heartbeat every ${HEARTBEAT}s, giving up after ${MAX_SECONDS}s)"
+doctor || true
+check_fatal
+
+last_signature=""
+backoff=15
+[ -n "$POLL" ] && backoff="$POLL"
+PENDING_NAMES=""
+
+while :; do
+  poll_checks; poll_rc=$?
+  check_fatal
+  if [ "$poll_rc" -eq 0 ]; then
+    signature="$TOTAL/$FAILED/$PENDING/$FAILED_NAMES"
+    if [ "$signature" != "$last_signature" ]; then
+      note "checks: $TOTAL total, $FAILED failed, $PENDING pending${FAILED_NAMES:+ (failed: $FAILED_NAMES)}"
+      last_signature="$signature"
+    fi
+    if [ "${PENDING:-0}" -eq 0 ] && [ "${TOTAL:-0}" -gt 0 ]; then
+      emit checks-settled "$([ "${FAILED:-0}" -gt 0 ] && printf 'checks-failed' || printf 'checks-green')"
+    fi
+    if [ "${TOTAL:-0}" -eq 0 ]; then
+      # No checks configured at all is settled, not pending. Waiting for checks
+      # a repo does not run is the same silent hang in a different costume.
+      emit checks-settled "no-checks-configured"
+    fi
+  fi
+
+  $ONCE && emit checks-settled "single-poll${PENDING:+:${PENDING}-pending}"
+
+  now=$(date +%s); elapsed=$(( now - START ))
+  [ "$elapsed" -ge "$MAX_SECONDS" ] && emit timeout "still-pending-after-${MAX_SECONDS}s"
+  if [ $(( now - LAST_BEAT )) -ge "$HEARTBEAT" ]; then
+    note "still watching, ${elapsed}s elapsed, ${PENDING} pending${PENDING_NAMES:+: $PENDING_NAMES}"
+    LAST_BEAT=$now
+  fi
+
+  sleep "$backoff"
+  # Back off toward one minute: the checks being waited on take minutes.
+  if [ -z "$POLL" ]; then
+    case "$backoff" in 15) backoff=30 ;; 30) backoff=60 ;; esac
+  fi
+  # Re-doctor each round so an external merge or a moved head ends the watch
+  # promptly rather than at the next state change.
+  doctor || true
+  check_fatal
+done
