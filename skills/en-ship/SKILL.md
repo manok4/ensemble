@@ -206,13 +206,6 @@ PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
 - `references/secret-patterns.md` — secret-scan regex catalog
 - `references/verification-receipt.md` — **gated**: read when a project asks how its own pre-push hook can consume a receipt. The script emits every validity reason itself.
 
-## Bundled scripts
-
-- `scripts/ensemble-ship-preflight` — step 3: git, base and staging state as JSON. Read-only; a state it cannot ship from exits non-zero and names itself.
-- `scripts/ensemble-plan-checkpoint` — step 8: the plan-completion outcome and `plan_path`. Read-only; this skill owns the flip.
-- `scripts/ensemble-verification-receipt` — step 5 reads (`verify --requires`) and writes (`write --check`); step 12 shows. A non-zero verify always carries a reason.
-- `scripts/get-pr-comments` — step 13: the complete, paginated set of review threads, review bodies and comments.
-
 ## Failure protocol
 
 **`references/ship-failures.md` owns the table.** Every row shares one rule: a failure stops the ship and surfaces; nothing is auto-reverted, auto-stashed or worked around. Three rows are hard floors rather than defaults:
