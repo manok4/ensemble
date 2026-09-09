@@ -10,6 +10,7 @@ TEST_NAME="en-ship watch loop"
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
 WATCH="$REPO_ROOT/skills/en-ship/scripts/ensemble-ship-watch"
 REPORT="$REPO_ROOT/skills/en-ship/references/ship-reporting.md"
+WLOOP="$REPO_ROOT/skills/en-ship/references/watch-loop.md"
 GETPR="$REPO_ROOT/skills/en-resolve-pr/scripts/get-pr-comments"
 
 # --- default is a LOCAL watch-and-fix loop ---
@@ -41,7 +42,7 @@ else
 fi
 
 # --- review findings fetched comprehensively (inline threads), not just --json comments ---
-if grep -qF "get-pr-comments" "$EN_SHIP" && grep -qiE "inline review threads?" "$EN_SHIP"; then
+if grep -qF "get-pr-comments" "$EN_SHIP" && grep -qiE "inline review threads?" "$WLOOP"; then
   pass "loop fetches inline review threads via get-pr-comments (not --json comments alone)"
 else
   fail "loop must fetch inline review threads (get-pr-comments), not just gh pr view --json comments"
@@ -199,11 +200,14 @@ hasf "$EN_SHIP" "needs outbound network access"      "the skill says the watch n
 # authorization." en-ship's own "never auto-merges" bound en-ship and nothing else.
 hasf "$EN_SHIP" "Being invoked here is not itself authorization" \
                                                      "the delegate's authority is inherited, not implied"
-hasf "$EN_SHIP" "It may narrow that scope"           "the delegate may narrow but not widen scope"
+hasf "$WLOOP" "may narrow" "the delegate may narrow but not widen scope"
+# The exclusions stay in the FLOW on purpose: a reader who never opens the
+# reference must not let a delegate merge. en-resolve-pr-seam keys on the same
+# `**Excluded:**` layout, so the two sides of the contract cannot drift apart.
 for excluded in "merge" "rebase" "force-push"; do
   grep -qE "\*\*Excluded:\*\*[^|]*$excluded" "$EN_SHIP" \
-    && pass "delegate exclusion listed: $excluded" \
-    || fail "delegate exclusion listed: $excluded"
+    && pass "delegate exclusion listed in the flow: $excluded" \
+    || fail "delegate exclusion listed in the flow: $excluded"
 done
 hasf "$EN_SHIP" "en-ship edits nothing here itself"  "the watcher does not also patch code"
 

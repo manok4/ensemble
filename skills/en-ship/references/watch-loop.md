@@ -18,3 +18,26 @@ to avoid.
 | `head-moved` | 0 | **Cancel a stale tick**: this tick's CI results are dead, because they describe a commit that is no longer the head. Discard them and re-run the watch. |
 | `doctor-failed` / `gh-error` | 1 | Exit `blocked`, quoting `SHIP_WATCH_REASON` and `SHIP_WATCH_DETAIL`. No repair attempted. |
 | `timeout` | 2 | Exit `escalated`, naming what was still pending. |
+
+## Fetching the findings
+
+`scripts/get-pr-comments` returns the complete, paginated set: unresolved
+inline review threads, review-submission bodies, and top-level PR comments.
+`gh pr view --json comments` alone misses the first two, which would mark a PR
+clean while findings are still open.
+
+## What a delegate may do on en-ship's behalf
+
+Being invoked by the watch loop is not itself authorization. `/en-resolve-pr`
+acts under the scope this run holds, bounded both ways.
+
+| | |
+|---|---|
+| **Permitted** | fix, commit, push, reply, resolve threads, on this PR's head |
+| **Excluded** | merge, rebase, force-push, approving checks, any branch update this loop did not ask for |
+
+It **may narrow** that scope, deferring an item as `needs-human`, and **never
+widen** it. If resolving something would require an excluded action, it comes
+back as `needs-human` instead of being done. Reject a result that performed an
+excluded action rather than accepting the work and noting the breach.
+
