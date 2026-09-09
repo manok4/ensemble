@@ -60,9 +60,9 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
      **An empty selection is reported as empty, never as a pass.** Where tests do not sit beside sources the heuristic matches nothing and runs nothing. Zero tests found is a finding about the project's configuration, not a green check.
    - On any failure → stop, surface, and offer `/en-review` or `/en-qa` to triage.
    - **On success, write a receipt for what this run actually ran.** Skipped on a valid receipt → **write nothing**; never record a check that did not run. Otherwise `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check lint=passed --check typecheck=passed --check targeted_tests=passed --base origin/<base> --by en-ship`, plus `--dep <path>` per lockfile. It records `targeted_tests`, never `full_suite`, so a pre-push hook that requires the suite still runs it, and the write merges into a receipt for the identical tree rather than replacing it. Never fatal: a failed write is a warning.
-6. **Secret scan on diff.** Per `references/secret-patterns.md`. Match against high-confidence regexes + file-name red flags.
-   - Match → stop; print offenders; suggest `git restore <file>` or `--allow-secrets` (rare).
-   - Heuristic match only → surface as warning; let user confirm.
+6. **Secret scan on the lines this push would add.** `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --staged`. **Never hand-roll greps for this**; `references/secret-patterns.md` says why, and the helper masks every preview so its own output cannot leak.
+   - **Exit 1** (high-confidence pattern or red-flag filename) → stop; report pattern, path and line; suggest `git restore <file>`, the per-line `# pragma: ensemble-allow-secret`, or `--allow-secrets` (rare, and it downgrades rather than silences).
+   - **Exit 0 with warnings** (heuristic matches) → surface and let the user confirm; report the pragma-suppressed count so nobody forgets those lines exist.
 7. **Resolve what to commit, then confirm scope.** Act on the `staging_case` step 3 returned. Resolve one case explicitly — they are ordered, first match wins:
 
    | Case | Action |
