@@ -30,6 +30,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-build suite sequencing"
 
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
+LOOP="$REPO_ROOT/skills/en-build/references/unit-loop.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- 1. the full suite runs after review, not before ---
@@ -52,11 +53,14 @@ else
 fi
 
 # --- 3. phase boundaries are targeted ---
-if grep -qiE 'the tests covering the files this phase touched.*not the full suite' "$SKILL"; then
-  pass "after-phase verification is targeted, not the full suite"
+# D108 moved this from a phase boundary to the 9f checkpoint, which fires before
+# the first irreversible unit and once at the end. Targeted either way.
+if grep -qiE 'tests covering everything built so far' "$LOOP" \
+   && grep -qF 'ensemble-unit-verify" --unit checkpoint' "$SKILL"; then
+  pass "the checkpoint is targeted, not the full suite"
 else
-  fail "after-phase verification must be targeted" \
-       "a four-phase build otherwise pays for the full suite four times before review"
+  fail "the 9f checkpoint must be targeted" \
+       "a build otherwise pays for the full suite at every checkpoint before review"
 fi
 
 # --- 4. remediation is batched ---

@@ -369,11 +369,12 @@ fi
 # 17. The skill's "What this skill never does" lists the new fail-closed contracts.
 # Removed by D52 — the never-does claim now covers review evidence, checked by en-build-review-model.
 
-# 18. Reference list mentions the verify helper.
+# 18. The skill names the verify helper (at 10.6; the reference list it used to
+# sit in went with the trim, since every entry was named at its own step).
 if grep -qF "ensemble-verify-peer-evidence" "$SKILL"; then
-  pass "en-build SKILL.md reference list mentions verify-peer-evidence helper"
+  pass "en-build SKILL.md names the verify-peer-evidence helper"
 else
-  fail "en-build SKILL.md reference list should mention bin/ensemble-verify-peer-evidence"
+  fail "en-build SKILL.md should name ensemble-verify-peer-evidence"
 fi
 
 # Removed by D52 — en-build has no per-unit auto-skip enum: the branch-level

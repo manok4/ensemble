@@ -18,7 +18,7 @@ A. Does it achieve the goal? Read GOAL, then the units. Flag work the goal needs
 B. Unit decomposition. Flag units too large to review or commit atomically, units that should have been split (auth/payments/migrations always stand alone), and independent concerns fused into one unit.
 C. Test scenarios. Every feature-bearing unit needs real scenarios with concrete inputs and expected outcomes across happy path, edge cases and error paths — not \"tests pass\". A feature unit with none, or with vague ones, is P1.
 D. risk: correctness. Cross-check against each unit's approach (DROP/TRUNCATE/mass-DELETE → destructive; backfills over large row counts → high). Misclassified destructive units are P0/P1.
-E. Dependency-vs-phase violations (a low-risk unit depending on a higher-risk one).
+E. Ordering violations (a `risk: destructive` unit listed before a non-destructive one).
 F. gated: correctness. gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag gated:true on an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state.
 G. Stated assumptions. Flag anything the plan bets on without saying so, especially claims that something does not already exist.
 
@@ -26,8 +26,8 @@ G. Stated assumptions. Flag anything the plan bets on without saying so, especia
 
 The wire scale is `references/peer-contract.md`; this is what each level means when the artifact is a plan, so the routing below has something to route on. Severity is set by impact and evidence alone. There is no quota and no per-unit ratio: a cap would demote real P1s and would bias the counts the loop-cap decision reads.
 
-- **P0** is a plan `/en-build` must not run: a destructive change classified below `destructive`, a phase-invariant violation, a unit that cannot be implemented as written.
-- **P1** is a defect that changes what gets built or fails a phase check: a goal no unit covers, a wrong `risk:`, a signature one unit produces and another consumes under a different name, a feature unit with no scenarios, a bet the plan states nowhere. Name in each P1 what would be built wrongly or which phase check would fail.
+- **P0** is a plan `/en-build` must not run: a destructive change classified below `destructive`, an ordering violation, a unit that cannot be implemented as written.
+- **P1** is a defect that changes what gets built or fails a build gate: a goal no unit covers, a wrong `risk:`, a signature one unit produces and another consumes under a different name, a feature unit with no scenarios, a bet the plan states nowhere. Name in each P1 what would be built wrongly or which phase check would fail.
 - **P2** is consistency: naming, wording and cross-reference issues that do not change a signature another unit consumes.
 - **P3** is advisory.
 

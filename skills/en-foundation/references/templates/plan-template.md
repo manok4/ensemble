@@ -182,12 +182,12 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
   - `pragmatic` — implementation and tests interleave; default for exploratory work and well-tested codebases.
   - Honored by `en-build` per unit; user can override at build time.
 
-- **Risk classification** (drives `/en-build` phase placement and safety gates):
+- **Risk classification** (drives `/en-build`'s safety gates and unit order):
   - `low` — read-only, observability, diagnostics, docs, tests.
   - `medium` — additive features, additive migrations (CREATE TABLE, ADD COLUMN with default), api-additive endpoints. Reversible with revert.
   - `high` — destructive migrations (ALTER COLUMN drop/rename, DROP INDEX), backfills over large row counts, schema evolution with rollback cost.
   - `destructive` — DROP TABLE, DROP SCHEMA, mass DELETE, TRUNCATE, recursive removal of persistent data. Effectively irreversible.
-  - **`risk:` is the single source of truth for phase placement.** `category:` is metadata only. When `risk` is unset, `/en-build` runs an ordered classifier (destructive patterns evaluated first) — see scope-aware-slicing spec for the full rules.
+  - **`risk:` is the single source of truth for the gates.** `category:` is metadata only. When `risk` is unset, `/en-build` runs an ordered classifier (destructive patterns evaluated first) — see scope-aware-slicing spec for the full rules.
 
 - **Gated** (`gated: true | false`, default `false`):
 
@@ -212,7 +212,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 
   **Why a tight bar.** Gates only work as a safety mechanism when they're rare enough that the user actually reads them. Over-gating (marking ordinary refactors / renames as gated) trains users to autopilot through y/skip/abort prompts, eroding the signal value of the gates that *do* matter. The plan-author and the peer reviewer should both push back on `gated: true` choices that don't clearly match one of the five concrete cases above.
 
-  Gated units pause `/en-build` regardless of phase or flags. No flag disables this. Phase-level group confirmations (e.g. P4's `"run phase 4"`) never cover `gated: true` — gated is always per-unit.
+  Gated units pause `/en-build` regardless of any flag. No flag disables this, and nothing group-confirms it: every gate is per unit.
 
 - **Files field:**
   - Repo-relative paths only.
@@ -236,7 +236,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 - `unit.gated-flag` — every unit MUST declare `gated: true|false`. Defaults to `false` if absent (P3 advisory).
 - `unit.category-enum` — `category:` must be one of the documented values when present.
 - `peer-review-resolutions.schema` — each entry must carry `finding_id`, `iteration`, `severity`, `title`, `status`. `rationale` required when `status` is `deferred | disagreed | superseded`.
-- `phase-invariant.dependency-vs-risk` — if a low-risk unit depends on a higher-risk unit (transitively), the plan is rejected as a structural error. `/en-build` will not silently bury units across phase boundaries.
+- `unit.destructive-order` — a `risk: destructive` unit listed before a non-destructive one. Irreversible work runs last, so everything reversible is proven first (D108).
 
 ## Lifecycle
 

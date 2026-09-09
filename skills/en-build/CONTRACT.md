@@ -7,7 +7,7 @@ Owned by `en-build`. Callers depend on this page, not on `SKILL.md`.
 | Form | Caller |
 |---|---|
 | `/en-build <plan-path>` | `en-flow` |
-| `--unit U<N>` · `--from U<N>` · `--from-phase P<N>` | selection; universal safety gates still fire per unit |
+| `--unit U<N>` · `--from U<N>` | selection; universal safety gates still fire per unit |
 | `--review cross\|peer\|none` · `--no-simplify` | post-build control; each outcome is recorded in the `review-verdict:` / `simplify-verdict:` trailers and the audit |
 | `--no-phasing` · `--dry-run` · `--finalize-only` · `--commit-wip` · `--re-baseline` | run control |
 

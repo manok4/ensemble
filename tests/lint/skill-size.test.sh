@@ -33,9 +33,12 @@ BUDGET=24576
 # Re-pinned 2026-09-08 after D107 moved en-build's post-build protocol to a
 # reference and en-ship's test selection to a script: a pin left at the old
 # number is 10KB of room for the same weight to come back.
+#
+# en-build's row was deleted the same day. It entered the trim at 46,095 bytes
+# and left it under budget, so the budget checks it now and the row would only
+# have licensed a regression.
 BASELINE='
-en-build 46095
-en-plan 40193
+en-plan 40191
 en-review 30715
 en-setup 30301
 en-ship 27407

@@ -27,11 +27,14 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-build unit loop"
 
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
+# The loop's mechanics moved to their owner reference; the pair is the contract,
+# so each clause is asserted against whichever file states it.
+LOOP="$REPO_ROOT/skills/en-build/references/unit-loop.md"
 
 # --- 1. the idempotency check, and the resume flags that motivate it ---
-if grep -qiE 'check whether the unit is already done' "$SKILL" \
-   && grep -qiE 'Do not silently reimplement' "$SKILL" \
-   && grep -qF -- '--from U<N>' "$SKILL"; then
+if grep -qiE 'whether the unit is already done' "$SKILL" "$LOOP" \
+   && grep -qiE 'Do not silently reimplement' "$SKILL" "$LOOP" \
+   && grep -qF -- '--from U<N>' "$SKILL" "$LOOP"; then
   pass "the loop checks for already-satisfied units before implementing"
 else
   fail "the loop must check whether a unit's work already exists" \
@@ -44,14 +47,14 @@ fi
 missing=""
 for q in 'What fires when this runs' 'exercise the real chain' 'orphaned state' \
          'other interfaces expose this' 'error strategies agree'; do
-  grep -qiF "$q" "$SKILL" || missing="$missing '$q'"
+  grep -qiF "$q" "$SKILL" "$LOOP" || missing="$missing '$q'"
 done
 [ -z "$missing" ] \
   && pass "the system-wide check asks all five questions" \
   || fail "the system-wide check is incomplete" "missing:$missing"
 
 # --- 3. it is skippable for leaf changes ---
-if grep -qiE 'Skip it entirely for a leaf change' "$SKILL"; then
+if grep -qiE 'Skip it entirely for a leaf change' "$SKILL" "$LOOP"; then
   pass "the check is skippable for leaf changes"
 else
   fail "the system-wide check must be skippable" \
@@ -60,7 +63,9 @@ fi
 
 # --- 4. it runs at the verification gate, before the commit ---
 # After the commit it is a review finding; before it, it is a fix.
-chk=$(grep -n 'System-wide check' "$SKILL" | head -1 | cut -d: -f1)
+# The check is named in the loop's body and owned by the reference; what must
+# not drift is that it is named before the commit step, not after it.
+chk=$(grep -n 'system-wide check' "$SKILL" | head -1 | cut -d: -f1)
 com=$(grep -n '\*\*9e\. Commit\.\*\*' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$chk" ] && [ -n "$com" ] && [ "$chk" -lt "$com" ]; then
   pass "the system-wide check runs before the commit (check=$chk commit=$com)"

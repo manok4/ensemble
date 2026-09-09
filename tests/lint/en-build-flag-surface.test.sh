@@ -39,7 +39,8 @@ done
 
 # --- 2. their policy has a config home, or the behaviour is simply gone ---
 missing=""
-for k in "worktree:" "strict_destructive:" "pause_between_phases:" "learning_checkpoint:"; do
+# pause_between_phases went with phasing (D108); the list is what remains.
+for k in "worktree:" "strict_destructive:" "learning_checkpoint:"; do
   grep -qF "$k" "$CFG" || missing="$missing $k"
 done
 grep -qE '^# --- en-build standing policy ---' "$CFG" || missing="$missing section-header"

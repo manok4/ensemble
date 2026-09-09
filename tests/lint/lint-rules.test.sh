@@ -695,14 +695,14 @@ peer_review_resolutions: []
 EOF
 assert_rule_fires "unit.category-enum" "invalid Category: enum"
 
-# --- phase-invariant.dependency-vs-risk: low depends on destructive fires ---
+# --- unit.destructive-order: a non-destructive unit listed after a destructive one fires ---
 setup_minimum
 cat > "$TMP/docs/plans/active/FR65-bad-deps.md" <<EOF
 ---
 type: plan
 plan_type: improvement
 plan_id: FR65
-title: Phase-invariant-violating plan
+title: Plan with irreversible work first
 status: open
 location: active
 created: 2026-04-29
@@ -733,9 +733,9 @@ peer_review_resolutions: []
 - **Files:** src/foo.py
 - **Approach:** add docstring referring to dropped table
 EOF
-assert_rule_fires "phase-invariant.dependency-vs-risk" "low-risk depends on destructive"
+assert_rule_fires "unit.destructive-order" "a low-risk unit listed after a destructive one"
 
-# --- phase-invariant.dependency-vs-risk: same-tier or descending order does NOT fire ---
+# --- unit.destructive-order: irreversible work last does NOT fire ---
 setup_minimum
 cat > "$TMP/docs/plans/active/FR66-good-deps.md" <<EOF
 ---
@@ -775,10 +775,10 @@ peer_review_resolutions: []
 EOF
 result=$(run_lint)
 output="${result%%|||*}"
-if echo "$output" | grep -q "phase-invariant.dependency-vs-risk"; then
-  fail "phase-invariant fired on valid descending-risk dependency" "$(echo "$output" | grep phase-invariant)"
+if echo "$output" | grep -q "unit.destructive-order"; then
+  fail "unit.destructive-order fired on a plan whose destructive unit is last" "$(echo "$output" | grep destructive-order)"
 else
-  pass "phase-invariant silent on valid risk-tier dependency (low → destructive)"
+  pass "unit.destructive-order silent when the destructive unit is last"
 fi
 
 # --- peer-review-resolutions.schema: missing required field fires ---

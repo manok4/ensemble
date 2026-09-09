@@ -58,13 +58,14 @@ else
        "batches marked destructive make /en-build reject the plan as a structural error"
 fi
 
-# --- 4. the invariant it leans on still exists ---
-# If the phase invariant were removed, clause 3 would be asserting against a
-# rule that no longer runs.
-if grep -qiE 'Phase invariant check' "$SKILL" && grep -qiE 'risk\(V\) <= risk\(U\)' "$SKILL"; then
-  pass "the phase invariant the sequence relies on is still in force"
+# --- 4. the ordering rule it leans on still exists ---
+# The split puts the destructive contract unit last; if nothing enforced that
+# order, clause 3 would be asserting against a rule that no longer runs. The
+# phase invariant did this until D108; unit.destructive-order does now.
+if grep -qiE 'Ordering check' "$SKILL" && grep -qF 'unit.destructive-order' "$SKILL"; then
+  pass "the ordering rule the sequence relies on is still in force"
 else
-  fail "the phase invariant is gone; the wide-refactor risk split now rests on nothing"
+  fail "the ordering rule is gone; the wide-refactor risk split now rests on nothing"
 fi
 
 report
