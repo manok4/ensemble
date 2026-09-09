@@ -25,17 +25,29 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 ## Test impact
 
 ```yaml
-test_full_seconds: 230
+test_full_seconds: 286
+test_changed_command: './tests/select-for.sh {files}'
 lint_changed_command: 'for f in {files}; do case "$f" in docs/*.md|AGENTS.md|CLAUDE.md) bin/ensemble-lint --scope "$f" || exit 1 ;; esac; done'
 test_paths_command: 'for t in {tests}; do ./tests/run.sh -k "$t" || exit 1; done'
 ```
 
-`test_full_seconds` is a measurement, not a budget: 226s for 146 files on
-2026-09-08. It is under `/en-build`'s cheap-suite threshold, so a phase boundary
-runs the whole suite rather than approximating one. That is the right call here
-because many tests anchor on file *content* (`grep` for a clause in a SKILL.md),
-and no path-based selection can find those from the file that changed. Re-measure
-it when the suite crosses five minutes.
+**While iterating, run `./tests/select-for.sh <changed paths>`. Run
+`./tests/run.sh` in full before you commit.** That split is the point: 19s for
+the thirteen files a skill edit can break, against 286s for all 260. Four
+consecutive branches lost time to the same pattern, a small edit followed by the
+whole suite, ten times over, and this repo declared nothing `ensemble-test-select`
+could use, so every selection came back `empty`.
+
+The selection is **approximate on purpose and must not be trusted as final**.
+Many tests here anchor on file *content* — they grep for a clause inside a
+SKILL.md they are not named after — and no path-based rule finds those from the
+path that changed. Editing anything under `tests/lib/` or `tests/run.sh` skips
+the approximation and runs everything.
+
+`test_full_seconds` is a measurement, not a budget: 286s for 260 files on
+2026-09-09. It is **over** `/en-build`'s 120s cheap-suite threshold, so a unit
+gate resolves the `graph` tier through `test_changed_command` rather than
+preferring the whole suite. Re-measure when it crosses five minutes.
 
 `lint_changed_command` runs the doc lint over the changed markdown only. The
 whole-`docs/` run is 68s and a single file is 3s. Its `case` matches the same
@@ -47,6 +59,11 @@ malformed dates, which is correct for a document and wrong for a template.
 a list of paths, so the default `<test command> <paths>` form would hand it a
 flag it rejects. A unit that edits or adds a test file then runs exactly those
 files, in under a second.
+
+`test_changed_command` wins outright over the path tiers when
+`ensemble-test-select` resolves a set, which is what makes `/en-build`'s unit
+gate and `/en-ship`'s preflight select something here instead of reporting
+`empty`.
 
 ## Where things live
 
