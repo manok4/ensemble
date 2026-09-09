@@ -14,12 +14,12 @@
 # direct conflict, and the rule loses silently. to-tickets names this as the
 # explicit exception and sequences it expand → migrate → contract.
 #
-# The phase interaction is the part worth guarding. Only the contract unit is
-# destructive; the batches stay additive and depend on the expand. Every batch is
-# therefore lower-risk than the contract unit that depends on it, which is
-# exactly what /en-plan's phase invariant requires, so /en-build phases the whole
-# sequence with no special-casing. Get that backwards — mark the batches
-# destructive — and the invariant rejects the plan as a structural error.
+# The risk split is the part worth guarding. Only the contract unit is
+# destructive; the batches stay additive and depend on the expand. The one
+# destructive unit is therefore also the last one, which is exactly what
+# unit.destructive-order requires, so the sequence needs no special-casing. Get
+# that backwards and mark the batches destructive, and the rule rejects the plan
+# as a structural error.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -46,15 +46,15 @@ grep -qiE 'blast radius' "$SKILL" || missing="$missing blast-radius"
   && pass "wide refactors sequence expand/migrate/contract, batched by blast radius" \
   || fail "the expand-migrate-contract sequence is incomplete" "missing:$missing"
 
-# --- 3. the risk assignment that keeps the phase invariant satisfied ---
-# This is the half that silently breaks: marking the batches destructive makes
-# the contract unit depend on same-risk work and the invariant rejects the plan.
+# --- 3. the risk assignment that keeps unit.destructive-order satisfied ---
+# This is the half that silently breaks: marking the batches destructive puts a
+# destructive unit ahead of a non-destructive one and the rule rejects the plan.
 if grep -qiE 'Only the contract unit is destructive' "$SKILL" \
    && grep -qiE 'batches stay additive' "$SKILL" \
-   && grep -qiE 'phase invariant then holds' "$SKILL"; then
-  pass "only the contract unit carries the destructive risk, satisfying the phase invariant"
+   && grep -qiE 'destructive-order.{0,14}then holds' "$SKILL"; then
+  pass "only the contract unit carries the destructive risk, satisfying unit.destructive-order"
 else
-  fail "the risk split must be stated, with its phase-invariant consequence" \
+  fail "the risk split must be stated, with its destructive-order consequence" \
        "batches marked destructive make /en-build reject the plan as a structural error"
 fi
 
