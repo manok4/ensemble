@@ -26,38 +26,36 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
      - **Inventory untracked and unstaged files first.** `untracked_inventory` and `excluded` are that record, with checksums; verify that inventory after any integration. An untracked file lost during a rebase is silent, and the ship reports success anyway.
      - **Never rewrite a published branch automatically.** `published: true` means others and open PRs may be built on this history: offer merge-base integration, and require explicit approval before any `--force-with-lease`. An unpublished branch may be rebased.
 
-4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04): you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The checkpoints below **auto-resolve**; only the hard-stop safety floor pauses.
+4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04): you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The scope-confirm (step 7) is auto-accepted and the plan-completion checkpoint (step 8) auto-flips a verifiably-complete plan; `--interactive` restores the stop-and-ask flow for both.
 
-   - **Learning capture is NOT decided here.** It lives at `/en-build`'s completion checkpoint (D38), at the point of insight; this skill never prompts for learnings.
-   - **Auto-resolved under hands-off:** the scope-confirm (step 7) is auto-accepted; the plan-completion checkpoint (step 8) auto-flips a verifiably-complete plan and passes informationally otherwise (see those steps).
    - **Safety floor - always hard-stops, even hands-off (never auto-resolved):**
      - **Secret-scan match** (step 6) - stop; do not ship secrets.
      - **Push to the default branch** (`HEAD == main`/default, step 3) - explicit confirmation required.
      - **Destructive-guardrail hit** (`en-guardrail` intercept on any command) - its prompt fires regardless.
-   - **`--interactive` escape hatch** restores the stop-and-ask flow for the scope-confirm and plan-completion prompts. Learning capture stays at `/en-build`.
+   - **Learning capture is NOT decided here.** It lives at `/en-build`'s completion checkpoint (D38), at the point of insight; this skill never prompts for learnings.
 
 5. **Lint + typecheck + targeted tests on changed files.**
 
    **First, ask whether another layer already proved this exact tree.** Run
    `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" verify --requires lint,typecheck,full_suite --json`
-   after the step-3 base-freshness gate, which is what makes a moved base visible.
-   On `check-not-recorded` alone, ask again with `--requires lint,typecheck,targeted_tests`: that is the set
-   this step runs, so a receipt `/en-review` wrote against the identical tree is the same evidence.
+   after the step-3 base-freshness gate, which is what makes a moved base visible. On `check-not-recorded`
+   alone, ask again with `--requires lint,typecheck,targeted_tests`: that is the set this step runs, so a
+   receipt `/en-review` wrote against the identical tree is the same evidence.
 
    - **Exit 0** → skip lint, typecheck and the targeted tests, and report which checks the receipt covered,
      how old it is and who wrote it. A skip nobody can see never happened, as far as a reader can tell.
    - **Any non-zero** → run everything, and **surface the refusal reason verbatim** (`fingerprint-mismatch`,
      `base-moved`, `dependency-changed`, `wrong-repo`, `expired`, `check-not-recorded`, `no-receipt`).
 
-   **There is no partial credit.** An invalid receipt means run everything; `references/verification-receipt.md` argues why.
+   **There is no partial credit**; `references/verification-receipt.md` argues why.
    **The secret scan and `git diff --check` always run**, receipt or not: they ask about *this diff*, which no receipt can answer.
 
    - Project `lint` and, where applicable, `typecheck` commands (from `AGENTS.md`).
-   - **Targeted tests — the set is resolved, never guessed (D105):** `eval "$(bash "$SKILL_DIR/scripts/ensemble-test-select" --range origin/<base>...HEAD)"`. It resolves the set in this fixed order, first match wins, and returns the tier that chose it: `graph` from the project's `test_changed_command:` (its stack's own dependency-graph tool: `jest --findRelatedTests`, `pytest-testmon`, `nx affected`), `impact-map` from its `test_impact:` prefix map, `sibling` from the sibling-filename heuristic, `full-suite` when the selection passed sixty percent of the suite, `empty` when nothing matched. `/en-build` calls the same helper, so one set of rules answers both.
+   - **Targeted tests — the set is resolved, never guessed (D105):** `eval "$(bash "$SKILL_DIR/scripts/ensemble-test-select" --range origin/<base>...HEAD)"`. Its header owns the tier order; `/en-build` calls the same helper, so one set of rules answers both. Two of its results bind this step:
 
      **Report why each test was selected**, `$TEST_SELECT_TIER` and `$TEST_SELECT_REASON` verbatim: a selection nobody can audit is one nobody will notice is wrong. `graph` reports `selection: graph`, the two path tiers report `selection: approximate`, and the tier reaches the PR body (step 12), so a reviewer can tell a graph-selected run from a guessed one.
 
-     **An empty selection is reported as empty, never as a pass.** Where tests do not sit beside sources the heuristic matches nothing and runs nothing. Zero tests found is a finding about the project's configuration, not a green check.
+     **An empty selection is reported as empty, never as a pass.** Zero tests found is a finding about the project's configuration, not a green check.
    - On any failure → stop, surface, and offer `/en-review` or `/en-qa` to triage.
    - **On success, write a receipt for what this run actually ran.** Skipped on a valid receipt → **write nothing**; never record a check that did not run. Otherwise `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check lint=passed --check typecheck=passed --check targeted_tests=passed --base origin/<base> --by en-ship`, plus `--dep <path>` per lockfile. It records `targeted_tests`, never `full_suite`, so a pre-push hook that requires the suite still runs it, and the write merges into a receipt for the identical tree rather than replacing it. Never fatal: a failed write is a warning.
 6. **Secret scan on the lines this push would add.** `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --staged`. **Never hand-roll greps for this**; `references/secret-patterns.md` says why, and the helper masks every preview so its own output cannot leak.
@@ -113,13 +111,11 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
     On PR-creation success → return URL.
 13. **Local watch-and-fix loop (default ON).** After the PR opens, watch it and resolve findings **locally**: the fixing happens on this machine, not in CI (EN04, D38). CI runs tests and lets a review model (the Anthropic Code Review action, CodeRabbit, `/en-sweep`) post findings; en-ship watches for those and fixes them in your checkout with your credentials, which keeps write access and secrets off CI entirely.
 
-    **Polling is the script's job.** `eval "$(bash "$SKILL_DIR/scripts/ensemble-ship-watch" --pr <n> --head <sha>)"` blocks until the PR reaches a state worth acting on, then returns `SHIP_WATCH_STATE` and its evidence. **Do not hand-write a poll loop.** The one that produced this step swallowed `gh`'s stderr and looped in silence for forty minutes against a sandbox blocking GitHub with a TLS error; the PR merged with a finding unaddressed. The script owns the doctor check, the backoff, a wall-clock heartbeat, and the rule that **two consecutive `gh` failures end the watch with a named reason** rather than reading as "CI still running".
+    **Polling is the script's job.** `eval "$(bash "$SKILL_DIR/scripts/ensemble-ship-watch" --pr <n> --head <sha>)"` blocks until the PR reaches a state worth acting on, then returns `SHIP_WATCH_STATE` and its evidence. **Do not hand-write a poll loop**; the script's header says what happened the last time one was, and it owns the doctor check, the backoff, the heartbeat and the rule that two consecutive `gh` failures end the watch with a named reason. **The watch needs outbound network access to github.com**, and says so as `gh-error` in the first minute rather than burning the timeout.
 
-    **The watch needs outbound network access to github.com.** Where a sandbox blocks it, the script exits `gh-error` with `network-tls` or `network-unreachable` in the first minute rather than burning the timeout.
+    **`references/watch-loop.md` maps each state to what this step does.** Two rules are worth having in front of you: a red check is `checks-settled`, so **repair it rather than treating it as an error**; and on `head-moved`, **Cancel a stale tick** because this tick's CI results are dead.
 
-    **`references/watch-loop.md` maps each `SHIP_WATCH_STATE` to what this step does.** Two rules from it are worth having in front of you here: a red check is `checks-settled`, so **repair it rather than treating it as an error**; and on `head-moved`, **Cancel a stale tick** because this tick's CI results are dead, describing a commit that is no longer the head.
-
-    1. **Fetch findings** when the watch returns, not on every poll: `scripts/get-pr-comments` gives the COMPLETE set (unresolved inline review threads + review bodies + top-level comments). Do **not** use `gh pr view --json comments` alone: it misses inline threads and review bodies, which would mark the PR clean while findings are open. Carry only unresolved findings forward.
+    1. **Fetch findings** when the watch returns, not on every poll: `scripts/get-pr-comments` gives the COMPLETE set, and `gh pr view --json comments` does not (`references/watch-loop.md`). Carry only unresolved findings forward.
 
     2. **Trusted-source gate (before acting on any finding).** Only auto-fix findings whose author is **trusted**: the PR author, a repo collaborator or `CODEOWNERS` member, or a recognized review bot. Untrusted authors' findings are reported, never auto-applied.
 
@@ -133,7 +129,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
        **Always pass `--orchestrated`.** It tells the delegate no human is watching: it returns `needs-human` rather than asking a question this loop cannot answer, runs one pass, and refuses to arm auto-merge.
 
-       **What `/en-resolve-pr` may do on this skill's behalf.** Being invoked here is not itself authorization; it acts under the scope this run holds. **Permitted:** fix, commit, push, reply, resolve threads, on this PR's head. **Excluded:** merge, rebase, force-push, approving checks, any branch update this loop did not ask for. It may narrow that scope by deferring an item as `needs-human`, never widen it. **en-ship edits nothing here itself.**
+       **Being invoked here is not itself authorization**; the delegate acts under the scope this run holds. **Excluded:** merge, rebase, force-push, approving checks, any branch update this loop did not ask for. `references/watch-loop.md` has the permitted set and the rule that it may narrow this scope, never widen it. **en-ship edits nothing here itself.**
 
     4. **Loop until clean**, re-running the watch after each push, bounded to `ship.watch_max_cycles` **repair cycles** (default `2`, matching `/en-flow`). **A cycle is a repair-and-push iteration, not a poll.** Waiting on unchanged CI consumes nothing, and counted as polls one long test job would exhaust the cap before finishing once. A `doctor-failed` or `gh-error` exit does not consume a repair cycle: nothing was repaired.
 
@@ -141,13 +137,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
     6. **Exit in exactly one named state**, with its evidence. Never improvise a closing sentence, and never say "safe to merge" - that is the reader's call.
 
-       | State | When | Line |
-       |---|---|---|
-       | `clean` | green checks, no unresolved threads | `PR is green and clean — <n> checks passed, 0 open threads. Ready for your review.` |
-       | `escalated` | cycle cap or watch timeout hit with findings open | `Cap reached after <n> repair cycles. <k> findings left as needs-human: <ids>.` |
-       | `blocked` | doctor failed, a fork/permission wall, or the watch could not poll | `Blocked: <SHIP_WATCH_REASON>. No repair attempted.` |
-       | `settled-externally` | merged or closed while watching | `PR was <merged\|closed> externally. Stopped watching. <k> unresolved trusted findings: <ids>` (or `none open`) |
-       | `not-watched` | `--no-watch` | `PR opened; watch loop skipped by --no-watch.` |
+       Its five states and their exact lines are in `references/ship-reporting.md`.
 
     7. **Never auto-merges.** The loop leaves merging to you (or to `--auto-merge`, below). `--no-watch` opens the PR and stops.
 14. **Auto-merge (`--auto-merge`).** Opt-in. **Arm it only after the watch loop reaches a clean state** (step 13.6 `clean`: green checks AND no unresolved trusted review findings) — arming it before then can merge the PR while review-model findings are still open, unless the review model is itself a **required, blocking** status check. Once clean, run `gh pr merge --auto --squash` (or `--rebase` per repo convention) so GitHub lands it when required checks pass and approvals clear. If `--no-watch` is combined with `--auto-merge`, warn that no local loop will gate the merge and rely on required checks. Requires the repo to allow auto-merge (Settings → Pull Requests → Allow auto-merge). **Default OFF** - the default stops at a green, mergeable PR for you to merge.
@@ -171,47 +161,6 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 ## Cross-review
 
 **Off.** By this point, `/en-review` and `/en-qa` have already passed. Re-running cross-review costs more than it surfaces.
-
-## Output
-
-```
-Branch: fr07-auth-rotation
-Diff:   12 files changed, 247 insertions, 38 deletions
-
-Pre-flight (hands-off):
-  ✓ Lint · Typecheck (skipped: receipt by en-build covers full_suite, 6m old)
-  ✓ Targeted tests (8 changed files; 14 tests passed; selection: graph)
-  ✓ Secret scan (clean)
-  ✓ Base: origin/main fetched; 0 behind, 5 ahead; no predicted conflicts
-  ✓ Staging: 12 tracked files in scope; 2 unrelated files preserved and excluded
-  ✓ plan_completion_checkpoint: completed_and_moved (FR07-auth-rotation → completed/)
-
-Commit: feat(auth): rotate refresh token on every access - U1-U5
-Pushed to origin/fr07-auth-rotation.
-
-PR opened: https://github.com/manok4/ensemble/pull/42
-Auto-merge: disabled (pass --auto-merge to enable)
-
-Watch:
-  doctor: ok · repair cycles used: 1 of 2
-  CI: green (7 checks) · Review threads: 0 open
-
-State: clean
-PR is green and clean - 7 checks passed, 0 open threads. Ready for your review.
-```
-
-## Reference files
-
-- `references/conventional-commits.md` — message format
-- `references/secret-patterns.md` — secret-scan regex catalog
-- `references/verification-receipt.md` — **gated**: read when a project asks how its own pre-push hook can consume a receipt. The script emits every validity reason itself.
-
-## Bundled scripts
-
-- `scripts/ensemble-ship-preflight` — step 3: git, base and staging state as JSON. Read-only; a state it cannot ship from exits non-zero and names itself.
-- `scripts/ensemble-plan-checkpoint` — step 8: the plan-completion outcome and `plan_path`. Read-only; this skill owns the flip.
-- `scripts/ensemble-verification-receipt` — step 5 reads (`verify --requires`) and writes (`write --check`); step 12 shows. A non-zero verify always carries a reason.
-- `scripts/get-pr-comments` — step 13: the complete, paginated set of review threads, review bodies and comments.
 
 ## Failure protocol
 

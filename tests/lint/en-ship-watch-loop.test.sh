@@ -9,6 +9,8 @@ TEST_NAME="en-ship watch loop"
 
 EN_SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
 WATCH="$REPO_ROOT/skills/en-ship/scripts/ensemble-ship-watch"
+REPORT="$REPO_ROOT/skills/en-ship/references/ship-reporting.md"
+WLOOP="$REPO_ROOT/skills/en-ship/references/watch-loop.md"
 GETPR="$REPO_ROOT/skills/en-resolve-pr/scripts/get-pr-comments"
 
 # --- default is a LOCAL watch-and-fix loop ---
@@ -40,7 +42,7 @@ else
 fi
 
 # --- review findings fetched comprehensively (inline threads), not just --json comments ---
-if grep -qF "get-pr-comments" "$EN_SHIP" && grep -qiE "inline review threads?" "$EN_SHIP"; then
+if grep -qF "get-pr-comments" "$EN_SHIP" && grep -qiE "inline review threads?" "$WLOOP"; then
   pass "loop fetches inline review threads via get-pr-comments (not --json comments alone)"
 else
   fail "loop must fetch inline review threads (get-pr-comments), not just gh pr view --json comments"
@@ -54,7 +56,8 @@ else
 fi
 
 # --- trusted-source gate before auto-fixing (prompt-injection guard) ---
-if grep -qiE "[Tt]rusted-source gate" "$EN_SHIP" && grep -qiE "untrusted|prompt-injection" "$EN_SHIP" && grep -qiE "same-repo|fork" "$EN_SHIP"; then
+if grep -qiE "[Tt]rusted-source gate" "$EN_SHIP" && grep -qiE "untrusted|prompt-injection" "$EN_SHIP" \
+   && grep -qiE "same-repo|fork" "$WATCH"; then
   pass "loop gates on trusted author + same-repo before auto-fixing"
 else
   fail "loop must gate on trusted source (author/bot, same-repo) before auto-fixing"
@@ -197,11 +200,14 @@ hasf "$EN_SHIP" "needs outbound network access"      "the skill says the watch n
 # authorization." en-ship's own "never auto-merges" bound en-ship and nothing else.
 hasf "$EN_SHIP" "Being invoked here is not itself authorization" \
                                                      "the delegate's authority is inherited, not implied"
-hasf "$EN_SHIP" "It may narrow that scope"           "the delegate may narrow but not widen scope"
+hasf "$WLOOP" "may narrow" "the delegate may narrow but not widen scope"
+# The exclusions stay in the FLOW on purpose: a reader who never opens the
+# reference must not let a delegate merge. en-resolve-pr-seam keys on the same
+# `**Excluded:**` layout, so the two sides of the contract cannot drift apart.
 for excluded in "merge" "rebase" "force-push"; do
   grep -qE "\*\*Excluded:\*\*[^|]*$excluded" "$EN_SHIP" \
-    && pass "delegate exclusion listed: $excluded" \
-    || fail "delegate exclusion listed: $excluded"
+    && pass "delegate exclusion listed in the flow: $excluded" \
+    || fail "delegate exclusion listed in the flow: $excluded"
 done
 hasf "$EN_SHIP" "en-ship edits nothing here itself"  "the watcher does not also patch code"
 
@@ -213,10 +219,11 @@ hasf "$EN_SHIP" "separate rule from the trust gate"  "the no-exec rule is separa
 
 # --- exactly one named terminal state ----------------------------------------
 hasf "$EN_SHIP" "Exit in exactly one named state"    "the loop exits in one named state"
+hasf "$EN_SHIP" "references/ship-reporting.md"       "the exit step reaches the file naming its states"
 for st in clean escalated blocked settled-externally not-watched; do
   # "." stands in for the backtick: a literal one inside double quotes is command
   # substitution, and bash ran each state name as a command on the first draft.
-  grep -qE "^ *\| .$st. \|" "$EN_SHIP" \
+  grep -qE "^ *\| .$st. \|" "$REPORT" \
     && pass "terminal state defined: $st" \
     || fail "terminal state defined: $st"
 done

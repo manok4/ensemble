@@ -89,23 +89,23 @@ fi
 # --- targeted-test selection (EN15 U8) ---------------------------------------
 # The old heuristic assumed tests sit beside sources. In a layout where they do
 # not, it matched nothing, ran nothing, and reported a pass — the silent case.
+SEL="$REPO_ROOT/skills/en-ship/scripts/ensemble-test-select"
 has "$S" "scripts/ensemble-test-select" "the selection comes from the shared helper, not from re-derived prose"
-has "$S" "the set in this fixed order" "test selection has a fixed resolution order"
-has "$S" "test_changed_command:" "a project command wins outright"
-has "$S" "test_impact:" "the prefix map is the second tier"
-has "$S" "sibling-filename heuristic" "the heuristic remains the fallback"
+# The tier names are checked in the HELPER, which owns them. They used to be
+# asserted against the skill too, which is why the skill restated 700 bytes of a
+# header it delegates to — the assertion above and those four contradicted each
+# other. The order itself is proven behaviourally below, on a throwaway repo.
+has "$SEL" "first match wins" "test selection has a fixed resolution order"
+has "$SEL" "test_changed_command:" "a project command wins outright"
+has "$SEL" "test_impact:" "the prefix map is the second tier"
+has "$SEL" "sibling" "the heuristic remains the fallback"
 has "$S" "Report why each test was selected" "the selection is auditable"
 has "$S" "An empty selection is reported as empty, never as a pass" \
                                               "zero tests found is not a green check"
 
-# The order is asserted where it now lives, in the helper, on a throwaway repo,
-# so a later edit cannot silently promote the heuristic above a map the project
-# actually declared. The skill's own line is checked for the same order, by
-# offset, because all three tiers are named in one sentence there.
-SEL="$REPO_ROOT/skills/en-ship/scripts/ensemble-test-select"
-line=$(grep -F 'ensemble-test-select' "$S" | head -1)
-order=$(printf '%s' "$line" | awk '{ c=index($0,"test_changed_command"); m=index($0,"test_impact"); h=index($0,"sibling"); print (c>0 && m>c && h>m) ? "ok" : "no" }')
-assert_eq "ok" "$order" "the skill names command, then map, then heuristic, in that order"
+# The order is asserted where it lives, in the helper, driven on a throwaway
+# repo, so a later edit cannot silently promote the heuristic above a map the
+# project actually declared.
 
 W=$(mktemp -d); mkdir -p "$W/src" "$W/spec"; (cd "$W" && git init -q)
 : > "$W/src/a.js"; : > "$W/src/a.test.js"; : > "$W/spec/a.spec.js"
@@ -176,7 +176,7 @@ printf '%s' "$step8" | grep -qF 'plan_path' \
 # --- D82: selection tier, ratio rule, receipt write, fingerprint, --preflight --
 has "$S" 'selection: graph'        "a graph-selected run is labelled"
 has "$S" 'selection: approximate'  "a map or heuristic selection is labelled approximate"
-has "$S" 'sixty percent'           "an oversized selection runs the suite"
+has "$SEL" 'max-fraction of the'  "an oversized selection runs the suite"
 if grep -qE 'write --check lint=passed --check typecheck=passed --check targeted_tests=passed[^`]*--by en-ship' "$S" \
    && grep -qF 'never `full_suite`' "$S"; then
   pass "a passing run writes a receipt for targeted_tests and never claims full_suite"
