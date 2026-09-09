@@ -47,6 +47,27 @@ under an unchanged tree — someone upgrades a runtime, a service restarts — a
 fingerprint can see that. Age is the proxy. Default 120 minutes, overridable with
 `--ttl <minutes>` or `ENSEMBLE_RECEIPT_TTL_MINUTES`.
 
+## Writes accumulate; a tree change resets
+
+Layers prove different things about the same tree, so a write **merges** into an
+existing receipt when the fingerprint and repo match. Without that, the second
+writer erased the first's evidence: `/en-build` proved the full suite, `/en-ship`
+wrote its own receipt seconds later on the identical tree, and the project's
+pre-push hook then asked for `full_suite`, got `check-not-recorded`, and re-ran
+the suite the build had just paid for.
+
+When the fingerprint differs the prior checks describe code that is no longer
+here, so the receipt is **replaced outright**. That fence is what makes merging
+safe, and it is the half to preserve in any future change.
+
+The merged receipt keeps the **oldest** `written_at` and names every writer
+(`en-build+en-ship`). Refreshing the clock on each write would let a one-second
+lint check renew an hour-old suite result indefinitely, which is the TTL defeated
+by bookkeeping.
+
+**Never record a check that was skipped.** A receipt claiming a check that never
+ran is worse than no receipt, because the next layer skips on it too.
+
 ## Who writes and who reads
 
 - **`/en-build`** writes it after its single full-suite run passes, recording
@@ -59,6 +80,8 @@ fingerprint can see that. Age is the proxy. Default 120 minutes, overridable wit
   something it can honour.
 - **`/en-ship`** reads in preflight, and skips only what a valid receipt covers:
   `full_suite` first, then `targeted_tests`, which is the set it would run itself.
+  When it skips, it writes nothing: there is nothing new to record, and the
+  stronger evidence stays where the layer that earned it put it.
 - **A project's pre-push hook** may read it, to avoid repeating what `/en-ship`
   just ran seconds earlier on the identical tree.
 - **CI never reads one.** It is the independent authority, and a receipt is a

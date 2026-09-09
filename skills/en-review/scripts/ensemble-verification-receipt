@@ -36,7 +36,20 @@
 #                  wrong-repo · expired · check-not-recorded · malformed
 #
 # Only `passed` is ever recorded. A receipt is evidence something succeeded, not
-# a log that it ran, so a failing check simply leaves no receipt behind.
+# a log that it ran, so a failing check simply leaves no receipt behind. Never
+# record a check that was skipped: a receipt claiming a check that never ran is
+# worse than no receipt, because the next layer skips on it too.
+#
+# WRITES ACCUMULATE ON AN UNCHANGED TREE.  Layers prove different things about
+# the same tree: /en-build the full suite, /en-review lint and targeted tests,
+# /en-ship its own set. A write MERGES into an existing receipt when the
+# fingerprint and repo match, so the second writer cannot erase the first's
+# evidence. When the fingerprint differs the old checks describe a tree that no
+# longer exists, so the receipt is replaced outright rather than merged.
+#
+# The merged receipt keeps the OLDEST `written_at`, so the TTL expires it when
+# its oldest evidence expires. Refreshing the clock on a re-write would let an
+# hour-old suite result be renewed indefinitely by a cheap check beside it.
 
 set -u
 
@@ -147,6 +160,7 @@ cmd_write() {
 import json, os, sys, time
 checks = {c.split('=', 1)[0]: 'passed' for c in os.environ['CHECKS'].split()}
 deps = dict(d.split('=', 1) for d in os.environ['DEPS'].split())
+now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 doc = {
     "schema": 1,
     "source_fingerprint": os.environ['FP'],
@@ -156,9 +170,39 @@ doc = {
     "dependency_hashes": deps,
     "checks": checks,
     "written_by": os.environ['BY'],
-    "written_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    "written_at": now,
     "repo_path": os.environ['REPO'],
 }
+
+# Merge, but ONLY into a receipt describing this exact tree in this exact repo.
+# Anything else and the prior checks are about code that is no longer here.
+try:
+    with open(sys.argv[1]) as fh:
+        prior = json.load(fh)
+except (OSError, ValueError):
+    prior = None
+if (isinstance(prior, dict)
+        and prior.get('schema') == 1
+        and prior.get('source_fingerprint') == doc['source_fingerprint']
+        and prior.get('repo_path') == doc['repo_path']):
+    merged = dict(prior.get('checks') or {})
+    merged.update(doc['checks'])
+    doc['checks'] = merged
+    prior_deps = dict(prior.get('dependency_hashes') or {})
+    prior_deps.update(doc['dependency_hashes'])
+    doc['dependency_hashes'] = prior_deps
+    # A base recorded by an earlier layer survives a write that names none, so a
+    # caller that omits --base cannot silently drop the base-moved check.
+    if not doc['base_ref'] and prior.get('base_ref'):
+        doc['base_ref'] = prior['base_ref']
+        doc['base_sha'] = prior.get('base_sha', '')
+    writers = [w for w in str(prior.get('written_by', '')).split('+') if w]
+    if doc['written_by'] not in writers:
+        writers.append(doc['written_by'])
+    doc['written_by'] = '+'.join(writers)
+    # Oldest evidence sets the expiry. See WRITES ACCUMULATE in the header.
+    if prior.get('written_at') and prior['written_at'] < doc['written_at']:
+        doc['written_at'] = prior['written_at']
 # Written to a temp file in the same directory, then renamed: a reader must never
 # see a half-written receipt and treat its missing fields as a mismatch.
 tmp = sys.argv[1] + '.tmp'

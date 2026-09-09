@@ -203,6 +203,59 @@ else
   pass "recording a failed check is refused"
 fi
 
+# --- writes accumulate on an unchanged tree ----------------------------------
+# The field failure: /en-build proved the full suite, then /en-ship wrote its own
+# receipt seconds later on the identical tree and the write CLOBBERED it. The
+# project's pre-push hook then asked for full_suite, got check-not-recorded, and
+# re-ran the whole suite the build had just paid for.
+M=$(new_repo merge)
+( cd "$M" && "$R" write --check full_suite=passed --check lint=passed --check unit=passed \
+      --base HEAD --by en-build ) >/dev/null
+( cd "$M" && "$R" write --check lint=passed --check targeted_tests=passed --by en-ship ) >/dev/null
+merged=$( cd "$M" && "$R" show --json | python3 -c 'import json,sys; print(",".join(sorted(json.load(sys.stdin)["checks"])))' )
+assert_eq "full_suite,lint,targeted_tests,unit" "$merged" \
+  "a second write adds its checks instead of erasing the first writer's"
+rc=0; ( cd "$M" && "$R" verify --requires lint,full_suite ) >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] \
+  && pass "full_suite survives a later targeted-tests write, so the hook can still skip" \
+  || fail "full_suite must survive a later write on the same tree" "verify exited $rc"
+
+# Both writers are named, so a skip is still attributable.
+by=$( cd "$M" && "$R" show --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["written_by"])' )
+assert_eq "en-build+en-ship" "$by" "the merged receipt names every writer"
+
+# A base recorded by the first writer is not dropped by a write that omits --base;
+# losing it would silently disable the base-moved check.
+base=$( cd "$M" && "$R" show --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["base_ref"])' )
+assert_eq "HEAD" "$base" "an earlier --base survives a later write that names none"
+
+# --- merging NEVER crosses a tree change -------------------------------------
+# This is the half that makes the merge safe. Prior checks describe code that is
+# no longer here, so they must not be carried forward on any pretext.
+X=$(new_repo mergefence)
+( cd "$X" && "$R" write --check full_suite=passed --by en-build ) >/dev/null
+printf 'two\n' >> "$X/src.txt"
+( cd "$X" && "$R" write --check targeted_tests=passed --by en-ship ) >/dev/null
+after=$( cd "$X" && "$R" show --json | python3 -c 'import json,sys; print(",".join(sorted(json.load(sys.stdin)["checks"])))' )
+assert_eq "targeted_tests" "$after" "a changed tree replaces the receipt instead of merging into it"
+
+# --- a re-write cannot renew an expiring receipt -----------------------------
+# Refreshing written_at on every write would let a one-second lint check renew an
+# hour-old suite result indefinitely, which is the TTL defeated by bookkeeping.
+A=$(new_repo ageing)
+( cd "$A" && "$R" write --check full_suite=passed --by en-build ) >/dev/null
+python3 - "$A/.git/ensemble/receipt.json" <<'INNER'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d['written_at'] = '2020-01-01T00:00:00Z'
+json.dump(d, open(p, 'w'))
+INNER
+( cd "$A" && "$R" write --check lint=passed --by en-ship ) >/dev/null
+aged=$( cd "$A" && "$R" show --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["written_at"])' )
+assert_eq "2020-01-01T00:00:00Z" "$aged" "the merged receipt keeps the OLDEST written_at"
+assert_eq "1 expired" "$(verdict "$A")" "an aged receipt stays expired after a fresh cheap write"
+
 # --- --json shape ------------------------------------------------------------
 Q=$(new_repo jsonshape)
 ( cd "$Q" && "$R" write --check full_suite=passed --by en-ship ) >/dev/null
