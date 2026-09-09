@@ -17,6 +17,7 @@ TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
 REPORT="$REPO_ROOT/skills/en-review/references/review-report.md"
+PROTO="$REPO_ROOT/skills/en-review/references/mutation-protocol.md"
 DIFFSIG="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
 # Reads /en-review's copy: it owns persona dispatch. D52 removed en-build's,
 # which arrived through a peer-brief citation rather than anything en-build ran.
@@ -172,9 +173,9 @@ fi
 # === Branch-review hardening (EN08-CR-01..03) ===
 
 # --- CR-01: the baseline must cover untracked file CONTENT (stash create is not enough) ---
-if grep -qiE "tracked AND untracked" "$SKILL" \
-   && grep -qiE "git stash create. does NOT preserve untracked|not preserve untracked" "$SKILL" \
-   && grep -qiE "write-tree|content-hash manifest" "$SKILL"; then
+if grep -qiE "tracked AND untracked" "$PROTO" \
+   && grep -qiE "git stash create. does NOT preserve untracked|not preserve untracked" "$PROTO" \
+   && grep -qiE "write-tree|content-hash manifest" "$PROTO"; then
   pass "baseline covers untracked content (temp-index tree / content-hash manifest)"
 else
   fail "the Phase-1 baseline must explicitly include untracked file content"
@@ -215,6 +216,15 @@ if printf '%s' "$step" | grep -qF 'references/review-report.md'; then
   pass "the output-report step points at the reference that owns the envelope"
 else
   fail "the output-report step must cite references/review-report.md"
+fi
+
+# --- the apply step reaches the protocol it delegates to ---
+# The four rules in the skill are the boundary; the protocol is how it is held.
+step=$(awk '/^12\. \*\*Apply/{f=1} f&&/^12a\. /{exit} f' "$SKILL")
+if printf '%s' "$step" | grep -qF 'references/mutation-protocol.md'; then
+  pass "the apply step points at the two-phase protocol"
+else
+  fail "the apply step must cite references/mutation-protocol.md"
 fi
 
 # --- every step that emits an outcome line reaches the file defining its form ---
