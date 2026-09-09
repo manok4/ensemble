@@ -16,6 +16,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-review mutation gate"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
+REPORT="$REPO_ROOT/skills/en-review/references/review-report.md"
+PROTO="$REPO_ROOT/skills/en-review/references/mutation-protocol.md"
 DIFFSIG="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
 # Reads /en-review's copy: it owns persona dispatch. D52 removed en-build's,
 # which arrived through a peer-brief citation rather than anything en-build ran.
@@ -24,10 +26,10 @@ DISPATCH="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
 # === U1: lite-gate transparency ===
 
 # --- exactly-one lite_gate: line on EVERY run, all three outcomes ---
-if grep -qF "lite_gate: applied" "$SKILL" \
-   && grep -qF "lite_gate: overridden" "$SKILL" \
-   && grep -qF "lite_gate: not-requested" "$SKILL" \
-   && grep -qiE "EVERY run emits exactly ONE .?lite_gate" "$SKILL"; then
+if grep -qF "lite_gate: applied" "$REPORT" \
+   && grep -qF "lite_gate: overridden" "$REPORT" \
+   && grep -qF "lite_gate: not-requested" "$REPORT" \
+   && grep -qiE "EVERY run emits exactly ONE" "$REPORT"; then
   pass "lite_gate: line is mandatory on every run with applied/overridden/not-requested"
 else
   fail "SKILL must require exactly one lite_gate: line per run (applied|overridden|not-requested)"
@@ -44,7 +46,7 @@ fi
 enum_ok=1
 # D79 narrowed the gate to risk: size and uncounted files no longer override.
 for rid in "risk-signal" "conditional-persona:"; do
-  grep -qF "$rid" "$SKILL" || enum_ok=0
+  grep -qF "$rid" "$REPORT" || enum_ok=0
   grep -qF "$rid" "$DIFFSIG" || enum_ok=0
 done
 if [ "$enum_ok" -eq 1 ]; then
@@ -55,11 +57,11 @@ fi
 
 # --- deterministic multi-reason grammar (order, dedup, separator, persona encoding) ---
 grammar_ok=1
-grep -qiE "canonical order|fixed table order" "$SKILL" || grammar_ok=0
-grep -qiE "dedup" "$SKILL" || grammar_ok=0
-grep -qiE "comma\+space" "$SKILL" || grammar_ok=0
-grep -qiE "alphabetically.sorted.*\+.*joined" "$SKILL" || grammar_ok=0
-grep -qF "conditional-persona:performance+security" "$SKILL" || grammar_ok=0
+grep -qiE "canonical order|fixed table order" "$REPORT" || grammar_ok=0
+grep -qiE "dedup" "$REPORT" || grammar_ok=0
+grep -qiE "comma\+space" "$REPORT" || grammar_ok=0
+grep -qiE "alphabetically.sorted.*\+.*joined" "$REPORT" || grammar_ok=0
+grep -qF "conditional-persona:performance+security" "$REPORT" || grammar_ok=0
 if [ "$grammar_ok" -eq 1 ]; then
   pass "multi-reason grammar is deterministic (order, dedup, separator, +-joined sorted personas)"
 else
@@ -67,14 +69,14 @@ else
 fi
 
 # --- structured envelope field; markdown line derived from it ---
-if grep -qE '"lite_gate": \{"outcome"' "$SKILL" && grep -qiE "DERIVED from that object|derived from it" "$SKILL"; then
+if grep -qE '"lite_gate": \{"outcome"' "$REPORT" && grep -qiE "DERIVED from its structured envelope object" "$REPORT"; then
   pass "envelope carries structured lite_gate object; markdown line derives from it"
 else
   fail "the JSON envelope must carry the structured lite_gate object and the line must derive from it"
 fi
 
 # --- markdown-summary example shows a lite_gate line ---
-if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "lite_gate:"; then
+if sed -n '/## Markdown summary/,$p' "$REPORT" | grep -qF "lite_gate:"; then
   pass "markdown-summary example includes a lite_gate line"
 else
   fail "the markdown-summary example must include a lite_gate line"
@@ -83,16 +85,16 @@ fi
 # === U2: auditable mutation boundary ===
 
 # --- mandatory review_fixes: line, all three forms ---
-if grep -qE 'review_fixes: applied <N>|review_fixes: applied [0-9]' "$SKILL" \
-   && grep -qF "review_fixes: none" "$SKILL" \
-   && grep -qF "review_fixes: none (report-only)" "$SKILL"; then
+if grep -qE 'review_fixes: applied <N>|review_fixes: applied [0-9]' "$REPORT" \
+   && grep -qF "review_fixes: none" "$REPORT" \
+   && grep -qF "review_fixes: none (report-only)" "$REPORT"; then
   pass "review_fixes: line documented with applied/none/none(report-only) forms"
 else
   fail "SKILL must document all three review_fixes: forms"
 fi
 
 # --- applied_fixes[] envelope field with the entry shape ---
-if grep -qF '"applied_fixes"' "$SKILL" && grep -qE '\{finding_id, tier, files\[\]\}|"finding_id": "rev' "$SKILL"; then
+if grep -qF '"applied_fixes"' "$REPORT" && grep -qF '{finding_id, tier, files[]}' "$SKILL"; then
   pass "envelope carries applied_fixes[] with {finding_id, tier, files[]} entries"
 else
   fail "the JSON envelope must carry applied_fixes[] entries {finding_id, tier, files[]}"
@@ -112,10 +114,10 @@ fi
 
 # --- consistency invariants: N == unique entries; line derived; none => empty array ---
 invariants_ok=1
-grep -qiE "MUST equal the count of unique" "$SKILL" || invariants_ok=0
-grep -qiE "DERIVED from the array" "$SKILL" || invariants_ok=0
-grep -qiE "ascending ID order" "$SKILL" || invariants_ok=0
-grep -qiE 'MUST be `\[\]`|applied_fixes.*MUST be' "$SKILL" || invariants_ok=0
+grep -qiE "MUST equal the count of unique" "$REPORT" || invariants_ok=0
+grep -qiE "DERIVED from the array" "$REPORT" || invariants_ok=0
+grep -qiE "ascending ID order" "$REPORT" || invariants_ok=0
+grep -qiE 'MUST be `\[\]`|applied_fixes.*to be' "$REPORT" || invariants_ok=0
 grep -qiE "sorted and deduplicated|sorted \+ dedup" "$SKILL" || invariants_ok=0
 if [ "$invariants_ok" -eq 1 ]; then
   pass "consistency invariants: N==unique count, line derived, ascending order, none=>[] , files sorted+deduped"
@@ -162,7 +164,7 @@ else
 fi
 
 # --- markdown-summary example shows a review_fixes line ---
-if sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "review_fixes:"; then
+if sed -n '/## Markdown summary/,$p' "$REPORT" | grep -qF "review_fixes:"; then
   pass "markdown-summary example includes a review_fixes line"
 else
   fail "the markdown-summary example must include a review_fixes line"
@@ -171,9 +173,9 @@ fi
 # === Branch-review hardening (EN08-CR-01..03) ===
 
 # --- CR-01: the baseline must cover untracked file CONTENT (stash create is not enough) ---
-if grep -qiE "tracked AND untracked" "$SKILL" \
-   && grep -qiE "git stash create. does NOT preserve untracked|not preserve untracked" "$SKILL" \
-   && grep -qiE "write-tree|content-hash manifest" "$SKILL"; then
+if grep -qiE "tracked AND untracked" "$PROTO" \
+   && grep -qiE "git stash create. does NOT preserve untracked|not preserve untracked" "$PROTO" \
+   && grep -qiE "write-tree|content-hash manifest" "$PROTO"; then
   pass "baseline covers untracked content (temp-index tree / content-hash manifest)"
 else
   fail "the Phase-1 baseline must explicitly include untracked file content"
@@ -191,10 +193,10 @@ fi
 # --- CR-03: the normative examples are internally coherent ---
 # The JSON example's applied_fixes finding IDs must match the markdown example's
 # review_fixes line, and applied_safe_auto_count must equal the safe_auto entries.
-json_ids=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -oE '"finding_id": "[^"]+"' | grep -oE 'rev-[0-9-]+' | sort)
-md_ids=$(sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -F "review_fixes:" | grep -oE 'rev-[0-9-]+' | sort)
-count_field=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -oE '"applied_safe_auto_count": [0-9]+' | grep -oE '[0-9]+')
-json_safe_auto=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$SKILL" | grep -c '"tier": "safe_auto"')
+json_ids=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$REPORT" | grep -oE '"finding_id": "[^"]+"' | grep -oE 'rev-[0-9-]+' | sort)
+md_ids=$(sed -n '/## Markdown summary/,$p' "$REPORT" | grep -F "review_fixes:" | grep -oE 'rev-[0-9-]+' | sort)
+count_field=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$REPORT" | grep -oE '"applied_safe_auto_count": [0-9]+' | grep -oE '[0-9]+')
+json_safe_auto=$(sed -n '/## JSON envelope shape/,/## Markdown summary/p' "$REPORT" | grep -c '"tier": "safe_auto"')
 if [ -n "$json_ids" ] && [ "$json_ids" = "$md_ids" ]; then
   pass "example coherence: JSON applied_fixes IDs match the markdown review_fixes line"
 else
@@ -205,6 +207,39 @@ if [ -n "$count_field" ] && [ "$count_field" = "$json_safe_auto" ]; then
 else
   fail "applied_safe_auto_count must equal the number of safe_auto applied_fixes entries" "count=$count_field entries=$json_safe_auto"
 fi
+
+# --- the output step reaches the reference that owns both examples ---
+# Scoped to the step: the envelope and the summary are only normative if the
+# run that emits them opens the file that defines them.
+step=$(awk '/^13\. \*\*Output report/{f=1} f&&/^## /{exit} f' "$SKILL")
+if printf '%s' "$step" | grep -qF 'references/review-report.md'; then
+  pass "the output-report step points at the reference that owns the envelope"
+else
+  fail "the output-report step must cite references/review-report.md"
+fi
+
+# --- the apply step reaches the protocol it delegates to ---
+# The four rules in the skill are the boundary; the protocol is how it is held.
+step=$(awk '/^12\. \*\*Apply/{f=1} f&&/^12a\. /{exit} f' "$SKILL")
+if printf '%s' "$step" | grep -qF 'references/mutation-protocol.md'; then
+  pass "the apply step points at the two-phase protocol"
+else
+  fail "the apply step must cite references/mutation-protocol.md"
+fi
+
+# --- every step that emits an outcome line reaches the file defining its form ---
+# One rule in one place is only safe while each emitting step opens that place.
+missing=""
+for anchor in "Emit the \`lite_gate:\` outcome line" \
+              "Emit the \`peer_decision:\` outcome line" \
+              "Emit the \`review_fixes:\` outcome line" \
+              "Emit the \`verification_pass:\` outcome line"; do
+  line=$(grep -F "$anchor" "$SKILL" | head -1)
+  printf '%s' "$line" | grep -qF 'references/review-report.md' || missing="$missing '$anchor'"
+done
+[ -z "$missing" ] \
+  && pass "each outcome-line step cites the reference that defines its form" \
+  || fail "an outcome-line step no longer reaches review-report.md" "missing:$missing"
 
 # === U3: foundation D42 ===
 

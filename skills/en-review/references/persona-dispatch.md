@@ -150,27 +150,7 @@ Ties break on ascending `finding_id` at every stage, so identical input yields i
 
 ## Output envelope
 
-The synthesis layer emits a single envelope (per `references/finding-schema.md`) with the same shape plus a `personas` array listing which personas contributed:
-
-```json
-{
-  "verdict": "approve | revise | reject",
-  "summary": "<2-3 sentence overall>",
-  "personas": ["correctness", "testing", "maintainability", "standards", "security"],
-  "findings": [
-    {
-      "severity": "P1",
-      "confidence": 9,
-      "title": "...",
-      "location": "src/auth/refresh.ts:42",
-      "personas": ["correctness", "security"],
-      "why_it_matters": "...",
-      "suggested_fix": "...",
-      "autofix_class": "manual"
-    }
-  ]
-}
-```
+The synthesis layer emits one envelope. **`references/review-report.md` owns its shape**; do not restate it here, and do not infer it from the finding schema alone, which carries only the base fields.
 
 Aggregate `verdict` is the most-severe of the personas:
 - Any persona returns `reject` → aggregate is `reject`.

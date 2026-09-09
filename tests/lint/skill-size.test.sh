@@ -40,8 +40,9 @@ BUDGET=24576
 #
 # en-plan's row went the same way on 2026-09-09: 40,191 bytes down to 24,353,
 # with the peer loop stated once and four gated blocks moved to references.
+# en-review followed the same day: 30,715 down, one envelope instead of three,
+# the outcome-line rule stated once, and the mutation protocol in a reference.
 BASELINE='
-en-review 30715
 en-setup 30301
 en-ship 27407
 '

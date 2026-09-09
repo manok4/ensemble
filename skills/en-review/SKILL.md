@@ -61,18 +61,12 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
    - Always-on (4): `correctness-reviewer`, `testing-reviewer`, `maintainability-reviewer`, `standards-reviewer`.
    - Conditional (3) — fire when diff content matches: `security-reviewer`, `performance-reviewer`, `migrations-reviewer`.
-   - Plus `learnings-research` to query `docs/learnings/` for relevant prior terms, decisions, and solutions. **Unless step 5's plan already cites `docs/learnings/` paths**: read those files directly, skip the agent, and record `learnings: from-plan (<n> cited)`. `/en-plan` ran that pass and the plan carries its result; a second agent rediscovers citations already on disk.
+   - Plus `learnings-research` over `docs/learnings/` for prior terms, decisions and solutions. **Unless step 5's plan already cites `docs/learnings/` paths**: read those files directly, skip the agent, and record `learnings: from-plan (<n> cited)`, since `/en-plan` already ran that pass and a second agent rediscovers citations already on disk.
 
    **7a. Lite (`--lite`).** A lite run is a lighter review by whichever reviewers the mode runs. Under `--peer` the peer gets `references/peer-brief-lite.md` (correctness, regression risk, standards visible in the diff; one turn). Under `--host` the roster collapses to **`correctness-reviewer` + `standards-reviewer` + a `fast-pass` lens**, skipping `testing`, `maintainability`, `learnings` and all conditionals. Under `--cross`, both. **Fail closed on risk:** when `references/diff-signal-detection.md` finds a risk signal (`is_low_risk` false), or any conditional persona fired above, the **full brief and full roster run regardless of `--lite`** — the gate wins, the flag is advisory. Size does not gate: a quick fix with its test and changelog line is lite. `fast-pass` findings are confidence-capped (anchor ≤ 50) so they surface on their own only at P0; otherwise they reach the actionable tier only by deduping onto an independent persona finding (per `references/persona-dispatch.md`).
 
-   **Mandatory `lite_gate:` outcome line (EN08).** EVERY run emits exactly ONE `lite_gate:` line in the markdown summary — so a missing line is always distinguishable from a not-requested lite, and the gate's decision is **never a silent override**:
-
-   - `lite_gate: applied` — `--lite` requested, roster collapsed.
-   - `lite_gate: overridden (<reasons>)` — `--lite` requested but the fail-closed gate won. `<reasons>` uses the **canonical override-reason identifiers from `references/diff-signal-detection.md`** (`risk-signal`, `conditional-persona:<names>`), deduplicated, in that fixed canonical order, comma+space separated, with exactly one space before the paren. Persona names in `conditional-persona:` are alphabetically sorted and `+`-joined. Example: `lite_gate: overridden (risk-signal, conditional-persona:performance+security)`.
-   - `lite_gate: not-requested` — the run had no `--lite` flag.
-
-   The JSON envelope carries the structured form (see envelope shape): `"lite_gate": {"outcome": "applied" | "overridden" | "not-requested", "reasons": []}` with `reasons` in the same canonical order (empty for `applied` / `not-requested`); the markdown line is DERIVED from that object, never composed independently.
-7b. **Finalize the effort tier against the ladder** (EN11-CR-001). The ladder's inputs — which conditional personas fired, `is_small_and_safe`, and the unit's `risk`/`gated` metadata — only exist once steps 7 and 7a have run, so resolving the tier at step 2 would let a diff resolve `low`/`medium` **before** a security, migration, architectural, destructive, or gated signal established that `high` was required. Resolve here, after classification and before step 8's dispatch:
+   **Emit the `lite_gate:` outcome line** (EN08). Whatever the gate decided, including when `--lite` was never passed, the run says so: the decision is **never a silent override**. Forms and grammar in `references/review-report.md`.
+7b. **Finalize the effort tier against the ladder** (EN11-CR-001). The ladder reads which conditional personas fired, `is_small_and_safe`, and the unit's `risk`/`gated` metadata, none of which exist before step 7, so resolving at step 2 would let a security, migration, architectural, destructive or gated diff settle at `low`/`medium`. Resolve here, after classification and before step 8's dispatch:
 
    - If step 2b produced a tier from `--effort` or config, **use it** (higher precedence than the ladder).
    - Otherwise apply the ordered cascade from `references/peer-model-policy.md` (a): **`high`** when `security-reviewer` or `migrations-reviewer` fired, an architectural trigger is present, or the unit is `risk: destructive` / `gated: true`; **`low`** when `lite_gate` is `applied` or `is_small_and_safe` is `true`; **`medium`** otherwise.
@@ -84,7 +78,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
     **`--cross`: the peer first, then the personas in ONE batch.** Start the peer detached (step 9), then one message with multiple `Agent` tool calls for the roster, each carrying `model: $AGENT_MODEL` from step 2b when non-empty. The peer is **blind** to persona findings (step 9), so nothing orders it after the roster. Collect the personas, then wait for the peer.
 9. **Outside Voice peer (runs in `--peer` and `--cross`; `--peer` is the default and makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
-   - **Blind-peer invariant.** The peer receives the diff, the project context, and the goal. It does **NOT** receive the host persona findings. This is load-bearing, not an omission: anchoring the peer on host findings turns independent discovery into confirmation, and overlap then stops being evidence of anything. It is also what makes the concurrent dispatch in step 8 valid.
+   - **Blind-peer invariant.** The peer receives the diff, the project context and the goal, and **NOT** the host persona findings. That independence is what makes overlap mean anything, and what licenses the concurrent dispatch in step 8. `references/persona-dispatch.md` states it in full.
    - Build the prompt: `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --artifact-file <diff> --project-context "<one-line>" --goal "<one-line>" --peer-mode "$PEER_MODE"` (the brief supplies the review dimensions; pass `references/peer-brief-lite.md` instead when `lite_gate` is `applied`).
    - Translate step 2b's result: `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort <tier> --peer-cmd "$PEER_CMD" --model-alias <peer_model_claude> --codex-model <peer_model_codex>)"` → `$PEER_MODEL`, `$PEER_EFFORT`.
    - **Invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`, passing `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, the prompt file, `--schema "$SKILL_DIR/scripts/peer-findings.schema.json"`, and the access mode: **`--access read-tree` with the full brief** (callers and tests readable; 25 turns, 1200s), **`--access none` with the lite brief and on the verification pass** (one turn, diff only, 600s). Run it detached: `ensemble_peer_start --job-dir /tmp/ensemble/en-review/<run-id>/peer …` returns at once; after the personas (`--cross`) or immediately (`--peer`), `ensemble_peer_wait <dir> --max-secs 480` in slices until `done` or the ceiling, then `ensemble_peer_result`, or `ensemble_peer_reap` past it. The helper owns invocation, isolation, classification, retry and fallback (EN11-PR-006, D81); not restated here. Merge the returned `peer_decision`'s `peer`/`reason`/`model_actual` into step 2a's object. Parse the peer's findings per `references/finding-schema.md`, tagged `source: "peer"`.
@@ -92,41 +86,25 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    - **`--cross` (personas + peer):** the peer's findings join the persona findings and both sets reconcile in step 10. Record the reviewer: `cross-agent` (peer ran), `single-agent-fallback` (only one CLI → a fresh subprocess of the host's own CLI), or — only when `PEER_AVAILABLE=false` — fall back to the full host persona roster (steps 7–8) and record `reviewer: en-review-host-fallback` so the weaker, same-agent evidence is visible.
    - **Peer off** (any `peer: "off"` reason from step 2a): skip this step; the persona findings are the envelope. The reason is still reported.
 
-9a. **Mandatory `peer_decision:` outcome line.** EVERY run emits exactly ONE, so a skip or degradation never reads as a normal peer run (fail-closed, like `lite_gate:`, D42). Format: `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e). The markdown line is DERIVED from the envelope's structured `peer_decision` object, never composed independently.
+9a. **Emit the `peer_decision:` outcome line**, so a skip or degradation never reads as a normal peer run (fail-closed, like `lite_gate:`, D42). Its `<reason>` MUST be a member of the closed enum in `references/peer-model-policy.md` (e); the format is in `references/review-report.md`.
 10. **Synthesize.** With one source — `--peer` or `--host` — there is nothing to reconcile: validate, collect, and report. Say which single source produced the findings so nobody reads a one-source pass as a corroborated one.
 
-    **Under `--cross`, reconcile the two sources** and **report the `corroborated` bucket first**: two independent reads agreeing is the strongest signal available, so it leads. The other three buckets are still reported below it, never dropped — `peer-only` is what the host missed and is usually the reason to run a peer at all, and `host-only` is where project context lives. Per `references/persona-dispatch.md`:
-    **Two-source reconciliation** is `references/persona-dispatch.md`'s algorithm, in full and not restated here: validate each response and drop malformed ones, dedup within the host set, then the single global pass over one consumption pool (conflict stage first, then corroboration, then singles) that emits `reconciliation[]` records and must satisfy its partition invariant. Three rules bind this step's callers, so they are repeated here: `conflicting` records are **never auto-applied** and step 12 excludes them from the frozen authorized set; the rank is `corroborated` first, then P0 → P3, then confidence, then persona priority; and `fast-pass` findings are barred from corroboration promotion.
+    **Under `--cross`, run `references/persona-dispatch.md`'s Two-source reconciliation** and **report the `corroborated` bucket first**: two independent reads agreeing is the strongest signal available. The other three buckets are reported below it, never dropped, because `peer-only` is what the host missed and is usually the reason to run a peer at all, and `host-only` is where project context lives. Three of its rules bind this step's callers: `conflicting` records are **never auto-applied** and step 12 excludes them from the frozen authorized set; the rank is `corroborated` first, then P0 → P3, then confidence, then persona priority; and `fast-pass` findings are barred from corroboration promotion.
 11. **Confidence gate.** Read `review.confidence_threshold` from `~/.ensemble/config.json` (default `7`). Findings with `confidence < threshold` are **filtered out** of the surfaced output and **filed as TD entries** in `docs/plans/tech-debt-tracker.md` with the marker `Filed by /en-review (confidence <N>)`. Per `references/review-confidence-gating.md`. In `report-only` nothing is filed; sub-threshold findings return in the envelope under `sub_threshold_findings: []`.
-12. **Apply / surface — two-phase mutation protocol (EN08).** The applied set is a *boundary fixed before editing*, not a post-hoc assertion:
+12. **Apply / surface — two-phase mutation protocol (EN08).** `references/mutation-protocol.md` owns both phases and the verification pass below; read it here. The applied set is a *boundary fixed before editing*, not a post-hoc assertion. Four rules bind every mode:
 
-    **Phase 1 — authorize, then baseline + freeze (before ANY edit).** Authorization comes FIRST, so the frozen set never changes after mutation begins:
-    0. **Any finding you do not understand stops the whole phase.** Before collecting authorizations, ask about every ambiguous candidate at once, what it means, what fix it implies, whether it holds for this codebase, and apply nothing until they are answered. Findings interact: a set frozen around a misreading is one the protocol below cannot unfreeze. In `headless` and `report-only` there is no one to ask, so an ambiguous finding is not authorized; it is surfaced unapplied with the ambiguity named.
+    - **Authorization precedes mutation.** Collect ALL authorizations up front, freeze one final authorized set, and capture the pre-review baseline, all before ANY edit. The frozen set never changes after mutation begins, and any finding you do not understand stops the phase before authorizations are collected.
+    - **Per mode.** `interactive` applies the frozen set, and **`manual` findings are NEVER applied without the user's explicit pick, and the pick always precedes mutation**. `headless` applies `safe_auto` ONLY, silently. `report-only` applies nothing.
+    - **P0 halt.** Any P0 finding halts ALL automatic mutation — including `safe_auto` and `gated_auto` — until severity.md's P0 pause-and-ask handling occurs.
+    - **The recorded set bounds the tree.** `applied_fixes[]` derives from the ACTUAL before-vs-after delta, excluding pre-existing changes, and the working-tree delta attributable to the review MUST NOT exceed the recorded `applied_fixes[]`. **en-review MUST NOT implement findings outside the mode-permitted, announced, and recorded `applied_fixes[]` set — wholesale implementation of findings is a contract violation.**
 
-    1. **Collect ALL authorizations up front.** In `interactive` mode, surface every finding before touching anything: `gated_auto` announcements (user can decline) and `manual` picks are gathered NOW — not mid-run. In `headless` mode there is no user, so the authorized set is `safe_auto` findings ONLY. In `report-only` the authorized set is empty.
-    2. **Freeze one final authorized set** — the ONLY findings whose fixes may be applied this run, per the severity.md action matrix. A finding not in the frozen set is not applied this run, period; if the user wants more later, that is a NEW run with a new baseline.
-    3. **Capture the pre-review baseline** with a non-mutating snapshot that covers the **content of tracked AND untracked files**: a temporary-index tree (`GIT_INDEX_FILE=<tmp> git add -A && git write-tree` against a throwaway index) or a content-hash manifest over `git ls-files -co --exclude-standard`. `git status --porcelain` records that an untracked path exists, not its content, and `git stash create` does NOT preserve untracked content; without content coverage a review edit to a pre-existing untracked file cannot be told from the user's original work. Pre-existing dirty-tree changes belong to the user, never to the review.
+    **Emit the `review_fixes:` outcome line**, derived from `applied_fixes[]` and never composed independently. Forms and the count invariant in `references/review-report.md`.
+12a. **Verification pass (severity-gated, one pass).** A fix can be wrong or introduce a new fault, and the findings above describe the code before it. So when this run addressed any **P0 or P1** finding (an `applied_fixes[]` entry whose finding is P0/P1), or `--verify` was passed, review once more against the same target, mode, review mode and effort tier, with `references/peer-brief-lite.md` whatever `lite_gate` said: the pass is narrow by design, confirming the fixes landed and scanning the changed hunks for new P0/P1. `references/mutation-protocol.md` owns the previous-review context passed as `--iteration-context-file`, and the envelope selection under bare `--verify`.
 
-    **Phase 2 — apply within the frozen set.**
-    - In `interactive` mode: apply the frozen set (auto-tier `safe_auto`; `gated_auto` entries the user did not decline; `manual` entries the user explicitly picked in Phase 1). Re-verify after. **`manual` findings are NEVER applied without the user's explicit pick, and the pick always precedes mutation.**
-    - In `headless` mode: apply `safe_auto` ONLY, silently; return JSON envelope with all findings.
-    - In `report-only` mode: never apply anything; return JSON only.
-    - **P0 halt:** any P0 finding halts ALL automatic mutation — including `safe_auto` and `gated_auto` — until severity.md's P0 pause-and-ask handling occurs.
-    - Stop before touching any finding or file outside the frozen set. **en-review MUST NOT implement findings outside the mode-permitted, announced, and recorded `applied_fixes[]` set — wholesale implementation of findings is a contract violation.** Permitted auto-fixes per the severity.md matrix are in-contract; anything beyond them is *implementing*, which belongs to `/en-build` / `/en-resolve-pr`, not review.
+    **One pass, never a loop.** A P0/P1 the verification pass reports, unfixed or new, is surfaced with its id and **never applied in this run**: the frozen set closed above, and a third pass mostly resamples the second (D49). Fixing it is a new run.
 
-    **Record.** Derive `applied_fixes[]` from the ACTUAL before-vs-after tree delta (baseline vs post-review), excluding pre-existing changes — never from intent. The working-tree delta attributable to the review MUST NOT exceed the recorded `applied_fixes[]`.
-
-    **Mandatory `review_fixes:` outcome line.** Every run emits exactly one:
-    - `review_fixes: applied <N> (<finding-ids with tiers>)` — `<N>` MUST equal the count of unique `applied_fixes[]` entries; the list is DERIVED from the array: finding IDs in ascending ID order, each rendered `<finding_id>/<tier>`, comma+space separated. Example: `review_fixes: applied 2 (rev-1-3/safe_auto, rev-1-7/safe_auto)`.
-    - `review_fixes: none` — nothing applied (and `applied_fixes` MUST be `[]`).
-    - `review_fixes: none (report-only)` — report-only mode (and `applied_fixes` MUST be `[]`).
-12a. **Verification pass (severity-gated, one pass).** A fix can be wrong or introduce a new fault, and the findings above describe the code before it. So when this run addressed any **P0 or P1** finding (an `applied_fixes[]` entry whose finding is P0/P1), or `--verify` was passed, review once more:
-    - **Same target, mode, review mode and effort tier.** The reviewer gets `references/peer-brief-lite.md` (under `--host`/`--cross`, the lite roster) whatever `lite_gate` said: the pass is narrow by design — confirm the fixes landed, scan the changed hunks for new P0/P1.
-    - **Previous-review context.** Write `<run-dir>/previous-review.md` from the envelope: each P0/P1 finding as `applied — verify the fix landed`, each P2/P3 as `deferred — do not re-flag`, with `finding_id`, severity, title, location. Pass it to `$SKILL_DIR/scripts/ensemble-build-peer-prompt` with `--iteration-context-file`; the peer reuses the original ids (`references/outside-voice.md`).
-    - **One pass, never a loop.** A P0/P1 the verification pass reports, unfixed or new, is surfaced with its id and **never applied in this run**: the frozen set closed in step 12, and a third pass mostly resamples the second (D49). Fixing it is a new run.
-    - **`--verify [<envelope-path>]`** runs this pass alone, for fixes made after a previous run (a P0 that halted mutation, a `manual` fix, `/en-build`'s batch). Bare `--verify` takes the newest `/tmp/ensemble/en-review/*/envelope.json` whose `diff_base` matches the current target; none or several candidates is reported, and the run stops.
-    - **Mandatory `verification_pass:` outcome line.** EVERY run emits exactly ONE: `verification_pass: clean` (ran; no P0/P1 remain), `verification_pass: new-findings (<id>/<severity>, …)` (ran; these remain), or `verification_pass: not-run (<reason>)` with `<reason>` one of `no-p0-p1-addressed`, `peer-failure`. When the pass ran, the envelope's `verdict` is its verdict. The JSON envelope carries the structured `verification_pass` object; the line is DERIVED from it, never composed independently.
-13. **Output report.** Markdown summary (for human consumption) plus JSON envelope (for programmatic callers). Write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json` and name the path in the summary; `--verify` reads it. Both include a `sub_threshold_filed_count` line indicating how many findings were filed as TD entries (or surfaced separately in `report-only`).
+    **Emit the `verification_pass:` outcome line**, including on a run where the pass did not fire. When the pass ran, the envelope's `verdict` is its verdict. Forms and reasons in `references/review-report.md`.
+13. **Output report.** Per `references/review-report.md`, which owns the envelope shape and the markdown summary: write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json`, emit the markdown summary alongside it in every mode including `headless` and `report-only`, and name the path in the summary so `--verify` can read it. Both carry `sub_threshold_filed_count`, how many findings were filed as TD entries (or surfaced separately in `report-only`).
 
 ## Flags
 
@@ -158,80 +136,12 @@ Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}
 
 **Post-review check** (`references/post-review-check.md`). Ask `$SKILL_DIR/scripts/ensemble-verification-receipt` first: a valid receipt skips lint, typecheck and tests, which is only possible when nothing was applied. Otherwise run lint, typecheck and the graph-selected set (`test_changed_command`), revert the applied edits on failure, and on success record `lint`, `typecheck` and `targeted_tests` for `/en-ship`. `report-only` never runs it.
 
-## JSON envelope shape
-
-```json
-{
-  "verdict": "approve | revise | reject",
-  "summary": "<2-3 sentence overall>",
-  "personas": ["correctness", "testing", "maintainability", "standards", "security"],
-  "host_model": "<the resolver's model for dimension-reviewer> | null",
-  "mode": "interactive | headless | report-only",
-  "lite_gate": {"outcome": "applied | overridden | not-requested", "reasons": []},
-  "verification_pass": {"outcome": "clean | new-findings | not-run", "reason": "no-p0-p1-addressed | peer-failure | null", "finding_ids": []},
-  "diff_base": "main",
-  "diff_files_count": 12,
-  "lint_findings_count": 0,
-  "applied_safe_auto_count": 3,
-  "applied_fixes": [
-    {"finding_id": "rev-1-2", "tier": "safe_auto", "files": ["src/auth/refresh.ts"]},
-    {"finding_id": "rev-1-5", "tier": "safe_auto", "files": ["src/lib/redis.ts"]},
-    {"finding_id": "rev-1-8", "tier": "safe_auto", "files": ["tests/auth/refresh.test.ts"]}
-  ],
-  "findings": [
-    {
-      "severity": "P1",
-      "confidence": 9,
-      "title": "...",
-      "location": "src/auth/refresh.ts:42",
-      "personas": ["correctness", "security"],
-      "why_it_matters": "...",
-      "suggested_fix": "...",
-      "autofix_class": "manual",
-      "applied": false
-    }
-  ]
-}
-```
-
-## Markdown summary
-
-Always emit a markdown summary alongside the JSON, even in `headless`/`report-only`. Example:
-
-```markdown
-## Code review — FR07-auth-rotation
-
-**Verdict:** revise (3 findings)
-**Personas fired:** correctness, testing, maintainability, standards, security (host_model: opus)
-**Pre-flight lint:** clean
-**Auto-applied:** 3 safe_auto fixes
-lite_gate: not-requested
-review_fixes: applied 3 (rev-1-2/safe_auto, rev-1-5/safe_auto, rev-1-8/safe_auto)
-verification_pass: not-run (no-p0-p1-addressed)
-
-### High (P1)
-
-- **U3 — Refresh token race in concurrent path** (correctness, security; conf 9)
-  - `src/auth/refresh.ts:42`
-  - Two requests can race during rotation; second invalidates the first.
-  - Fix: serialize per-user via singleFlight cache.
-```
-
-One `###` section per severity present, P0 first, each finding carrying its U-ID, personas, confidence, location, why and fix.
-
-## Reference files
-
-Every run: `references/host-detect.md` (`PEER_*`), `references/peer-brief.md` (dimensions; the prompt builder reads them), `references/peer-contract.md`, `references/severity.md` (routing), `references/finding-schema.md`, `references/outside-voice.md`, `references/peer-model-policy.md` (effort), `references/diff-signal-detection.md` (`is_low_risk`, `is_small_and_safe`, lite-gate reason ids), `references/review-confidence-gating.md` and `references/tech-debt-tracker-format.md` (filing sub-threshold findings), `$SKILL_DIR/scripts/ensemble-build-peer-prompt`, `$SKILL_DIR/scripts/ensemble-peer-invoke` with `$SKILL_DIR/scripts/peer-findings.schema.json`.
-
-Gated, read only under `--cross` or `--host`: `references/persona-dispatch.md` (roster, batch, reconciliation) and `references/research-dispatch.md` (`learnings-research`). Under `--lite`, and on the verification pass: `references/peer-brief-lite.md`. At the post-review check: `references/post-review-check.md`.
-
 ## Failure protocol
+
+`references/persona-dispatch.md` owns the persona-side failures (a persona times out, returns malformed JSON, all fail, the diff is too large for one context). These three are en-review's own:
 
 | Failure | Behavior |
 |---|---|
-| One persona times out | Drop its findings; note in summary; continue |
-| All personas fail | `verdict: error`; do not return findings; surface to user |
-| Diff is too large for any persona | Split by file; run persona per file; merge findings |
 | Mode is `report-only` but `safe_auto` would apply | Note "Would apply N safe_auto fixes (skipped — report-only mode)" in summary; don't apply |
 | Re-verification fails after applying findings | Revert; surface to user; do not commit |
 | Verification pass peer times out or returns malformed JSON | `verification_pass: not-run (peer-failure)`; the initial verdict stands, flagged as unverified |

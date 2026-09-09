@@ -19,6 +19,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-review verification pass"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
+REPORT="$REPO_ROOT/skills/en-review/references/review-report.md"
 CONTRACT="$REPO_ROOT/skills/en-review/CONTRACT.md"
 BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
 BUILDER="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
@@ -32,19 +33,19 @@ else
 fi
 
 # --- mandatory outcome line, all three forms ---
-if grep -qF "verification_pass: clean" "$SKILL" \
-   && grep -qF "verification_pass: new-findings" "$SKILL" \
-   && grep -qF "verification_pass: not-run" "$SKILL" \
-   && grep -qiE "EVERY run emits exactly ONE.{0,40}verification_pass" "$SKILL"; then
+if grep -qF "verification_pass: clean" "$REPORT" \
+   && grep -qF "verification_pass: new-findings" "$REPORT" \
+   && grep -qF "verification_pass: not-run" "$REPORT" \
+   && grep -qiE "EVERY run emits exactly ONE" "$REPORT"; then
   pass "verification_pass: line is mandatory with clean/new-findings/not-run"
 else
   fail "SKILL must require exactly one verification_pass: line per run with the three outcomes"
 fi
 for r in no-p0-p1-addressed peer-failure; do
-  grep -qF "$r" "$SKILL" && pass "not-run reason $r is named" || fail "not-run reason $r must be named"
+  grep -qF "$r" "$REPORT" && pass "not-run reason $r is named" || fail "not-run reason $r must be named"
 done
-if grep -qF '"verification_pass": {"outcome"' "$SKILL" \
-   && sed -n '/## Markdown summary/,/## Reference files/p' "$SKILL" | grep -qF "verification_pass:"; then
+if grep -qF '"verification_pass": {"outcome"' "$REPORT" \
+   && sed -n '/## Markdown summary/,$p' "$REPORT" | grep -qF "verification_pass:"; then
   pass "envelope carries the structured object and the summary example shows the line"
 else
   fail "the envelope must carry verification_pass and the summary example must show the line"

@@ -32,6 +32,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-review adopted mechanisms"
 
 SKILL="$REPO_ROOT/skills/en-review/SKILL.md"
+PROTO="$REPO_ROOT/skills/en-review/references/mutation-protocol.md"
 BRIEF="$REPO_ROOT/skills/en-review/references/peer-brief.md"
 
 # --- 1. the spec axis: all three finding kinds, anchored to U-IDs ---
@@ -88,10 +89,13 @@ else
 fi
 
 # --- 6. clarify before applying ANY finding ---
-clar=$(grep -n 'stops the whole phase' "$SKILL" | head -1 | cut -d: -f1)
-coll=$(grep -n 'Collect ALL authorizations up front' "$SKILL" | head -1 | cut -d: -f1)
+# The order lives in the protocol reference; the skill states it as a rule, so
+# both are checked: an editor cannot satisfy one by dropping the other.
+clar=$(grep -n 'stops the whole phase' "$PROTO" | head -1 | cut -d: -f1)
+coll=$(grep -n 'Collect ALL authorizations up front' "$PROTO" | head -1 | cut -d: -f1)
 if [ -n "$clar" ] && [ -n "$coll" ] && [ "$clar" -lt "$coll" ] \
-   && grep -qiE 'apply nothing until they are answered' "$SKILL"; then
+   && grep -qiE 'apply nothing until they are answered' "$PROTO" \
+   && grep -qiE 'stops the phase before authorizations are collected' "$SKILL"; then
   pass "an ambiguous finding stops the phase before authorizations are collected"
 else
   fail "clarification must precede authorization" \
