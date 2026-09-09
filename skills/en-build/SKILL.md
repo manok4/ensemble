@@ -84,7 +84,7 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 - **"Working tree is clean, paused for confirmation" between non-gated units.** A clean tree is the expected state between units. *The tell: the pause reports success and asks nothing answerable.*
 - **"Should I continue?" preambles and "Let me verify with the user before …"** outside the seven cases. *The tell: the question offers no option that changes what happens next.*
 
-**The right response to uncertainty is advance, not ask.** Uncertainty is not a pause case: continue per the contract. The verification gates and the failure protocol are the safety net; a self-inserted checkpoint adds friction, not protection. A real concern goes in the per-unit progress report as a `Note:` line, which is informational and does not gate the build.
+**Uncertainty is not a pause case: advance, not ask.** The verification gates and the failure protocol are the safety net. A real concern goes in the progress report as an informational `Note:` line, not a prompt.
 
 9. **Unit loop.** For each unit, in plan order:
      - **9a. Mandatory safety gate (cannot be bypassed by any flag, on any code path).** Classify the unit (`risk:`, or the ordered classifier when absent; `gated:` defaults to `false`) and apply the 8b table before doing any work, surfacing goal, files and approach first. Any other input at a typed gate records the unit `skipped` and advances; `abort` stops the build per the abort protocol. Identical on the full loop, `--unit U<N>`, `--from U<N>` and manual resume; **no flag suppresses it**.
@@ -106,7 +106,7 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 
     1. **Cheap gate: lint + typecheck only.** Seconds, not minutes. **The full suite does not run here** — it runs once, at 10.4, after review findings have been applied.
     2. **Code-simplification pass**, at the branch level, not per-unit. Invoke `/en-simplify` on the branch diff (`git diff <merge-base>..HEAD`). Skip on docs-only or trivial (<~10 changed lines) branches, or with `--no-simplify`; it leaves changes in the working tree and does not commit.
-    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`**, or `--peer` in place of `--cross` when `--review peer` was passed. The cross-agent peer is **mandatory** here: the host implemented every unit, so the other architecture reviews it (D23). Host personas run alongside as fresh-context sub-agents (D46). The envelope's `reviewer` records whether the cross-agent property held (`cross-agent`, or `single-agent-fallback` / `en-review-host-fallback` when no peer was available), and that is what the 10.6 audit reads. **Apply every finding in one batch, then verify once**; fix-verify-fix-verify pays a full suite per partial fix. When the batch addressed a P0 or P1, run `/en-review --verify <envelope-path> --mode headless` before 10.4, so the trailer records the verdict on the code that ships (D80). **`--review none` skips this step entirely**, personas included, and the audit then fails with `branch_review_pass: missing`.
+    3. **Branch-level Outside Voice review (cross-agent required; host personas additive).** **Invoke `/en-review --cross --mode headless --base <merge-base>`**, or `--peer` in place of `--cross` when `--review peer` was passed. The cross-agent peer is **mandatory** here: the host implemented every unit, so the other architecture reviews it (D23). Host personas run alongside as fresh-context sub-agents (D46). The envelope's `reviewer` records whether the cross-agent property held (`cross-agent`, or `single-agent-fallback` / `en-review-host-fallback` when no peer was available), and that is what the 10.6 audit reads. Grade and route what comes back per `references/severity.md` and `references/finding-schema.md`. **Apply every finding in one batch, then verify once**; fix-verify-fix-verify pays a full suite per partial fix. When the batch addressed a P0 or P1, run `/en-review --verify <envelope-path> --mode headless` before 10.4, so the trailer records the verdict on the code that ships (D80). **`--review none` skips this step entirely**, personas included, and the audit then fails with `branch_review_pass: missing`.
     4. **The full suite, once.** With simplify and review landed and their findings applied, run the project's full test suite, lint and typecheck. **This is the only full-suite run in the post-build phase.** On failure: stop; surface; offer investigate / `--commit-wip` / abort. **Do not interrupt a running suite**; one that looks stalled is reported, not killed and retried.
 
        **On success, write a verification receipt** and report the elapsed time, per the reference: `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check full_suite=passed …`. Only on a passing suite, and never fatal if the write itself fails.
@@ -149,18 +149,6 @@ The contract governs **the inter-unit main loop**: the window from the start of 
 | `branch_review_pass:` | EN07. Echoes the `review-verdict:` trailer, same rule. A `missing`/`failed` value on either blocks the learning checkpoint and the ship hand-off. |
 | `learning_checkpoint:` | One of the four canonical outcomes. |
 | `metrics: <path> (<summary>)` | The run ledger's path and summary, or `metrics: disabled (<reason>)`, so a missing file is never read as a run that recorded nothing. |
-
-## Reference files
-
-- `references/build-preflight.md` — the payload check, the plan sub-state matrix, the plan-hash baseline (step 4)
-- `references/unit-loop.md` — the gated categories, implementing a unit, the system-wide check, the checkpoint (steps 8 and 9)
-- `references/post-build-protocol.md` — the receipt, both trailer schemas, what `/en-review` returns, the audit's report, the checkpoint's steps (step 10)
-- `references/build-reporting.md` — the per-unit line and the build summary's shape
-- `references/build-failures.md` — the full failure table
-- `references/run-metrics.md` — the run ledger's call points, shared with `/en-plan`
-- `references/build-legacy-plans.md` — **gated**: read only for a pre-D37 plan with no `peer_review_verdict` or no `risk:`
-- `references/severity.md`, `references/finding-schema.md`, `references/peer-contract.md` — how `/en-review`'s findings are graded, shaped and routed
-- `$SKILL_DIR/scripts/ensemble-unit-verify` (9d's call, 9e's gate; it calls `ensemble-test-select`), `$SKILL_DIR/scripts/ensemble-plan-hash` (4a and the boundary), `$SKILL_DIR/scripts/ensemble-verify-peer-evidence` (10.6's audit, `--branch-coverage <range> --require-simplify`), `$SKILL_DIR/scripts/ensemble-run-metrics` (the ledger)
 
 ## Failure protocol
 
