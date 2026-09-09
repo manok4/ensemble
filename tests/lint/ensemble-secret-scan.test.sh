@@ -124,6 +124,23 @@ done
   && pass "every high-confidence pattern in the reference is implemented" \
   || fail "the scanner is missing a pattern the reference documents" "missing:$missing"
 
+# --- every skill that commits reaches the scanner -----------------------------
+# The gap this closes: /en-resolve-pr pushed to a PR head with zero mentions of
+# secrets, and it commonly runs --orchestrated with nobody watching. A fix
+# written from a review comment introduces a credential exactly as any other
+# edit can. en-sweep is doc-only, which is not secret-free: a drift fix that
+# pastes a config block puts a key in docs/, and its PRs can auto-merge
+# unattended, so it is the path where nobody is watching at all.
+for skill in en-ship en-resolve-pr en-sweep; do
+  f="$REPO_ROOT/skills/$skill/SKILL.md"
+  grep -qF 'scripts/ensemble-secret-scan' "$f" \
+    && pass "$skill scans before it commits" \
+    || fail "$skill must scan the staged diff before committing"
+  [ -x "$REPO_ROOT/skills/$skill/scripts/ensemble-secret-scan" ] \
+    && pass "$skill carries the scanner it names" \
+    || fail "$skill names the scanner but does not carry it"
+done
+
 # --- usage --------------------------------------------------------------------
 scan "$D" --nonsense
 assert_eq "2" "$RC" "an unknown argument is a usage error"

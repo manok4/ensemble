@@ -62,6 +62,7 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 11. **Stage + verify each batch.**
     - Apply the fixes for the batch: `Edit` on existing files, `Write` only for new ones. A doc-drift fix that rewrites `docs/architecture.md` whole produces a diff `/en-review` cannot read as a fix.
     - Run `$SKILL_DIR/scripts/ensemble-doc-only-check` against the staged diff. **Any non-doc path → abort the batch; log loudly; do not create the PR.**
+    - Run `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --staged`. **Exit 1 → abort the batch, log the pattern and path, never the value, and do not create the PR.** Doc-only is not secret-free: a drift fix that pastes a config block or an example key puts a credential in `docs/`, and sweep runs unattended and opens PRs that `auto_merge_enabled` can land without anyone reading them. That combination is why this scan matters more here than where a human is watching (`references/secret-patterns.md`).
     - Cap the number of PRs per run at `max_prs_per_run` (default 6).
 12. **Open PR per batch.**
     - Branch: `en-sweep/<source-merge-sha-short>/<batch-name>` (e.g., `en-sweep/a3f1b9c/architecture-update`).

@@ -73,6 +73,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    If `files_changed` is empty across all items (everything was `replied` / `not-addressing` / `declined` / `needs-human`), skip steps 8–9 and go to step 10.
 9. **Commit and push.**
    - Stage only files reported by the per-item work.
+   - **Secret scan the staged diff before committing:** `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --staged`. A fix written from a review comment introduces a credential exactly as any other edit can, and this step commonly runs `--orchestrated` with nobody watching. **Exit 1 → do not commit**; return the finding as `needs-human` naming the pattern and path, never the value (`references/secret-patterns.md`).
    - Commit message: `fix(review): address PR review feedback (#<PR>)` with a bullet list summarizing each addressed item.
    - `git push`.
 10. **Reply and resolve** per feedback type:
