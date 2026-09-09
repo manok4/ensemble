@@ -242,7 +242,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 
 1. **Draft** — `en-plan` writes the plan, runs Outside Voice, user iterates. `status: draft`. File lives in `active/`. If verdict is `revise`, `/en-plan` applies findings and re-runs the peer once, and only when the pass returned a P0 or P1 (D49). On `approve`, `/en-plan` writes `peer_review_plan_hash`, flips status to `open`, and auto-commits the plan file.
 2. **Open** — Plan has cleared peer review (verdict `approve`) or `--no-peer` was used. `status: open`. Still in `active/`. Queued for build. Tracked in git.
-3. **In progress** — `en-build` picks the plan up and flips `status: in_progress` at start. Still in `active/`. Per-phase boundary checks validate `peer_review_plan_hash` against immutable plan-input fields (excluding the iteration log, per-unit status, and `peer_review_resolutions`).
+3. **In progress** — `en-build` picks the plan up and flips `status: in_progress` at start. Still in `active/`. `/en-build` re-checks `peer_review_plan_hash` at its checkpoints against immutable plan-input fields (excluding the iteration log, per-unit status, and `peer_review_resolutions`).
 4. **Completed** — `en-learn capture` flips `status: completed`, sets `shipped: <date>`, moves the file to `completed/`.
 
 `abandoned` is a terminal state available at any earlier stage; the file stays in `active/` (or is moved to an archive at the project's discretion).

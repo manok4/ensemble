@@ -23,6 +23,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-plan unit contracts"
 
 SKILL="$REPO_ROOT/skills/en-plan/SKILL.md"
+PREWRITE="$REPO_ROOT/skills/en-plan/references/plan-prewrite.md"
 TMPL="$REPO_ROOT/skills/en-plan/references/templates/plan-template.md"
 
 # --- 1. the Interfaces block exists in both the metadata list and the template ---
@@ -47,7 +48,8 @@ fi
 
 # --- 3. the consistency check runs before the plan is written ---
 # After the write it would be a review comment; before it, it is a fix.
-cons=$(grep -n 'Name and signature consistency' "$SKILL" | head -1 | cut -d: -f1)
+cons=$(grep -nE '^13\. \*\*Pre-write plan-quality review' "$SKILL" | head -1 | cut -d: -f1)
+grep -qF 'Name and signature consistency' "$PREWRITE" || cons=""
 write=$(grep -nE '^[0-9]+\. \*\*Write the plan\.\*\*' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$cons" ] && [ -n "$write" ] && [ "$cons" -lt "$write" ]; then
   pass "the consistency check runs before the write (check=$cons write=$write)"
@@ -60,7 +62,7 @@ fi
 # the whole plan and unresolvable for a worker holding one unit.
 missing=""
 for ph in 'TBD' 'handle edge cases' 'similar to U3' 'write tests for the above'; do
-  grep -qiF "$ph" "$SKILL" || missing="$missing '$ph'"
+  grep -qiF "$ph" "$PREWRITE" || missing="$missing '$ph'"
 done
 [ -z "$missing" ] \
   && pass "the no-placeholder list names the forms a per-unit worker cannot resolve" \

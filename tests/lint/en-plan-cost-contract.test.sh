@@ -9,11 +9,15 @@ TEST_NAME="en-plan cost contract"
 
 SKILL="$REPO_ROOT/skills/en-plan/SKILL.md"
 CHECKPOINT="$REPO_ROOT/skills/en-plan/references/plan-default-branch-checkpoint.md"
+INTAKE="$REPO_ROOT/skills/en-plan/references/plan-intake.md"
 
 # --- 1. foundation.md is read by section index, never whole ---
-if grep -qiE "Bounded foundation read" "$SKILL" \
-   && grep -qF "grep -n '^#' docs/foundation.md" "$SKILL" \
-   && grep -qiE "Never read .docs/foundation.md. whole" "$SKILL"; then
+# The mechanics live in plan-intake.md; the skill has to name the constraint so
+# an editor cannot restore a whole-file read without noticing it is a rule.
+if grep -qiE "Bounded foundation read" "$INTAKE" \
+   && grep -qF "grep -n '^#' docs/foundation.md" "$INTAKE" \
+   && grep -qiE "Never read .docs/foundation.md. whole" "$INTAKE" \
+   && grep -qiE "never read whole" "$SKILL"; then
   pass "foundation read is bounded (section index, never whole-file)"
 else
   fail "the foundation read must stay bounded"
@@ -44,10 +48,10 @@ else
 fi
 
 # --- 4. an existing design doc is consumed, not re-interviewed across ---
-if grep -qiE "Consume the design doc" "$SKILL" \
-   && grep -qiE "already answered" "$SKILL" \
-   && grep -qiE "only what the doc left open" "$SKILL" \
-   && grep -qiE "Assumptions & unverified claims" "$SKILL"; then
+if grep -qiE "Consume the design doc" "$INTAKE" \
+   && grep -qiE "already answered" "$INTAKE" \
+   && grep -qiE "only what the doc left open" "$INTAKE" \
+   && grep -qiE "Assumptions & unverified claims" "$INTAKE"; then
   pass "settled design-doc decisions are carried, not re-asked; assumptions carved out"
 else
   fail "must consume a matching design doc instead of re-interviewing across the seam"

@@ -11,6 +11,7 @@ TEST_NAME="en-plan decisions section"
 # removed en-build's, which it carried for one see-also cross-reference.
 TEMPLATE="$REPO_ROOT/skills/en-plan/references/templates/plan-template.md"
 EN_PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
+PREWRITE="$REPO_ROOT/skills/en-plan/references/plan-prewrite.md"
 
 # --- section exists in the template ---
 if grep -qiE "^## Decisions, assumptions & risks" "$TEMPLATE"; then
@@ -34,19 +35,19 @@ else
 fi
 
 # --- en-plan instructs population, conditionally ---
-if grep -qiE "Decisions / assumptions / risks capture|Decisions, assumptions & risks" "$EN_PLAN"; then
+if grep -qiE "Decisions / assumptions / risks capture|Decisions, assumptions & risks" "$PREWRITE"; then
   pass "en-plan instructs capture into the section"
 else
   fail "en-plan must instruct capture into the section"
 fi
-if grep -qiE "Omit the section entirely" "$EN_PLAN"; then
+if grep -qiE "Omit the section entirely" "$PREWRITE"; then
   pass "en-plan says omit the section when nothing substantive"
 else
   fail "en-plan must say to omit when nothing substantive (no boilerplate)"
 fi
 
 # --- lands there instead of unit Approach fields ---
-if grep -qiE "rather than burying it in unit .Approach|rather than scattered" "$EN_PLAN"; then
+if grep -qiE "rather than burying it in unit .Approach|rather than scattered" "$PREWRITE"; then
   pass "decisions land in the section, not scattered in Approach fields"
 else
   fail "en-plan must route decisions to the section, not Approach fields"
