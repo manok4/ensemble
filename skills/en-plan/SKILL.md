@@ -129,7 +129,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - **No placeholders.** These are plan failures, not shorthand, because a worker cannot resolve them: "TBD", "handle edge cases", "add appropriate error handling", "similar to U3" (the implementer works from its own unit block and should not have to reconstruct U3), "write tests for the above" with no scenarios, or a reference to a type or function no unit defines.
     - **Technical-design load-bearing audit (self-gating).** Count the **architecture-complexity triggers** the plan fires: **≥3 new/changed components**, a **≥3-step protocol/handshake**, a **state machine**, **≥3 data-flow stages**, or **DSL / public-API design**. If **any** trigger fires (typically Deep / high-risk plans), the plan MUST carry a plan-level `## Technical design` section — a **directional** high-level sketch of the cross-cutting architecture (component boundaries, data flow, key interfaces), not a spec. Verify the section is present when a trigger fired; a missing section with a fired trigger is **incomplete** — add it before finalizing. **Self-gating:** if no trigger fires (simple plans), the section is not required and must not be added as boilerplate.
 
-14. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`).
+14. **Default-branch checkpoint** (resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`). Like `references/plan-from-legacy.md`, the reference below is gated: read only when its step's gate fires, never up front.
 
     | Condition | Action |
     |---|---|
@@ -153,25 +153,20 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     Then write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` using `references/templates/plan-template.md`. Settle the unit boundaries and the hard calls in reasoning; write the file once. Filename example: `EN03-improvement_dashboard-overview.md`. Substitute fields including `plan_id` (`<PREFIX><NN>`), `plan_type`, and `data_scale` (default `small`). Initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts as `draft`; the **finalize loop** in the Outside Voice step may flip to `open` automatically.
 16. **Outside Voice review with finalize loop.**
 
-    **The host authors; the peer only reviews.** Whoever `/en-plan` was invoked in is the host, and the host writes every plan — the units, the metadata, the applied findings. The peer returns structured findings and nothing else: it does not draft units, edit the plan file, run commands, or commit. This is D30, stated in full in `references/outside-voice.md`, and it is why the peer runs as a subprocess with its own prompt rather than as a collaborator on the file.
+    **The host authors; the peer only reviews.** The host writes every plan: units, metadata, applied findings. The peer returns structured findings and nothing else, so it does not draft units, edit the plan file, run commands, or commit. That is D30, stated in full in `references/outside-voice.md`. Do not confuse a peer with a **worker**: since D52 no Ensemble skill dispatches one, and `/en-plan` has no worker and never delegates authorship.
 
-    Do not confuse a peer with a **worker**. Since D52 no Ensemble skill dispatches one: `/en-build`'s host implements every unit itself, and `/en-plan` has no worker and never delegates authorship.
-
-    If `PEER_AVAILABLE=true` (and `--no-peer` not set):
+    Runs when `PEER_AVAILABLE=true` and `--no-peer` is not set. Auto-skipped under `skip_peer_below_lines` (plan < 50 lines) or `skip_peer_on_lightweight: true` at Lightweight depth; a skipped pass still reaches the status flip.
     - Build the prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --project-context "<one-line>" --goal "<one-line>" --artifact-file <plan-path> --peer-mode "$PEER_MODE"` — the helper substitutes the plan-specific review-dimensions block and the single-agent fallback note for you. Do NOT assemble the prompt by reasoning; that's slow and produces drift from the canonical template in `references/outside-voice.md`.
     - Set `ENSEMBLE_PEER_REVIEW=true`.
     - **Resolve the peer's model and effort, then invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`. Read `peer_model_<peer>` and `peer_effort_<peer>` for the peer's host (effort `--allowed low,medium,high,xhigh`; `--legacy` the old names, D104) through `$SKILL_DIR/scripts/ensemble-config-get`; `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort "${override:-inherit}" --peer-cmd "$PEER_CMD" --model-alias "$alias" --codex-model "$codex")"`; pass `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, the prompt file, and `--peer-mode "$PEER_MODE"` (see `references/peer-brief.md`). The helper owns timeout, failure classification, retry and fallback (D41); do not restate them. It returns a `peer_decision` per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer never reads as normal.
     - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
     - **Re-review loop** (the finalize loop):
-      - On `verdict: approve` → exit the loop. Proceed to the status-flip step.
-      - On `verdict: revise` → walk findings, apply / defer / disagree per `references/peer-brief.md` (en-plan's own policy), each application a surgical edit to the plan file, never a rewrite of it. Write each as a structured entry to `peer_review_resolutions:` with `finding_id`, `iteration`, `severity`, `title`, `status` (`applied | deferred | disagreed | superseded`), `rationale` (required for non-`applied`), and `location`. Update the human-readable iteration log narrative to match. Run `bin/ensemble-lint --scope <plan-path>` (one file; cross-link checks included) so a broken citation surfaces now, not at promotion. Then **re-invoke the peer** with a `## Previous review context` section: assemble the section into a tempfile from `peer_review_resolutions:` (NEVER from the iteration-log prose) and pass it as `--iteration-context-file <path>` to `$SKILL_DIR/scripts/ensemble-build-peer-prompt`. Continue looping until `approve` or the depth-aware iteration cap is hit.
-        - **Severity gate on the re-loop.** Re-invoke the peer **only if at least one finding this pass was `P0` or `P1`** (`references/peer-contract.md`). When the pass returned **only `P2`/`P3`** findings — naming inconsistencies, style preferences, "consider X later" — apply what's cheap, record the rest in `peer_review_resolutions:`, and **exit the loop**; a second full peer pass to confirm a typo fix is not worth its latency. Record `reloop_skipped: advisory-only` alongside the resolutions so the exit is auditable.
-        - **Iteration cap: 1 at every depth** — at most **two** peer passes total (the initial pass plus one verification pass). `--max-iterations <N>` raises it when a plan genuinely warrants more; `--no-reloop` runs the initial pass only and never re-invokes.
-        - **Cap-hit behavior:** Surface the latest findings; ask the user "accept as-is and flip to `open`, or stay in `draft`?". User keeps control.
-        - **Same-finding-twice suppression:** If a finding the user disagreed with re-appears on the next pass, append it to a "do not re-flag" list in the next prompt. If it appears a third time despite suppression, treat the cap as hit early.
-      - On `verdict: reject` → pause, surface to user, leave `status: draft`. Do not re-loop.
-      - **Failure handling:** Peer timeout → surface, leave `status: draft`, no re-loop. Malformed JSON after one retry → same behavior.
+      `references/outside-voice.md` owns verdict handling and the previous-review-context section; below is en-plan's policy on top of it.
+      - On `approve` → exit; go to the status flip. On `reject` → pause, surface, leave `status: draft`, no re-loop. A timeout or malformed JSON after one retry behaves the same way.
+      - On `revise` → walk findings, apply / defer / disagree per `references/peer-brief.md`, each application a surgical edit to the plan file, never a rewrite of it. Record each in `peer_review_resolutions:` (entry schema in `references/templates/plan-template.md`) and keep the narrative iteration log in sync. Run `bin/ensemble-lint --scope <plan-path>` so a broken citation surfaces now, not at promotion. Then re-invoke with a `## Previous review context` section assembled into a tempfile **from `peer_review_resolutions:`, never from the iteration-log prose**, passed as `--iteration-context-file <path>`.
+        - **Severity gate on the re-loop.** Re-invoke **only if at least one finding this pass was `P0` or `P1`**. A pass returning only `P2`/`P3` applies what is cheap, records the rest, and exits with `reloop_skipped: advisory-only`; a second full pass to confirm a typo fix is not worth its latency.
+        - **Iteration cap: 1 at every depth**, so at most **two** peer passes. `--max-iterations <N>` raises it; `--no-reloop` runs the initial pass only. At the cap, surface the findings and ask "accept as-is and flip to `open`, or stay in `draft`?"; the user keeps control. A finding the user disagreed with goes on a "do not re-flag" list in the next prompt, and a third appearance counts as the cap hit.
 17. **Promote to `open` (status flip).** The plan moves from `status: draft` to `status: open` in **every** path that produces a buildable plan, not just peer-approve. Specifically, flip to `open` when any of these is true:
     - Peer ran and the loop exited with `verdict: approve`.
     - `--no-peer` was passed (peer was deliberately skipped).
@@ -212,27 +207,6 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 19. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning.
 20. **Hand off to `/en-build`.** Suggest the build command:
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build docs/plans/active/EN07-feature_auth-rotation.md`?"
-
-## Cross-review and finalize loop
-
-**On by default.** Skip with `--no-peer`. Skipped automatically when:
-
-- `PEER_AVAILABLE=false`.
-- The plan has < 50 lines (`skip_peer_below_lines` config).
-- Depth is Lightweight AND `skip_peer_on_lightweight: true`.
-
-**Finalize loop:** when peer runs and returns `revise`, `/en-plan` applies findings (per `references/peer-brief.md`), records them in `peer_review_resolutions:`, and re-invokes the peer with the previous-review-context section (per `references/outside-voice.md`).
-
-**Two passes, not three.** The shape is: review → apply → **one** verification pass → done.
-
-| Pass 1 returned | Peer passes |
-|---|---|
-| `approve` | 1 |
-| `revise`, all findings `P2`/`P3` | 1 — apply, record, exit (`reloop_skipped: advisory-only`) |
-| `revise`, any finding `P0`/`P1` | 2 |
-| `reject` | 1 — pause, stay `draft`, no re-loop |
-
-The cap is 1 at every depth because a single-shot peer re-reviewing a whole artifact mostly resamples its first pass (D49). `--max-iterations <N>` raises it; `--no-reloop` disables re-looping.
 
 ## Flags
 
@@ -287,23 +261,6 @@ metrics: <path> (2 dispatches, 2 peer passes)
 
 Next: /en-build docs/plans/active/EN07-feature_auth-rotation.md
 ```
-
-## Reference files
-
-- `references/templates/plan-template.md` — body template
-- `references/host-detect.md` — host detection
-- `references/outside-voice.md` — the peer contract and verdict handling
-- `references/peer-brief.md` — review dimensions and en-plan's routing policy
-- `references/peer-contract.md` — severity, confidence, autofix, `peer_decision`
-- `references/finding-schema.md` — peer JSON shape
-- `references/research-dispatch.md` — when to dispatch which research agent
-- `references/stable-ids.md` — U-ID stability rules
-- `references/run-metrics.md` — per-run metrics file: what is recorded, where, and when
-
-Gated — read only when its step's gate fires, never up front:
-
-- `references/plan-default-branch-checkpoint.md` — the default-branch checkpoint (skipped whenever the run is already on a feature branch)
-- `references/plan-from-legacy.md` — the `--from-legacy` migration path
 
 ## Failure protocol
 
