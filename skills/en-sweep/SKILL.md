@@ -41,8 +41,8 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 1. **No host detection.** On the schedule the runner launched Codex; interactively, the host's own tools apply. The skill reads no host or peer variable and carries no detection files.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit. (Sweep should not be invoked from inside a peer subprocess.)
 3. **Loop guards** (per `references/sweep-loop-guards.md`). The runner enforces Guard 1 (one run per machine, a lock) and Guard 3 (recursion depth cap) before the skill runs. Guard 2 (no-material-diff) fires inside the skill, at step 10.
-4. **Dispatch the architecture scan first, then lint while it runs.** Step 6's `repo-research` is the slow step and depends on nothing below; start it, then run steps 4, 5, 7 and 8, which are independent scans, and collect its result at step 6. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`. Capture violations.
-5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive). Capture violations.
+4. **Dispatch the architecture scan first, then lint while it runs.** Step 6's `repo-research` is the slow step and depends on nothing below; start it, then run steps 4, 5, 7 and 8, which are independent scans, and collect its result at step 6. **Run file-shape lint.** `bin/ensemble-lint --json --scope docs/`, whose rules `references/doc-lints.md` catalogs. Capture violations.
+5. **Run wiki-graph lint.** Invoke `/en-learn --lint` (programmatically via the host's task primitive), whose checks `references/learn-lint.md` catalogs. Capture violations.
 6. **Architecture drift check.** Collect the `repo-research` result dispatched at step 4; it compared `docs/architecture.md` against the codebase:
    - Documented components still present?
    - Layer rules honored? (Code-level violations → tech-debt; doc-level → fix-up PR.)
@@ -134,23 +134,6 @@ Otherwise the PR stays open with the reason in the log. A `BLOCKED` merge state 
 ## Cross-review
 
 **Off** at the skill level. Each sweep PR has its own quality gate via `/en-review` in `mode:report-only`.
-
-## Reference files
-
-- `references/sweep-checks.md` — full check catalog (file-shape, wiki-graph, architecture, plan lifecycle, pointer maps, continuous monitoring)
-- `$SKILL_DIR/scripts/continuous-monitor` — dead-code + dep-audit scanner; outputs JSON-lines findings
-- `$SKILL_DIR/scripts/triage-findings` — partitions findings into TD entries vs draft plans
-- `references/sweep-loop-guards.md` — the three loop guards, and the two the scheduled trigger retired
-- `references/sweep-security-model.md` — the machine's identity, the sandbox, merge safety
-- `references/tech-debt-tracker-format.md` — TD entry schema for code-level findings
-- `references/architecture-update-rules.md` — what counts as material structural change
-- `references/doc-lints.md` — file-shape lint catalog
-- `references/learn-lint.md` — wiki-graph lint catalog
-- `$SKILL_DIR/scripts/ensemble-sweep-runner` — the scheduled entry point: per-repo gate, `codex exec`, result-file guard, merge
-- `$SKILL_DIR/scripts/install-sweep-schedule` — `add-repo`, `install` (launchd), `status`, `run-now`, `uninstall`; run by a person on the sweep machine
-- `$SKILL_DIR/scripts/ensemble-doc-only-check` — runtime allowlist enforcement
-- `bin/ensemble-lint` — file-shape lint runner
-- `$SKILL_DIR/scripts/ensemble-sweep-activity-check` — pre-run activity gate; decides whether to skip the cycle
 
 ## Failure protocol
 

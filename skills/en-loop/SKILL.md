@@ -179,8 +179,3 @@ Forward only the caps `gnhf --help` advertises; if gnhf has no `--model` flag, p
 - **Bounded caps** — `--max-iterations` / `--max-tokens` / `--max-runtime` keep an unattended run from running away.
 - **Never auto-merge, never irreversible while the user is away.** Produce a reviewed branch and an exit summary, not merged or deployed changes, unless the user explicitly authorized it.
 - **Completion is not acceptance** — a gnhf stop is a claim, verified independently at Morning Review before anything is called mergeable.
-
-## Reference files
-
-- `$SKILL_DIR/scripts/ensemble-detect-host` — host detection for worker-agent selection; run it, read `HOST`
-- gnhf CLI (`npm i -g gnhf`) — the loop engine this skill wraps; surfaced as an optional install by `/en-setup`

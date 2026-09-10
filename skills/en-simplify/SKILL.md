@@ -65,10 +65,6 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 
 **Does not commit.** Leaves applied changes in the working tree. When invoked by `/en-build`'s post-build phase, the build's commit flow picks them up; when invoked ad-hoc, the user (or `/en-ship`) commits. Committing here would sweep unrelated uncommitted changes into a misleading `refactor` commit.
 
-## Reference files
-
-- `agents/code-simplifier.md` — the reviewer agent: one dimension per dispatch, read-only, evidence tier
-
 ## Failure protocol
 
 | Failure | Behavior |

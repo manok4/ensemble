@@ -68,7 +68,7 @@ After every write:
 
    - **Term** → `references/glossary-rules.md`. A definition sentence, optional `_Avoid:_` aliases. No frontmatter.
    - **Decision** → `references/templates/adr-template.md`. Title states the claim, `## Invariants this creates`. No frontmatter.
-   - **Solution** → `references/templates/learning-template.md`. Six-field frontmatter, **one paragraph until it earns more** — lead with the conclusion, name specifics.
+   - **Solution** → `references/templates/learning-template.md`, whose fields `references/learning-frontmatter-schema.md` defines. Six-field frontmatter, **one paragraph until it earns more** — lead with the conclusion, name specifics.
 
 8. **Write to the routed path.** A **term** is appended to `docs/CONTEXT.md` per `references/glossary-rules.md` (amend an existing entry rather than adding a second). A **decision** takes the next unused number at `docs/decisions/NNNN-<slug>.md` per `references/adr-format.md`. A **solution** generates `<slug>-<date>` (lowercase, alphanumeric + hyphens, ≤60 chars + `-YYYY-MM-DD`) at `docs/learnings/<slug>-<date>.md`.
 9. **Vocabulary accretion — read `references/glossary-rules.md`.** **This is a declared second write, and the one exception to "one artifact per run."** The routing tie-break decides where the *candidate* goes; accretion is a side effect of having done the work, not a second candidate competing with it. A run may therefore touch two files: the routed artifact and `docs/CONTEXT.md`. Both are grounded together in the next step.
@@ -195,16 +195,6 @@ collision, and anything left for classification.
 ## Cross-review
 
 **Off.** This skill invokes no peer and carries no peer machinery; its severity vocabulary is the shared contract's, nothing more.
-
-## Reference files
-
-- `references/capture-gate.md` — whether to write a learning at all; the default is not to
-- `references/templates/learning-template.md` — body structure for a solution entry
-- `references/learning-frontmatter-schema.md` — frontmatter rules + examples
-- `references/learn-index-format.md` — `index.md` structure
-- `references/learn-log-format.md` — `log.md` structure
-- `references/learn-lint.md` — check catalog and auto-fix rules
-- `references/architecture-update-rules.md` — when to touch `docs/architecture.md`
 
 ## Failure protocol
 

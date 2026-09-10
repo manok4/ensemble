@@ -157,14 +157,6 @@ When there's no usable telemetry, run a systematic diagnosis loop adapted from c
 - **Never reads production secrets** if the log includes them. The hypothesis section quotes log fields verbatim *except* anything matching common secret patterns (per `references/secret-patterns.md`); those are redacted to `[REDACTED]`.
 - **Never auto-files a TD or learning** without user confirmation.
 
-## Reference files
-
-- `references/observability-conventions.md` — log/trace shape contract
-- `references/observability-debug-mapping.md` — span-name → source-code heuristics
-- `references/observability-hypothesis-format.md` — output template
-- `references/secret-patterns.md` — redaction patterns for logged secrets
-- `references/debug-investigation.md` — code-mode anti-patterns + investigation techniques
-
 ## Failure protocol
 
 | Failure | Behavior |

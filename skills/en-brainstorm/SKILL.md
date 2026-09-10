@@ -53,7 +53,7 @@ Lightweight idea-exploration skill. The point is to leave with clarity, not arti
    - **Open-vs-closed discipline:** use an **open-ended** question only when the answer is inherently narrative, OR when you genuinely cannot write 3–4 distinct, plausibly-correct options without padding. The test: *if you'd be straining to fill the option slots, the question is open — ask it open-ended.*
    - **Harness fallback:** when no blocking question tool exists in the harness, fall back to numbered options in chat; never silently skip the question.
    - **Stop when the frontier is empty** — every branch visited, nothing left silently assumed — or when the depth budget is spent, whichever comes first. If the budget runs out with a live frontier, record the unasked decisions as **explicit assumptions** in the design doc rather than dropping them.
-7. **Blindspot gate** (fires rarely; territory-scoped). If the user signals they **cannot evaluate** part of the territory — either flagged up front ("I know nothing about X") or shown by two consecutive can't-evaluate answers ("I don't know", "you decide") on questions needing domain judgment — the Q&A is extracting guesses, not requirements. Before the first substantive question *into that territory*, offer to map its decision surface first. **Read `references/brainstorm-blindspot.md` when this fires**; it owns the trigger test, the offer, the map, and re-entry. Guard against over-firing: a user who understands the options but hasn't picked one is *undecided*, not blindsided — keep interviewing. Never fire in a non-interactive run.
+7. **Blindspot gate** (fires rarely; territory-scoped). This and the divergent-generation gate below carry the only two heavy references this skill has; **read only when their step's gate fires, never up front**. If the user signals they **cannot evaluate** part of the territory — either flagged up front ("I know nothing about X") or shown by two consecutive can't-evaluate answers ("I don't know", "you decide") on questions needing domain judgment — the Q&A is extracting guesses, not requirements. Before the first substantive question *into that territory*, offer to map its decision surface first. **Read `references/brainstorm-blindspot.md` when this fires**; it owns the trigger test, the offer, the map, and re-entry. Guard against over-firing: a user who understands the options but hasn't picked one is *undecided*, not blindsided — keep interviewing. Never fire in a non-interactive run.
 8. **Product pressure test** (self-gating). Before generating approaches, pressure-test whether the idea is real and well-framed. This is **internal analysis**: scan the opening and the dialogue so far for the rigor gaps catalogued in `references/socratic-questions.md` → "Product rigor gaps", and raise **only those that actually exist**, as **open-ended probes** folded into the conversation — never a menu, never a pre-flight checklist. A well-framed opening earns **zero** probes; one probe satisfies one gap. The gaps: **evidence**, **specificity**, **counterfactual**, **attachment**, and **durability** (Deep / strategic scope only). If a probe reveals genuine uncertainty, record it as an **explicit assumption** in the design doc rather than skipping it.
 9. **Integration check.** Still before approaches: **combine** what the user has said with your own defaults and surface any non-obvious downstream consequence the one-question-at-a-time dialogue hasn't probed (*"if mute lives on the rule AND we don't warn on delete, then rule-delete silently loses pause state"*). Fire **one open-ended probe per genuine combination effect**, not a blanket audit.
 
@@ -155,17 +155,6 @@ Devil's advocate flagged: same-model bias in fallback mode; cost on large artifa
 
 Next: /en-foundation if this is a new product, /en-plan for a feature in an existing project.
 ```
-
-## Reference files
-
-- `references/socratic-questions.md` — Q&A pool and the Product rigor gaps catalogue
-- `references/research-dispatch.md` — when to use `web-research`
-- `references/templates/design-doc-template.md` — output template
-
-Gated — read only when their step's gate fires, never up front:
-
-- `references/brainstorm-blindspot.md` — the blindspot pass (most runs never load it)
-- `references/brainstorm-approaches.md` — divergent approach generation (Deep, or Standard with 3+ live directions)
 
 ## Failure protocol
 

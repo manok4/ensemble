@@ -185,11 +185,6 @@ URL: https://preview-fr07.vercel.app
 - 4 screenshots captured under `.test-output/qa/`.
 ```
 
-## Reference files
-
-- `references/browser-driver.md` — driver selection, per-driver usage patterns, auth, token-cost heuristics
-- `references/diff-signal-detection.md` — `needs_browser`, shared with `/en-review`
-
 ## Failure protocol
 
 | Failure | Behavior |
