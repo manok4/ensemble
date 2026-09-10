@@ -89,7 +89,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    On `n` → leave in place; record in the report that lint will warn (`frontmatter.required-field-missing` etc.) until each file is migrated or archived.
 
    `subdirs` (unrecognized subdirectories under `plans/`) are surfaced but not auto-archived — they may be in-flight work the user wants to handle manually.
-3. **Scaffold the project.** `bash "$SKILL_DIR/scripts/ensemble-scaffold" --repo-root <repo-root> --skill-dir "$SKILL_DIR"`, plus `--ignore-learnings-archive` when the round said `y`. One call creates the `docs/` skeleton, seeds the learnings and generated indexes, adds the required `.gitignore` entry and verifies it on re-read, installs `bin/ensemble-lint` executable, and writes `.ensemble/config.local.example.yaml`. It reports `created` or `exists` per artifact; **exit 1 means an artifact could not be created and names which**.
+3. **Scaffold the project.** `bash "$SKILL_DIR/scripts/ensemble-scaffold" --repo-root <repo-root> --skill-dir "$SKILL_DIR"`, plus `--ignore-learnings-archive` when the round said `y`. One call creates the `docs/` skeleton, seeds the learnings and generated indexes (per `references/learn-index-format.md` and `references/learn-log-format.md`), adds the required `.gitignore` entry and verifies it on re-read, installs `bin/ensemble-lint` executable, and writes `.ensemble/config.local.example.yaml` from `references/templates/config-local-example.yaml`. It reports `created` or `exists` per artifact; **exit 1 means an artifact could not be created and names which**.
 
    **It never overwrites.** An existing seed file, and the project's own `.gitignore` lines, are left exactly as they are. `bin/ensemble-lint` is the one exception and only against drift: it is a copy, so a run after a plugin update re-syncs it rather than reporting a stale file as fine.
 
@@ -115,7 +115,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    A full `/en-setup` run is the **repo-wide bootstrap**: it is the only path that can produce a coherent "what is this project" glossary, so it seeds the whole declared model rather than one area.
 
 5. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`. When the round answered the test-impact item, write its `## Test impact` block too; a declined or skipped answer writes nothing and the section stays absent, which the template says is correct for a beside-the-source layout.
-6. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
+6. **Generate or merge `CLAUDE.md`** per sub-variant, from `references/templates/claude-md-template.md`. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
 7. **Stage what the scaffold wrote.** `git add bin/ensemble-lint .ensemble/config.local.example.yaml .gitignore docs/` for the paths it reported as `created`. The scaffold writes; staging is the skill's call, because what belongs in this commit is a judgement about the repo.
 
 8. **Sweep schedule (dedicated machine).** launchd on a dedicated Mac runs `/en-sweep`'s runner through Codex on a cadence, and that runner merges the doc-only PRs once their checks pass (D101). This step records the choice and prints what to run **on that machine**; it writes no schedule here, because the schedule is not this repo's.
@@ -285,18 +285,3 @@ Next step:
 - **No peer cross-review.** Setup is mechanical.
 - **No git commit.** User stages and commits the changes themselves (or via `/en-ship`).
 - **No content invention.** Substitutions come from detected values or templates; if unknown → `<unset>` placeholder.
-
-## Reference files
-
-- `references/setup-state-detection.md` — full state detection algorithm + sub-variants
-- `references/templates/agents-md-template.md` — AGENTS.md template + substitutions
-- `references/templates/claude-md-template.md` — CLAUDE.md template + substitutions
-- `references/templates/agents-md-merge-rules.md` — append-merge logic for variants 2b/2c/2d
-- `references/templates/config-local-example.yaml` — committed config template
-- `references/learn-index-format.md` — `learnings/index.md` empty-state seed
-- `references/learn-log-format.md` — `learnings/log.md` empty-state seed
-- `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
-- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; State 2 step 13
-- `scripts/check-health` — diagnostic runner (State 3)
-- `install-guardrail`, carried by `/en-guardrail` — installs/uninstalls the destructive-command guardrail hook
-- `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
