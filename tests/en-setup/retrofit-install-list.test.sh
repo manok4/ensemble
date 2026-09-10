@@ -17,6 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_NAME="en-setup retrofit install list"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
+VERIFY="$REPO_ROOT/skills/en-setup/references/setup-verification.md"
 
 # --- Sanity: skill file present ---
 if [ -f "$SKILL" ]; then
@@ -106,7 +107,9 @@ fi
 # matched the install steps that create the artifact — meaning none of these
 # assertions could tell a present table row from an absent one. Removing a row
 # left them all green.
-TABLE=$(sed -n '/Required artifacts/,/Optional artifacts/p' "$SKILL")
+# The table moved to the reference; the skill keeps the two rules that bind the
+# step. A new clause below pins the pointer, so the table stays reachable.
+TABLE=$(sed -n '/Required artifacts/,/Optional artifacts/p' "$VERIFY")
 # Fail loudly if the extraction found nothing: an empty TABLE would make every
 # assertion below vacuously fail rather than silently pass, but a near-empty one
 # is the dangerous case. Assert it actually captured rows.
@@ -137,11 +140,20 @@ done
 
 # --- "Fail loudly" guidance present (don't silently mark missing artifacts as
 #     skipped — surface to the user). ---
-if grep -qE "[Ff]ail loudly|verification failed|Missing required artifacts" "$SKILL"; then
+# The re-run-once-then-fail rule stays in the FLOW: a reader who never opens the
+# reference must not retry an install forever or shrug at a missing artifact.
+if grep -qiE "exactly once.*then fails loudly|re-runs its install step exactly once" "$SKILL" \
+   && grep -qE "[Ff]ail loudly|verification failed|Missing required artifacts" "$VERIFY"; then
   pass "SKILL.md documents loud failure on missing required artifacts"
 else
   fail "SKILL.md should document loud failure when verification finds missing artifacts"
 fi
+
+# The step has to reach the file holding the walk, or the table is unreachable.
+step18=$(awk '/^18\. \*\*Final verification/{f=1} f&&/^## /{exit} f' "$SKILL")
+printf '%s' "$step18" | grep -qF 'references/setup-verification.md' \
+  && pass "the verification step reaches the file holding the walk" \
+  || fail "step 18 must cite references/setup-verification.md"
 
 # --- Idempotency expectation is explicit ---
 if grep -qE "[Ii]dempoten" "$SKILL"; then

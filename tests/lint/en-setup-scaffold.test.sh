@@ -17,6 +17,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-setup scaffold"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
+VERIFY="$REPO_ROOT/skills/en-setup/references/setup-verification.md"
 
 # --- the skeleton creates the new layout -------------------------------------
 # Scoped to the fenced skeleton block. Grepping the whole file also matched the
@@ -42,7 +43,7 @@ fi
 # A checklist that asserts the old shape would report a correct run as broken,
 # or worse, pass a run that built the wrong tree.
 for want in 'docs/decisions/' 'docs/CONTEXT.md'; do
-  grep -q "| \`$want\`" "$SKILL" \
+  grep -q "| \`$want\`" "$VERIFY" \
     && pass "the verification checklist covers $want" \
     || fail "the verification checklist covers $want"
 done
@@ -77,8 +78,10 @@ flat "$SKILL" | grep -q 'docs/learnings/ both prese' \
 # and re-offering the install. A gate that fires on a deliberate choice is how a
 # verification report becomes something you skim.
 
-REQ=$(sed -n '/\*\*Required artifacts\*\*/,/\*\*Optional artifacts\*\*/p' "$SKILL")
-OPT=$(sed -n '/\*\*Optional artifacts\*\*/,/\*\*Environment dependencies\*\*/p' "$SKILL")
+# The artifact tables moved to the reference; the step keeps the two rules that
+# bind it, and a clause in retrofit-install-list pins the pointer.
+REQ=$(sed -n '/\*\*Required artifacts\*\*/,/\*\*Optional artifacts\*\*/p' "$VERIFY")
+OPT=$(sed -n '/\*\*Optional artifacts\*\*/,/\*\*Environment dependencies\*\*/p' "$VERIFY")
 
 if printf '%s' "$REQ" | grep -q 'en-sweep.yml'; then
   fail "en-sweep.yml is not a required artifact"
@@ -94,7 +97,7 @@ printf '%s%s' "$REQ" "$OPT" | grep -q 'workflows/en-sweep.yml' \
   && fail "the artifact tables no longer name the retired workflow" \
   || pass "the artifact tables no longer name the retired workflow"
 
-flat "$SKILL" | grep -qi 'decline is recorded, never silent' \
+flat "$VERIFY" | grep -qi 'decline is recorded, never silent' \
   && pass "a declined install is recorded rather than left as a hole" \
   || fail "a declined install is recorded rather than left as a hole"
 
@@ -159,8 +162,9 @@ grep -qF "read neither" "$ES" \
 # cannot catch a citation naming a real but WRONG step — five of those survived
 # here because "step 13" resolves fine when 14 was meant. Each is pinned to the
 # artifact its step actually installs.
+# Step citations live with the optional-artifact list, which moved.
 cites() {  # $1=artifact substring  $2=expected step number
-  line=$(grep -F -- "$1" "$ES" | grep -oE 'step [0-9]+' | head -1)
+  line=$(grep -F -- "$1" "$VERIFY" | grep -oE 'step [0-9]+' | head -1)
   if [ "$line" = "step $2" ]; then
     pass "$1 cites step $2"
   else
@@ -170,7 +174,8 @@ cites() {  # $1=artifact substring  $2=expected step number
 cites "claude-code-review.yml\` (step" 14
 cites "REVIEW.md\` (step" 16
 cites "guardrail PreToolUse hook (step" 13
-cites ".ensemble/config.local.yaml\` (step" 12
+# Two entries name this file; the bullet prefix picks the right one.
+cites "- \`.ensemble/config.local.yaml\` (step" 12
 
 # D101: the bin step installs only ensemble-lint, and the sweep step writes no
 # workflow; it records the cadence and prints the sweep machine's commands.
@@ -179,5 +184,37 @@ if grep -qF "Install project-local \`bin/ensemble-lint\`" "$ES" && grep -qF "ins
 else
   fail "the bin step installs the lint only, and the sweep step points at the machine installer"
 fi
+
+# --- the round asks how a change maps to its tests ---------------------------
+# The slot existed in the AGENTS.md template and nothing ever asked a user to
+# fill it, so ensemble-test-select returned `empty` for every change in every
+# project: /en-build's unit gate exiting 3 and /en-ship reporting an empty
+# selection, silently, forever. A template nobody is prompted to fill is a
+# template nobody fills.
+TMPL="$REPO_ROOT/skills/en-setup/references/templates/agents-md-template.md"
+round=$(awk '/^1a\. \*\*Probe once/{f=1} f&&/^2\. \*\*/{exit} f' "$SKILL")
+
+printf '%s' "$round" | grep -qiE 'maps a change to its tests' \
+  && pass "the setup round asks how a change maps to its tests" \
+  || fail "the round must ask for the test-impact declaration" \
+       "without it every ensemble-test-select call returns empty and nothing says so"
+
+printf '%s' "$round" | grep -qF '## Test impact' \
+  && pass "the round probes for an existing declaration before asking" \
+  || fail "the round must probe AGENTS.md for an existing ## Test impact block"
+
+# Asking is worthless if the answer has nowhere to land.
+grep -qF '## Test impact' "$TMPL" \
+  && pass "the AGENTS.md template carries the slot the answer writes into" \
+  || fail "the template must carry a ## Test impact section"
+grep -qF 'test_changed_command' "$TMPL" && grep -qF 'test_impact:' "$TMPL" \
+  && pass "the template shows both declaration forms" \
+  || fail "the template must show the command form and the prefix-map form"
+
+# Declining has to stay valid, or a beside-the-source project gets a declaration
+# it does not need and a heuristic that was already right.
+flat "$SKILL" | grep -qiE 'tests do not sit beside sources|beside-the-source' \
+  && pass "skipping is a documented answer for a beside-the-source layout" \
+  || fail "the skill must say when declining is correct"
 
 report
