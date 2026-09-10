@@ -35,7 +35,7 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 
    **4b. Status flip.** If `status: open`, flip to `in_progress` (frontmatter-only edit; plan content is untouched). Already-`in_progress` (resume) leaves status unchanged.
 
-   **4c. Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)`, then record at the call points in `references/run-metrics.md`: unit start/end, each checkpoint, every full-suite run, and the review pass. Fire-and-forget: it never blocks a build (D106).
+   **4c. Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-build --plan <plan_id>)`, then record at the call points in `references/run-metrics.md`: unit start/end, each checkpoint, every full-suite run, and the review pass. Fire-and-forget: it never blocks a build (D106).
 5. **Set up branch.**
    - If on default branch → create `<plan_id>-<slug>` feature branch.
    - If on a feature branch → use it.

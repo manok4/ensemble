@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ensemble-run-metrics — record what a run can observe (EN16 U11, D106).
 #
-# One JSON file per run under $(git rev-parse --git-dir)/ensemble/runs/, next
+# One JSONL file per run under $(git rev-parse --git-dir)/ensemble/runs/, next
 # to the verification receipt: never committed, no .gitignore entry, gone with
 # the clone. Events are what the skill can see: agent dispatches with the model
 # the resolver chose, peer passes with the peer_decision and token counts when
@@ -13,8 +13,18 @@
 # then `"event":"end"`), which is what turns commit timestamps into per-unit
 # durations without a transcript to reconstruct.
 #
+# KEYED ON THE SKILL, not the plan. `--plan` required a plan_id, which only
+# /en-build and /en-plan have, so the other fourteen skills could not record at
+# all. The plan is optional context now.
+#
+# ONE JSON OBJECT PER LINE, appended. The previous format rewrote the whole
+# document through jq under a lock, which cost O(n) per event and, worse, DROPPED
+# the event when the lock was busy for five seconds — and /en-review dispatches
+# seven personas at once. An append needs no lock, and a partial write costs one
+# line rather than the file.
+#
 # Usage:
-#   ensemble-run-metrics start  --plan <plan_id> [--run-id <id>]   -> prints the file path
+#   ensemble-run-metrics start  --skill <name> [--plan <id>] [--run-id <id>]  -> prints the file path
 #   ensemble-run-metrics event  <file> --kind <dispatch|peer|lint|findings|unit|phase|suite|review|note> --json '<object>'
 #   ensemble-run-metrics finish <file>
 #   ensemble-run-metrics summary <file>   -> "N dispatches, M peer passes, K lint runs"
@@ -33,15 +43,17 @@ case "$cmd" in start|event|finish|summary) ;; -h|--help|"") sed -n '2,20p' "$0" 
 command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this run"; exit 0; }
 
 if [ "$cmd" = "start" ]; then
-  plan="" run_id=""
+  plan="" run_id="" skill=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --skill)  [ $# -ge 2 ] || { note "--skill needs a value"; exit 0; };  skill="$2"; shift 2 ;;
       --plan)   [ $# -ge 2 ] || { note "--plan needs a value"; exit 0; };   plan="$2"; shift 2 ;;
       --run-id) [ $# -ge 2 ] || { note "--run-id needs a value"; exit 0; }; run_id="$2"; shift 2 ;;
       *) note "unknown flag for start: $1"; exit 0 ;;
     esac
   done
-  [ -n "$plan" ] || { note "start needs --plan <plan_id>"; exit 0; }
+  [ -n "$skill" ] || { note "start needs --skill <name>"; exit 0; }
+  case "$skill" in *[!a-z0-9-]*) note "--skill must be [a-z0-9-]+ (got '$skill'); metrics disabled"; exit 0 ;; esac
   # Absolute: `--git-dir` answers `.git` from the top level, and later calls
   # come from wherever the skill happens to be when it records an event.
   git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) \
@@ -52,12 +64,12 @@ if [ "$cmd" = "start" ]; then
   # Exclusive creation: two runs started in the same second must not share a
   # file, and a caller-supplied --run-id must never truncate an existing run.
   [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-  file="$dir/$plan-$run_id.json"
+  file="$dir/$skill-$run_id.jsonl"
   if ! ( set -C; : > "$file" ) 2>/dev/null; then
     [ -n "$run_id" ] && note "metrics file already exists: $file; metrics disabled for this run"; exit 0
   fi
-  if jq -n --arg p "$plan" --arg r "$run_id" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{plan_id:$p, run_id:$r, started:$t, finished:null, events:[]}' > "$file" 2>/dev/null; then
+  if jq -nc --arg s "$skill" --arg p "$plan" --arg r "$run_id" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{kind:"start", skill:$s, plan_id:(if $p == "" then null else $p end), run_id:$r, at:$t}' > "$file" 2>/dev/null; then
     printf '%s\n' "$file"
   else
     note "cannot write $file; metrics disabled"; rm -f "$file"
@@ -69,18 +81,12 @@ file="${1:-}"; [ $# -gt 0 ] && shift
 [ -n "$file" ] || exit 0                      # metrics were disabled at start: silent no-op
 [ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
 
-# Append via a temp file in the same directory, so a failed jq never truncates,
-# under a per-file lock (mkdir is atomic on every filesystem this runs on; flock
-# is not on macOS) so two concurrent writers cannot lose each other's event.
-_write() {  # <jq filter> [jq args...]
-  local lock="$file.lock" i=0
-  until mkdir "$lock" 2>/dev/null; do
-    i=$((i + 1)); [ "$i" -lt 50 ] || { note "lock busy for 5s on $file; event dropped"; return 0; }
-    sleep 0.1
-  done
-  local tmp; tmp=$(mktemp "$(dirname "$file")/.metrics.XXXXXX" 2>/dev/null) || { rmdir "$lock"; note "cannot write beside $file"; return 0; }
-  if jq "$@" "$file" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then mv -f "$tmp" "$file"; else rm -f "$tmp"; note "update failed; file unchanged"; fi
-  rmdir "$lock" 2>/dev/null || true
+# One line, appended. No lock: a single write() of a short line is atomic enough
+# for concurrent appenders on every filesystem this runs on, and the failure it
+# replaces was worse — the old lock DROPPED an event after five seconds of
+# contention, which is the case /en-review's seven parallel personas produce.
+_append() {  # <compact json line>
+  printf '%s\n' "$1" >> "$file" 2>/dev/null || note "cannot append to $file; event dropped"
 }
 
 case "$cmd" in
@@ -97,23 +103,24 @@ case "$cmd" in
     if ! printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1; then
       note "event --json must be a JSON object; file unchanged"; exit 0
     fi
-    _write --arg k "$kind" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$payload" \
-      '.events += [ {kind:$k, at:$t} + $p ]'
+    line=$(jq -nc --arg k "$kind" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$payload" \
+      '{kind:$k, at:$t} + $p' 2>/dev/null) || { note "cannot encode event; file unchanged"; exit 0; }
+    _append "$line"
     ;;
   finish)
-    _write --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.finished = $t'
+    _append "$(jq -nc --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{kind:"finish", at:$t}')"
     ;;
   summary)
     # The three original counts are always present, so a caller can match on
     # them; a build's counts are appended only when it recorded any.
-    jq -r '[
-      ([.events[] | select(.kind=="dispatch")] | length | tostring) + " dispatches",
-      ([.events[] | select(.kind=="peer")]     | length | tostring) + " peer passes",
-      ([.events[] | select(.kind=="lint")]     | length | tostring) + " lint runs"
+    jq -rs '[
+      ([.[] | select(.kind=="dispatch")] | length | tostring) + " dispatches",
+      ([.[] | select(.kind=="peer")]     | length | tostring) + " peer passes",
+      ([.[] | select(.kind=="lint")]     | length | tostring) + " lint runs"
     ] as $base
-    | [ ([.events[] | select(.kind=="unit"  and .event=="end")] | length),
-        ([.events[] | select(.kind=="phase" and .event=="end")] | length),
-        ([.events[] | select(.kind=="suite")] | length) ] as $b
+    | [ ([.[] | select(.kind=="unit"  and .event=="end")] | length),
+        ([.[] | select(.kind=="phase" and .event=="end")] | length),
+        ([.[] | select(.kind=="suite")] | length) ] as $b
     | $base
       + (if $b[0] > 0 then [($b[0]|tostring) + " units"]      else [] end)
       + (if $b[1] > 0 then [($b[1]|tostring) + " phases"]     else [] end)
