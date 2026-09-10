@@ -191,7 +191,9 @@ rule "never dispatches bare"               "the fallback can no longer inherit t
 # per-call half only and read as if Codex could not be bound at all.
 rule "Codex binds per agent file"          "the Codex binding point is stated"
 rule "renders that TOML from the markdown" "setup is named as the Codex binder"
-rule "A Codex session passes no model"     "the per-call half of the Codex rule survives"
+rule "spawn_agent\` with \`agent_type"     "the Codex per-call dispatch names the selector"
+rule "no \`agent_type\` parameter"         "the pre-0.153.3 fallback is still documented"
+rule "self-report"                        "a child's claim about its own model is not evidence"
 
 # The table and the frontmatter must agree. This is the drift that matters: a
 # tier row is documentation, a `model:` line is what actually binds, and nothing
