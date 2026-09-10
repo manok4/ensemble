@@ -90,6 +90,24 @@ RPF="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-failures.md"
 RPR="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-reporting.md"
 RPS="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-situations.md"
 
+# --- the reply-format split does not drift ------------------------------------
+# The reference says outright "the verdict-specific first lines are the table in
+# SKILL.md" and then re-lists those prefixes to attach its evidence rules to
+# them. That is a deliberate split, not duplication, but it is two copies of one
+# list and nothing compared them. Edit the table and the reference's copy
+# silently disagrees.
+RRF="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-reply-format.md"
+pfx() { grep -oE '`(Addressed|Addressed differently|Not addressing|Declined):' "$1" | sort -u; }
+if [ "$(pfx "$R")" = "$(pfx "$RRF")" ] && [ -n "$(pfx "$R")" ]; then
+  pass "the reply-format prefixes match between the table and the reference"
+else
+  fail "the reply-format prefixes drifted" \
+       "skill=[$(pfx "$R" | tr '\n' ' ')] reference=[$(pfx "$RRF" | tr '\n' ' ')]"
+fi
+# And the reference still says which side owns the table, or the split reads as
+# an accident to the next editor.
+has "$RRF" "the table in SKILL.md"        "the reference names where the table lives"
+
 # --- the two conditional situations, and their reachability ------------------
 # Neither is a step: one fires on isOutdated, the other on a mid-review rebase.
 # Both were inline and unguarded, so a later edit could have dropped either
