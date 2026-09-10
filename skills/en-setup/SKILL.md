@@ -122,14 +122,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the sweep as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
     1. **Cadence** is the round's answer: `daily` / `weekly` / `monthly` (default `weekly`). Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` (informational; the cadence lives in the plist on the sweep machine).
-    2. **Print the machine-side commands**, with this repo's path filled in:
-       ```
-       # on the sweep machine, once per repo (the installer is carried by /en-sweep, beside this skill):
-       bash <ensemble>/…/en-sweep/scripts/install-sweep-schedule add-repo <path-to-this-checkout>
-       # once per machine (re-run to change cadence or the default model):
-       bash <ensemble>/…/en-sweep/scripts/install-sweep-schedule install --cadence weekly --hour 9 --model <alias-or-id> --effort high
-       ```
-       and note that the machine needs `codex`, `gh` (logged in with an identity allowed to merge green PRs) and `jq` on PATH, a clean clone of this repo, and `sweep.model` / `sweep.effort` in that clone's `.ensemble/config.local.yaml` if this repo should override the machine default.
+    2. **Print the machine-side commands** and prerequisites from `references/setup-optional-installs.md`, with this repo's path filled in. They run on the sweep machine, not here.
     3. **Note the activity gate:** "The runner skips a repo silently when no non-sweep commits landed since the last sweep; `--force` bypasses it."
 
 9. **Create `.ensemble/config.local.yaml`** (gitignored) with the most-likely-relevant defaults uncommented, when the round said `y`. The committed `.example.yaml` beside it came from the scaffold.
@@ -163,16 +156,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
-14. **Verification-receipt notice (informational).** Surface once, and write nothing:
-
-    > "`/en-build` records which checks passed against an exact working tree, and `/en-ship` skips what
-    > that receipt covers. Your pre-push hook can read the same receipt instead of re-running a suite
-    > `/en-ship` finished seconds earlier. `/en-ship` carries a `verification-receipt` reference with a
-    > snippet to paste into `.git/hooks/pre-push`."
-
-    **This step never creates or edits a hook.** A hook is where a project encodes its own policy;
-    rewriting one on a user's behalf is help nobody asked for, and `/en-ship` never bypasses hooks
-    either. Print the pointer and move on.
+14. **Verification-receipt notice (informational).** Print the notice in `references/setup-optional-installs.md` and write nothing. **This step never creates or edits a hook.** A hook is where a project encodes its own policy; rewriting one on a user's behalf is help nobody asked for, and `/en-ship` never bypasses hooks either.
 
 15. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. Long mechanical sequences drop steps under context pressure; this is the net that catches it.
 
@@ -180,18 +164,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
     **Idempotency check:** running `/en-setup` again on the same repo must produce zero new changes once verification has passed. Encode this expectation in the report ("Final verification: 14 / 14 required artifacts present").
 
-16. **Recommend next steps:**
-    ```
-    Two paths:
-      - Run /en-foundation --retrofit to back-fill docs/foundation.md and docs/architecture.md from existing code.
-        (Recommended for projects that will see continuing development with Ensemble.)
-      - Or jump to /en-plan for the next feature; foundation can be filled in later.
-
-    Once /en-foundation has settled and you've seen the codebase's
-    conventions surface in real reviews, consider:
-      - /en-learn capture — file the first real learning when one earns it
-        from the codebase (opt-in; one-time; lower-confidence entries).
-    ```
+16. **Recommend next steps** from `references/setup-optional-installs.md`: `/en-foundation --retrofit` or straight to `/en-plan`, and the learning-capture nudge once real reviews have surfaced the codebase's conventions.
 
 ### Detection of project commands
 
@@ -217,9 +190,8 @@ In addition to file-shape and lint checks, the diagnostic includes:
 - **Sweep schedule** — read `sweep.enabled` / `sweep.schedule` from `.ensemble/config.local.yaml`: 🟢 recorded, 🟡 absent (print the step 8 machine-side commands). A leftover `.github/workflows/en-sweep.yml` is 🟡 *retired; delete it*. Whether that machine's launchd job is loaded is its own `install-sweep-schedule status`.
 - **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 10).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 11).
-- **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
-- **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by the peer helper's timeout wrapper. Advisory-only: the helper says on stderr when it runs unbounded.
-- **`gnhf` CLI (optional; only for `/en-loop`)** — `command -v gnhf`. 🟢 if present; 🟡 advisory if absent (`npm i -g gnhf`). Only `/en-loop` wraps it, so its absence is never 🔴.
+- **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (a manual repo setting: Settings → General → "Allow auto-merge").
+- **Advisory binaries** — `command -v timeout || command -v gtimeout` (`brew install coreutils`; the peer helper's timeout wrapper, which says on stderr when it runs unbounded) and `gnhf` (`npm i -g gnhf`; only `/en-loop` wraps it). Both 🟡 at worst, never 🔴.
 
 For each 🟡 / 🔴 check, the user can opt-in to repair:
 
