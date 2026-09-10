@@ -45,8 +45,12 @@ BUDGET=24576
 # en-ship's row went on 2026-09-09, and it is the interesting one: it shrank
 # from 27,407 while GAINING three helpers, because a bundled script displaces
 # more prose than it costs.
+#
+# en-setup's went on 2026-09-10 and the list is now empty: 30,301 down, with
+# six mechanical install steps replaced by one ensemble-scaffold call. Every
+# SKILL.md in the repo is under budget, so the next one over is a regression
+# rather than a legacy.
 BASELINE='
-en-setup 30301
 '
 
 baseline_for() { printf '%s\n' "$BASELINE" | awk -v s="$1" '$1==s {print $2}'; }

@@ -19,6 +19,7 @@ TEST_NAME="en-setup scaffold"
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
 VERIFY="$REPO_ROOT/skills/en-setup/references/setup-verification.md"
 SCAF="$REPO_ROOT/skills/en-setup/scripts/ensemble-scaffold"
+OPT_REF="$REPO_ROOT/skills/en-setup/references/setup-optional-installs.md"
 
 # --- the skeleton creates the new layout -------------------------------------
 # The layout moved into ensemble-scaffold, so it is checked by RUNNING it on a
@@ -192,7 +193,8 @@ cites "- \`.ensemble/config.local.yaml\` (step" 9
 # D101: the scaffold installs only ensemble-lint, and the sweep step writes no
 # workflow; it records the cadence and prints the sweep machine's commands.
 if grep -qF "bin/ensemble-lint" "$SCAF" && ! grep -qF "install-sweep-schedule" "$SCAF" \
-   && grep -qF "install-sweep-schedule add-repo" "$ES"; then
+   && grep -qF "install-sweep-schedule add-repo" "$OPT_REF" \
+   && grep -qiE 'run on the sweep machine, not here' "$ES"; then
   pass "the bin step installs the lint only, and the sweep step points at the machine installer"
 else
   fail "the bin step installs the lint only, and the sweep step points at the machine installer"
