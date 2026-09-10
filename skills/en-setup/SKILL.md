@@ -60,19 +60,19 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    | Item | Listed when | Recommend |
    |---|---|---|
    | Archive non-conforming plans to `docs/plans/legacy/` (step 2) | `non_conforming` is non-empty | `y` |
-   | Ignore `docs/learnings/archive/` (step 9) | always | `n` |
-   | Sweep cadence `daily` / `weekly` / `monthly` (step 11) | `sweep.enabled` not `false` | `weekly` |
-   | Create `.ensemble/config.local.yaml` (step 12) | absent | `y` |
-   | Guardrail scope `p` / `g` / `s` (step 13) | neither scope installed | `p` |
-   | Install gnhf (step 13a) | not on PATH | `n` |
-   | Claude Code Review action (step 14) | workflow absent | `y` |
-   | `REVIEW.md`, with its project type (step 16) | absent | `y` |
-   | `ensemble-lint.yml` PR check (step 18) | absent, `lint_ci.enabled` not `false` | `y` |
-   | How this project maps a change to its tests (step 7) | no `## Test impact` block AND tests do not sit beside sources | the change-scoped form of the detected test runner |
+   | Ignore `docs/learnings/archive/` (step 3) | always | `n` |
+   | Sweep cadence `daily` / `weekly` / `monthly` (step 8) | `sweep.enabled` not `false` | `weekly` |
+   | Create `.ensemble/config.local.yaml` (step 9) | absent | `y` |
+   | Guardrail scope `p` / `g` / `s` (step 10) | neither scope installed | `p` |
+   | Install gnhf (step 10a) | not on PATH | `n` |
+   | Claude Code Review action (step 11) | workflow absent | `y` |
+   | `REVIEW.md`, with its project type (step 13) | absent | `y` |
+   | `ensemble-lint.yml` PR check (step 15) | absent, `lint_ci.enabled` not `false` | `y` |
+   | How this project maps a change to its tests (step 5) | no `## Test impact` block AND tests do not sit beside sources | the change-scoped form of the detected test runner |
 
-   **The test-impact item is the one nobody thinks to ask for, so ask.** Without it `ensemble-test-select` returns `empty` for every change, which is `/en-build`'s unit gate exiting 3 and `/en-ship` reporting an empty selection, silently, forever. Recommend from what step 7 already detected: `jest --findRelatedTests`, `pytest --picked`, `nx affected`, `go test ./...` on the changed packages. Where tests genuinely sit beside sources the built-in heuristic is right and the answer is to skip.
+   **The test-impact item is the one nobody thinks to ask for, so ask.** Without it `ensemble-test-select` returns `empty` for every change, which is `/en-build`'s unit gate exiting 3 and `/en-ship` reporting an empty selection, silently, forever. Recommend from what step 5 already detected: `jest --findRelatedTests`, `pytest --picked`, `nx affected`, `go test ./...` on the changed packages. Where tests genuinely sit beside sources the built-in heuristic is right and the answer is to skip.
 
-   A recorded decline is not listed again. The steps below read this round's answers and none asks twice; from here the install runs through step 18 without stopping, one line per step.
+   A recorded decline is not listed again. The steps below read this round's answers and none asks twice; from here the install runs through step 15 without stopping, one line per step.
 2. **Existing-plans archival (run before creating skeleton).** If `docs/plans/` already exists, `$SKILL_DIR/scripts/ensemble-classify-plans docs/plans` (run at step 1a) partitions plans into:
    - `conforming` — already pass Ensemble plan validation; leave in place.
    - `non_conforming` — `.md` files in `docs/plans/` that aren't Ensemble plans (legacy / hand-rolled / from another tool).
@@ -89,21 +89,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
    On `n` → leave in place; record in the report that lint will warn (`frontmatter.required-field-missing` etc.) until each file is migrated or archived.
 
    `subdirs` (unrecognized subdirectories under `plans/`) are surfaced but not auto-archived — they may be in-flight work the user wants to handle manually.
-3. **Create directory skeleton:**
-   ```
-   docs/
-     CONTEXT.md            <- the glossary; seeded at step 6
-     decisions/            <- ADRs, NNNN-<slug>.md
-     plans/{active,completed}/
-     learnings/            <- solutions sit flat here
-     generated/
-     designs/
-   ```
-   - Use the platform's file-write primitive (Write tool / `apply_patch`).
-   - Don't fail if directories already exist.
-4. **Seed `docs/learnings/index.md` and `log.md`** from the empty-state templates in `references/learn-index-format.md` and `references/learn-log-format.md`.
-5. **Seed `docs/generated/plan-index.md` and `learning-index.md`** with `generated: true` frontmatter and zero entries (these are mandatory per foundation §10.1; lint requires their existence).
-6. **Seed `docs/CONTEXT.md` — read `references/glossary-rules.md`.**
+3. **Scaffold the project.** `bash "$SKILL_DIR/scripts/ensemble-scaffold" --repo-root <repo-root> --skill-dir "$SKILL_DIR"`, plus `--ignore-learnings-archive` when the round said `y`. One call creates the `docs/` skeleton, seeds the learnings and generated indexes, adds the required `.gitignore` entry and verifies it on re-read, installs `bin/ensemble-lint` executable, and writes `.ensemble/config.local.example.yaml`. It reports `created` or `exists` per artifact; **exit 1 means an artifact could not be created and names which**.
+
+   **It never overwrites.** An existing seed file, and the project's own `.gitignore` lines, are left exactly as they are. `bin/ensemble-lint` is the one exception and only against drift: it is a copy, so a run after a plugin update re-syncs it rather than reporting a stale file as fine.
+
+   Do not re-derive these paths by hand. This was six prose steps of fixed commands, and step 15 exists because long mechanical sequences drop steps under context pressure.
+
+4. **Seed `docs/CONTEXT.md` — read `references/glossary-rules.md`.**
 
    **If the file already exists, never overwrite it.** Copy
    `references/templates/context-template.md` only when `docs/CONTEXT.md` is
@@ -122,16 +114,11 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
 
    A full `/en-setup` run is the **repo-wide bootstrap**: it is the only path that can produce a coherent "what is this project" glossary, so it seeds the whole declared model rather than one area.
 
-7. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`. When the round answered the test-impact item, write its `## Test impact` block too; a declined or skipped answer writes nothing and the section stays absent, which the template says is correct for a beside-the-source layout.
-8. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
-9. **Add `.gitignore` entries** if missing. **Verify each entry is actually present after the write — do not assume the write succeeded.**
-   - `.ensemble/config.local.yaml` — **required.** Confirm with `grep -qF '.ensemble/config.local.yaml' .gitignore` after writing. If `.gitignore` doesn't exist, create it with this line.
-   - Optionally `docs/learnings/archive/` — per the round's answer.
+5. **Generate or merge `AGENTS.md`** per sub-variant (see `references/templates/agents-md-template.md` and `references/templates/agents-md-merge-rules.md`). Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, plus detected `{{BUILD_CMD}}` / `{{TEST_CMD}}` / `{{LINT_CMD}}` / `{{TYPECHECK_CMD}}` / `{{DEV_CMD}}` / `{{LANG}}`. When the round answered the test-impact item, write its `## Test impact` block too; a declined or skipped answer writes nothing and the section stays absent, which the template says is correct for a beside-the-source layout.
+6. **Generate or merge `CLAUDE.md`** per sub-variant. Substitute `{{PROJECT_NAME}}` / `{{TODAY}}`. Always ensure the AGENTS.md cross-reference line is the first non-frontmatter line.
+7. **Stage what the scaffold wrote.** `git add bin/ensemble-lint .ensemble/config.local.example.yaml .gitignore docs/` for the paths it reported as `created`. The scaffold writes; staging is the skill's call, because what belongs in this commit is a judgement about the repo.
 
-   This step is verified again in the final-verification phase (step 18). Both checks must pass.
-10. **Install project-local `bin/ensemble-lint`.** Copy `references/templates/ensemble-lint`, which every skill that lints invokes as the project-relative `bin/ensemble-lint`, to `<repo-root>/bin/ensemble-lint`, `chmod +x` it, and `git add bin/ensemble-lint`. **Idempotent**: if the destination exists AND matches the source, skip the copy but still verify `chmod +x`. **Verification:** `[ -x bin/ensemble-lint ]`; re-checked in step 18. **Re-sync on update:** it is a copy, so re-run this step after a plugin update.
-
-11. **Sweep schedule (dedicated machine).** launchd on a dedicated Mac runs `/en-sweep`'s runner through Codex on a cadence, and that runner merges the doc-only PRs once their checks pass (D101). This step records the choice and prints what to run **on that machine**; it writes no schedule here, because the schedule is not this repo's.
+8. **Sweep schedule (dedicated machine).** launchd on a dedicated Mac runs `/en-sweep`'s runner through Codex on a cadence, and that runner merges the doc-only PRs once their checks pass (D101). This step records the choice and prints what to run **on that machine**; it writes no schedule here, because the schedule is not this repo's.
 
     **Check `.ensemble/config.local.yaml` first.** If it carries `sweep.enabled: false`, skip this step entirely and report the sweep as *declined by config*. Do not re-prompt: the operator already answered, and asking again on every run is what makes a report unreadable.
     1. **Cadence** is the round's answer: `daily` / `weekly` / `monthly` (default `weekly`). Record `sweep.schedule: <name>` in `.ensemble/config.local.yaml` (informational; the cadence lives in the plist on the sweep machine).
@@ -145,38 +132,38 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
        and note that the machine needs `codex`, `gh` (logged in with an identity allowed to merge green PRs) and `jq` on PATH, a clean clone of this repo, and `sweep.model` / `sweep.effort` in that clone's `.ensemble/config.local.yaml` if this repo should override the machine default.
     3. **Note the activity gate:** "The runner skips a repo silently when no non-sweep commits landed since the last sweep; `--force` bypasses it."
 
-12. **Create `.ensemble/config.local.example.yaml`** (committed) from `references/templates/config-local-example.yaml`. Create `.ensemble/config.local.yaml` (gitignored) with the most-likely-relevant defaults uncommented when the round said `y`.
-13. **Guardrail check.** The guardrail installer belongs to `/en-guardrail`, which installs as its own skill and may not be present. **Resolve it before use:** look for `install-guardrail` in a sibling `en-guardrail` skill directory alongside this one. If it is not there, say so and point the user at `/en-guardrail` rather than guessing a path — then skip to the next step. Its `status` ran at step 1a. If neither scope is installed, the round offered the hook, which prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`): `p` project-scoped (writes `<repo>/.claude/settings.json`), `g` the global one-liner to run yourself (agents can't write `~/.claude/`), `s` skip.
+9. **Create `.ensemble/config.local.yaml`** (gitignored) with the most-likely-relevant defaults uncommented, when the round said `y`. The committed `.example.yaml` beside it came from the scaffold.
+10. **Guardrail check.** The guardrail installer belongs to `/en-guardrail`, which installs as its own skill and may not be present. **Resolve it before use:** look for `install-guardrail` in a sibling `en-guardrail` skill directory alongside this one. If it is not there, say so and point the user at `/en-guardrail` rather than guessing a path — then skip to the next step. Its `status` ran at step 1a. If neither scope is installed, the round offered the hook, which prompts before destructive Bash commands (recursive rm, DROP TABLE, force-push, terraform destroy) **and destructive DB-writing MCP tools** (`mcp__*__run_sql` running `DROP`/`TRUNCATE`/mass `UPDATE`): `p` project-scoped (writes `<repo>/.claude/settings.json`), `g` the global one-liner to run yourself (agents can't write `~/.claude/`), `s` skip.
 
     On `p` → run the resolved installer with `install-project` (installs **both** the Bash matcher and the MCP DB-tool matcher — EN09).
     On `g` → run the resolved installer with `install-global` (no `--apply`) and surface its output verbatim.
     On `s` → record in the report; don't ask again this session.
 
     Idempotent — if the status check reports any scope active, the round omitted the item; note it in the report. **Bypass (EN09):** the temporary disable is human-only — export `ENSEMBLE_GUARDRAIL_BYPASS=on` in your shell before launching; the old inline `ENSEMBLE_GUARDRAIL=off <cmd>` prefix no longer works (it was model-writable). Agents must never set/export it.
-13a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` wraps the `gnhf` CLI, an agent-agnostic loop engine, for bounded overnight runs. `command -v gnhf` ran at step 1a; if absent the round offered the install, optional and never blocking, since every other skill works without it.
+10a. **gnhf CLI check (optional — only for `/en-loop`).** `/en-loop` wraps the `gnhf` CLI, an agent-agnostic loop engine, for bounded overnight runs. `command -v gnhf` ran at step 1a; if absent the round offered the install, optional and never blocking, since every other skill works without it.
 
     On `y` → run `npm i -g gnhf`; surface the result (and any npm error verbatim). On `n` → record in the report; skip. **Never a hard gate** — gnhf is optional, so declining (or a failed npm install) does not fail setup.
 
     Idempotent — if `gnhf` is already on PATH (`command -v gnhf`), note its presence; the round omitted the item.
-14. **Claude Code Review action check.** If `.github/workflows/claude-code-review.yml` is absent, the round offered Anthropic's Claude Code Review GitHub Action: it runs Claude on every PR and posts inline review comments, which is what `/en-resolve-pr` handles. Auth is **OAuth** (Pro/Max, `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`) or an **API key** (`ANTHROPIC_API_KEY`); edit the workflow after install to switch.
+11. **Claude Code Review action check.** If `.github/workflows/claude-code-review.yml` is absent, the round offered Anthropic's Claude Code Review GitHub Action: it runs Claude on every PR and posts inline review comments, which is what `/en-resolve-pr` handles. Auth is **OAuth** (Pro/Max, `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`) or an **API key** (`ANTHROPIC_API_KEY`); edit the workflow after install to switch.
 
     On `y` → write `.github/workflows/claude-code-review.yml` from `references/templates/github-workflow-claude-review.yml`. Surface a one-line follow-up: "Add `CLAUDE_CODE_OAUTH_TOKEN` to repo secrets (Settings → Secrets and variables → Actions). See `https://github.com/manok4/ensemble/blob/main/docs/integrations/anthropic-code-review-action.md` for setup."
     On `n` → record in the report; skip.
 
     Idempotent — if the workflow already exists, note it and don't overwrite.
-15. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
+12. **Auto-merge repo-setting check.** Run `gh api repos/<owner>/<repo> --jq .allow_auto_merge`.
     - `true` → record 🟢 "Auto-merge enabled at repo level."
     - `false` or empty → surface advisory (not blocking):
       > "Auto-merge is disabled at the repo level; `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` need Settings → General → 'Allow auto-merge' switched on."
 
     Idempotent. Don't try to flip it via API — that requires admin scope and is the kind of repo-policy change a human should make explicitly.
-16. **`REVIEW.md` offer.** If `REVIEW.md` is absent at the repo root, the round offered to seed it from the Ensemble-flavored template. It tunes PR review here: severity calibration, nit caps, skip rules, repo checks, convergence on multi-round reviews. Anthropic's managed Code Review service reads it automatically; the self-hosted action's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action').
+13. **`REVIEW.md` offer.** If `REVIEW.md` is absent at the repo root, the round offered to seed it from the Ensemble-flavored template. It tunes PR review here: severity calibration, nit caps, skip rules, repo checks, convergence on multi-round reviews. Anthropic's managed Code Review service reads it automatically; the self-hosted action's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action').
 
     On `y` → `{{PROJECT_TYPE}}` came with the answer (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
     On `n` → record in the report; skip.
 
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
-17. **Verification-receipt notice (informational).** Surface once, and write nothing:
+14. **Verification-receipt notice (informational).** Surface once, and write nothing:
 
     > "`/en-build` records which checks passed against an exact working tree, and `/en-ship` skips what
     > that receipt covers. Your pre-push hook can read the same receipt instead of re-running a suite
@@ -187,13 +174,13 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     rewriting one on a user's behalf is help nobody asked for, and `/en-ship` never bypasses hooks
     either. Print the pointer and move on.
 
-18. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. Long mechanical sequences drop steps under context pressure; this is the net that catches it.
+15. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. Long mechanical sequences drop steps under context pressure; this is the net that catches it.
 
     **`references/setup-verification.md` owns the walk**: the required-artifact table, the opt-in list, the advisory environment checks and the failure report. Read it here. Two rules bind this step: a **missing required artifact re-runs its install step exactly once**, then fails loudly; and an **advisory dependency never blocks the install**, because a user offline or in a container without coreutils has a legitimate reason to defer.
 
     **Idempotency check:** running `/en-setup` again on the same repo must produce zero new changes once verification has passed. Encode this expectation in the report ("Final verification: 14 / 14 required artifacts present").
 
-19. **Recommend next steps:**
+16. **Recommend next steps:**
     ```
     Two paths:
       - Run /en-foundation --retrofit to back-fill docs/foundation.md and docs/architecture.md from existing code.
@@ -225,11 +212,11 @@ Invoke `bash "$SKILL_DIR/scripts/check-health"` — this skill carries it, ancho
 
 In addition to file-shape and lint checks, the diagnostic includes:
 
-- **Required-artifact verification** - same table as State 2 step 18. Each missing one is 🔴; offer its install step as a repair (missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 10? (y/n)"). This catches projects retrofitted before a step existed.
+- **Required-artifact verification** - same table as State 2 step 15. Each missing one is 🔴; offer its install step as a repair (missing `./bin/ensemble-lint` → "Re-run the bin-install from State 2 step 3? (y/n)"). This catches projects retrofitted before a step existed.
 - **Test-impact declaration** — 🟡 when `AGENTS.md` has no `## Test impact` and the project's tests do not sit beside their sources, because `ensemble-test-select` then returns `empty` for every change and nothing says so. Offer the State 2 step 1a item as the repair.
-- **Sweep schedule** — read `sweep.enabled` / `sweep.schedule` from `.ensemble/config.local.yaml`: 🟢 recorded, 🟡 absent (print the step 11 machine-side commands). A leftover `.github/workflows/en-sweep.yml` is 🟡 *retired; delete it*. Whether that machine's launchd job is loaded is its own `install-sweep-schedule status`.
-- **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 13).
-- **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 14).
+- **Sweep schedule** — read `sweep.enabled` / `sweep.schedule` from `.ensemble/config.local.yaml`: 🟢 recorded, 🟡 absent (print the step 8 machine-side commands). A leftover `.github/workflows/en-sweep.yml` is 🟡 *retired; delete it*. Whether that machine's launchd job is loaded is its own `install-sweep-schedule status`.
+- **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 10).
+- **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 11).
 - **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (manual repo setting; surface the path: Settings → General → "Allow auto-merge").
 - **`timeout` / `gtimeout` on PATH** — `command -v timeout || command -v gtimeout`. 🟢 if either resolves; 🟡 advisory if neither (surface the macOS install path: `brew install coreutils`). Used by the peer helper's timeout wrapper. Advisory-only: the helper says on stderr when it runs unbounded.
 - **`gnhf` CLI (optional; only for `/en-loop`)** — `command -v gnhf`. 🟢 if present; 🟡 advisory if absent (`npm i -g gnhf`). Only `/en-loop` wraps it, so its absence is never 🔴.
@@ -309,7 +296,7 @@ Next step:
 - `references/learn-index-format.md` — `learnings/index.md` empty-state seed
 - `references/learn-log-format.md` — `learnings/log.md` empty-state seed
 - `references/templates/github-workflow-claude-review.yml` — Anthropic Code Review action workflow template
-- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; State 2 step 16
+- `references/templates/review-md-template.md` — `REVIEW.md` Ensemble-flavored default; State 2 step 13
 - `scripts/check-health` — diagnostic runner (State 3)
 - `install-guardrail`, carried by `/en-guardrail` — installs/uninstalls the destructive-command guardrail hook
 - `$SKILL_DIR/scripts/ensemble-classify-plans` — partitions existing `docs/plans/` into conforming vs non-conforming (used in State 2 step 2)
