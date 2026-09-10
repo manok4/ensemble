@@ -18,18 +18,28 @@ TEST_NAME="en-setup scaffold"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
 VERIFY="$REPO_ROOT/skills/en-setup/references/setup-verification.md"
+SCAF="$REPO_ROOT/skills/en-setup/scripts/ensemble-scaffold"
+OPT_REF="$REPO_ROOT/skills/en-setup/references/setup-optional-installs.md"
 
 # --- the skeleton creates the new layout -------------------------------------
-# Scoped to the fenced skeleton block. Grepping the whole file also matched the
-# checklist and the seeding step, so a line removed from the skeleton itself
-# left these green.
-SKEL=$(awk '/Create directory skeleton/,/^   - Use the platform/' "$SKILL")
-
-for want in 'CONTEXT.md' 'decisions/' 'learnings/'; do
-  printf '%s' "$SKEL" | grep -q "$want" \
-    && pass "the skeleton block creates $want" \
-    || fail "the skeleton block creates $want"
+# The layout moved into ensemble-scaffold, so it is checked by RUNNING it on a
+# throwaway repo rather than by grepping prose about it. ensemble-scaffold's own
+# suite covers the rest; this is the one clause that must not drift from the
+# layout /en-setup promises.
+SKEL_TMP=$(mktemp -d); ( cd "$SKEL_TMP" && git init -q . ) >/dev/null 2>&1
+bash "$SCAF" --repo-root "$SKEL_TMP" --skill-dir "$REPO_ROOT/skills/en-setup" >/dev/null 2>&1
+for want in 'docs/decisions' 'docs/learnings' 'docs/plans/active' 'docs/generated' 'docs/designs'; do
+  [ -d "$SKEL_TMP/$want" ] \
+    && pass "the scaffold creates $want" \
+    || fail "the scaffold creates $want"
 done
+rm -rf "$SKEL_TMP"
+
+# The step must reach the script, or the layout above is unreachable from the flow.
+step3=$(awk '/^3\. \*\*Scaffold the project/{f=1} f&&/^4\. \*\*/{exit} f' "$SKILL")
+printf '%s' "$step3" | grep -qF 'scripts/ensemble-scaffold' \
+  && pass "the scaffold step reaches the script that builds the layout" \
+  || fail "step 3 must cite scripts/ensemble-scaffold"
 
 # --- and no longer the retired one -------------------------------------------
 # The braces form is what the skeleton used, so match it directly.
@@ -56,7 +66,7 @@ fi
 
 # --- seeding is wired and ordered --------------------------------------------
 # CONTEXT.md must be seeded after the skeleton exists, not before.
-skel_ln=$(grep -n 'Create directory skeleton' "$SKILL" | head -1 | cut -d: -f1)
+skel_ln=$(grep -n 'Scaffold the project' "$SKILL" | head -1 | cut -d: -f1)
 seed_ln=$(grep -n 'Seed `docs/CONTEXT.md`' "$SKILL" | head -1 | cut -d: -f1)
 if [ -n "$skel_ln" ] && [ -n "$seed_ln" ] && [ "$skel_ln" -lt "$seed_ln" ]; then
   pass "CONTEXT.md is seeded after the skeleton exists"
@@ -119,7 +129,10 @@ flat "$SKILL" | grep -q 'Probe once, then ask once' \
   && pass "the retrofit asks its opt-ins in one round" \
   || fail "the retrofit asks its opt-ins in one round"
 round_ok=1
-for item in 'step 2)' 'step 9)' 'step 11)' 'step 12)' 'step 13)' 'step 13a)' 'step 14)' 'step 16)' 'step 18)'; do
+# Renumbered when six mechanical steps became one scaffold call; the guard in
+# intra-file-step-citations catches a dangling number, not a wrong-but-real one,
+# which is why these are pinned.
+for item in 'step 2)' 'step 3)' 'step 8)' 'step 9)' 'step 10)' 'step 10a)' 'step 11)' 'step 13)' 'step 15)'; do
   grep -qF "($item" "$SKILL" || { round_ok=0; fail "round lists the opt-in for $item"; }
 done
 [ "$round_ok" -eq 1 ] && pass "the round lists all nine opt-ins"
@@ -128,7 +141,7 @@ if grep -qE 'Install now\? \(|Install\? \(`y` / `n`\)|\(y/n; default y\)' "$SKIL
 else
   pass "no serial y/n prompt shape survives outside the round"
 fi
-flat "$SKILL" | grep -q 'runs through step 18 without stopping' \
+flat "$SKILL" | grep -q 'runs through step 15 without stopping' \
   && pass "after the round the install does not stop" \
   || fail "after the round the install does not stop"
 
@@ -171,15 +184,17 @@ cites() {  # $1=artifact substring  $2=expected step number
     fail "$1 cites step $2" "found '$line'"
   fi
 }
-cites "claude-code-review.yml\` (step" 14
-cites "REVIEW.md\` (step" 16
-cites "guardrail PreToolUse hook (step" 13
+cites "claude-code-review.yml\` (step" 11
+cites "REVIEW.md\` (step" 13
+cites "guardrail PreToolUse hook (step" 10
 # Two entries name this file; the bullet prefix picks the right one.
-cites "- \`.ensemble/config.local.yaml\` (step" 12
+cites "- \`.ensemble/config.local.yaml\` (step" 9
 
-# D101: the bin step installs only ensemble-lint, and the sweep step writes no
+# D101: the scaffold installs only ensemble-lint, and the sweep step writes no
 # workflow; it records the cadence and prints the sweep machine's commands.
-if grep -qF "Install project-local \`bin/ensemble-lint\`" "$ES" && grep -qF "install-sweep-schedule add-repo" "$ES"; then
+if grep -qF "bin/ensemble-lint" "$SCAF" && ! grep -qF "install-sweep-schedule" "$SCAF" \
+   && grep -qF "install-sweep-schedule add-repo" "$OPT_REF" \
+   && grep -qiE 'run on the sweep machine, not here' "$ES"; then
   pass "the bin step installs the lint only, and the sweep step points at the machine installer"
 else
   fail "the bin step installs the lint only, and the sweep step points at the machine installer"

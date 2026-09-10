@@ -18,6 +18,7 @@ TEST_NAME="en-setup retrofit install list"
 
 SKILL="$REPO_ROOT/skills/en-setup/SKILL.md"
 VERIFY="$REPO_ROOT/skills/en-setup/references/setup-verification.md"
+SCAF="$REPO_ROOT/skills/en-setup/scripts/ensemble-scaffold"
 
 # --- Sanity: skill file present ---
 if [ -f "$SKILL" ]; then
@@ -51,14 +52,19 @@ else
   pass "the GitHub sweep workflow template is retired (D101)"
 fi
 
-# --- SKILL.md has a step that installs the project-local bin scripts. ---
-# Look for a heading or paragraph that mentions "Install project-local bin"
-# or similar phrasing AND lists at least the four required scripts.
-if grep -qE "Install (project-local|local) ?\`?bin" "$SKILL"; then
-  pass "SKILL.md has a 'Install project-local bin' step"
-else
-  fail "SKILL.md missing the 'Install project-local bin' step (the bug fix)"
-fi
+# --- the project-local bin is installed, executable, by the scaffold ---------
+# Was a prose step; now the scaffold's, so it is checked by running it. The
+# property is the same one the bug fix added: bin/ensemble-lint lands and is
+# executable, because a skill that lints through a non-executable copy fails at
+# the first lint rather than at install.
+BIN_TMP=$(mktemp -d); ( cd "$BIN_TMP" && git init -q . ) >/dev/null 2>&1
+bash "$SCAF" --repo-root "$BIN_TMP" --skill-dir "$REPO_ROOT/skills/en-setup" >/dev/null 2>&1
+[ -x "$BIN_TMP/bin/ensemble-lint" ] \
+  && pass "the scaffold installs bin/ensemble-lint executable" \
+  || fail "bin/ensemble-lint must be installed and executable"
+grep -qF 'scripts/ensemble-scaffold' "$SKILL" \
+  && pass "the skill reaches the scaffold that installs it" \
+  || fail "the skill must cite scripts/ensemble-scaffold"
 
 if grep -qF "bin/ensemble-lint" "$SKILL"; then
   pass "SKILL.md mentions bin/ensemble-lint in the install list"
@@ -87,11 +93,15 @@ if grep -qF ".ensemble/config.local.yaml" "$SKILL"; then
 else
   fail "SKILL.md missing .ensemble/config.local.yaml gitignore entry"
 fi
-if grep -qE "grep -qF '\.ensemble/config\.local\.yaml' \.gitignore" "$SKILL"; then
-  pass "SKILL.md verifies .gitignore entry was actually written (post-write check)"
-else
-  fail "SKILL.md should verify the .gitignore entry exists after writing"
-fi
+# The post-write re-read the bug fix added, now in the scaffold and observable:
+# the entry is present after a run on a repo that had no .gitignore at all.
+grep -qF '.ensemble/config.local.yaml' "$BIN_TMP/.gitignore" 2>/dev/null \
+  && pass "the required .gitignore entry is present after the run" \
+  || fail "the .gitignore entry must be written and verified"
+grep -qiE 'written but not found on re-read|grep -qF "\$line" \.gitignore' "$SCAF" \
+  && pass "the scaffold re-reads the file rather than assuming the write took" \
+  || fail "the post-write verification must survive"
+rm -rf "$BIN_TMP"
 
 # --- A final verification phase exists that walks every required artifact
 #     and fails loudly if any are missing. This is the safety net for the
@@ -150,7 +160,7 @@ else
 fi
 
 # The step has to reach the file holding the walk, or the table is unreachable.
-step18=$(awk '/^18\. \*\*Final verification/{f=1} f&&/^## /{exit} f' "$SKILL")
+step18=$(awk '/^15\. \*\*Final verification/{f=1} f&&/^## /{exit} f' "$SKILL")
 printf '%s' "$step18" | grep -qF 'references/setup-verification.md' \
   && pass "the verification step reaches the file holding the walk" \
   || fail "step 18 must cite references/setup-verification.md"
