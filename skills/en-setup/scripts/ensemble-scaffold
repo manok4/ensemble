@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+# ensemble-scaffold — create the project artifacts /en-setup's install always
+# creates, and report what it did per artifact.
+#
+# WHY THIS IS A SCRIPT.  Six State-2 steps were about 2 KB of prose telling a
+# model to run twenty commands whose arguments never vary: mkdir a fixed
+# skeleton, seed four files from fixed templates, append one .gitignore line,
+# copy a binary and chmod it, copy one config example. The skill's own final
+# verification phase exists because of it — "long mechanical sequences drop
+# steps under context pressure" — so the sequence had a step whose entire job
+# was catching the sequence failing.
+#
+# IDEMPOTENT BY CONSTRUCTION, not by promise. Every artifact is created only
+# when absent, and an existing one is never overwritten or reformatted. Re-run
+# it and every line reports `exists`. That is what the prose asked for six
+# separate times and could not enforce once.
+#
+# IT DOES NOT VERIFY ITSELF.  /en-setup's final verification phase re-checks
+# every artifact independently, from its own list. A scaffold that both writes
+# and signs off on its writes is one report, not two, and the second one is the
+# point.
+#
+# Usage:
+#   ensemble-scaffold --repo-root <dir> --skill-dir <dir>
+#                     [--ignore-learnings-archive] [--json]
+#
+# Exit codes:
+#   0  every artifact present (created or already there)
+#   1  at least one artifact could not be created — the report names which
+#   2  usage error
+#
+# Output is one line per artifact: `created`, `exists`, or `FAILED <reason>`.
+
+set -u
+
+REPO_ROOT=""; SKILL_DIR=""; IGNORE_ARCHIVE=0; AS_JSON=0
+die() { printf '%s\n' "$*" >&2; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo-root)  [ $# -ge 2 ] || die "--repo-root needs a dir"; REPO_ROOT="$2"; shift 2 ;;
+    --skill-dir)  [ $# -ge 2 ] || die "--skill-dir needs a dir"; SKILL_DIR="$2"; shift 2 ;;
+    --ignore-learnings-archive) IGNORE_ARCHIVE=1; shift ;;
+    --json)       AS_JSON=1; shift ;;
+    *) die "ensemble-scaffold: unknown argument $1" ;;
+  esac
+done
+[ -n "$REPO_ROOT" ] || die "ensemble-scaffold: --repo-root is required"
+[ -n "$SKILL_DIR" ] || die "ensemble-scaffold: --skill-dir is required"
+[ -d "$REPO_ROOT" ] || die "ensemble-scaffold: no such directory: $REPO_ROOT"
+[ -d "$SKILL_DIR" ] || die "ensemble-scaffold: no such directory: $SKILL_DIR"
+
+cd "$REPO_ROOT" || die "ensemble-scaffold: cannot enter $REPO_ROOT"
+TODAY=$(date -u +%Y-%m-%d)
+RC=0
+REPORT=""
+
+note() {  # <artifact> <state> [detail]
+  REPORT="$REPORT$1	$2	${3:-}
+"
+  case "$2" in FAILED) RC=1 ;; esac
+}
+
+# --- directories -------------------------------------------------------------
+for d in docs docs/decisions docs/plans/active docs/plans/completed \
+         docs/learnings docs/generated docs/designs; do
+  if [ -d "$d" ]; then
+    note "$d/" exists
+  elif mkdir -p "$d" 2>/dev/null; then
+    note "$d/" created
+  else
+    note "$d/" FAILED "mkdir failed"
+  fi
+done
+
+# --- seeded files ------------------------------------------------------------
+# seed <path> <<'EOF' … EOF  — writes only when absent.
+seed() {
+  path="$1"
+  if [ -e "$path" ]; then
+    cat >/dev/null                       # drain the heredoc
+    note "$path" exists
+    return 0
+  fi
+  if cat > "$path" 2>/dev/null; then
+    note "$path" created
+  else
+    note "$path" FAILED "write failed"
+  fi
+}
+
+# Bodies match references/learn-index-format.md and learn-log-format.md
+# (their "Empty-state" sections). Change those and change these together;
+# tests/lint/ensemble-scaffold.test.sh compares the two.
+seed docs/learnings/index.md <<EOF
+---
+type: learning-index
+generated: true
+generator: en-learn
+updated: $TODAY
+total_entries: 0
+---
+
+# Learnings — index
+
+> Auto-maintained by \`en-learn\`. Do not hand-edit.
+
+## Terms
+
+_(no entries yet)_
+
+## Decisions
+
+_(no entries yet)_
+
+## Solutions
+
+_(no entries yet)_
+EOF
+
+seed docs/learnings/log.md <<EOF
+---
+type: learning-log
+generated: true
+generator: en-learn
+updated: $TODAY
+---
+
+# Learnings — log
+
+> Append-only. One line per \`en-learn\` operation.
+
+_(no operations logged yet)_
+EOF
+
+seed docs/generated/plan-index.md <<EOF
+---
+type: plan-index
+generated: true
+generator: en-learn
+updated: $TODAY
+---
+
+# Plans — index
+
+> Auto-maintained by \`en-learn\`. Do not hand-edit.
+
+_(no plans yet)_
+EOF
+
+seed docs/generated/learning-index.md <<EOF
+---
+type: learning-index
+generated: true
+generator: en-learn
+updated: $TODAY
+---
+
+# Learnings — generated index
+
+> Auto-maintained by \`en-learn\`. Do not hand-edit.
+
+_(no entries yet)_
+EOF
+
+# --- .gitignore --------------------------------------------------------------
+# Appended, never rewritten: this file is the project's, and a scaffold that
+# reformats it has taken something that was not offered.
+ignore_line() {
+  line="$1"
+  if [ -f .gitignore ] && grep -qF "$line" .gitignore; then
+    note ".gitignore:$line" exists
+    return 0
+  fi
+  { [ -f .gitignore ] && [ -n "$(tail -c 1 .gitignore)" ] && printf '\n'; \
+    printf '%s\n' "$line"; } >> .gitignore 2>/dev/null || {
+      note ".gitignore:$line" FAILED "append failed"; return 0; }
+  # Verified after the write, because the prose asked for exactly that and a
+  # write that silently did nothing is the case it was asking about.
+  if grep -qF "$line" .gitignore; then
+    note ".gitignore:$line" created
+  else
+    note ".gitignore:$line" FAILED "written but not found on re-read"
+  fi
+}
+ignore_line '.ensemble/config.local.yaml'
+[ "$IGNORE_ARCHIVE" -eq 1 ] && ignore_line 'docs/learnings/archive/'
+
+# --- bin/ensemble-lint -------------------------------------------------------
+# A copy, so it is re-synced by re-running; `exists` here means byte-identical,
+# and a drifted copy is refreshed rather than reported as fine.
+LINT_SRC="$SKILL_DIR/references/templates/ensemble-lint"
+if [ ! -f "$LINT_SRC" ]; then
+  note bin/ensemble-lint FAILED "template missing at $LINT_SRC"
+else
+  mkdir -p bin 2>/dev/null
+  if [ -f bin/ensemble-lint ] && cmp -s "$LINT_SRC" bin/ensemble-lint; then
+    chmod +x bin/ensemble-lint 2>/dev/null
+    note bin/ensemble-lint exists
+  elif cp "$LINT_SRC" bin/ensemble-lint 2>/dev/null && chmod +x bin/ensemble-lint 2>/dev/null; then
+    note bin/ensemble-lint created
+  else
+    note bin/ensemble-lint FAILED "copy or chmod failed"
+  fi
+  [ -x bin/ensemble-lint ] || note bin/ensemble-lint FAILED "not executable after install"
+fi
+
+# --- .ensemble/config.local.example.yaml -------------------------------------
+CFG_SRC="$SKILL_DIR/references/templates/config-local-example.yaml"
+if [ ! -f "$CFG_SRC" ]; then
+  note .ensemble/config.local.example.yaml FAILED "template missing at $CFG_SRC"
+else
+  mkdir -p .ensemble 2>/dev/null
+  if [ -f .ensemble/config.local.example.yaml ]; then
+    note .ensemble/config.local.example.yaml exists
+  elif cp "$CFG_SRC" .ensemble/config.local.example.yaml 2>/dev/null; then
+    note .ensemble/config.local.example.yaml created
+  else
+    note .ensemble/config.local.example.yaml FAILED "copy failed"
+  fi
+fi
+
+# --- report ------------------------------------------------------------------
+if [ "$AS_JSON" -eq 1 ]; then
+  printf '%s' "$REPORT" | python3 -c '
+import json, sys
+rows = []
+for line in sys.stdin.read().splitlines():
+    if not line.strip():
+        continue
+    parts = line.split("\t")
+    rows.append({"artifact": parts[0], "state": parts[1],
+                 "detail": parts[2] if len(parts) > 2 else ""})
+print(json.dumps({"artifacts": rows,
+                  "failed": [r["artifact"] for r in rows if r["state"] == "FAILED"]},
+                 indent=2))'
+else
+  printf '%s' "$REPORT" | while IFS="$(printf '\t')" read -r a s d; do
+    [ -n "$a" ] || continue
+    printf '  %-40s %s%s\n' "$a" "$s" "${d:+ — $d}"
+  done
+fi
+exit "$RC"

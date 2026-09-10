@@ -24,11 +24,11 @@ runs the same required-artifact table.
 
 - `.github/workflows/ensemble-lint.yml` (step 1a opt-in). A PR check linting the changed docs, from `references/templates/github-workflow-ensemble-lint.yml`. A decline records `lint_ci.enabled: false`.
 - `## Test impact` in `AGENTS.md` (step 1a opt-in). Absent is a valid answer for a beside-the-source layout, and only that one.
-- `sweep.schedule` in `.ensemble/config.local.yaml` (step 11 opt-in; the schedule lives on the sweep machine). **A decline is recorded, never silent.** Write `sweep.enabled: false` and report the sweep as *declined*, not *missing*: re-offering an install the operator refused trains them to skim the report.
-- `.github/workflows/claude-code-review.yml` (step 14 opt-in)
-- `REVIEW.md` (step 16 opt-in)
-- `.claude/settings.json` with guardrail PreToolUse hook (step 13 opt-in)
-- `.ensemble/config.local.yaml` (step 12 opt-in)
+- `sweep.schedule` in `.ensemble/config.local.yaml` (step 8 opt-in; the schedule lives on the sweep machine). **A decline is recorded, never silent.** Write `sweep.enabled: false` and report the sweep as *declined*, not *missing*: re-offering an install the operator refused trains them to skim the report.
+- `.github/workflows/claude-code-review.yml` (step 11 opt-in)
+- `REVIEW.md` (step 13 opt-in)
+- `.claude/settings.json` with guardrail PreToolUse hook (step 10 opt-in)
+- `.ensemble/config.local.yaml` (step 9 opt-in)
 
 **Environment dependencies** (advisory; surface 🟡 in report, do NOT block install):
 
