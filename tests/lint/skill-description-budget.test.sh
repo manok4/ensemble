@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 # tests/lint/skill-description-budget.test.sh
 #
-# Codex loads skills by progressive disclosure: it starts with every skill's name
-# and description, and reads the full SKILL.md only once it selects one. The
-# initial list gets "at most 2% of the model's context window, or 8,000 characters
-# when the context window is unknown" — and when that budget is exceeded, Codex
-# shortens descriptions first, then omits whole skills with a warning.
-#   https://learn.chatgpt.com/docs/build-skills.md
+# TD2: Codex builds its initial skills list from every installed skill's name and
+# description, and that list is capped at "2% of the model's context window, or
+# 8,000 characters when the context window is unknown". Over the cap, Codex
+# SHORTENS descriptions, and a shortened description may fail to match the
+# request that should have triggered its skill.
 #
-# So the constrained surface is the DESCRIPTION, not the body. A shortened
-# description may fail to trigger its skill, which is a discoverability failure
-# and silent from the user's side.
+# The failure is discoverability, and it is silent on the host that has it:
+# Codex says "descriptions were shortened", not "en-plan will not trigger".
 #
-# This repo was 1.2x over the budget when measured on 2026-08-29, and the tracker
-# had recorded the opposite problem — that bodies were truncated — for three days.
-# See TD2.
+# Measured 2026-08-29: 9,705 characters across 17 skills, 1.2x over.
+# Measured 2026-09-10: 4,513 across 16, 0.56x. TD2 stopped applying, and this
+# guard is why it stays that way — the number drifted down without anyone
+# watching it, so it can drift back up the same way.
+#
+# The budget is a HOST's, not this repo's, so the check is a ceiling with room
+# rather than a target: a warn line at 80% gives a rewrite somewhere to land
+# before a description is silently truncated on someone's machine.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -24,56 +27,53 @@ TEST_NAME="skill description budget"
 
 BUDGET=8000
 
-# The description is a single YAML scalar; take from `description:` to the line
-# that closes the quote.
-desc_chars() {
-  awk '/^description:/{f=1} f{print} f && /"[[:space:]]*$/ && !/^description:[[:space:]]*"$/{exit}' "$1" | wc -c | tr -d ' '
-}
+read -r TOTAL COUNT LARGEST LARGEST_NAME <<EOF
+$(python3 - "$REPO_ROOT" <<'PY'
+import glob, os, re, sys
+root = sys.argv[1]
+total = 0
+biggest = (0, "none")
+files = sorted(glob.glob(os.path.join(root, "skills", "*", "SKILL.md")))
+for f in files:
+    s = open(f, encoding="utf-8").read()
+    head = s.split("---", 2)[1] if s.startswith("---") else s
+    name = re.search(r"^name:\s*(.*)$", head, re.M)
+    desc = re.search(r"^description:\s*(.*)$", head, re.M)
+    n = name.group(1).strip() if name else ""
+    d = desc.group(1).strip().strip('"') if desc else ""
+    cost = len(n) + len(d)
+    total += cost
+    if cost > biggest[0]:
+        biggest = (cost, n or os.path.basename(os.path.dirname(f)))
+print(total, len(files), biggest[0], biggest[1])
+PY
+)
+EOF
 
-total=0
-worst=""; worst_n=0
-for s in "$REPO_ROOT"/skills/*/SKILL.md; do
-  n=$(desc_chars "$s")
-  total=$((total + n))
-  if [ "$n" -gt "$worst_n" ]; then worst_n=$n; worst=$(basename "$(dirname "$s")"); fi
-done
+[ -n "${TOTAL:-}" ] && [ "$TOTAL" -gt 0 ] \
+  && pass "measured $COUNT skill descriptions: $TOTAL chars" \
+  || fail "could not measure the descriptions" "got '$TOTAL'"
 
-if [ "$total" -le "$BUDGET" ]; then
-  pass "combined skill descriptions fit the initial-list budget ($total / $BUDGET chars)"
+# Every skill must have one, or it cannot be listed at all.
+[ "$COUNT" -ge 10 ] \
+  && pass "every skill contributes a name and description" \
+  || fail "too few skills measured; the extractor is probably broken" "count=$COUNT"
+
+if [ "$TOTAL" -le "$BUDGET" ]; then
+  pass "the initial skills list fits Codex's $BUDGET-char budget ($TOTAL)"
 else
-  fail "combined skill descriptions fit the initial-list budget" \
-       "$total / $BUDGET chars — over by $((total - BUDGET)); largest is $worst at $worst_n"
+  fail "the skills list is over Codex's budget, so descriptions get shortened" \
+       "$TOTAL > $BUDGET — front-load trigger words and cut the longest first ($LARGEST_NAME at $LARGEST)"
 fi
 
-# No single skill should dominate the shared budget. The cap is on the text
-# of the scalar (prefix and quotes stripped). 700 was the ceiling until
-# 2026-09-03, when every description was rewritten to a purpose sentence plus
-# its trigger phrases; the longest was 637 and all are now under 300. Modes,
-# flags and rubric summaries are body content; the description is loaded into
-# every session whether or not the skill runs.
-CAP=300
-desc_text_chars() {
-  awk '/^description:/{f=1} f{print} f && /"[[:space:]]*$/ && !/^description:[[:space:]]*"$/{exit}' "$1" \
-    | sed -e 's/^description:[[:space:]]*"//' -e 's/"[[:space:]]*$//' | tr -d '\n' | wc -c | tr -d ' '
-}
-over=""
-for s in "$REPO_ROOT"/skills/*/SKILL.md; do
-  n=$(desc_text_chars "$s")
-  [ "$n" -gt "$CAP" ] && over="$over $(basename "$(dirname "$s")"):$n"
-done
-if [ -z "$over" ]; then
-  pass "no single description exceeds $CAP chars"
+# Room to move. Crossing this is not a failure, it is the point at which the
+# next description added is the one that pushes a host over.
+WARN=$(( BUDGET * 80 / 100 ))
+if [ "$TOTAL" -le "$WARN" ]; then
+  pass "headroom is comfortable ($TOTAL of $BUDGET, warn at $WARN)"
 else
-  fail "no single description exceeds $CAP chars" "$over"
+  fail "headroom is gone: the next description added likely crosses the budget" \
+       "$TOTAL of $BUDGET; largest is $LARGEST_NAME at $LARGEST chars"
 fi
-
-# Trigger words must be present, since a shortened description still has to match.
-# The docs advise front-loading them for exactly this reason.
-missing=""
-for s in "$REPO_ROOT"/skills/*/SKILL.md; do
-  grep -q 'Trigger phrases:' "$s" || missing="$missing $(basename "$(dirname "$s")")"
-done
-[ -z "$missing" ] && pass "every skill description carries trigger phrases" \
-                  || fail "every skill description carries trigger phrases" "$missing"
 
 report

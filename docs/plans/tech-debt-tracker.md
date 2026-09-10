@@ -13,7 +13,51 @@ updated: 2026-09-08
 
 ## Open
 
-### TD1. Peer review blocks one tool call, so a killed or truncated call reads as success
+### TD12. Remove the one-release `review_peer_*` legacy read and the `--legacy` call sites
+
+Filed 2026-09-08 from the EN16 branch review (migrations dimension): the policy promises the old spellings are read "for one release and then dropped", and nothing enforced either end.
+
+`ensemble-config-get --legacy <old-key>...` (all eight copies) reads two retired generations as fallbacks: `review_peer_model_alias` and `peer_model_alias` (now `peer_model_claude`), `review_peer_codex_model` and `peer_codex_model` (now `peer_model_codex`), `review_peer_effort_override` and `peer_effort_override` (now `peer_effort_claude` / `peer_effort_codex`), and `review_host_model_alias` (now `agent_model_claude_ceiling`, read inside `ensemble-agent-model`), per D104. The call sites carrying `--legacy` are `skills/en-review/SKILL.md` step 2b, `skills/en-plan/SKILL.md` step 16 and `skills/en-foundation/SKILL.md` step 11 (`each with --legacy review_<key>`). `setup` now logs each legacy key it finds after the config merge, so operators are nudged on the path they already run.
+
+- **Source:** en-review --cross on EN16 (migrations persona), applied as a filed item
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** the three call sites above; `skills/en-review/references/peer-model-policy.md` (b), "Deprecated spellings"
+- **Why it matters:** an unremoved fallback makes the second spelling permanent; a removal nobody was reminded of silently drops an operator's setting, and the reader is fail-soft so the loss surfaces as a peer running on a different model.
+- **Suggested fix:** in the release after D104 ships, delete every `--legacy` clause at the three call sites and in `ensemble-agent-model`, the policy's deprecation paragraph and `setup`'s retired-key notice, keep `--legacy` in the reader (it is generic), and add a lint assertion that none of the retired spellings remains in skills/ or setup.
+- **Logged:** 2026-09-08
+
+**Re-checked 2026-09-10: still applies, and still not due.**
+
+The trigger is "the release after D104 ships". **No release has ever shipped** —
+`package.json` is at `0.1.0`, there are no git tags, and the CHANGELOG has only
+an `[Unreleased]` section. Removing the fallbacks now would do the exact harm the
+item warns about: an operator whose `~/.ensemble/config.json` still holds an old
+spelling would silently get a peer on a different model, with no release note to
+connect it to.
+
+What is already done, verified today: `setup` logs every deprecated key it finds
+after the config merge, names its replacement, and says the old name stops being
+read next release. The operator nudge is on the path they already run.
+
+What is left is mechanical and belongs to the release, not to today: delete the
+`--legacy` clauses at the three call sites (`en-review` step 2b, `en-plan` step
+16, `en-foundation` step 11) and in `ensemble-agent-model`, drop the policy's
+deprecation paragraph and `setup`'s notice, keep `--legacy` in the reader since
+it is generic, and add the assertion that no retired spelling remains.
+
+**Release checklist entry**, so this is an action rather than a memory:
+
+> Before tagging the first release after D104: run `grep -rn -- '--legacy' skills/ setup`.
+> Every hit is a deprecated-spelling fallback that this release drops. Remove
+> them, then add the lint that keeps them gone.
+
+
+## Resolved
+
+### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
+
+*Filed under `## Open` by mistake; the body said Resolved from the day it was fixed. Moved 2026-09-10 after re-verifying: `tests/lint/peer-run-marker.test.sh` passes 17/17 and `ensemble_peer_orphaned_run` is present in the helper.*
 
 **Resolved 2026-08-29**, and narrower than it was written.
 
@@ -63,7 +107,22 @@ verified.
 - **Sequencing:** deliberately deferred until EN12 ships. Building this first means building it against the current root layout and migrating it afterwards; building it second lands it directly in the target shape as one more `shared/manifest.json` entry. Decided with the user on 2026-08-26.
 - **Logged:** 2026-08-26
 
-### TD2. Skill descriptions exceed Codex's initial-list context budget
+### TD2. ~~Skill descriptions exceed Codex's initial-list context budget~~ NO LONGER APPLIES 2026-09-10
+
+**Re-measured today: 4,657 characters of name + description across 16 skills, against the 8,000 budget. 0.58x, not 1.2x.**
+
+TD2 measured 9,705 across 17 on 2026-08-29. Nothing was done to the descriptions
+deliberately; a skill was retired and the rest were tightened during the per-skill
+trims, and the number came down as a side effect. Which is the problem with
+closing it here and walking away: it drifted down unwatched and can drift back up
+the same way, and the failure is silent on the host that has it. Codex reports
+"descriptions were shortened", never "en-plan will not trigger".
+
+So it closes with a guard rather than a note. `tests/lint/skill-description-budget.test.sh`
+fails over 8,000 and warns at 6,400, so the description that would cross the
+budget fails in this repo instead of degrading discoverability on someone's
+machine. The original analysis below is kept because its correction is the
+useful part.
 
 - **Source:** EN12 U12 (original, wrong premise); corrected 2026-08-29 against OpenAI's published Codex documentation
 - **Severity:** P2
@@ -114,7 +173,9 @@ verified reads as evidence.
 
 - **Logged:** 2026-08-26. **Corrected:** 2026-08-29.
 
-### TD3. `doc-lints.md` pointed at a CI template this repo never shipped
+### TD3. ~~`doc-lints.md` pointed at a CI template this repo never shipped~~ RESOLVED 2026-08-29
+
+*Filed under `## Open` by mistake; the body said Resolved. Moved 2026-09-10 after verifying `references/templates/github-workflow-ensemble-lint.yml` exists and `/en-setup`'s step 1a round offers it.*
 
 **Resolved 2026-08-29.** The workflow existed only as YAML inline in the doc, so
 the recommendation could be read but not acted on. Extracted to
@@ -139,7 +200,20 @@ path in a carried file resolves against whichever skill carries it, and only
 - **Suggested fix:** Either ship the template (a small workflow running `shared/bin/ensemble-lint --scope docs/`, which `.github/workflows/ensemble-tests.yml` already does for this repo and which a consuming project would want too), or drop the CI recommendation. Shipping it is the better answer, since `references/templates/` already carries `github-workflow-en-sweep.yml` and `github-workflow-claude-review.yml` for exactly this purpose.
 - **Logged:** 2026-08-26
 
-### TD4. `core-beliefs-starter.md` ships as a template no skill ever uses
+### TD4. ~~`core-beliefs-starter.md` ships as a template no skill ever uses~~ RESOLVED 2026-09-10
+
+**Settled the way the item asked: dropped, not wired.**
+
+Half of it had already happened without being recorded. `core-beliefs-starter.md`
+does not exist anywhere in the tree, and no skill mentions `core-beliefs` at all.
+But `docs/foundation.md` still promised the artifact in four places, including
+Q11's answer describing a starter path that had ceased to exist, so the docs went
+on promising something nothing delivered. That is the exact failure the item
+described, surviving the deletion of the file it was about.
+
+Removed from the directory tree, the optional-artifacts list and the
+lint-exemption list. Q11's answer is struck through rather than deleted, because
+an answer that quietly disappears reads as one nobody asked.
 
 - **Source:** EN12 U11, full-tree consumer search
 - **Severity:** P3
@@ -149,7 +223,33 @@ path in a carried file resolves against whichever skill carries it, and only
 - **Suggested fix:** Decide the question the file cannot answer on its own. Either wire it up — `/en-foundation` offers `docs/core-beliefs.md` from this starter at Standard/Deep depth, the way it already seeds other optional artifacts — or drop both the starter and the foundation line, so the docs stop promising something nothing delivers. `scripts/sync-shared --check` now lists ungranted shared files as a note, so this stays visible until it is settled.
 - **Logged:** 2026-08-26
 
-### TD11. Four skills name their own files by repo-rooted path
+### TD11. ~~Four skills name their own files by repo-rooted path~~ RESOLVED 2026-09-10
+
+**The four named skills were already clean, and the guard the item asked for
+already existed. What was left was one instance three days old, and a hole in
+the guard that let it through.**
+
+Checked every skill for `skills/<self>/(scripts|references|agents)/`: en-sweep,
+en-guardrail, en-build and en-brainstorm had none. `tests/lint/skill-self-path.test.sh`
+was written 2026-09-03 and covers the self-reference case, including a deliberate
+allowance for `path/to/` as an illustrative prefix and for an env-anchored
+install path. I briefly "fixed" one of those allowed lines before reading the
+guard that permits it, and reverted.
+
+The live instance was mine. `references/script-invocation.md` line 42 named
+`skills/en-ship/scripts/<name>` in an example, in a file carried by **13 skills**,
+so twelve copies pointed a reader at another skill's directory. Added 2026-09-09
+by the change that permitted a plain absolute path, which is this item's defect
+reintroduced in the file documenting the rule against it.
+
+**Why nothing caught it, which is the part worth keeping.** The cross-skill
+clause in `skill-helper-anchor.test.sh` matched
+`skills/en-[a-z-]+/(scripts|…)/[A-Za-z0-9._/-]+` — and the character class has no
+`<`. So `skills/en-ship/scripts/<name>` matched the prefix, needed one more
+character it could not find, and did not register. **A path ending in a
+placeholder was invisible to the guard**, which is the shape an example takes
+almost by definition. The class now includes `<>`, and reintroducing yesterday's
+line turns the clause red.
 
 - **Source:** the cross-skill guard fix, 2026-08-31
 - **Severity:** P2
@@ -176,20 +276,6 @@ path in a carried file resolves against whichever skill carries it, and only
   with a negative control.
 
 - **Logged:** 2026-08-31
-
-### TD12. Remove the one-release `review_peer_*` legacy read and the `--legacy` call sites
-
-Filed 2026-09-08 from the EN16 branch review (migrations dimension): the policy promises the old spellings are read "for one release and then dropped", and nothing enforced either end.
-
-`ensemble-config-get --legacy <old-key>...` (all eight copies) reads two retired generations as fallbacks: `review_peer_model_alias` and `peer_model_alias` (now `peer_model_claude`), `review_peer_codex_model` and `peer_codex_model` (now `peer_model_codex`), `review_peer_effort_override` and `peer_effort_override` (now `peer_effort_claude` / `peer_effort_codex`), and `review_host_model_alias` (now `agent_model_claude_ceiling`, read inside `ensemble-agent-model`), per D104. The call sites carrying `--legacy` are `skills/en-review/SKILL.md` step 2b, `skills/en-plan/SKILL.md` step 16 and `skills/en-foundation/SKILL.md` step 11 (`each with --legacy review_<key>`). `setup` now logs each legacy key it finds after the config merge, so operators are nudged on the path they already run.
-
-- **Source:** en-review --cross on EN16 (migrations persona), applied as a filed item
-- **Severity:** P2
-- **Confidence:** 8/10
-- **Location:** the three call sites above; `skills/en-review/references/peer-model-policy.md` (b), "Deprecated spellings"
-- **Why it matters:** an unremoved fallback makes the second spelling permanent; a removal nobody was reminded of silently drops an operator's setting, and the reader is fail-soft so the loss surfaces as a peer running on a different model.
-- **Suggested fix:** in the release after D104 ships, delete every `--legacy` clause at the three call sites and in `ensemble-agent-model`, the policy's deprecation paragraph and `setup`'s retired-key notice, keep `--legacy` in the reader (it is generic), and add a lint assertion that none of the retired spellings remains in skills/ or setup.
-- **Logged:** 2026-09-08
 
 ## Resolved
 
