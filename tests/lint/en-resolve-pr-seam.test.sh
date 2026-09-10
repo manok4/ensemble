@@ -86,10 +86,12 @@ has "$R" "owes a regression test" "a reported bug owes a regression test"
 has "$R" "fails before the fix and passes after it" "the regression test's shape is specified"
 has "$R" "Convergence, not just count" "escalation reads the trend, not only the round"
 has "$R" "prior evidence does not carry"  "a rebase invalidates the evidence around it"
-has "$R" "Do not invent new behaviour"    "conflict resolution does not invent behaviour"
+RPF="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-failures.md"
+has "$RPF" "Do not invent new behaviour"   "conflict resolution does not invent behaviour"
+has "$R" "references/resolve-pr-failures.md" "the failure section reaches the table"
 
 # A DIRTY tree used to be reported with nowhere to go.
-grep -qE '\| .merge_state_status. is .DIRTY' "$R" \
+grep -qE '\| .merge_state_status. is .DIRTY' "$RPF" \
   && pass "a conflicted merge state has a documented path" \
   || fail "a conflicted merge state has a documented path"
 
