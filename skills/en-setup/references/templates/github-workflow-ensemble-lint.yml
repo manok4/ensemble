@@ -1,13 +1,59 @@
+# Ensemble lint — a PR check over the docs this PR actually changed.
+#
+# Two things are deliberate here.
+#
+# SCOPED TO THE DIFF, not the whole doc tree. Linting the tree took 68s on the
+# Ensemble repo against 3s for a single file. The path filter below decides
+# WHETHER to run; the diff decides WHAT to lint.
+#
+# NO github.event.* INTERPOLATED INTO A SHELL COMMAND. The base SHA arrives
+# through `env:`, never through `${{ }}` inside `run:`. A PR title or branch
+# name interpolated into a script is a command-injection vector, and the same
+# habit applied to a SHA costs nothing.
+#   https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
 name: Ensemble lint
+
 on:
   pull_request:
     paths:
       - 'docs/**'
       - 'AGENTS.md'
       - 'CLAUDE.md'
+
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bin/ensemble-lint --scope docs/
+        with:
+          # Needed to diff against the base commit; the default depth-1
+          # checkout cannot see it.
+          fetch-depth: 0
+
+      - name: Lint the changed docs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -u
+          changed=$(git diff --name-only "$BASE_SHA"...HEAD -- 'docs/**' AGENTS.md CLAUDE.md)
+          if [ -z "$changed" ]; then
+            echo "No doc changes in this PR."
+            exit 0
+          fi
+          # Every file is linted before the job fails, so one PR reports every
+          # problem. The status is collected in a variable rather than exiting
+          # inside the loop: `while … | exit 1` exits only the subshell, which
+          # is a silent pass.
+          rc=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue          # deleted in this PR
+            echo "--- $f"
+            bin/ensemble-lint --scope "$f" || rc=1
+          done <<EOF
+          $changed
+          EOF
+          exit "$rc"
