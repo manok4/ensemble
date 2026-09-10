@@ -99,4 +99,40 @@ done
 left=$(grep -rl 'Helper resolution' skills/ 2>/dev/null || true)
 assert_eq "" "$left" "no skill still carries the \$ENSEMBLE_ROOT helper-resolution preamble"
 
+# --- both anchored forms are permitted; the bare relative one is not ----------
+# The variable form is the default for readability, not portability: no call in
+# any skill uses $SKILL_DIR twice, so it is assigned and dereferenced once in the
+# same command, and the line-flattening trap the reference documents exists only
+# because there is an assignment to flatten. A project git hook that matches on a
+# command's leading token refuses that form, so the reference permits a plain
+# absolute path. What stays forbidden is the relative form, which resolves
+# against the user's project and exits 127.
+INV="$REPO_ROOT/skills/en-ship/references/script-invocation.md"
+grep -qiE 'plain absolute path is an accepted alternative' "$INV" \
+  && pass "the reference permits a plain absolute path" \
+  || fail "a hook that refuses the assignment prefix needs a documented alternative"
+grep -qF 'bare relative' "$INV" \
+  && pass "the bare relative form is still called out as wrong" \
+  || fail "the reference must still forbid a bare relative path"
+
+# The claim the permission rests on, checked rather than asserted: if a call ever
+# does reuse the variable, the readability argument becomes a real one and this
+# section should be revisited.
+spans=$(grep -rhoE '`[^`]{0,200}`' "$REPO_ROOT"/skills/*/SKILL.md); span_rc=$?
+if [ "$span_rc" -ne 0 ]; then
+  fail "the backticked-span extractor failed" "cannot check the reuse claim"
+  spans=""
+fi
+reuse=$(printf '%s\n' "$spans" | grep -cE '\$SKILL_DIR/scripts/[^`]*\$SKILL_DIR/scripts/') || reuse=0
+# Prove the detector can still see one, or the count above means nothing.
+probe=$(printf 'x `bash "$SKILL_DIR/scripts/a"; bash "$SKILL_DIR/scripts/b"` y\n' \
+        | grep -hoE '`[^`]{0,200}`' \
+        | grep -cE '\$SKILL_DIR/scripts/[^`]*\$SKILL_DIR/scripts/') || probe=0
+[ "${probe:-0}" -ge 1 ] \
+  && pass "the reuse detector fires on a known reuse" \
+  || fail "the reuse detector is broken and would report any file as clean" "probe=$probe"
+[ "${reuse:-0}" -eq 0 ] \
+  && pass "no skill call reuses \$SKILL_DIR, so the variable buys nothing mechanical" \
+  || fail "a call now reuses \$SKILL_DIR ($reuse found); revisit the alternative-form section"
+
 report
