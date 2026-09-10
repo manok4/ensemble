@@ -87,6 +87,30 @@ has "$R" "fails before the fix and passes after it" "the regression test's shape
 has "$R" "Convergence, not just count" "escalation reads the trend, not only the round"
 has "$R" "prior evidence does not carry"  "a rebase invalidates the evidence around it"
 RPF="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-failures.md"
+RPR="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-reporting.md"
+RPS="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-situations.md"
+
+# --- the two conditional situations, and their reachability ------------------
+# Neither is a step: one fires on isOutdated, the other on a mid-review rebase.
+# Both were inline and unguarded, so a later edit could have dropped either
+# without anything noticing.
+has "$RPS" "isOutdated=true"              "the outdated-thread procedure survives"
+has "$RPS" "Walk location fields in order" "its location walk is specified, not implied"
+has "$RPS" "grep the whole repo"          "an unfound anchor does not become a repo-wide search"
+has "$R"   "references/resolve-pr-situations.md" "the flow reaches both situations"
+# The rule that binds callers stays in the flow: a reader who never opens the
+# reference must not conclude a rebase leaves the evidence standing.
+has "$R"   "prior evidence does not carry" "the rebase rule is stated in the flow itself"
+
+# --- the report shape --------------------------------------------------------
+has "$RPR" "Merge readiness"              "the summary carries merge readiness"
+has "$RPR" "Needs your input"             "needs-human items have their own line"
+has "$R"   "references/resolve-pr-reporting.md" "the summary step reaches its shape"
+# Routing stays in the flow: it differs per caller and is the part that decides
+# whether an unattended run blocks.
+has "$R"   "never block, and never call a question tool" \
+                                           "--orchestrated never blocks for a decision"
+
 has "$RPF" "Do not invent new behaviour"   "conflict resolution does not invent behaviour"
 has "$R" "references/resolve-pr-failures.md" "the failure section reaches the table"
 
