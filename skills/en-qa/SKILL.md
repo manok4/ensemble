@@ -92,9 +92,11 @@ Surface a one-line note in the report: "Browser QA skipped — <reason>." Reason
 
 **Off.** Bug fixes from QA are mechanical; over-reviewing them costs more than it surfaces. The user can run `/en-review --peer` ad-hoc on a QA branch if they want a peer pass before shipping.
 
-## Agent autonomy contract (mirrors `/en-build`)
+## Agent autonomy contract (same shape as `/en-build`'s, different cases)
 
 `/en-qa` is autonomous by design. After fixing a bug (or confirming a flow passed), advance to the next flow immediately. **Do not pause** for confirmation, "let me checkpoint before the bigger test surface," or any reason not in the enumerated cases below.
+
+**What `/en-build` shares with this and what it does not.** The shape is the same: a named window, an exhaustive pause list, anti-patterns each carrying a tell, and *advance, not ask* on uncertainty. **The cases are not.** Its five are about units, plans and gates; these five are about phases, drivers and flows, and none of them overlaps. Read that contract for its own window, not as a description of this one.
 
 ### Scope of the contract
 
@@ -118,12 +120,14 @@ Why scope this way: the autonomy bug class is the same as en-build's — agent-i
 4. **Bug fix breaks Phase 1 checks** (regression). Stop; surface state.
 5. **User-initiated abort.**
 
-### Anti-patterns (explicitly forbidden — same as `/en-build`)
+### Anti-patterns (explicitly forbidden), each with its tell
 
-- "Phase 1 passed; should I proceed to Phase 2?" No — proceed automatically.
-- "Test fixture X is more complex; let me verify before running it." No — run it.
-- "All bugs fixed; should I run the full suite once more?" No — the autoflow already does this.
-- "Big surface area in the next flow; checkpoint here." No — advance.
+A prohibition nobody can detect is decorative, so each of these carries what to look for in the pause itself.
+
+- **"Phase 1 passed; should I proceed to Phase 2?"** Proceed automatically. *The tell: the pause reports a success and asks nothing that would change what happens next.*
+- **"Test fixture X is more complex; let me verify before running it."** Run it. *The tell: the reason cites the size or complexity of what is coming, which no answer alters.*
+- **"All bugs fixed; should I run the full suite once more?"** The autoflow already does. *The tell: the question proposes work the flow performs anyway a step later.*
+- **"Big surface area in the next flow; checkpoint here."** Advance. *The tell: the checkpoint is agent-initiated and lands between flows rather than at one of the five cases.*
 
 ### Right response to LLM uncertainty: advance, not ask
 
