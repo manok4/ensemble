@@ -86,10 +86,54 @@ has "$R" "owes a regression test" "a reported bug owes a regression test"
 has "$R" "fails before the fix and passes after it" "the regression test's shape is specified"
 has "$R" "Convergence, not just count" "escalation reads the trend, not only the round"
 has "$R" "prior evidence does not carry"  "a rebase invalidates the evidence around it"
-has "$R" "Do not invent new behaviour"    "conflict resolution does not invent behaviour"
+RPF="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-failures.md"
+RPR="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-reporting.md"
+RPS="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-situations.md"
+
+# --- the reply-format split does not drift ------------------------------------
+# The reference says outright "the verdict-specific first lines are the table in
+# SKILL.md" and then re-lists those prefixes to attach its evidence rules to
+# them. That is a deliberate split, not duplication, but it is two copies of one
+# list and nothing compared them. Edit the table and the reference's copy
+# silently disagrees.
+RRF="$REPO_ROOT/skills/en-resolve-pr/references/resolve-pr-reply-format.md"
+pfx() { grep -oE '`(Addressed|Addressed differently|Not addressing|Declined):' "$1" | sort -u; }
+if [ "$(pfx "$R")" = "$(pfx "$RRF")" ] && [ -n "$(pfx "$R")" ]; then
+  pass "the reply-format prefixes match between the table and the reference"
+else
+  fail "the reply-format prefixes drifted" \
+       "skill=[$(pfx "$R" | tr '\n' ' ')] reference=[$(pfx "$RRF" | tr '\n' ' ')]"
+fi
+# And the reference still says which side owns the table, or the split reads as
+# an accident to the next editor.
+has "$RRF" "the table in SKILL.md"        "the reference names where the table lives"
+
+# --- the two conditional situations, and their reachability ------------------
+# Neither is a step: one fires on isOutdated, the other on a mid-review rebase.
+# Both were inline and unguarded, so a later edit could have dropped either
+# without anything noticing.
+has "$RPS" "isOutdated=true"              "the outdated-thread procedure survives"
+has "$RPS" "Walk location fields in order" "its location walk is specified, not implied"
+has "$RPS" "grep the whole repo"          "an unfound anchor does not become a repo-wide search"
+has "$R"   "references/resolve-pr-situations.md" "the flow reaches both situations"
+# The rule that binds callers stays in the flow: a reader who never opens the
+# reference must not conclude a rebase leaves the evidence standing.
+has "$R"   "prior evidence does not carry" "the rebase rule is stated in the flow itself"
+
+# --- the report shape --------------------------------------------------------
+has "$RPR" "Merge readiness"              "the summary carries merge readiness"
+has "$RPR" "Needs your input"             "needs-human items have their own line"
+has "$R"   "references/resolve-pr-reporting.md" "the summary step reaches its shape"
+# Routing stays in the flow: it differs per caller and is the part that decides
+# whether an unattended run blocks.
+has "$R"   "never block, and never call a question tool" \
+                                           "--orchestrated never blocks for a decision"
+
+has "$RPF" "Do not invent new behaviour"   "conflict resolution does not invent behaviour"
+has "$R" "references/resolve-pr-failures.md" "the failure section reaches the table"
 
 # A DIRTY tree used to be reported with nowhere to go.
-grep -qE '\| .merge_state_status. is .DIRTY' "$R" \
+grep -qE '\| .merge_state_status. is .DIRTY' "$RPF" \
   && pass "a conflicted merge state has a documented path" \
   || fail "a conflicted merge state has a documented path"
 

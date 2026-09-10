@@ -104,26 +104,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
 
     If `--enable-auto-merge` was passed but `repo_allows_auto_merge` is false: surface "Repo does not allow auto-merge. Enable in Settings → General → 'Allow auto-merge', then re-run."
 
-15. **Summary report.** Group by verdict, one line per item describing what was done. Format:
-    ```
-    Resolved N of M new items on PR #<PR>:
-
-    Fixed (count): [brief description of each fix]
-    Fixed differently (count): [what was changed and why]
-    Replied (count): [questions answered]
-    Not addressing (count): [what was skipped + evidence]
-    Declined (count): [what was declined + harm cited]
-    Needs your input (count): [structured decision briefs]
-
-    Validation: [one line — e.g., "bun test passed (148/148)"]
-
-    Merge readiness:
-      Auto-merge: enabled (squash) | not enabled
-      State: CLEAN | BLOCKED (reason) | BEHIND | DIRTY
-      Reviews: APPROVED (2/2) | CHANGES_REQUESTED | REVIEW_REQUIRED
-      Checks: all passing | N pending | N failing
-      [If not enabled and CLEAN] → Suggest: pass --enable-auto-merge or run `gh pr merge --auto --squash`.
-    ```
+15. **Summary report** in the shape `references/resolve-pr-reporting.md` gives: grouped by verdict, one line per item, then Validation and Merge readiness.
 
     For `needs-human` items, include each item's `decision_context` (quoted feedback / what was found / why it needs decision / options with tradeoffs / the agent's lean).
 
@@ -145,25 +126,15 @@ All replies start with `> [quoted excerpt of the original comment]` for thread c
 | `declined` | `Declined: <specific harm cited, e.g., "this would add a defensive null check the type system already guarantees" or "violates docs/learnings/no-defensive-null-checks-2026-02-15.md">` |
 | `needs-human` | Natural author-voice acknowledgment, e.g., `Good question — this is a tradeoff between X and Y. Going to think through this before making a call.` (The structured `decision_context` goes to the user via the summary, not to the PR thread.) |
 
-## Outdated threads
+## When a thread has moved, and when a rebase has moved everything
 
-When `isOutdated=true`, the diff hunk has shifted — the reported line may not be where the concern lives. Strategy:
-
-1. Walk location fields in order: `line` → `startLine` → `originalLine` → `originalStartLine`.
-2. If none resolve to current content matching the reviewer's description, extract an anchor (symbol, identifier, distinctive phrase) from the comment and search the **same file** once.
-3. Three outcomes:
-   - Anchor found in the file → re-evaluate at that location with the rubric.
-   - Anchor not found and the comment describes concrete in-place code → `not-addressing` with evidence (`searched <file> for <anchor>, not present`).
-   - Anchor not found and the comment suggests the code was extracted elsewhere → `needs-human`. Don't grep the whole repo; picking the right new location is a judgment call.
-
-## After a rebase, prior evidence does not carry
-
-Rebasing moves the branch onto a new base, so a review that approved the old head has not seen what is there now, and any verification receipt `/en-ship` was relying on is invalidated by the base moving (`base-moved`). Two consequences worth stating rather than rediscovering:
-
-- **Re-review, do not assume continuity.** A thread resolved against the pre-rebase head may no longer point at the code it was about. Re-fetch before replying to anything, and treat an outdated thread by the rules below.
-- **Do not treat a green check from before the rebase as green now.** It described a commit that no longer exists.
-
-This is why rebasing is excluded from what this skill may do: it is not a mechanical fix, it invalidates the evidence around it, and deciding to spend that is the caller's call.
+`references/resolve-pr-situations.md` owns both, and both are conditions rather
+than steps: read it when `isOutdated=true` on a thread, or when the branch was
+rebased mid-review. Two rules from it bind callers of this skill, so they are
+here: an anchor that cannot be found and describes concrete in-place code is
+`not-addressing` with the search as evidence, never a repo-wide grep; and **after
+a rebase, prior evidence does not carry**, which is why rebasing is excluded from
+what this skill may do.
 
 ## Security
 
@@ -175,20 +146,13 @@ This skill resolves feedback; it does not run reviews of its own (`/en-review` b
 
 ## Failure protocol
 
+**`references/resolve-pr-failures.md` owns the table.** Every row shares one rule: the failure is surfaced and the run hands back; nothing is retried into a different shape or worked around. Three rows are hard floors rather than defaults:
+
 | Failure | Behavior |
 |---|---|
-| `gh` not authenticated | Surface; suggest `gh auth login`; exit |
-| `get-pr-comments` script fails (rate limit, network) | Retry once with exponential backoff; if still failing, surface and exit (do not partially process) |
-| Combined validation red on changed files, can't fix in one pass | Stage changes, do **not** commit; surface as `needs-human` with the test output |
-| `git push` fails (e.g., upstream needs rebase) | Stop; surface the divergence with ahead/behind counts; hand back. **Never rebase or force-push from here** — that is an excluded action, and this skill may narrow its scope but not widen it. |
-| `merge_state_status` is `DIRTY` (conflicts) | Report it and hand back with the conflicting paths named. Resolution is the caller's or the user's call, not a side effect of addressing comments. When it is resolved: preserve both intents where they are compatible; where they are not, take the one matching the change's stated goal and note the trade-off. **Do not invent new behaviour to make a conflict go away**, and never `--abort` in place of resolving. |
-| Reply API failure on a single thread | Continue with the rest; surface failed-reply list at the end |
-| Resolve API failure | Same — continue, surface |
-| Reviewer left a thread with no comment body | Skip the thread; surface a one-line warning |
-| Two cycles already done and threads remain | Do **not** start a third cycle — escalate as recurring pattern (see step 11) |
-| `--enable-auto-merge` requested but repo doesn't allow it | Surface "Repo does not allow auto-merge. Enable in Settings → General → 'Allow auto-merge'". Do not retry. |
-| `gh pr merge --auto` fails (branch protection rejects merge method, or PR has merge conflicts) | Surface the gh error verbatim; leave the rest of the run intact (replies/resolutions/commits already landed). User resolves manually. |
-| `check-merge-status` fails (rate limit, gh auth) | Surface a one-line warning in the summary; skip the merge-readiness section; rest of the run unaffected. |
+| `git push` fails (upstream needs rebase) | Stop; surface the divergence with ahead/behind counts; hand back. **Never rebase or force-push from here** — that is an excluded action, and this skill may narrow its scope but not widen it. |
+| Combined validation red on changed files, can't fix in one pass | Stage changes, do **not** commit; surface as `needs-human` with the test output. |
+| Two cycles already done and threads remain | Do **not** start a third cycle — escalate as a recurring pattern (see step 11). |
 
 ## What this skill never does
 
