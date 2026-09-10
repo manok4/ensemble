@@ -55,7 +55,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    **Ask only what the ledger left open.** Skip groups the depth tier excludes, *and* skip every question step 4 already answered. A group marked `answered` is not asked — it is **confirmed in one line** (*"Detected TypeScript/Bun/Postgres from package.json — correct?"*), which is one turn instead of the group's full question set. A group marked `partial` is asked only for its gaps. Re-asking what orient just read is the single largest avoidable cost in this skill, and on a retrofit it is also the most annoying: the answers are sitting in the repo the user is pointing you at.
 
    **The user can stop at any point.** "That's enough", "just write it", or similar moves straight to step 6a with what exists; unanswered groups become `## Open questions` entries with Q-IDs rather than blocking the draft.
-6a. **Traceability gate.** Before synthesizing, check that the ID graph connects. For every goal (G-ID) and every actor (A-ID) captured, confirm at least one requirement (R-ID) serves it, and that every requirement carries at least one acceptance example (AE-ID).
+6a. **Traceability gate.** Before synthesizing, check that the ID graph connects; `references/stable-ids.md` defines every ID class and the rule that none is renumbered after assignment. For every goal (G-ID) and every actor (A-ID) captured, confirm at least one requirement (R-ID) serves it, and that every requirement carries at least one acceptance example (AE-ID).
 
     **This is a judgment check, not a tally.** The rule is *every goal or actor **that affects behavior** is served by a requirement, or is explicitly deferred with a reason* — never "every ID appears somewhere". A mechanical count invites exactly the padding it is meant to prevent: requirements written to satisfy a counter, which then propagate into plans as real work. The load-bearing words are "affects behavior"; a goal that is context rather than a commitment needs no requirement.
 
@@ -90,7 +90,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 
     Apply the depth-scaled trim (Lightweight skips §8/§9/§11–§13; Standard skips §11–§13 unless relevant), and drop any template section this run has no real content for. Substitute `{{PROJECT_NAME}}`, `{{ONE_LINE_PURPOSE}}`, `{{TODAY}}`, `{{OWNER}}`, `{{DEPTH}}`, `{{PLAN_ID_PREFIX}}`. Set `status: draft`.
 10. **Section-by-section review with the user.** Walk each section briefly; user can revise inline before peer review.
-11. **Outside Voice review.** If `PEER_AVAILABLE=true`, ship the draft to the peer:
+11. **Outside Voice review** (`references/outside-voice.md` owns the contract and verdict handling). If `PEER_AVAILABLE=true`, ship the draft to the peer:
     - Build the Outside Voice prompt by shelling out to `$SKILL_DIR/scripts/ensemble-build-peer-prompt --brief "$SKILL_DIR/references/peer-brief.md" --project-context "<one-line from §1>" --goal "Foundation review" --artifact-file docs/foundation.md --peer-mode "$PEER_MODE"`. Don't assemble the prompt by reasoning.
     - **Resolve the peer's model and effort, then invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`. Read `peer_model_<peer>` and `peer_effort_<peer>` for the peer's host (effort `--allowed low,medium,high,xhigh`; `--legacy` the old names, D104) through `$SKILL_DIR/scripts/ensemble-config-get`; `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort "${override:-inherit}" --peer-cmd "$PEER_CMD" --model-alias "$alias" --codex-model "$codex")"`; pass `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, the prompt file, and `--peer-mode "$PEER_MODE"`. **Do not restate the invocation or retry algorithm** — the helper owns the `timeout` wrapper, failure classification (`auth` / `unknown` / `timeout`), the single bounded retry, and the fallback, so the behaviour is executable and testable rather than prose (D41). It returns a `peer_decision` object per `references/peer-contract.md`; surface its `peer`/`reason` in the run report so a skipped or degraded peer can never read as a normal one. A document review runs no effort ladder: unset keys mean `--effort inherit`, and a configured model or override still reaches the peer (D103).
     - Parse the JSON response (per `references/finding-schema.md`).
@@ -162,22 +162,6 @@ Peer review: cross-agent (codex). Verdict: revise. Applied 3 of 5 findings.
 
 Next: Run /en-build docs/plans/active/EN01-feature_project-setup.md to bootstrap the repo.
 ```
-
-## Reference files
-
-- `references/templates/foundation-template.md` — body template + depth-scaled trim
-- `references/foundation-questions.md` — Q&A library + count bands
-- `references/templates/architecture-template.md` — initial architecture seed
-- `references/templates/agents-md-template.md` — AGENTS.md template
-- `references/templates/claude-md-template.md` — CLAUDE.md template
-- `references/templates/plan-template.md` — for the bootstrap `<PREFIX>01-feature_project-setup` plan
-- `references/host-detect.md` — host detection
-- `references/outside-voice.md` — peer-review prompt and verdict handling
-- `references/peer-brief.md` — what the peer is asked, and how its findings route
-- `references/peer-contract.md` — severity, confidence and the `peer_decision` object, shared
-- `references/finding-schema.md` — peer JSON shape
-- `references/research-dispatch.md` — when to dispatch `repo-research`, and why this skill reads learnings inline instead of scouting
-- `references/stable-ids.md` — R-IDs / A-IDs / F-IDs / AE-IDs / D-IDs / Q-IDs
 
 ## Failure protocol
 

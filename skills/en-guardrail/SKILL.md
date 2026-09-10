@@ -134,13 +134,6 @@ Two scripts, and the split is the whole design.
 
 The hook fires only on `Bash` tool calls — `Edit`, `Write`, `Read` are unaffected.
 
-## Reference files
-
-- `bin/check-guardrail.sh` — the hook entry point: stdin, bypass, output envelope, analytics. Carries no patterns.
-- `bin/guardrail_analyze.py` — **the analyzer, and where every pattern lives.** Shell tokenisation, connection-target parsing, statement-scope SQL analysis, shared by the Bash and MCP paths. Change behaviour here.
-- `bin/install-guardrail` — registers and reports both `PreToolUse` matchers; `status`, `install-project`, `install-global`.
-- Upstream: `gstack/careful` — the original the wrapper was vendored from. The analyzer is Ensemble's own (EN09) and has no upstream to diff against.
-
 ## Failure protocol
 
 | Failure | Behavior |
