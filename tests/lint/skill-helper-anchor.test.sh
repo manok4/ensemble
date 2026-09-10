@@ -48,7 +48,7 @@ done
 # directories. Naming another skill's SKILL.md is a documentation cross-reference
 # and stays allowed — the hazard is reaching for a FILE that will not be there.
 for skill in $SKILLS; do
-  hits=$(grep -rhoE "skills/en-[a-z-]+/(references|scripts|bin|agents|templates)/[A-Za-z0-9._/-]+" \
+  hits=$(grep -rhoE "skills/en-[a-z-]+/(references|scripts|bin|agents|templates)/[A-Za-z0-9._/<>-]*" \
            "skills/$skill" 2>/dev/null | grep -v "^skills/$skill/" | sort -u | head -3 || true)
   if [ -n "$hits" ]; then
     fail "[$skill] reaches into a sibling skill's helpers" "$(echo $hits)"

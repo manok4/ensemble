@@ -39,7 +39,7 @@ between Bash tool calls, so `SKILL_DIR` cannot be set once and reused.
 
 ## A plain absolute path is an accepted alternative
 
-`bash "/abs/path/to/skills/en-ship/scripts/<name>"` is equally correct and
+`bash "<the same absolute directory>/scripts/<name>"` is equally correct and
 equally portable. Use it where the assignment prefix is a problem: some git
 hooks and command allowlists match on the leading token of a command and refuse
 `SKILL_DIR="…"; bash …` while accepting the same call with the path inlined.
