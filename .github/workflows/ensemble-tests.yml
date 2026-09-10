@@ -37,10 +37,48 @@ jobs:
             echo "  ✓ $cmd: $(command -v "$cmd")"
           done
 
-      - name: Run lint on docs/
+      # On a PR, lint only the docs the PR changed (3s/file against 68s for the
+      # tree) and run only the tests the change can break. On a push to main,
+      # both run in full: main is the authoritative tree and nothing there is
+      # worth approximating.
+      #
+      # The base SHA arrives through env:, never interpolated into the script.
+      - name: Lint the changed docs (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -u
+          changed=$(git diff --name-only "$BASE_SHA"...HEAD -- 'docs/**' AGENTS.md CLAUDE.md)
+          [ -n "$changed" ] || { echo "No doc changes."; exit 0; }
+          rc=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            skills/en-setup/references/templates/ensemble-lint --scope "$f" || rc=1
+          done <<EOF
+          $changed
+          EOF
+          exit "$rc"
+
+      - name: Lint docs/ in full (main)
+        if: github.event_name != 'pull_request'
         run: skills/en-setup/references/templates/ensemble-lint --scope docs/
 
-      - name: Run test suite
+      # tests/select-for.sh escalates to the full suite by itself when the
+      # change touches the harness or the selector, so this is not a way to
+      # skip tests that matter.
+      - name: Run the tests this change can break (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -u
+          changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+          [ -n "$changed" ] || { echo "Empty diff."; exit 0; }
+          ./tests/select-for.sh $changed
+
+      - name: Run the full test suite (main)
+        if: github.event_name != 'pull_request'
         run: ./tests/run.sh
 
       - name: Smoke-test ./setup --verify-only
