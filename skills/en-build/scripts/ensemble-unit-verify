@@ -192,6 +192,39 @@ if [ "$DO_TESTS" = true ]; then
 fi
 printf '  log: %s\n' "$LOG"
 
+# --- record, once, on every terminal path ------------------------------------
+# The exit code is decided BEFORE the emit and the emit cannot change it: this
+# script's status is the gate /en-build commits on. Recording only on success
+# would lose exactly the runs worth measuring, so all four codes are covered by
+# one call. A usage error exits 2 further up and never reaches here, which is
+# right: nothing was verified, so there is nothing to measure.
+#
+# `checks` reuses the per-check timings run_check already measured rather than
+# adding a verify-wide clock the script has never had.
+_verify_rc() {
+  [ -z "$FAILED" ] || { printf 1; return; }
+  [ "$RAN" -ne 0 ] || { printf 4; return; }
+  if [ "$DO_TESTS" = true ] && [ "$TEST_SELECT_TIER" = "empty" ]; then printf 3; return; fi
+  printf 0
+}
+_record_verify() {  # <rc>
+  local rm="$SELF_DIR/ensemble-run-metrics" checks nfail
+  [ -x "$rm" ] || return 0
+  checks=$(printf '%s\n' "${LINES#
+}" | sed '/^$/d' | awk '
+    { line = $0; sub(/^[[:space:]]+/, "", line); sec = line; sub(/.*\(/, "", sec); sub(/s\).*/, "", sec) }
+    line ~ /: pass \(/ { lbl = line; sub(/: pass .*/, "", lbl)
+                         printf "%s{\"label\":\"%s\",\"status\":\"pass\",\"seconds\":%s}", (n++ ? "," : ""), lbl, sec }
+    line ~ /: FAIL /    { lbl = line; sub(/: FAIL .*/, "", lbl)
+                         printf "%s{\"label\":\"%s\",\"status\":\"fail\",\"seconds\":%s}", (n++ ? "," : ""), lbl, sec }
+  ')
+  nfail=$(printf '%s' "$FAILED" | wc -w | tr -d ' ')
+  bash "$rm" emit --kind verify --json "$(printf \
+    '{"unit":"%s","tier":"%s","ran":%s,"failed":%s,"rc":%s,"checks":[%s]}' \
+    "$UNIT" "${TEST_SELECT_TIER:-none}" "$RAN" "$nfail" "$1" "$checks")" >/dev/null 2>&1 || true
+}
+_record_verify "$(_verify_rc)"
+
 if [ -n "$FAILED" ]; then
   printf '\nlast %s lines:\n' "$TAIL_LINES"
   tail -n "$TAIL_LINES" "$LOG" 2>/dev/null

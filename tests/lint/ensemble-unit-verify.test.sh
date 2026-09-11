@@ -278,4 +278,85 @@ rc=$?
 assert_exit_code 0 $rc "a carrier without ensemble-run-metrics still exits 0"
 assert_eq "$no_run" "$out" "and prints the same selection, with nothing on stderr"
 
+# --- the verification is recorded (EN17 U5) ----------------------------------
+# All four exit codes, not just success: a failing unit is exactly the run worth
+# measuring. The emit must not change the status, which is what /en-build
+# commits on, so every assertion here checks the code as well as the event.
+V="$WORK/vproj"
+mkdir -p "$V/src"
+(cd "$V" && git init -q && git config user.email t@e && git config user.name t)
+: > "$V/src/a.js"; : > "$V/src/a.test.js"
+vled() { ( cd "$V" && bash "$RM" "$@" ); }
+ver() { ( cd "$V" && timeout 20 bash "$VER" "$@" ); }
+vagents() { cat > "$V/AGENTS.md"; }
+vevents() { grep -c '"kind":"verify"' "$VL" || true; }
+vlast() { grep '"kind":"verify"' "$VL" | tail -1; }
+
+VL=$(vled start --skill en-build)
+
+vagents <<'A'
+- **Test:** `true`
+- **Lint:** `true`
+- **Typecheck:** `true`
+A
+ver --unit U1 --working >/dev/null 2>&1; rc=$?
+assert_exit_code 0 $rc "a passing unit still exits 0"
+assert_eq "1" "$(vevents)" "and records exactly one verify event"
+e=$(vlast)
+assert_eq "U1" "$(printf '%s' "$e" | jq -r '.unit')"   "the event names the unit"
+assert_eq "0"  "$(printf '%s' "$e" | jq -r '.rc')"     "and carries the exit code it returned"
+assert_eq "0"  "$(printf '%s' "$e" | jq -r '.failed')" "and no failures"
+assert_eq "3"  "$(printf '%s' "$e" | jq -r '.checks|length')" "with one entry per check run"
+assert_eq "true" "$(printf '%s' "$e" | jq -r '[.checks[].seconds] | all(. >= 0)')" \
+  "each carrying the timing run_check already measured"
+
+# A failing check: the status must survive the emit.
+vagents <<'A'
+- **Test:** `false`
+- **Lint:** `true`
+A
+ver --unit U2 --working >/dev/null 2>&1; rc=$?
+assert_exit_code 1 $rc "a failing check still exits 1"
+e=$(vlast)
+assert_eq "1" "$(printf '%s' "$e" | jq -r '.rc')"     "the failure is recorded as rc 1"
+assert_eq "1" "$(printf '%s' "$e" | jq -r '.failed')" "with the failure counted"
+assert_eq "fail" "$(printf '%s' "$e" | jq -r '.checks[] | select(.label=="tests") | .status')" \
+  "and the failing check named"
+
+# Nothing verifiable.
+vagents <<'A'
+- **Test:** `true`
+A
+ver --unit U3 --working --no-lint --no-typecheck --no-tests >/dev/null 2>&1; rc=$?
+assert_exit_code 4 $rc "nothing verifiable still exits 4"
+assert_eq "4" "$(vlast | jq -r '.rc')" "and is recorded as rc 4"
+assert_eq "0" "$(vlast | jq -r '.ran')" "with nothing run"
+
+# The tier this unit recorded is the tier the selection recorded in the same run.
+vagents <<'A'
+- **Test:** `true`
+- **Test (changed):** `true {files}`
+A
+ver --unit U5 --working >/dev/null 2>&1
+assert_eq "$(grep '"kind":"select"' "$VL" | tail -1 | jq -r '.tier')" "$(vlast | jq -r '.tier')" \
+  "the verify event and the select event agree on the tier"
+
+# A usage error verified nothing, so it records nothing.
+before=$(vevents)
+ver >/dev/null 2>&1; rc=$?
+assert_exit_code 2 $rc "a usage error still exits 2"
+assert_eq "$before" "$(vevents)" "and records no event, because nothing was verified"
+
+# Outside a run: identical codes on every terminal path, and no ledger.
+vled finish "$VL"
+vagents <<'A'
+- **Test:** `false`
+- **Lint:** `true`
+A
+ver --unit U6 --working >/dev/null 2>&1
+assert_exit_code 1 $? "a failing unit outside a run still exits 1"
+ver --unit U7 --working --no-lint --no-typecheck --no-tests >/dev/null 2>&1
+assert_exit_code 4 $? "nothing verifiable outside a run still exits 4"
+assert_eq "$before" "$(vevents)" "and neither recorded anything after the run closed"
+
 report
