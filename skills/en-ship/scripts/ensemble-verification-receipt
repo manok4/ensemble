@@ -225,8 +225,8 @@ with open(tmp, 'w') as fh:
 os.replace(tmp, sys.argv[1])
 PY
   printf 'receipt written: %s\n' "$RECEIPT"
-  _record_receipt write ok wrote 0 "$(printf '%s' "$checks" | tr ' ' '\n' \
-    | sed -n 's/^\([a-zA-Z0-9_-]*\)=.*/"\1"/p' | paste -sd, - | sed 's/^/[/; s/$/]/')"
+  _record_receipt write ok wrote 0 "$(python3 -c 'import json, sys
+print(json.dumps([t.split("=", 1)[0] for t in sys.argv[1].split() if "=" in t]))' "$checks" 2>/dev/null)"
 }
 
 # --- verify ------------------------------------------------------------------
@@ -299,11 +299,14 @@ def out(valid, reason, extra=None):
         print("invalid: {}".format(reason))
     side = os.environ.get('REASON_OUT') or ''
     if side:
+        # Three lines, not a JSON object: the shell reads this back, and a JSON
+        # blob there meant three sed patterns re-deriving what was just
+        # serialized. `checks` stays JSON because it is passed through as one.
         try:
             with open(side, 'w') as fh:
-                json.dump({"reason": reason,
-                           "age_s": doc.get('age_seconds') or 0,
-                           "checks": sorted((doc.get('checks') or {}).keys())}, fh)
+                fh.write("%s\n%d\n%s\n" % (
+                    reason, int(doc.get('age_seconds') or 0),
+                    json.dumps(sorted((doc.get('checks') or {}).keys()))))
         except Exception:
             pass
     sys.exit(0 if valid else 1)
@@ -356,10 +359,9 @@ out(True, "ok", {"checks": checks, "age_seconds": age, "written_by": r.get('writ
 PY
   rc=$?
   if [ -n "$_reason_out" ] && [ -s "$_reason_out" ]; then
+    { IFS= read -r _r_reason; IFS= read -r _r_age; IFS= read -r _r_checks; } < "$_reason_out"
     _record_receipt verify "$([ "$rc" -eq 0 ] && printf hit || printf miss)" \
-      "$(sed -n 's/.*"reason": *"\([^"]*\)".*/\1/p' "$_reason_out")" \
-      "$(sed -n 's/.*"age_s": *\([0-9-]*\).*/\1/p' "$_reason_out")" \
-      "$(sed -n 's/.*\("checks": *\[[^]]*\]\).*/\1/p' "$_reason_out" | sed 's/"checks": *//')"
+      "$_r_reason" "$_r_age" "$_r_checks"
   fi
   [ -z "$_reason_out" ] || rm -f "$_reason_out"
   return $rc

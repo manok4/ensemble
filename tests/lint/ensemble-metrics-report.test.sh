@@ -136,9 +136,10 @@ for r in --peer-value --time --selection; do
 done
 
 # --- it reads, it never writes ----------------------------------------------
-before=$(find "$A" -type f | sort | xargs shasum 2>/dev/null | shasum)
+store_hash() { for f in $(find "$A" -type f | sort); do hash_file "$f"; done; }
+before=$(store_hash)
 m --peer-value >/dev/null; m --time >/dev/null; m --selection >/dev/null
-assert_eq "$before" "$(find "$A" -type f | sort | xargs shasum 2>/dev/null | shasum)" \
+assert_eq "$before" "$(store_hash)" \
   "running every report leaves the store byte-unchanged"
 
 report

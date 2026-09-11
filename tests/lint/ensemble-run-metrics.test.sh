@@ -105,11 +105,11 @@ rm_ finish "$L3"
 L4=$(rm_ start --skill en-build)
 OVER="$WORK/override.jsonl"
 : > "$OVER"
-before=$(shasum "$ACTIVE" | awk '{print $1}')
+before=$(hash_file "$ACTIVE")
 ENSEMBLE_RUN_LEDGER="$OVER" bash "$RM" emit --kind lint --json '{"scope":"override"}'
 assert_eq "1" "$(grep -c '"scope":"override"' "$OVER" || true)" "ENSEMBLE_RUN_LEDGER wins over the stack"
 assert_eq "0" "$(grep -c '"scope":"override"' "$L4" || true)" "the stack's run is untouched"
-assert_eq "$before" "$(shasum "$ACTIVE" | awk '{print $1}')" "active is not consulted or rewritten"
+assert_eq "$before" "$(hash_file "$ACTIVE")" "active is not consulted or rewritten"
 rm_ finish "$L4"
 
 # --- 6. pruning: a deleted ledger and a finished one -------------------------
@@ -150,18 +150,24 @@ assert_exit_code 0 $? "emit outside a git repo exits 0"
 # --- 10. malformed payloads leave the ledger byte-unchanged ------------------
 L8=$(rm_ start --skill en-build)
 rm_ emit --kind lint --json '{"ok":1}'
-h=$(shasum "$L8" | awk '{print $1}')
+h=$(hash_file "$L8")
 rm_ emit --kind lint --json 'not json'  >/dev/null 2>&1
 rm_ emit --kind lint --json '[1,2]'     >/dev/null 2>&1
-assert_eq "$h" "$(shasum "$L8" | awk '{print $1}')" "a malformed payload leaves the ledger byte-unchanged"
+assert_eq "$h" "$(hash_file "$L8")" "a malformed payload leaves the ledger byte-unchanged"
 rm_ emit --kind nonsense --json '{}'    >/dev/null 2>&1
-assert_eq "$h" "$(shasum "$L8" | awk '{print $1}')" "an unknown kind leaves the ledger byte-unchanged"
+assert_eq "$h" "$(hash_file "$L8")" "an unknown kind leaves the ledger byte-unchanged"
 
-# --- 11. an unwritable runs directory is not fatal ---------------------------
-chmod 500 "$RUNS"
-rm_ emit --kind lint --json '{"scope":"ro"}' >/dev/null 2>&1
-assert_exit_code 0 $? "emit into a read-only runs directory exits 0"
-chmod 700 "$RUNS"
+# --- 11. an unwritable LEDGER is not fatal -----------------------------------
+# chmod 500 on the directory proved nothing: the ledger already existed and an
+# append needs no directory write, so the emit succeeded and the failure path
+# this names was never entered.
+h=$(hash_file "$L8")
+chmod 400 "$L8"
+err=$(rm_ emit --kind lint --json '{"scope":"ro"}' 2>&1); rc=$?
+chmod 600 "$L8"
+assert_exit_code 0 $rc "an emit against an unwritable ledger still exits 0"
+assert_eq "$h" "$(hash_file "$L8")" "and writes nothing"
+assert_contains "$err" "cannot append" "and says so once, on stderr"
 
 # --- 12. concurrent appends --------------------------------------------------
 for i in $(seq 1 20); do rm_ emit --kind note --json "{\"i\":$i}" & done
@@ -180,15 +186,15 @@ assert_eq "" "$out" "ENSEMBLE_METRICS=off makes start print nothing"
 # --- 14. opt-out via config, including mid-run -------------------------------
 L9=$(rm_ start --skill en-build)
 rm_ emit --kind lint --json '{"scope":"before-optout"}'
-h9=$(shasum "$L9" | awk '{print $1}')
+h9=$(hash_file "$L9")
 mkdir -p "$PROJ/.ensemble"
 printf 'metrics:\n  enabled: false\n' > "$PROJ/.ensemble/config.local.yaml"
 out=$(rm_ start --skill en-review 2>/dev/null)
 assert_eq "" "$out" "config opt-out makes start print nothing"
 rm_ emit --kind lint --json '{"scope":"after-optout"}'
-assert_eq "$h9" "$(shasum "$L9" | awk '{print $1}')" "emit records nothing once opted out"
+assert_eq "$h9" "$(hash_file "$L9")" "emit records nothing once opted out"
 rm_ finish "$L9"
-assert_eq "$h9" "$(shasum "$L9" | awk '{print $1}')" "finish appends no event once opted out"
+assert_eq "$h9" "$(hash_file "$L9")" "finish appends no event once opted out"
 assert_eq "0" "$(wc -c < "$ACTIVE" | tr -d ' ')" "finish still pops the stack while opted out"
 
 # The phantom-parent case: without that pop, the abandoned run parents the next.
@@ -249,9 +255,9 @@ assert_eq "null" "$(last | jq -r '.dropped')" "all eight peer keys survive"
 assert_eq "126"  "$(last | jq -r '.elapsed_s')" "elapsed_s reaches disk"
 
 # An unknown KIND stays a rejection, not a drop: the kind names the schema.
-h=$(shasum "$L12" | awk '{print $1}')
+h=$(hash_file "$L12")
 rm_ emit --kind nonsense --json '{"tier":"graph"}' 2>/dev/null
-assert_eq "$h" "$(shasum "$L12" | awk '{print $1}')" "an unknown kind is rejected, not filtered"
+assert_eq "$h" "$(hash_file "$L12")" "an unknown kind is rejected, not filtered"
 
 # --- 17. nothing already recorded starts being dropped -----------------------
 # Each payload below is the shape references/run-metrics.md documents. If this
@@ -356,9 +362,11 @@ assert_file_missing "$ROLL.2" "only one previous generation is kept"
 # removed, which dropped the event outright.
 rm -f "$ROLL.1"; seed_over_cap
 mkdir -p "$ROLL.rotate.lock"
-L17=$(rmA start --skill en-build); rmA finish "$L17"
+L17=$(rmA start --skill en-build); rmA finish "$L17"; rc=$?
+# Captured at the call. Read after the assertion below, `$?` is that
+# assertion's status, so the check was green for any status finish returned.
+assert_exit_code 0 $rc "finish under a held lock still exits 0"
 assert_file_missing "$ROLL.1" "a held lock skips the rotation"
-assert_eq "0" "$?" "and finish still exits 0"
 assert_contains "$(tail -1 "$ROLL")" "$(head -1 "$L17" | jq -r '.run_id')" \
   "the line is appended to the over-cap file rather than dropped"
 rmdir "$ROLL.rotate.lock"
@@ -425,5 +433,131 @@ assert_eq "0" "$?" "a malformed ledger is not fatal"
 assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" "and produces no rollup line"
 assert_not_contains "$(cat "$ACTIVE")" "$L21" "but is popped from the stack rather than retried forever"
 
+
+# --- 21. finish needs no variable (the defect that made the feature inert) ---
+# `emit` was built pathless because a shell variable does not survive from the
+# call that ran `start` to the call that runs a helper. `finish "$METRICS"`
+# needed exactly such a variable: it resolved empty, hit the silent no-op, and
+# the run was never published, never closed, and parented every later run.
+rm -f "$ROLL" "$ROLL.1"
+L22=$(rmA start --skill en-build)
+rmA emit --kind lint --json '{"scope":"pathless"}'
+# "${METRICS:-}" rather than "$METRICS" only because this file runs under
+# set -u; in a real fresh shell the variable is simply empty, which is the
+# whole point. Either way the helper receives an empty first argument.
+( cd "$PROJ" && env -u ENSEMBLE_RUN_LEDGER -u METRICS ENSEMBLE_ANALYTICS_DIR="$ADIR" \
+    bash "$RM" finish "${METRICS:-}" )
+rc=$?
+assert_exit_code 0 $rc "finish with an unset variable exits 0"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "and still publishes the run"
+assert_eq "1" "$(grep -c '\"kind\":\"finish\"' "$L22" || true)" "and closes the ledger"
+assert_eq "0" "$(wc -c < "$ACTIVE" | tr -d ' ')" "and pops the stack"
+
+# The bare form, with no argument at all.
+rm -f "$ROLL"
+L23=$(rmA start --skill en-plan)
+rmA finish
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "finish with no argument publishes the run"
+assert_eq "en-plan" "$(jq -r '.skill' "$ROLL")" "and publishes the right one"
+
+# summary too, and `event` still demands its explicit path.
+L24=$(rmA start --skill en-build)
+rmA emit --kind dispatch --json '{"agent":"repo-research"}'
+assert_contains "$(rmA summary)" "1 dispatches" "summary with no argument reads the open run"
+rmA event --kind lint --json '{"scope":"x"}' 2>/dev/null
+assert_eq "0" "$(grep -c '\"scope\":\"x\"' "$L24" || true)" \
+  "event without a path writes nothing: it is the explicit-path form"
+rmA finish "$L24"
+
+# --- 22. a run nobody closed stops being live -------------------------------
+# Liveness was only "no finish event", so a killed run stayed live forever: it
+# parented every later run and every emit paid one grep for it. Measured at 365
+# such entries, an emit went from 60ms to 1264ms.
+rm -f "$ROLL"
+L25=$(rmA start --skill en-build)
+touch -t 202001010000 "$L25"                   # yesterday's run, never finished
+L26=$(rmA start --skill en-review)
+assert_eq "null" "$(head -1 "$L26" | jq -r '.parent_run_id')" \
+  "an abandoned run does not parent the next one"
+assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "and is pruned off the stack"
+rmA emit --kind lint --json '{"scope":"after-abandon"}'
+assert_eq "1" "$(grep -c 'after-abandon' "$L26" || true)" "emit targets the live run"
+assert_eq "0" "$(grep -c 'after-abandon' "$L25" || true)" "not the abandoned one"
+rmA finish "$L26"
+
+# A live run one second old is NOT abandoned; the bound must not eat real runs.
+L27=$(rmA start --skill en-build)
+L28=$(rmA start --skill en-review)
+assert_ne "null" "$(head -1 "$L28" | jq -r '.parent_run_id')" \
+  "a fresh parent still parents"
+rmA finish "$L28"; rmA finish "$L27"
+
+# --- 23. the newest live run wins, whatever the stack depth ------------------
+rm -f "$ROLL"
+A1=$(rmA start --skill en-build)
+A2=$(rmA start --skill en-review)
+A3=$(rmA start --skill en-ship)
+rmA emit --kind lint --json '{"scope":"innermost"}'
+assert_eq "1" "$(grep -c 'innermost' "$A3" || true)" "three deep, the innermost run receives the event"
+rmA finish "$A3"
+rmA emit --kind lint --json '{"scope":"next-out"}'
+assert_eq "1" "$(grep -c 'next-out' "$A2" || true)" "and the next one out after it closes"
+rmA finish "$A2"; rmA finish "$A1"
+
+# --- 24. a run cannot be published without being marked first ----------------
+# Publishing is a read of the whole ledger followed by a write. An event landing
+# between those two was in the ledger, absent from the rollup, and then
+# unrecoverable. The `closing` marker means no later emit resolves to it at all.
+rm -f "$ROLL"
+L29=$(rmA start --skill en-build)
+rmA emit --kind lint --json '{"scope":"before-close"}'
+rmA finish "$L29"
+assert_eq "1" "$(grep -c '\"kind\":\"closing\"' "$L29" || true)" "finish marks the ledger before publishing"
+assert_eq "1" "$(jq -r '.counts.lint' "$ROLL")" "and the rollup carries the event that raced in before the mark"
+assert_eq "null" "$(jq -r '.counts.closing' "$ROLL")" "the marker is bookkeeping, not an event"
+assert_eq "null" "$(jq -r '.counts.finish' "$ROLL")" "and neither is the finish line"
+
+# --- 25. a failed publish is retryable, and records nothing meanwhile --------
+rm -f "$ROLL" "$ROLL.1"
+L30=$(rmA start --skill en-build)
+rmA emit --kind lint --json '{"scope":"pre-fail"}'
+chmod 500 "$ADIR"
+rmA finish "$L30" >/dev/null 2>&1
+rc=$?
+assert_exit_code 0 $rc "a finish that cannot publish still exits 0"
+assert_eq "1" "$(grep -c '\"kind\":\"closing\"' "$L30" || true)" "the ledger is marked"
+assert_eq "0" "$(grep -c '\"kind\":\"finish\"' "$L30" || true)" "but not closed, so the run can retry"
+# And while it is marked, nothing new attaches to it.
+h=$(hash_file "$L30")
+rmA emit --kind lint --json '{"scope":"during-close"}'
+assert_eq "$h" "$(hash_file "$L30")" "a marked ledger accepts no further events"
+chmod 700 "$ADIR"
+rmA finish "$L30"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "the retry publishes exactly once"
+assert_eq "1" "$(grep -c '\"kind\":\"closing\"' "$L30" || true)" "and does not re-mark"
+assert_eq "1" "$(jq -r '.counts.lint' "$ROLL")" "with the events it had when it was marked"
+
+# --- 26. --run-id is validated like --skill ---------------------------------
+out=$(rmA start --skill en-build --run-id "$(printf 'a\tb')" 2>/dev/null)
+assert_eq "" "$out" "a run-id containing a tab is refused"
+out=$(rmA start --skill en-build --run-id 'a b' 2>/dev/null)
+assert_eq "" "$out" "so is one containing a space"
+out=$(rmA start --skill en-build --run-id 'ok-1.2_3' 2>/dev/null)
+assert_ne "" "$out" "a well-formed run-id is accepted"
+rmA finish "$out"
+
+# --- 27. a backwards clock records unknown, not a negative ------------------
+rm -f "$ROLL"
+L31=$(rmA start --skill en-build)
+python3 - "$L31" <<'PYEOF'
+import json, sys
+lines = open(sys.argv[1]).read().splitlines()
+d = json.loads(lines[0]); d["at"] = "2099-01-01T00:00:00Z"
+lines[0] = json.dumps(d, separators=(",", ":"))
+open(sys.argv[1], "w").write("\n".join(lines) + "\n")
+PYEOF
+rmA finish "$L31"
+assert_eq "null" "$(jq -r '.duration_s' "$ROLL")" \
+  "a finish earlier than its start records duration_s null, never a negative"
 
 report

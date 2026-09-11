@@ -94,10 +94,13 @@ done
 
 drove=0
 while IFS= read -r t; do
+  # Stripped once per file, not once per (file, pattern): this loop runs over
+  # every test file in the tree, and code_only is a grep over the whole file.
+  stripped=$(code_only "$t")
   drives=0
   for b in $PATTERNS; do
     pat=$(driver_pattern "$b")
-    code_only "$t" | grep -qE "$pat" && { drives=1; break; }
+    printf '%s\n' "$stripped" | grep -qE "$pat" && { drives=1; break; }
   done
   [ "$drives" -eq 1 ] || continue
   # A file may name a writer as DATA rather than run it: this guard holds the
@@ -129,7 +132,7 @@ while IFS= read -r t; do
   while IFS= read -r ln; do
     [ "$exported" -eq 1 ] && break
     printf '%s' "$ln" | grep -q 'ENSEMBLE_ANALYTICS_DIR=' || uncovered=$((uncovered + 1))
-  done < <(for b in $PATTERNS; do pat=$(driver_pattern "$b"); code_only "$t" | grep -E "$pat" || true; done)
+  done < <(for b in $PATTERNS; do pat=$(driver_pattern "$b"); printf '%s\n' "$stripped" | grep -E "$pat" || true; done)
   if [ "$exported" -eq 1 ] || [ "$uncovered" -eq 0 ]; then
     pass "$(basename "$t") redirects analytics away from the operator's store"
   else

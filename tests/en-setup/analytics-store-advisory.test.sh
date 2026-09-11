@@ -82,15 +82,15 @@ out=$(health)
 assert_contains "$out" "unrecognised. Left alone" "an unrecognised file gets no advice"
 
 # --- advisory only: it never blocks, and never deletes -----------------------
-before=$(shasum "$A/something-else.log" | awk '{print $1}')
+before=$(hash_file "$A/something-else.log")
 rm -f "$A/something-else.log"
 rc_clean=$( cd "$P" && ENSEMBLE_ANALYTICS_DIR="$A" bash "$CH" >/dev/null 2>&1; printf '%s' "$?" )
 big "$A/proj.jsonl"
-sum_before=$(shasum "$A/proj.jsonl" | awk '{print $1}')
+sum_before=$(hash_file "$A/proj.jsonl")
 rc_big=$( cd "$P" && ENSEMBLE_ANALYTICS_DIR="$A" bash "$CH" >/dev/null 2>&1; printf '%s' "$?" )
 assert_eq "$rc_clean" "$rc_big" "the advisory does not change the exit status"
 assert_file_exists "$A/proj.jsonl" "the file is still there afterwards"
-assert_eq "$sum_before" "$(shasum "$A/proj.jsonl" | awk '{print $1}')" "and byte-identical: nothing was deleted or rewritten"
+assert_eq "$sum_before" "$(hash_file "$A/proj.jsonl")" "and byte-identical: nothing was deleted or rewritten"
 
 # --- an absent store is not an error -----------------------------------------
 rm -rf "$A"

@@ -36,8 +36,8 @@
 #   ensemble-run-metrics start  --skill <name> [--plan <id>] [--run-id <id>]  -> prints the file path
 #   ensemble-run-metrics emit   --kind <kind> --json '<object>'               -> no path; resolves the run
 #   ensemble-run-metrics event  <file> --kind <kind> --json '<object>'        -> explicit path
-#   ensemble-run-metrics finish <file>
-#   ensemble-run-metrics summary <file>   -> "N dispatches, M peer passes, K lint runs"
+#   ensemble-run-metrics finish  [<file>]   -> path optional; resolves the run itself
+#   ensemble-run-metrics summary [<file>]   -> "N dispatches, M peer passes, K lint runs"
 #
 # OPT-OUT IS CHECKED BY EVERY SUBCOMMAND. `ENSEMBLE_METRICS=off`, or a
 # `metrics:` block with `enabled: false` in <repo>/.ensemble/config.local.yaml.
@@ -91,8 +91,38 @@ _runs_dir() {
   printf '%s\n' "$git_dir/ensemble/runs"
 }
 
-# A ledger is live while it exists and holds no finish event ANYWHERE.
-_ledger_live() { [ -f "$1" ] && ! grep -qF '"kind":"finish"' "$1" 2>/dev/null; }
+# THREE STATES, NOT TWO.
+#   live     accepts events, can be a parent
+#   closing  `finish` has begun publishing; accepts nothing further
+#   closed   the finish event is written
+#
+# `closing` exists because publishing is a read of the whole ledger followed by
+# a write, and an event landing between those two was in the ledger, absent from
+# the rollup, and then unrecoverable because the run was closed. Marking the
+# ledger first means no later emit resolves to it at all.
+_ledger_closed() { [ -f "$1" ] && grep -qF '"kind":"finish"' "$1" 2>/dev/null; }
+_ledger_live() {
+  [ -f "$1" ] || return 1
+  grep -qEF '"kind":"finish"' "$1" 2>/dev/null && return 1
+  ! grep -qF '"kind":"closing"' "$1" 2>/dev/null
+}
+
+# A ledger that began closing and never finished: the rollup failed and the run
+# is waiting for a retry. Not live, but not done either.
+_ledger_closing() {
+  [ -f "$1" ] && grep -qF '"kind":"closing"' "$1" 2>/dev/null && ! _ledger_closed "$1"
+}
+
+# A run killed before its finish step can never satisfy "has a finish event",
+# so without a second bound it stays live forever: it parents every later run in
+# the repo and every emit pays one grep for it. Measured at 365 such entries, an
+# emit went from 60ms to 1264ms. Age is that bound. Twenty-four hours is far
+# longer than any real run and far shorter than forever.
+_ACTIVE_STALE_MINUTES=1440
+
+_ledger_abandoned() {  # <ledger-path>
+  [ -n "$(find "$1" -maxdepth 0 -mmin "+$_ACTIVE_STALE_MINUTES" 2>/dev/null)" ]
+}
 
 # Drop dead entries. Rewritten through a temp file and moved into place, so a
 # reader never sees a half-written stack.
@@ -104,22 +134,41 @@ _active_prune() {  # <active-file>
   while IFS= read -r line; do
     path="${line#*$'\t'}"
     [ "$path" = "$line" ] && continue          # no tab: not a record we wrote
-    _ledger_live "$path" && printf '%s\n' "$line" >> "$tmp"
+    _ledger_live "$path" || continue
+    _ledger_abandoned "$path" && continue
+    printf '%s\n' "$line" >> "$tmp"
   done < "$af"
   mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
 }
 
-# The innermost live run, or nothing.
+# The innermost live run, or nothing. Read BOTTOM-UP and return at the first
+# hit: the newest live entry is the answer, and scanning top-down to overwrite a
+# variable cost one grep per entry on a path that runs dozens of times a build.
 _active_top() {  # <active-file>
-  local af="$1" line path top=""
+  local af="$1" line path
   [ -f "$af" ] || return 1
   while IFS= read -r line; do
     path="${line#*$'\t'}"
     [ "$path" = "$line" ] && continue
-    _ledger_live "$path" && top="$line"
-  done < "$af"
-  [ -n "$top" ] || return 1
-  printf '%s\n' "$top"
+    if _ledger_live "$path" && ! _ledger_abandoned "$path"; then
+      printf '%s\n' "$line"; return 0
+    fi
+  done < <(tail -r "$af" 2>/dev/null || tac "$af" 2>/dev/null)
+  return 1
+}
+
+# $ENSEMBLE_RUN_LEDGER, else the innermost live run, else nothing. The ONE
+# resolution every pathless subcommand uses, so `finish` cannot need a variable
+# that `emit` was built not to need.
+_resolve_ledger() {
+  local f="${ENSEMBLE_RUN_LEDGER:-}" dir top
+  if [ -z "$f" ]; then
+    dir=$(_runs_dir) || return 1
+    top=$(_active_top "$dir/active") || return 1
+    f="${top#*$'\t'}"
+  fi
+  [ -f "$f" ] || return 1
+  printf '%s\n' "$f"
 }
 
 # Remove the entry for one ledger BY PATH, not by position: a parent may finish
@@ -158,6 +207,7 @@ _ALLOW='{
   "review":   ["event","reviewer","findings","personas"],
   "note":     ["message","detail"],
   "child":    ["run_id","skill","ledger"],
+  "closing":  [],
   "select":   ["tier","reason","count","total"],
   "verify":   ["unit","tier","ran","failed","rc","checks"],
   "receipt":  ["op","result","reason","age_s","checks"],
@@ -230,7 +280,7 @@ _rollup() {  # <ledger>
   summary=$(jq -src --arg repo "$repo" --arg now "$(_now)" '
       (map(select(.kind == "start")) | first) as $s
       | if $s == null or ($s.run_id // "") == "" then null else
-          (map(select(.kind != "start"))) as $ev
+          (map(select(.kind != "start" and .kind != "closing" and .kind != "finish"))) as $ev
           | ($ev | group_by(.kind) | map({key: .[0].kind, value: length}) | from_entries) as $counts
           | (map(select(.kind == "outcome")) | last) as $out
           | (map(select(.kind == "select"))  | last) as $sel
@@ -240,8 +290,9 @@ _rollup() {  # <ledger>
              skill: $s.skill, run_id: $s.run_id, plan_id: $s.plan_id, repo: $repo,
              parent_run_id: $s.parent_run_id,
              started_at: $s.at, ended_at: $now,
-             duration_s: (($now | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)
-                          - ($s.at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)),
+             duration_s: ((($now | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)
+                           - ($s.at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime))
+                          | if . < 0 then null else . end),
              counts: $counts,
              outcome: (if $out == null then null else ($out | del(.kind, .at, .dropped)) end),
              detail: {select: (if $sel == null then null
@@ -292,6 +343,12 @@ if [ "$cmd" = "start" ]; then
 
   # Exclusive creation: two runs started in the same second must not share a
   # file, and a caller-supplied --run-id must never truncate an existing run.
+  # Validated like --skill one screen above, and for the same two reasons: it
+  # becomes part of a filename, and it is the key field of a tab-delimited,
+  # newline-delimited record. A tab in it silently unregisters the run.
+  case "$run_id" in
+    *[!A-Za-z0-9._-]*) note "--run-id must be [A-Za-z0-9._-]+; metrics disabled"; exit 0 ;;
+  esac
   [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   file="$dir/$skill-$run_id.jsonl"
   if ! ( set -C; : > "$file" ) 2>/dev/null; then
@@ -328,13 +385,7 @@ if [ "$cmd" = "emit" ]; then
   done
   # Resolution order. Silence when nothing resolves is the contract every
   # emitter's "no run started" test depends on: no output, no directory, exit 0.
-  file="${ENSEMBLE_RUN_LEDGER:-}"
-  if [ -z "$file" ]; then
-    dir=$(_runs_dir) || exit 0
-    top=$(_active_top "$dir/active") || exit 0
-    file="${top#*$'\t'}"
-  fi
-  [ -f "$file" ] || exit 0
+  file=$(_resolve_ledger) || exit 0
   _known_kind "$kind" || { note "emit --kind must be a known kind (got '$kind')"; exit 0; }
   line=$(_compose_line "$kind" "$payload") \
     || { note "emit --json must be a JSON object; file unchanged"; exit 0; }
@@ -342,9 +393,19 @@ if [ "$cmd" = "emit" ]; then
   exit 0
 fi
 
-# --- the explicit-file subcommands -------------------------------------------
-file="${1:-}"; [ $# -gt 0 ] && shift
-[ -n "$file" ] || exit 0                      # metrics were disabled at start: silent no-op
+# --- finish, summary, event --------------------------------------------------
+# The path is OPTIONAL for finish and summary. It has to be: `emit` exists
+# because a shell variable does not survive from the call that ran `start` to
+# the call that runs a helper, and `finish "$METRICS"` needed exactly such a
+# variable. It resolved to the empty string, hit the silent no-op below, and the
+# run was never published, never closed, and left parenting every later run in
+# the repo. `event` still requires its path; it is the explicit-path form.
+file="${1:-}"
+case "${1:-}" in -*) file="" ;; *) [ $# -gt 0 ] && shift ;; esac
+if [ -z "$file" ] && [ "$cmd" != "event" ]; then
+  file=$(_resolve_ledger) || exit 0           # no run open: silent no-op
+fi
+[ -n "$file" ] || exit 0                      # metrics were disabled at start
 [ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
 
 case "$cmd" in
@@ -368,16 +429,28 @@ case "$cmd" in
     _pop() { [ -z "$dir" ] || _active_pop "$dir/active" "$file"; }
     # The stack pop happens whether or not recording is on: an entry left
     # behind by an opted-out finish parents every later run in the repo.
-    if _metrics_off || ! _ledger_live "$file"; then _pop; exit 0; fi
+    if _metrics_off || _ledger_closed "$file"; then _pop; exit 0; fi
 
-    # PUBLISH BEFORE CLOSING. The ledger dies with the clone, so if the finish
-    # event went first and the rollup then failed, this run's only durable
-    # record would be gone with nothing left to retry from. Publishing first
-    # means a failed write leaves the run open and the next finish retries it.
+    # MARK, THEN PUBLISH, THEN CLOSE.
+    #
+    # Publishing is a read of the whole ledger followed by a write, and an event
+    # landing between those two was in the ledger, absent from the rollup, and
+    # unrecoverable because the run was then closed. The `closing` marker goes
+    # down first, in one append, and `_ledger_live` treats a marked ledger as
+    # dead, so no later emit resolves to it. Anything that raced in before the
+    # marker is still read by the rollup below.
+    #
+    # Publishing still precedes the finish event, because the ledger dies with
+    # the clone: if `finish` went first and the rollup then failed, this run's
+    # only durable record would be gone with nothing left to retry from. A
+    # marked-but-unfinished ledger is exactly that retry state.
+    _ledger_closing "$file" \
+      || _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"closing", at:$t}')"
+
     _rollup "$file"; rc=$?
     if [ "$rc" -eq 1 ]; then
-      note "cannot write the analytics rollup; run left open, finish again to retry"
-      exit 0                                  # ledger open, stack entry kept
+      note "cannot write the analytics rollup; run held open, finish again to retry"
+      exit 0                                  # marked, unpublished, stack entry kept
     fi
     [ "$rc" -eq 0 ] || note "ledger has no usable start line; closing without a rollup line"
     _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"finish", at:$t}')"

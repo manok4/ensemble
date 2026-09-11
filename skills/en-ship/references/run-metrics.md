@@ -43,15 +43,24 @@ invoking `/en-review` produces two first-class runs and a link between them.
 
 | When | Call |
 |---|---|
-| Before the first measured operation | `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill <name> [--plan <id>])` |
-| Any terminal stop, success or failure | `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"` |
-| The report line | `bash "$SKILL_DIR/scripts/ensemble-run-metrics" summary "$METRICS"` |
+| Before the first measured operation | `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill <name> [--plan <id>]` |
+| Any terminal stop, success or failure | `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish` |
+| The report line | `bash "$SKILL_DIR/scripts/ensemble-run-metrics" summary` |
+
+**No path, and no variable to carry.** `finish` and `summary` resolve the run the
+same way `emit` does. An earlier version took `"$METRICS"` from `start`, which
+cannot work for the reason at the top of this file: the variable does not survive
+to the call that closes the run. It resolved to the empty string, the helper
+treated that as "metrics disabled", and the run was never published, never
+closed, and parented every later run in the repo. Passing an explicit path still
+works and is what the tests use.
 
 **Every terminal path closes the run.** Success, a refusal, a gate that stopped
 the skill: each one calls `finish`. A run left open keeps its entry on
 `runs/active`, where it becomes a phantom parent for the next run in the repo
 and never produces a rollup line, so closing it is part of stopping rather than
-part of succeeding.
+part of succeeding. A run nobody closes stops counting as live after
+twenty-four hours, which bounds the damage without hiding it.
 
 Every call is fire-and-forget: outside a git repo, without `jq`, or on a bad
 payload the helper prints one stderr line and exits 0, and a run is never
