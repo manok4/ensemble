@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # tests/lint/en-review-outcome-event.test.sh
 #
-# ensemble-analytics: names-writers-as-data — the call shape below is matched as
-# text; the one place this file executes a writer sets the override on the line.
-#
 # /en-review's corroboration split is the answer to the parked peer question,
 # and it is the ONE thing no helper can observe: the buckets exist only in the
 # reconciliation the model performs, and ensemble-peer-invoke contains no notion

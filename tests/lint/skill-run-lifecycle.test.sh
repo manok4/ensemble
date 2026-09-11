@@ -15,11 +15,15 @@
 #                          cannot record en-build from inside en-ship.
 #   A RUN IS CLOSED        exactly one `finish` call site, not zero and not
 #                          several, since each one is a terminal path.
-#   TERMINAL PATHS SAY SO  "finish on every terminal path" is unverifiable as
-#                          prose, so the skill states the contract in a fixed
-#                          phrase and the lint requires it. That does not prove
-#                          the model obeys; it does stop the contract being
-#                          dropped silently, which is what a bypass looks like.
+#   THE CONTRACT IS REACHABLE  "finish on every terminal path" is unverifiable
+#                          as prose. The contract is stated once, in the shared
+#                          reference, and each carrier is checked for a citation
+#                          of it. Counting the phrase across SKILL.md AND that
+#                          reference made five assertions that were one wearing
+#                          five hats: two carriers state it only in the shared
+#                          file, and stripping it from a third left the suite
+#                          green. That does not prove the model obeys; it does
+#                          stop the contract being dropped silently.
 #
 # Negative controls at authoring: deleting en-ship's finish line turned the
 # close assertion red naming en-ship; changing one `start --skill` to another
@@ -27,14 +31,16 @@
 # sentence turned the contract assertion red. The fixtures below re-run all
 # three mechanically.
 
-# ensemble-analytics: names-writers-as-data — every mention of an analytics
-# writer below is a pattern or a fixture body, never an invocation.
-
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="skill run lifecycle"
+
+# This file names invocation shapes as data and executes no writer, but it
+# carries the redirect anyway: there is no exemption, because every static test
+# for "quoted, not executed" turned out to be a hole.
+export ENSEMBLE_ANALYTICS_DIR="${ENSEMBLE_ANALYTICS_DIR:-$(mktemp -d)}"
 
 MARK='\*\*Every terminal path closes the run'
 
@@ -56,7 +62,9 @@ lifecycle_check() {  # <skill-dir>
   LC_WRONG=$(grep -oE 'ensemble-run-metrics" +start --skill [a-z0-9-]+' "$f" \
              | awk '{print $NF}' | grep -vc "^$name$" || true)
   LC_FINISH=$(grep -cE 'ensemble-run-metrics" +finish' "$f" || true)
-  LC_MARK=$(cat "$f" $([ -f "$ref" ] && printf %s "$ref") | grep -cE "$MARK" || true)
+  # Per-skill: does the body POINT at the contract? That is what a model
+  # following this skill can actually reach, and it can fail per carrier.
+  LC_REF=$(grep -cF 'references/run-metrics.md' "$f" || true)
 }
 
 # The carrier set IS the subject list. Nothing is hardcoded, so a skill that
@@ -83,11 +91,19 @@ for d in $carriers; do
     && pass "$name closes its run at exactly one place" \
     || fail "$name has $LC_FINISH finish call sites, expected 1" \
             "zero leaves a stale active entry that parents the next run; several are several terminal paths"
-  [ "$LC_MARK" -ge 1 ] \
-    && pass "$name states that every terminal path closes the run" \
-    || fail "$name does not state the terminal-path contract" \
-            "add the 'Every terminal path closes the run' sentence beside the finish call"
+  [ "$LC_REF" -ge 1 ] \
+    && pass "$name points at the reference that states the terminal-path contract" \
+    || fail "$name never cites references/run-metrics.md" \
+            "the terminal-path contract lives there; a skill that does not cite it cannot reach it"
 done
+
+# The contract itself, asserted ONCE where it lives. Five per-carrier passes off
+# one shared file were five hats on one assertion.
+CONTRACT="$REPO_ROOT/skills/en-build/references/run-metrics.md"
+grep -qE "$MARK" "$CONTRACT" \
+  && pass "the shared reference states that every terminal path closes the run" \
+  || fail "the terminal-path contract is missing from references/run-metrics.md" \
+          "reference-parity carries it to every carrier; without it nothing states the contract"
 
 # --- the guard bites: three fixtures, one per assertion ----------------------
 # A guard that cannot fail is decorative. Each fixture is a real skill body with
@@ -101,12 +117,12 @@ fixture() {  # <name> <body>
   printf '%s\n' "$d"
 }
 
-good='2a. Start: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-good`.
-9. Close: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"`. **Every terminal path closes the run.**'
+good='2a. Start: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-good`, per `references/run-metrics.md`.
+9. Close: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.'
 lifecycle_check "$(fixture en-good "$good")"
-[ "$LC_START" -ge 1 ] && [ "$LC_FINISH" -eq 1 ] && [ "$LC_MARK" -ge 1 ] && [ "$LC_WRONG" -eq 0 ] \
+[ "$LC_START" -ge 1 ] && [ "$LC_FINISH" -eq 1 ] && [ "$LC_REF" -ge 1 ] && [ "$LC_WRONG" -eq 0 ] \
   && pass "the reference fixture passes every check" \
-  || fail "the reference fixture should pass" "start=$LC_START finish=$LC_FINISH mark=$LC_MARK wrong=$LC_WRONG"
+  || fail "the reference fixture should pass" "start=$LC_START finish=$LC_FINISH ref=$LC_REF wrong=$LC_WRONG"
 
 # A terminal path that exits before the close: the bypass this exists to catch.
 bypass='2a. Start: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-bypass`.
@@ -119,15 +135,15 @@ lifecycle_check "$(fixture en-bypass "$bypass")"
 
 # The contract sentence deleted, the calls intact.
 noclaim='2a. `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-noclaim`.
-9. `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"`.'
+9. `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.'
 lifecycle_check "$(fixture en-noclaim "$noclaim")"
-[ "$LC_MARK" -eq 0 ] \
-  && pass "a skill that drops the terminal-path contract is rejected" \
-  || fail "a missing terminal-path sentence should be rejected" "mark=$LC_MARK"
+[ "$LC_REF" -eq 0 ] \
+  && pass "a skill that never cites the contract reference is rejected" \
+  || fail "a skill citing nothing should be rejected" "ref=$LC_REF"
 
 # A copied start line recording somebody else's run.
 copied='2a. `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-build`.
-9. `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"`. **Every terminal path closes the run.**'
+9. `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. **Every terminal path closes the run.**'
 lifecycle_check "$(fixture en-copied "$copied")"
 [ "$LC_WRONG" -ge 1 ] \
   && pass "a start line naming another skill is rejected" \

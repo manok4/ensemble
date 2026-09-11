@@ -22,8 +22,16 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="peer run marker"
 
-. "$REPO_ROOT/skills/en-plan/scripts/ensemble-peer-invoke"
 TMP=$(mktemp -d); OUT="$TMP/peer.json"
+
+# BEFORE the library is sourced and before any _epi_decision call. Sourcing is
+# harmless, but every call below emits, and emit resolves through the current
+# repo's run stack unless told otherwise.
+export ENSEMBLE_ANALYTICS_DIR="$TMP/analytics"
+export ENSEMBLE_RUN_LEDGER="$TMP/stray.jsonl"
+: > "$ENSEMBLE_RUN_LEDGER"
+
+. "$REPO_ROOT/skills/en-plan/scripts/ensemble-peer-invoke"
 
 # --- the marker exists for the window the call is in flight ------------------
 _epi_marker_write "$OUT" "codex" "cross-agent"; _epi_marker_out="$OUT"
@@ -105,6 +113,13 @@ assert_eq "$n" "3" "three skills carry the peer invoker"
 d=$(for f in "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
 assert_eq "$d" "1" "every carried copy is byte-identical"
 
+# Positive evidence that the redirect at the top of this file worked: the
+# decisions above ran before any temp repo existed, and their events are in the
+# stray ledger rather than in whatever run is open in this checkout. Asserted
+# here because the cleanup on the next line takes the ledger with it.
+assert_eq "3" "$(grep -c '"kind":"peer"' "$TMP/stray.jsonl" || true)" \
+  "the early decisions recorded into the stray ledger, not the repo under test"
+
 rm -rf "$TMP"
 # --- the pass is recorded (EN17 U7) ------------------------------------------
 # Half of the parked peer-value question is "what did a pass cost", and until
@@ -113,8 +128,11 @@ rm -rf "$TMP"
 # however it was run.
 RM="$REPO_ROOT/skills/en-review/scripts/ensemble-run-metrics"
 MW="$(mktemp -d)"
-trap 'rm -rf "$MW"' EXIT INT TERM HUP
+trap 'rm -rf "$MW" "$TMP"' EXIT INT TERM HUP
 export ENSEMBLE_ANALYTICS_DIR="$MW/analytics"
+# The stray-ledger override from the top of this file would win over the run
+# this section opens, so it is dropped here and only here.
+unset ENSEMBLE_RUN_LEDGER
 ( cd "$MW" && git init -q . && git config user.email t@e && git config user.name t )
 mled() { ( cd "$MW" && bash "$RM" "$@" ); }
 PL=$(mled start --skill en-review)
@@ -158,7 +176,10 @@ mled finish "$PL"
 no_run=$( cd "$MW" && _epi_decision "on" "default-on" "cross-agent" "high" "alias" "9" "actual" )
 assert_eq "$in_run" "$no_run" "the decision object is unchanged by the recording"
 assert_eq "5" "$(pev)" "and a decision after the run closed records nothing"
-unset ENSEMBLE_ANALYTICS_DIR
+
+# Positive evidence that the redirect at the top of this file worked: the
+# decisions at lines 33-79 ran before any temp repo existed, and their events
+# are in the stray ledger rather than in whatever run is open in this checkout.
 _epi_peer_name=""
 
 report
