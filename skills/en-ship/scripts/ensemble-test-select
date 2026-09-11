@@ -49,6 +49,10 @@
 
 set -u
 
+# Resolved before the cd below: after it, a relative $0 no longer finds the
+# sibling helpers.
+_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || _SELF_DIR=""
+
 MODE="working"; RANGE=""; FILES=""; REPO_ROOT=""; AGENTS_FILE=""
 PREFER_FULL=false; CHEAP_SECONDS=300; MAX_FRACTION=60
 
@@ -85,6 +89,22 @@ cd "$REPO_ROOT" 2>/dev/null || { usage; exit 2; }
 sq() { printf "%s" "$1" | sed "s/'/'\\\\''/g"; }
 
 CHANGED=""
+
+# Record the decision, if a run is open. The helper resolves the ledger itself,
+# so nothing has to be passed in and nothing changes when no run is open: it
+# writes nothing and exits 0, which is what every existing test of this script
+# depends on. A carrier without the sibling degrades to silence, not an error.
+_record_select() {  # <tier> <reason> <count> <total>
+  local rm="$_SELF_DIR/ensemble-run-metrics" r c t
+  [ -n "$_SELF_DIR" ] && [ -x "$rm" ] || return 0
+  r=$(printf '%s' "${2:-}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  case "${3:-}" in ''|*[!0-9]*) c=0 ;; *) c="$3" ;; esac
+  case "${4:-}" in ''|*[!0-9]*) t=0 ;; *) t="$4" ;; esac
+  bash "$rm" emit --kind select \
+    --json "$(printf '{"tier":"%s","reason":"%s","count":%s,"total":%s}' "${1:-}" "$r" "$c" "$t")" \
+    >/dev/null 2>&1 || true
+}
+
 emit() {  # <tier> <command> <paths> <count> <total> <reason>
   printf "TEST_SELECT_TIER='%s'\n"    "$(sq "$1")"
   printf "TEST_SELECT_COMMAND='%s'\n" "$(sq "$2")"
@@ -93,6 +113,7 @@ emit() {  # <tier> <command> <paths> <count> <total> <reason>
   printf "TEST_SELECT_TOTAL='%s'\n"   "$(sq "$5")"
   printf "TEST_SELECT_REASON='%s'\n"  "$(sq "$6")"
   printf "TEST_SELECT_CHANGED='%s'\n" "$(sq "$(printf '%s' "$CHANGED" | tr '\n' ' ')")"
+  _record_select "$1" "$6" "$4" "$5"
   exit 0
 }
 

@@ -220,4 +220,62 @@ done
 ( cd "$P" && timeout 5 bash "$VER" >/dev/null 2>&1 ); rc=$?
 assert_exit_code 2 $rc "no --unit is a usage error"
 
+# --- the selection is recorded (EN17 U4) -------------------------------------
+# The tier a run chose is the raw material for "did test selection narrow
+# anything". It is recorded by the helper that decided it, so nothing has to
+# remember; outside a run it records nothing at all, which is the property every
+# assertion above depends on.
+RM="$REPO_ROOT/skills/en-build/scripts/ensemble-run-metrics"
+export ENSEMBLE_ANALYTICS_DIR="$WORK/analytics"
+ledger() { ( cd "$P" && bash "$RM" "$@" ); }
+
+agents <<'A'
+- **Test:** `npm test`
+- **Test (changed):** `npm test -- {files}`
+A
+L=$(ledger start --skill en-build)
+out=$(sel --working)
+sels=$(grep -c '"kind":"select"' "$L" || true)
+assert_eq "1" "$sels" "a selection inside a run records exactly one event"
+ev=$(grep '"kind":"select"' "$L" | tail -1)
+assert_eq "$(val "$out" TEST_SELECT_TIER)"  "$(printf '%s' "$ev" | jq -r '.tier')"  "the recorded tier is the tier it printed"
+assert_eq "$(val "$out" TEST_SELECT_COUNT)" "$(printf '%s' "$ev" | jq -r '.count')" "and the recorded count matches"
+assert_eq "$(val "$out" TEST_SELECT_REASON)" "$(printf '%s' "$ev" | jq -r '.reason')" "and the reason verbatim"
+
+# Every tier, including the ones that select nothing: a tier that found no
+# tests is exactly the case worth having on disk.
+agents <<'A'
+- **Test:** `npm test`
+A
+before=$(grep -c '"kind":"select"' "$L" || true)
+sel --working >/dev/null
+sel --files "$P/nothing-here.js" >/dev/null
+after=$(grep -c '"kind":"select"' "$L" || true)
+assert_eq "$((before + 2))" "$after" "an empty or fallback selection records too"
+
+# The stdout contract is byte-identical with and without a run open. Anything
+# that eval's this output would break otherwise, and ensemble-unit-verify does.
+agents <<'A'
+- **Test:** `npm test`
+- **Test (changed):** `npm test -- {files}`
+A
+in_run=$(sel --working)
+closed=$(grep -c '"kind":"select"' "$L" || true)
+ledger finish "$L"
+no_run=$(sel --working)
+assert_eq "$in_run" "$no_run" "the stdout contract is identical whether or not a run is open"
+assert_eq "$closed" "$(grep -c '"kind":"select"' "$L" || true)" \
+  "a selection after the run closed records nothing"
+assert_eq "0" "$(wc -c < "$P/.git/ensemble/runs/active" | tr -d ' ')" \
+  "and the closed run is off the active stack"
+
+# A carrier missing the sibling helper degrades to silence, not an error.
+LONE="$WORK/lone"
+mkdir -p "$LONE"
+cp "$SEL" "$LONE/ensemble-test-select"
+out=$( cd "$P" && bash "$LONE/ensemble-test-select" --working 2>&1 )
+rc=$?
+assert_exit_code 0 $rc "a carrier without ensemble-run-metrics still exits 0"
+assert_eq "$no_run" "$out" "and prints the same selection, with nothing on stderr"
+
 report
