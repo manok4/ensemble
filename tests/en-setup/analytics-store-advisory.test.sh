@@ -63,7 +63,7 @@ big "$A/proj.jsonl"
 out=$(health)
 assert_contains "$out" "analytics: proj.jsonl is 6 MB" "an oversized rollup is named"
 assert_contains "$out" "only surviving record" "and classified as the only copy of the data"
-assert_contains "$out" "bin/ensemble-metrics" "with the export command to run first"
+assert_contains "$out" "ensemble-metrics --time --json" "with the export command to run first"
 printf '%s' "$out" | grep -qi 'safe to delete' \
   && fail "the rollup advisory calls it safe to delete" \
           "it is the only surviving copy of that data" \

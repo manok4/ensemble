@@ -122,10 +122,13 @@ appends anyway, so its worst case is a file briefly over the cap.
 
 Three named reports, not a query tool. Each encodes how to read its own numbers.
 
+`ensemble-metrics`, at the Ensemble repo root beside `ensemble-lint`. No skill
+runs it; it is what a person runs to read what the skills recorded.
+
 ```
-bin/ensemble-metrics --peer-value     # per-run peer-only / corroborated / host-only, and the spread
-bin/ensemble-metrics --time           # runs, median, p90 and max duration per skill
-bin/ensemble-metrics --selection      # tier distribution and how much of the suite each selected
+ensemble-metrics --peer-value     # per-run peer-only / corroborated / host-only, and the spread
+ensemble-metrics --time           # runs, median, p90 and max duration per skill
+ensemble-metrics --selection      # tier distribution and how much of the suite each selected
 ```
 
 `--peer-value` reports a **distribution, not a ratio**, and deliberately does

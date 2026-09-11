@@ -145,7 +145,7 @@ if [ -d "$_ch_adir" ]; then
           "${_ln} hook-fire records. Nothing reads them back; removing the file loses only that history." ;;
       *.jsonl|*.jsonl.1)
         check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
-          "${_ln} run summaries, and the only surviving record of runs whose per-clone ledgers are gone. Export first: bin/ensemble-metrics --time --json" ;;
+          "${_ln} run summaries, and the only surviving record of runs whose per-clone ledgers are gone. Export first with the ensemble-metrics --time --json report" ;;
       *)
         check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
           "${_ln} lines, unrecognised. Left alone." ;;
