@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""ensemble-metrics — three named reports over the per-repo analytics rollup.
+
+Three questions, three reports, and no generic query tool. A query language
+would need a schema anyone could hold in their head; these three are the
+questions the data was collected to answer, and each one encodes how to read
+its own numbers.
+
+  --peer-value   does the peer find things the host does not?
+  --time         what does a run of each skill cost?
+  --selection    did test selection actually narrow anything?
+
+Reads ~/.ensemble/analytics/<repo>.jsonl AND <repo>.jsonl.1 together, because
+rotation moves history into .1 and a report that read one file would silently
+lose everything before the last rotation. Read-only: nothing here writes.
+
+--peer-value REPORTS A DISTRIBUTION, NOT A RATIO, and that is deliberate. A
+peer that finds nothing on easy diffs and everything on hard ones averages to
+looking mediocre, so a single number is the one shape that cannot answer the
+question it is for. The per-run rows and the histogram are the answer; there is
+no --peer-value-summary and there should not be.
+"""
+
+import json
+import os
+import statistics
+import subprocess
+import sys
+
+CAP_SMALL_SAMPLE = 5
+
+
+def die(msg, code=2):
+    sys.stderr.write("ensemble-metrics: %s\n" % msg)
+    sys.exit(code)
+
+
+def default_repo():
+    try:
+        top = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL).decode().strip()
+        return os.path.basename(top) or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def load(adir, repo):
+    """Every retained generation, oldest first. Returns (rows, skipped)."""
+    rows, skipped = [], 0
+    for name in ("%s.jsonl.1" % repo, "%s.jsonl" % repo):
+        path = os.path.join(adir, name)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    doc = json.loads(line)
+                except Exception:
+                    skipped += 1          # a truncated final line, or junk
+                    continue
+                if isinstance(doc, dict) and doc.get("run_id"):
+                    rows.append(doc)
+                else:
+                    skipped += 1
+    return rows, skipped
+
+
+def median(sorted_vals):
+    """The ordinary median, averaging the two middle values on an even count.
+    Nearest-rank would report 30 for [10,20,30,40], which is defensible and is
+    not what anyone reading a report means by "median"."""
+    if not sorted_vals:
+        return None
+    return int(round(statistics.median(sorted_vals)))
+
+
+def quantile(sorted_vals, q):
+    """Nearest-rank, which is the right shape for a tail figure like p90."""
+    if not sorted_vals:
+        return None
+    idx = int(round(q * (len(sorted_vals) - 1)))
+    return sorted_vals[max(0, min(idx, len(sorted_vals) - 1))]
+
+
+def small_sample(n):
+    return ("note: %d run(s) back this report. A median over fewer than %d is "
+            "an anecdote." % (n, CAP_SMALL_SAMPLE)) if n < CAP_SMALL_SAMPLE else None
+
+
+# --- reports -----------------------------------------------------------------
+
+def report_peer_value(rows):
+    scored, no_outcome = [], 0
+    for r in rows:
+        out = r.get("outcome")
+        if not isinstance(out, dict) or "peer_only" not in out:
+            no_outcome += 1
+            continue
+        scored.append({
+            "run_id": r["run_id"], "skill": r.get("skill"),
+            "peer_only": out.get("peer_only") or 0,
+            "corroborated": out.get("corroborated") or 0,
+            "host_only": out.get("host_only") or 0,
+        })
+    hist = {}
+    for s in scored:
+        hist[s["peer_only"]] = hist.get(s["peer_only"], 0) + 1
+    return {
+        "report": "peer-value", "runs_scored": len(scored),
+        "runs_without_outcome": no_outcome,
+        "rows": scored,
+        "peer_only_histogram": hist,
+        "runs_where_peer_found_nothing": hist.get(0, 0),
+    }
+
+
+def report_time(rows):
+    by_skill = {}
+    for r in rows:
+        if r.get("ended_at") is None:
+            continue                      # an unfinished run has no duration
+        d = by_skill.setdefault(r.get("skill") or "unknown",
+                                {"runs": 0, "durations": [], "counts": {}})
+        d["runs"] += 1
+        dur = r.get("duration_s")
+        if isinstance(dur, int):
+            d["durations"].append(dur)
+        for k, v in (r.get("counts") or {}).items():
+            d["counts"][k] = d["counts"].get(k, 0) + v
+    out = []
+    for skill in sorted(by_skill):
+        d = by_skill[skill]
+        vals = sorted(d["durations"])
+        out.append({"skill": skill, "runs": d["runs"],
+                    "median_s": median(vals), "p90_s": quantile(vals, 0.9),
+                    "max_s": vals[-1] if vals else None, "counts": d["counts"]})
+    return {"report": "time", "skills": out,
+            "runs": sum(s["runs"] for s in out)}
+
+
+def report_selection(rows):
+    by_tier = {}
+    for r in rows:
+        sel = (r.get("detail") or {}).get("select")
+        if not isinstance(sel, dict):
+            continue
+        t = by_tier.setdefault(sel.get("tier") or "unknown",
+                               {"runs": 0, "selected": 0, "total": 0})
+        t["runs"] += 1
+        t["selected"] += sel.get("count") or 0
+        t["total"] += sel.get("total") or 0
+    out = []
+    for tier in sorted(by_tier):
+        t = by_tier[tier]
+        ratio = (float(t["selected"]) / t["total"]) if t["total"] else None
+        out.append({"tier": tier, "runs": t["runs"], "selected": t["selected"],
+                    "total": t["total"], "mean_ratio": ratio})
+    return {"report": "selection", "tiers": out,
+            "runs": sum(t["runs"] for t in out)}
+
+
+# --- rendering ---------------------------------------------------------------
+
+def render(doc, skipped):
+    L = []
+    if doc["report"] == "peer-value":
+        L.append("Peer value — %d run(s) with an outcome" % doc["runs_scored"])
+        if doc["runs_without_outcome"]:
+            L.append("  %d run(s) recorded no outcome and are excluded, not counted as zero."
+                     % doc["runs_without_outcome"])
+        if doc["rows"]:
+            L.append("")
+            L.append("  %-26s %-14s %6s %6s %6s" % ("run", "skill", "peer", "both", "host"))
+            for r in doc["rows"]:
+                L.append("  %-26s %-14s %6d %6d %6d" % (
+                    r["run_id"][:26], (r["skill"] or "")[:14],
+                    r["peer_only"], r["corroborated"], r["host_only"]))
+            L.append("")
+            L.append("  peer-only findings per run:")
+            for k in sorted(doc["peer_only_histogram"]):
+                L.append("    %3d findings  %s (%d)" % (
+                    k, "#" * doc["peer_only_histogram"][k],
+                    doc["peer_only_histogram"][k]))
+            L.append("  the peer found nothing new in %d of %d run(s)."
+                     % (doc["runs_where_peer_found_nothing"], doc["runs_scored"]))
+            L.append("  read the spread, not an average: a peer that finds nothing on easy")
+            L.append("  diffs and everything on hard ones averages to looking mediocre.")
+        note = small_sample(doc["runs_scored"])
+    elif doc["report"] == "time":
+        L.append("Time — %d finished run(s)" % doc["runs"])
+        L.append("")
+        L.append("  %-14s %5s %8s %8s %8s  %s" % ("skill", "runs", "median", "p90", "max", "events"))
+        for s in doc["skills"]:
+            ev = ", ".join("%s=%d" % (k, s["counts"][k]) for k in sorted(s["counts"])) or "-"
+            L.append("  %-14s %5d %8s %8s %8s  %s" % (
+                s["skill"], s["runs"],
+                "-" if s["median_s"] is None else "%ds" % s["median_s"],
+                "-" if s["p90_s"] is None else "%ds" % s["p90_s"],
+                "-" if s["max_s"] is None else "%ds" % s["max_s"], ev))
+        note = small_sample(doc["runs"])
+    else:
+        L.append("Selection — %d run(s) that selected tests" % doc["runs"])
+        L.append("")
+        L.append("  %-14s %5s %10s %10s %8s" % ("tier", "runs", "selected", "total", "ratio"))
+        for t in doc["tiers"]:
+            L.append("  %-14s %5d %10d %10d %8s" % (
+                t["tier"], t["runs"], t["selected"], t["total"],
+                "-" if t["mean_ratio"] is None else "%.2f" % t["mean_ratio"]))
+        note = small_sample(doc["runs"])
+    if skipped:
+        L.append("")
+        L.append("  %d unparseable line(s) skipped." % skipped)
+    if note:
+        L.append("")
+        L.append("  " + note)
+    return "\n".join(L)
+
+
+def main(argv):
+    which = None
+    repo = None
+    adir = os.environ.get("ENSEMBLE_ANALYTICS_DIR") or \
+        os.path.join(os.path.expanduser("~"), ".ensemble", "analytics")
+    as_json = False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("--peer-value", "--time", "--selection"):
+            which = a[2:]
+        elif a == "--repo":
+            i += 1
+            if i >= len(argv):
+                die("--repo needs a value")
+            repo = argv[i]
+        elif a == "--analytics-dir":
+            i += 1
+            if i >= len(argv):
+                die("--analytics-dir needs a value")
+            adir = argv[i]
+        elif a == "--json":
+            as_json = True
+        elif a in ("-h", "--help"):
+            sys.stdout.write(__doc__)
+            return 0
+        else:
+            die("unknown flag %s\n"
+                "usage: ensemble-metrics [--peer-value|--time|--selection] "
+                "[--repo <name>] [--analytics-dir <path>] [--json]" % a)
+        i += 1
+    if which is None:
+        die("pick one report: --peer-value, --time or --selection")
+    if repo is None:
+        repo = default_repo()
+
+    rows, skipped = load(adir, repo)
+    if not rows:
+        if as_json:
+            print(json.dumps({"report": which, "repo": repo, "rows": [],
+                              "note": "no data yet"}, sort_keys=True))
+        else:
+            print("no data yet for '%s' in %s" % (repo, adir))
+        return 0
+
+    doc = {"peer-value": report_peer_value,
+           "time": report_time,
+           "selection": report_selection}[which](rows)
+    doc["repo"] = repo
+    doc["skipped_lines"] = skipped
+    if as_json:
+        print(json.dumps(doc, sort_keys=True))
+    else:
+        print(render(doc, skipped))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
