@@ -25,6 +25,8 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 
 1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE` for the Outside Voice pass.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
+
+2a. **Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-foundation)`. Fire-and-forget; the peer pass below records into it without being told where, per `references/run-metrics.md`.
 3. **Detect mode.**
    - `--retrofit` flag, or `docs/foundation.md` exists with `status: draft` → retrofit/edit mode.
    - Otherwise → fresh mode.
@@ -103,7 +105,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
     - New project: `docs/foundation.md` did not exist before this run AND repo has no source code outside `node_modules/`/`vendor/`/equivalents (or initial-commit state) → emit `docs/plans/active/<PREFIX>01-feature_project-setup.md` using `references/templates/plan-template.md` with `plan_type: feature`, units for repo init, dependencies, CI, baseline tests. `<PREFIX>` is the resolved `plan_id_prefix`.
     - Existing project → skip the bootstrap plan entirely.
 16. **Final save.** Flip `docs/foundation.md` `status:` from `draft` to `active` after the user accepts the peer-reviewed version.
-17. **Hand off.** Suggest next step:
+17. **Hand off, then close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"`. **Every terminal path closes the run**, a refused mode and an abandoned draft included. Suggest next step:
     - New project: "Run `/en-build docs/plans/active/<PREFIX>01-feature_project-setup.md` to bootstrap the repo."
     - Existing project: "Run `/en-plan` for the first feature."
 

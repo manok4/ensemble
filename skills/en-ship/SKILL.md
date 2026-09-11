@@ -19,6 +19,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    - **Existing PR** — `gh pr list --head <branch> --state open`. **If one exists, this run updates it**: step 12 pushes to it and the watch loop resumes on it, and `gh pr create` is never called a second time. Re-running `/en-ship` on a branch that already has a PR is an ordinary, safe operation, not a new ship.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't ship).
+
+2a. **Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-ship)`. Nothing below is told where to record: the helpers find the run themselves. Fire-and-forget, and it never blocks a ship; `references/run-metrics.md` carries the event vocabulary.
 3. **Pre-flight.** Fetch, then let the helper classify: `git fetch origin <base>`, then `bash "$SKILL_DIR/scripts/ensemble-ship-preflight" --base origin/<base> [--scope <path>]... --json`. It returns the branch, `ahead`/`behind`, `published`, `staging_case`, `scope_matched`, `excluded` and `untracked_inventory`, and never stages, fetches or rewrites. A state it cannot ship from (detached HEAD, a conflicted tree, an unresolvable base) exits 1 with a `blocked` reason and the run stops. Pass `--scope` only when the user named the paths this ship is about.
    - **Default-branch protection** — if `HEAD == main`, ask explicitly: "Pushing directly to `main`. Confirm? (y/N)". Default no.
    - **Base freshness.** The fetch is what makes a moved base detectable; report the ahead/behind counts. Checking the diff without fetching is how a branch reaches push time needing an unplanned rebase.
@@ -141,6 +143,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
     7. **Never auto-merges.** The loop leaves merging to you (or to `--auto-merge`, below). `--no-watch` opens the PR and stops.
 14. **Auto-merge (`--auto-merge`).** Opt-in. **Arm it only after the watch loop reaches a clean state** (step 13.6 `clean`: green checks AND no unresolved trusted review findings) — arming it before then can merge the PR while review-model findings are still open, unless the review model is itself a **required, blocking** status check. Once clean, run `gh pr merge --auto --squash` (or `--rebase` per repo convention) so GitHub lands it when required checks pass and approvals clear. If `--no-watch` is combined with `--auto-merge`, warn that no local loop will gate the merge and rely on required checks. Requires the repo to allow auto-merge (Settings → Pull Requests → Allow auto-merge). **Default OFF** - the default stops at a green, mergeable PR for you to merge.
+
+15. **Close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"`, then report as usual. **Every terminal path closes the run.** Success, a blocked preflight, a secret-scan stop, a failed push: each ends here.
 
 ## Flags
 

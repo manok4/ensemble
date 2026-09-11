@@ -1,0 +1,405 @@
+#!/usr/bin/env bash
+# ensemble-run-metrics — record what a run can observe (EN16 U11, EN17 U1, D106).
+#
+# One JSONL file per SKILL RUN under $(git rev-parse --git-dir)/ensemble/runs/,
+# next to the verification receipt: never committed, no .gitignore entry, gone
+# with the clone. Events are what a helper can see: the tier a selection chose,
+# the exit code a verification returned, the decision and elapsed seconds of a
+# peer pass. A model composing a JSON payload by hand is the intrusion this
+# removes, and it is why two skills carried call points for weeks and produced
+# nothing.
+#
+# THE LEDGER IS ADDRESSED THROUGH A FILE, NOT AN ENVIRONMENT VARIABLE.
+# `emit` takes no path. It resolves, in order: $ENSEMBLE_RUN_LEDGER when set,
+# else the last live line of `runs/active`, else nothing at all. The env var
+# alone cannot work here, because every tool call in the host is a fresh shell:
+# a variable exported by the call that ran `start` is gone by the call that runs
+# ensemble-unit-verify. `active` survives across shells, is per-repo, is never
+# committed, and disappears with the clone like the ledgers it points at.
+#
+# A LINE IS LIVE WHEN ITS LEDGER HAS NO `finish` EVENT ANYWHERE IN IT.
+# Not "when the last line is not finish": an event arriving after finish, which
+# a stale $ENSEMBLE_RUN_LEDGER in some other shell produces, would otherwise
+# resurrect a closed run and misattribute everything after it.
+#
+# NESTING NEEDS NO SKILL CHANGES. When `start` finds a live entry it appends a
+# `child` pointer to that ledger and records `parent_run_id` in its own. Both
+# directions are written by the helper that holds both paths.
+#
+# ONE JSON OBJECT PER LINE, appended. The previous format rewrote the whole
+# document through jq under a lock, which cost O(n) per event and, worse, DROPPED
+# the event when the lock was busy for five seconds — and /en-review dispatches
+# seven personas at once. An append needs no lock, and a partial write costs one
+# line rather than the file.
+#
+# Usage:
+#   ensemble-run-metrics start  --skill <name> [--plan <id>] [--run-id <id>]  -> prints the file path
+#   ensemble-run-metrics emit   --kind <kind> --json '<object>'               -> no path; resolves the run
+#   ensemble-run-metrics event  <file> --kind <kind> --json '<object>'        -> explicit path
+#   ensemble-run-metrics finish <file>
+#   ensemble-run-metrics summary <file>   -> "N dispatches, M peer passes, K lint runs"
+#
+# OPT-OUT IS CHECKED BY EVERY SUBCOMMAND. `ENSEMBLE_METRICS=off`, or a
+# `metrics:` block with `enabled: false` in <repo>/.ensemble/config.local.yaml.
+# Checking it only at `start` would leave a run begun before the operator opted
+# out still recording afterwards. `finish` is the one exception that still does
+# work while off: it pops `active`, because that stack is run bookkeeping rather
+# than analytics, and an entry left behind becomes a phantom parent for every
+# later run in the repo.
+#
+# NEVER BLOCKS A RUN. Outside a git repo, without jq, or on a malformed
+# payload it prints one stderr line and exits 0; `start` then prints nothing,
+# and every later call is a no-op.
+
+set -u
+
+note() { printf 'ensemble-run-metrics: %s\n' "$*" >&2; }
+
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+case "$cmd" in start|emit|event|finish|summary) ;; -h|--help|"") sed -n '2,20p' "$0" >&2; exit 0 ;; *) note "unknown command: $cmd"; exit 0 ;; esac
+
+command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this run"; exit 0; }
+
+# --- opt-out -----------------------------------------------------------------
+# Returns 0 when recording is OFF. `ensemble-config-get` is deliberately not
+# used: it reads flat top-level keys only, skipping every indented line, so it
+# cannot see a nested `metrics:` block at all — and en-build does not carry it,
+# so pulling it in would add a script to a skill to read one boolean.
+# skills/en-sweep/scripts/ensemble-sweep-runner hand-rolls the same parser for
+# the same reason.
+_metrics_off() {
+  [ "${ENSEMBLE_METRICS:-}" != "off" ] || return 0
+  local root cfg
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  cfg="$root/.ensemble/config.local.yaml"
+  [ -f "$cfg" ] || return 1
+  awk '
+    /^metrics:[[:space:]]*(#.*)?$/ { inblk = 1; next }
+    /^[^[:space:]#]/               { inblk = 0 }
+    inblk && /^[[:space:]]+enabled:[[:space:]]*false[[:space:]]*(#.*)?$/ { found = 1 }
+    END { exit(found ? 0 : 1) }
+  ' "$cfg"
+}
+
+# --- the runs directory and the active stack ---------------------------------
+# Absolute: `--git-dir` answers `.git` from the top level, and later calls come
+# from wherever the helper happens to be when it records an event.
+_runs_dir() {
+  local git_dir
+  git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) \
+    || git_dir=$(d=$(git rev-parse --git-dir 2>/dev/null) && cd "$d" 2>/dev/null && pwd) \
+    || return 1
+  printf '%s\n' "$git_dir/ensemble/runs"
+}
+
+# A ledger is live while it exists and holds no finish event ANYWHERE.
+_ledger_live() { [ -f "$1" ] && ! grep -qF '"kind":"finish"' "$1" 2>/dev/null; }
+
+# Drop dead entries. Rewritten through a temp file and moved into place, so a
+# reader never sees a half-written stack.
+_active_prune() {  # <active-file>
+  local af="$1" tmp line path
+  [ -f "$af" ] || return 0
+  tmp="$af.$$"
+  : > "$tmp" 2>/dev/null || return 0
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$line" ] && continue          # no tab: not a record we wrote
+    _ledger_live "$path" && printf '%s\n' "$line" >> "$tmp"
+  done < "$af"
+  mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
+}
+
+# The innermost live run, or nothing.
+_active_top() {  # <active-file>
+  local af="$1" line path top=""
+  [ -f "$af" ] || return 1
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$line" ] && continue
+    _ledger_live "$path" && top="$line"
+  done < "$af"
+  [ -n "$top" ] || return 1
+  printf '%s\n' "$top"
+}
+
+# Remove the entry for one ledger BY PATH, not by position: a parent may finish
+# while its child is still open.
+_active_pop() {  # <active-file> <ledger-path>
+  local af="$1" target="$2" tmp line path
+  [ -f "$af" ] || return 0
+  tmp="$af.$$"
+  : > "$tmp" 2>/dev/null || return 0
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$target" ] || printf '%s\n' "$line" >> "$tmp"
+  done < "$af"
+  mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
+}
+
+# A PER-KIND KEY ALLOWLIST, ENFORCED HERE AND NOWHERE ELSE.
+# The kind names the schema; keys the kind does not name are dropped before the
+# line reaches disk, so nothing downstream has to re-filter and an emitter
+# cannot leak a path, a branch name or a payload nobody reviewed. The existing
+# nine kinds carry exactly what references/run-metrics.md documents, so nothing
+# already recorded starts being dropped.
+#
+# A drop is LOUD ON STDERR and counted on the written line. The failure this
+# guards against is a helper emitting a new field that is quietly discarded
+# until someone edits this table, whose symptom is a number that is always zero.
+_ALLOW='{
+  "dispatch": ["agent","host","model","model_source","started","ended"],
+  "peer":     ["iteration","peer_decision","tokens",
+               "peer","decision","reason","peer_mode","effort","model_alias","model_actual","elapsed_s"],
+  "lint":     ["scope","seconds"],
+  "findings": ["iteration","P0","P1","P2","P3"],
+  "unit":     ["unit","event","commit","verify_exit","selection_tier"],
+  "phase":    ["checkpoint","event","units","outcome"],
+  "suite":    ["where","seconds","outcome"],
+  "review":   ["event","reviewer","findings","personas"],
+  "note":     ["message","detail"],
+  "child":    ["run_id","skill","ledger"],
+  "select":   ["tier","reason","count","total"],
+  "verify":   ["unit","tier","ran","failed","rc","checks"],
+  "receipt":  ["op","result","reason","age_s","checks"],
+  "outcome":  ["result","verdict","findings_total","peer_only","corroborated","host_only",
+               "applied","deferred","disagreed","units_total","units_done","gates_failed"]
+}'
+
+_known_kind() { printf '%s' "$_ALLOW" | jq -e --arg k "$1" 'has($k)' >/dev/null 2>&1; }
+
+# Prints the composed line on stdout. Names any dropped keys on stderr.
+# Returns non-zero when the payload is not an object or cannot be encoded.
+_compose_line() {  # <kind> <payload>
+  local kind="$1" payload="$2" dropped line
+  printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1 || return 1
+  dropped=$(jq -rn --arg k "$kind" --argjson p "$payload" --argjson a "$_ALLOW" \
+    '($a[$k] // []) as $keys | [$p | keys[] | . as $x | select(($keys | index($x)) == null)] | join(", ")' 2>/dev/null) || return 1
+  [ -z "$dropped" ] || note "kind $kind does not carry: $dropped (dropped before the write)"
+  line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" --argjson a "$_ALLOW" '
+      ($a[$k] // []) as $keys
+      | ($p | with_entries(select(.key as $x | ($keys | index($x)) != null))) as $kept
+      | (($p | keys | length) - ($kept | keys | length)) as $n
+      | {kind:$k, at:$t} + $kept + (if $n > 0 then {dropped:$n} else {} end)' 2>/dev/null) || return 1
+  printf '%s\n' "$line"
+}
+
+_append() {  # <file> <compact json line>
+  printf '%s\n' "$2" >> "$1" 2>/dev/null || note "cannot append to $1; event dropped"
+}
+
+_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# --- the durable rollup ------------------------------------------------------
+# The per-clone ledgers die with the clone. This one line per run is the only
+# record that outlives it, so it is wide on purpose: a field omitted today is
+# unrecoverable for every run before someone adds it.
+#
+# It lands beside ~/.ensemble/analytics/guardrail.jsonl rather than in a new
+# directory, and honours ENSEMBLE_ANALYTICS_DIR for exactly the reason that file
+# reached 71,171 events of which 97% were test noise: a writer a suite cannot
+# redirect is a writer that poisons the data it exists to produce.
+_ROLLUP_CAP=5242880          # 5 MB; one previous generation kept, so ~10 MB total
+
+_analytics_dir() { printf '%s\n' "${ENSEMBLE_ANALYTICS_DIR:-$HOME/.ensemble/analytics}"; }
+
+# Rename an over-cap file out of the way. SERIALIZED, because two finishes both
+# seeing it over the cap would each mv it to .1 and the second would overwrite
+# the first's generation — 5 MB of history gone, not merely reordered.
+# Failing to take the lock skips the rename and appends anyway: the worst case
+# is a file that stays over the cap until the next run. Never a dropped event.
+_rotate() {  # <target>
+  local t="$1" lock size
+  [ -f "$t" ] || return 0
+  size=$(wc -c < "$t" 2>/dev/null | tr -d ' ') || return 0
+  case "$size" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$size" -ge "$_ROLLUP_CAP" ] || return 0
+  lock="$t.rotate.lock"
+  mkdir "$lock" 2>/dev/null || return 0
+  size=$(wc -c < "$t" 2>/dev/null | tr -d ' ')
+  case "$size" in ''|*[!0-9]*) size=0 ;; esac
+  [ "$size" -lt "$_ROLLUP_CAP" ] || mv -f "$t" "$t.1" 2>/dev/null || true
+  rmdir "$lock" 2>/dev/null || true
+}
+
+# 0 published (or already present), 1 retryable (store unwritable),
+# 2 unrecoverable (the ledger will never parse).
+_rollup() {  # <ledger>
+  local f="$1" repo adir target summary run_id
+  repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null) || repo=""
+  [ -n "$repo" ] || repo="unknown"
+  summary=$(jq -src --arg repo "$repo" --arg now "$(_now)" '
+      (map(select(.kind == "start")) | first) as $s
+      | if $s == null or ($s.run_id // "") == "" then null else
+          (map(select(.kind != "start"))) as $ev
+          | ($ev | group_by(.kind) | map({key: .[0].kind, value: length}) | from_entries) as $counts
+          | (map(select(.kind == "outcome")) | last) as $out
+          | (map(select(.kind == "select"))  | last) as $sel
+          | (map(select(.kind == "peer")) | map({peer, decision, elapsed_s})) as $peers
+          | (map(.dropped // 0) | add // 0) as $dropped
+          | {schema: 1,
+             skill: $s.skill, run_id: $s.run_id, plan_id: $s.plan_id, repo: $repo,
+             parent_run_id: $s.parent_run_id,
+             started_at: $s.at, ended_at: $now,
+             duration_s: (($now | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)
+                          - ($s.at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)),
+             counts: $counts,
+             outcome: (if $out == null then null else ($out | del(.kind, .at, .dropped)) end),
+             detail: {select: (if $sel == null then null
+                               else {tier: $sel.tier, count: $sel.count, total: $sel.total} end),
+                      peer: $peers},
+             dropped: $dropped}
+        end' "$f" 2>/dev/null) || return 2
+  [ -n "$summary" ] && [ "$summary" != "null" ] || return 2
+  run_id=$(printf '%s' "$summary" | jq -r '.run_id' 2>/dev/null) || return 2
+  [ -n "$run_id" ] && [ "$run_id" != "null" ] || return 2
+
+  adir=$(_analytics_dir)
+  mkdir -p "$adir" 2>/dev/null || return 1
+  target="$adir/$repo.jsonl"
+  # Idempotent on run_id across EVERY retained generation. Scanning only the
+  # current file would re-append a run whose line had just been rotated out.
+  grep -qF "\"run_id\":\"$run_id\"" "$target" "$target.1" 2>/dev/null && return 0
+  _rotate "$target"
+  printf '%s\n' "$summary" >> "$target" 2>/dev/null || return 1
+  return 0
+}
+
+# --- start -------------------------------------------------------------------
+if [ "$cmd" = "start" ]; then
+  _metrics_off && exit 0
+  plan="" run_id="" skill=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --skill)  [ $# -ge 2 ] || { note "--skill needs a value"; exit 0; };  skill="$2"; shift 2 ;;
+      --plan)   [ $# -ge 2 ] || { note "--plan needs a value"; exit 0; };   plan="$2"; shift 2 ;;
+      --run-id) [ $# -ge 2 ] || { note "--run-id needs a value"; exit 0; }; run_id="$2"; shift 2 ;;
+      *) note "unknown flag for start: $1"; exit 0 ;;
+    esac
+  done
+  [ -n "$skill" ] || { note "start needs --skill <name>"; exit 0; }
+  case "$skill" in *[!a-z0-9-]*) note "--skill must be [a-z0-9-]+ (got '$skill'); metrics disabled"; exit 0 ;; esac
+  dir=$(_runs_dir) || { note "not inside a git repository; metrics disabled"; exit 0; }
+  mkdir -p "$dir" 2>/dev/null || { note "cannot create $dir; metrics disabled"; exit 0; }
+  active="$dir/active"
+
+  # Prune first, so a vanished or already-finished run never becomes a parent.
+  _active_prune "$active"
+  parent_ledger="" parent_id=""
+  if top=$(_active_top "$active"); then
+    parent_ledger="${top#*$'\t'}"
+    parent_id="${top%%$'\t'*}"
+  fi
+
+  # Exclusive creation: two runs started in the same second must not share a
+  # file, and a caller-supplied --run-id must never truncate an existing run.
+  [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  file="$dir/$skill-$run_id.jsonl"
+  if ! ( set -C; : > "$file" ) 2>/dev/null; then
+    note "metrics file already exists: $file; metrics disabled for this run"; exit 0
+  fi
+  if ! jq -nc --arg s "$skill" --arg p "$plan" --arg r "$run_id" --arg pr "$parent_id" --arg t "$(_now)" \
+        '{kind:"start", skill:$s, plan_id:(if $p == "" then null else $p end), run_id:$r,
+          parent_run_id:(if $pr == "" then null else $pr end), at:$t}' > "$file" 2>/dev/null; then
+    note "cannot write $file; metrics disabled"; rm -f "$file"; exit 0
+  fi
+
+  # The pointer goes in before the stack entry, so a parent that dies between
+  # the two still records that a child existed.
+  if [ -n "$parent_ledger" ]; then
+    _append "$parent_ledger" "$(jq -nc --arg r "$run_id" --arg s "$skill" --arg l "$file" --arg t "$(_now)" \
+      '{kind:"child", at:$t, run_id:$r, skill:$s, ledger:$l}')"
+  fi
+  printf '%s\t%s\n' "$run_id" "$file" >> "$active" 2>/dev/null \
+    || note "cannot register the run on $active; nested attribution unavailable"
+  printf '%s\n' "$file"
+  exit 0
+fi
+
+# --- emit: no path, resolve the run ------------------------------------------
+if [ "$cmd" = "emit" ]; then
+  _metrics_off && exit 0
+  kind="" payload=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --kind) [ $# -ge 2 ] || { note "--kind needs a value"; exit 0; }; kind="$2"; shift 2 ;;
+      --json) [ $# -ge 2 ] || { note "--json needs a value"; exit 0; }; payload="$2"; shift 2 ;;
+      *) note "unknown flag for emit: $1"; exit 0 ;;
+    esac
+  done
+  # Resolution order. Silence when nothing resolves is the contract every
+  # emitter's "no run started" test depends on: no output, no directory, exit 0.
+  file="${ENSEMBLE_RUN_LEDGER:-}"
+  if [ -z "$file" ]; then
+    dir=$(_runs_dir) || exit 0
+    top=$(_active_top "$dir/active") || exit 0
+    file="${top#*$'\t'}"
+  fi
+  [ -f "$file" ] || exit 0
+  _known_kind "$kind" || { note "emit --kind must be a known kind (got '$kind')"; exit 0; }
+  line=$(_compose_line "$kind" "$payload") \
+    || { note "emit --json must be a JSON object; file unchanged"; exit 0; }
+  _append "$file" "$line"
+  exit 0
+fi
+
+# --- the explicit-file subcommands -------------------------------------------
+file="${1:-}"; [ $# -gt 0 ] && shift
+[ -n "$file" ] || exit 0                      # metrics were disabled at start: silent no-op
+[ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
+
+case "$cmd" in
+  event)
+    _metrics_off && exit 0
+    kind="" payload=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --kind) [ $# -ge 2 ] || { note "--kind needs a value"; exit 0; }; kind="$2"; shift 2 ;;
+        --json) [ $# -ge 2 ] || { note "--json needs a value"; exit 0; }; payload="$2"; shift 2 ;;
+        *) note "unknown flag for event: $1"; exit 0 ;;
+      esac
+    done
+    _known_kind "$kind" || { note "event --kind must be a known kind (got '$kind')"; exit 0; }
+    line=$(_compose_line "$kind" "$payload") \
+      || { note "event --json must be a JSON object; file unchanged"; exit 0; }
+    _append "$file" "$line"
+    ;;
+  finish)
+    dir=$(_runs_dir) || dir=""
+    _pop() { [ -z "$dir" ] || _active_pop "$dir/active" "$file"; }
+    # The stack pop happens whether or not recording is on: an entry left
+    # behind by an opted-out finish parents every later run in the repo.
+    if _metrics_off || ! _ledger_live "$file"; then _pop; exit 0; fi
+
+    # PUBLISH BEFORE CLOSING. The ledger dies with the clone, so if the finish
+    # event went first and the rollup then failed, this run's only durable
+    # record would be gone with nothing left to retry from. Publishing first
+    # means a failed write leaves the run open and the next finish retries it.
+    _rollup "$file"; rc=$?
+    if [ "$rc" -eq 1 ]; then
+      note "cannot write the analytics rollup; run left open, finish again to retry"
+      exit 0                                  # ledger open, stack entry kept
+    fi
+    [ "$rc" -eq 0 ] || note "ledger has no usable start line; closing without a rollup line"
+    _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"finish", at:$t}')"
+    _pop
+    ;;
+  summary)
+    # The three original counts are always present, so a caller can match on
+    # them; a build's counts are appended only when it recorded any.
+    jq -rs '[
+      ([.[] | select(.kind=="dispatch")] | length | tostring) + " dispatches",
+      ([.[] | select(.kind=="peer")]     | length | tostring) + " peer passes",
+      ([.[] | select(.kind=="lint")]     | length | tostring) + " lint runs"
+    ] as $base
+    | [ ([.[] | select(.kind=="unit"  and .event=="end")] | length),
+        ([.[] | select(.kind=="phase" and .event=="end")] | length),
+        ([.[] | select(.kind=="suite")] | length) ] as $b
+    | $base
+      + (if $b[0] > 0 then [($b[0]|tostring) + " units"]      else [] end)
+      + (if $b[1] > 0 then [($b[1]|tostring) + " phases"]     else [] end)
+      + (if $b[2] > 0 then [($b[2]|tostring) + " suite runs"] else [] end)
+    | join(", ")' "$file" 2>/dev/null || note "cannot summarise $file"
+    ;;
+esac
+exit 0

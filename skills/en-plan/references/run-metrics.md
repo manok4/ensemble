@@ -30,6 +30,12 @@ Every call is fire-and-forget: outside a git repo, without `jq`, or on a bad pay
 | After parsing a pass's findings | `run_metrics event "$METRICS" --kind findings --json '{"iteration":<N>,"P0":<n>,"P1":<n>,"P2":<n>,"P3":<n>}'` |
 | Promotion or any terminal stop | `run_metrics finish "$METRICS"`, then `run_metrics summary "$METRICS"` for the report line |
 
+**Every terminal path closes the run.** Success, a refusal, a gate that stopped
+the skill: each one calls `finish`. A run left open keeps its entry on
+`runs/active`, where it becomes a phantom parent for the next run in the repo
+and never produces a rollup line, so closing it is part of stopping rather than
+part of succeeding.
+
 `<AGENT_MODEL>` and `<AGENT_MODEL_SOURCE>` come from the agent-model resolver (`ensemble-agent-model`, EN16 U3) when a dispatch resolved through it; a dispatch that passed no model records `null` and the source `inherit`.
 
 ## Call points for `/en-build`

@@ -19,6 +19,8 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 1. **Detect host.** Source `references/host-detect.md`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, no peer is dispatched (it would recurse) regardless of the default or an explicit `--peer`. Resolves `peer_decision.reason: recursion-guard`.
 
+2b. **Start the run ledger.** `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-review)`. A standalone review gets its own ledger; one nested inside `/en-build` gets its own too, with a pointer from the build's. Fire-and-forget; `references/run-metrics.md` carries the event vocabulary.
+
 2a. **Resolve the peer decision** (EN11). Produce ONE `peer_decision` object per the schema in `references/peer-model-policy.md` section (e), and carry it into the report rather than recomputing it later.
 
    | Condition | `peer` | `reason` |
@@ -104,7 +106,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
     **One pass, never a loop.** A P0/P1 the verification pass reports, unfixed or new, is surfaced with its id and **never applied in this run**: the frozen set closed above, and a third pass mostly resamples the second (D49). Fixing it is a new run.
 
     **Emit the `verification_pass:` outcome line**, including on a run where the pass did not fire. When the pass ran, the envelope's `verdict` is its verdict. Forms and reasons in `references/review-report.md`.
-13. **Output report.** Per `references/review-report.md`, which owns the envelope shape and the markdown summary: write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json`, emit the markdown summary alongside it in every mode including `headless` and `report-only`, and name the path in the summary so `--verify` can read it. Both carry `sub_threshold_filed_count`, how many findings were filed as TD entries (or surfaced separately in `report-only`).
+13. **Output report, then close the run.** Finish with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish "$METRICS"`. **Every terminal path closes the run**, a failed peer and an empty mode included. Per `references/review-report.md`, which owns the envelope shape and the markdown summary: write the envelope to `/tmp/ensemble/en-review/<run-id>/envelope.json`, emit the markdown summary alongside it in every mode including `headless` and `report-only`, and name the path in the summary so `--verify` can read it. Both carry `sub_threshold_filed_count`, how many findings were filed as TD entries (or surfaced separately in `report-only`).
 
 ## Flags
 
