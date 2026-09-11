@@ -19,18 +19,61 @@ ensemble_smoke_classify() {
   echo unknown
 }
 
+# Did the CLI produce a result envelope? Then it PARSED EVERY FLAG IT WAS GIVEN,
+# whatever it exited with, which is the only question this smoke test asks.
+#   $1 = captured stdout
+# Matches the envelope both CLIs emit under their JSON modes: Claude's
+# `"type":"result"` / `"session_id"`, Codex's `"type":"thread.started"`.
+ensemble_smoke_envelope() {
+  printf '%s' "${1:-}" | grep -qE '"(type|session_id|thread_id|subtype)"[[:space:]]*:'
+}
+
 # Run a probe command and print one classified, human-readable line.
 #   $1 = label   $2.. = command to run
 # Errexit-safe: the `if err=$(...)` form captures a non-zero exit without
 # tripping `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
+#
+# STDOUT IS EVIDENCE, NOT NOISE. This discarded stdout and judged on stderr and
+# the exit code alone, so `claude -p --max-turns 1 "ping"` — where the model
+# reaches for a tool, the turn cap cuts it off, and the CLI exits 1 with EMPTY
+# stderr while writing a complete result envelope to stdout — was reported as
+# `probe failed —` with nothing after the dash. Every flag had been accepted.
 ensemble_smoke_probe() {
   _smoke_label="$1"; shift
-  if _smoke_err=$("$@" </dev/null 2>&1 >/dev/null); then _smoke_rc=0; else _smoke_rc=$?; fi
+  _smoke_outfile=$(mktemp 2>/dev/null) || _smoke_outfile=""
+  if [ -n "$_smoke_outfile" ]; then
+    if _smoke_err=$("$@" </dev/null 2>&1 >"$_smoke_outfile"); then _smoke_rc=0; else _smoke_rc=$?; fi
+    _smoke_out=$(head -c 8192 "$_smoke_outfile" 2>/dev/null || true)
+    rm -f "$_smoke_outfile"
+  else
+    if _smoke_err=$("$@" </dev/null 2>&1 >/dev/null); then _smoke_rc=0; else _smoke_rc=$?; fi
+    _smoke_out=""
+  fi
   _smoke_class=$(ensemble_smoke_classify "$_smoke_err" "$_smoke_rc")
+
+  if [ "$_smoke_class" = unknown ]; then
+    # A CLI that writes its usage error to stdout rather than stderr is still
+    # flag drift; classify what it actually said before giving up on it.
+    _smoke_alt=$(ensemble_smoke_classify "$_smoke_out" "$_smoke_rc")
+    if [ "$_smoke_alt" != unknown ] && [ "$_smoke_alt" != ok ]; then
+      _smoke_class="$_smoke_alt"
+    elif ensemble_smoke_envelope "$_smoke_out"; then
+      _smoke_class=ok
+    fi
+  fi
+
   case "$_smoke_class" in
     ok)        printf '  %s: ✓ flags accepted\n' "$_smoke_label" ;;
     flagdrift) printf '  %s: ⚠ flag drift — the installed CLI rejected a flag; check references/cli-wrappers.md\n' "$_smoke_label" ;;
     auth)      printf '  %s: ⚠ not authenticated — sign in first (Claude: `claude` / `claude setup-token`; Codex: `codex login`), then re-run\n' "$_smoke_label" ;;
-    *)         printf '  %s: ⚠ probe failed — %s\n' "$_smoke_label" "$(printf '%s' "$_smoke_err" | head -n1)" ;;
+    *)
+      # Never trail off after the dash. An empty reason is indistinguishable
+      # from a broken message, and this branch printed one for months.
+      if [ -n "$_smoke_err" ]; then
+        printf '  %s: ⚠ probe failed — %s\n' "$_smoke_label" "$(printf '%s' "$_smoke_err" | head -n1)"
+      else
+        printf '  %s: ⚠ probe failed — exit %s, nothing on stderr, %s bytes on stdout. Run the probe by hand to see what it did.\n' \
+          "$_smoke_label" "$_smoke_rc" "$(printf '%s' "$_smoke_out" | wc -c | tr -d ' ')"
+      fi ;;
   esac
 }
