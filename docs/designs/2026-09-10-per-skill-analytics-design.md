@@ -2,8 +2,8 @@
 type: design
 created: 2026-09-10
 topic: Per-skill analytics — what each skill records about its own effectiveness and efficiency
-status: open
-related_plan:
+status: accepted
+related_plan: EN17
 ---
 
 # Per-skill analytics — what each skill records about its own effectiveness and efficiency

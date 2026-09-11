@@ -132,7 +132,7 @@ test_command() {
 }
 
 # --- run one check -----------------------------------------------------------
-FAILED=""; RAN=0; LINES=""
+FAILED=""; RAN=0; LINES=""; CHECKS_JSON=""
 
 run_check() {  # <label> <command>
   local label="$1" cmd="$2" start end rc
@@ -172,6 +172,10 @@ run_check() {  # <label> <command>
   $label: FAIL rc=$rc ($((end - start))s)"
     FAILED="$FAILED $label"
   fi
+  # Accumulated here, where the values ARE the values. The recorded event used
+  # to re-derive them by regex from $LINES, which is a human-readable string
+  # whose format is not a contract with anything.
+  CHECKS_JSON="$CHECKS_JSON${CHECKS_JSON:+,}{\"label\":\"$label\",\"status\":\"$([ "$rc" -eq 0 ] && printf pass || printf fail)\",\"seconds\":$((end - start))}"
 }
 
 [ "$DO_LINT" = true ]      && run_check lint "$LINT_CMD"
@@ -191,6 +195,37 @@ if [ "$DO_TESTS" = true ]; then
   printf '\n'
 fi
 printf '  log: %s\n' "$LOG"
+
+# --- record, once, on every terminal path ------------------------------------
+# The exit code is decided BEFORE the emit and the emit cannot change it: this
+# script's status is the gate /en-build commits on. Recording only on success
+# would lose exactly the runs worth measuring, so all four codes are covered by
+# one call. A usage error exits 2 further up and never reaches here, which is
+# right: nothing was verified, so there is nothing to measure.
+#
+# `checks` carries the per-check timings run_check already measured, accumulated
+# as it goes, rather than adding a verify-wide clock the script has never had.
+_verify_rc() {
+  [ -z "$FAILED" ] || { printf 1; return; }
+  [ "$RAN" -ne 0 ] || { printf 4; return; }
+  if [ "$DO_TESTS" = true ] && [ "$TEST_SELECT_TIER" = "empty" ]; then printf 3; return; fi
+  printf 0
+}
+# $UNIT comes from --unit and is substituted raw. A quote in it makes the
+# payload unparseable, _compose_line rejects it, and the whole verify event
+# vanishes with no trace, because the call below used to mute stderr too.
+_json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+_record_verify() {  # <rc>
+  local rm="$SELF_DIR/ensemble-run-metrics" nfail
+  [ -x "$rm" ] || return 0
+  nfail=$(printf '%s' "$FAILED" | wc -w | tr -d ' ')
+  bash "$rm" emit --kind verify --json "$(printf \
+    '{"unit":"%s","tier":"%s","ran":%s,"failed":%s,"rc":%s,"checks":[%s]}' \
+    "$(_json_escape "$UNIT")" "$(_json_escape "${TEST_SELECT_TIER:-none}")" \
+    "$RAN" "$nfail" "$1" "$CHECKS_JSON")" >/dev/null || true
+}
+_record_verify "$(_verify_rc)"
 
 if [ -n "$FAILED" ]; then
   printf '\nlast %s lines:\n' "$TAIL_LINES"

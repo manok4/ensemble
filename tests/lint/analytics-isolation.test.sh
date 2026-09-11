@@ -12,10 +12,20 @@
 #   EVERY WRITER TAKES AN OVERRIDE   a hardcoded ~/.ensemble path cannot be
 #                                    redirected, so a test cannot avoid it.
 #   EVERY SUITE SETS IT              a writer with an override nobody uses is
-#                                    the same defect with extra steps.
+#                                    the same defect with extra steps. No
+#                                    exemption: a file that merely QUOTES an
+#                                    invocation carries the redirect anyway,
+#                                    because every attempt to tell quoting from
+#                                    execution statically has been a hole.
 #   THE LABEL IS NOT DERIVED         the pattern name reaches disk, so deriving
 #                                    it from a regex put `(^|` in the data and
 #                                    collapsed six git rules into one bucket.
+#   THE WRITER SET IS DECLARED       every discovered writer names how a suite
+#                                    invokes it, so a new one cannot arrive
+#                                    without saying how it is driven.
+#   THE EXPORT PRECEDES THE CALL     an export below the first driving line
+#                                    covers nothing above it, which is exactly
+#                                    how 156 lines reached the operator's store.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -23,33 +33,129 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="analytics isolation"
 
+# This file names invocation shapes as data and executes no writer, but it
+# carries the redirect anyway: there is no exemption, because every static test
+# for "quoted, not executed" turned out to be a hole.
+export ENSEMBLE_ANALYTICS_DIR="${ENSEMBLE_ANALYTICS_DIR:-$(mktemp -d)}"
+
 # --- every writer of the analytics store honours an override -----------------
-writers=$(grep -rliE '>>[^\n]*analytics' "$REPO_ROOT"/skills/*/bin/* "$REPO_ROOT"/skills/*/scripts/* 2>/dev/null || true)
+# Discovery is by the PATH, not by the redirection operator. `>> ... analytics`
+# only finds a writer whose append names the directory on the same line;
+# ensemble-run-metrics appends to "$adir/$repo.jsonl", so that pattern missed it
+# entirely. Anything that can resolve the operator's analytics path is a writer
+# for this purpose, and must be redirectable.
+writers=$(grep -rlE '\.ensemble/analytics' "$REPO_ROOT"/skills/*/bin/* "$REPO_ROOT"/skills/*/scripts/* 2>/dev/null || true)
 [ -n "$writers" ] && pass "found the analytics writers to check" \
   || fail "no analytics writer found; this guard has nothing to protect"
 
+# CODE ONLY, NEVER COMMENTS. Every writer here carries a comment explaining why
+# the override exists, so a grep over the whole file is satisfied by the prose
+# alone: deleting the actual `${ENSEMBLE_ANALYTICS_DIR:-...}` expansion left this
+# assertion green. Strip comment lines first, and require the expansion rather
+# than the bare name.
+code_only() { grep -vE '^[[:space:]]*#' "$1"; }
 bad=""
 for w in $writers; do
-  grep -q 'ENSEMBLE_ANALYTICS_DIR' "$w" || bad="$bad $(basename "$w")"
+  code_only "$w" | grep -qE '\$\{ENSEMBLE_ANALYTICS_DIR:-' || bad="$bad $(basename "$w")"
 done
 [ -z "$bad" ] \
   && pass "every analytics writer honours ENSEMBLE_ANALYTICS_DIR" \
   || fail "an analytics writer cannot be redirected" "hardcoded:$bad"
 
 # --- every suite that drives a writer redirects it ---------------------------
-# Scoped to suites that actually invoke one: a suite that never fires the hook
-# needs no override, and demanding one everywhere would be noise.
-for t in "$REPO_ROOT"/tests/en-guardrail/*.test.sh; do
-  drives=0
-  grep -qE 'bash "\$HOOK"|bash "\$HOOK_SCRIPT"|\| *bash .*check-guardrail' "$t" && drives=1
-  [ "$drives" -eq 1 ] || continue
-  if grep -q 'ENSEMBLE_ANALYTICS_DIR' "$t"; then
-    pass "$(basename "$t") redirects analytics away from the operator's store"
+# Scoped to suites that actually invoke one: a suite that never drives a writer
+# needs no override, and demanding one everywhere would be noise. The scan is
+# the WHOLE suite tree, not tests/en-guardrail/: ensemble-run-metrics writes the
+# rollup from `finish`, and its tests live elsewhere.
+# A driver is a suite that EXECUTES a writer, which is not the same as one that
+# mentions its filename: install-guardrail.test.sh asserts about the installed
+# hook command as a string and never runs the hook. So each writer declares how
+# it is invoked, and the table is self-enforcing — a writer with no entry fails
+# below, so a new one cannot arrive without saying how a suite drives it.
+driver_pattern() {
+  case "$1" in
+    check-guardrail.sh)   printf '%s' 'bash "\$HOOK"|bash "\$HOOK_SCRIPT"|\| *bash .*check-guardrail' ;;
+    # Anchored on an EXECUTION, not on the name: tests/lint/skill-run-lifecycle
+    # greps SKILL.md bodies for the call text and never runs the helper, so a
+    # bare-name pattern made a static lint look like a writer.
+    ensemble-run-metrics) printf '%s' 'bash "\$RM"|bash [^|]*ensemble-run-metrics' ;;
+    # A reader, not a writer, but it resolves the same path: a suite that runs
+    # it against the operator's real HOME is stat-ing their files, and the rule
+    # here is that nothing in the suite reaches that directory at all.
+    check-health)         printf '%s' 'bash "\$CH"|bash [^|]*check-health' ;;
+    *) return 1 ;;
+  esac
+}
+
+undeclared=""
+PATTERNS=""
+for w in $writers; do
+  b=$(basename "$w")
+  case " $PATTERNS " in *" $b "*) continue ;; esac
+  if pat=$(driver_pattern "$b"); then
+    PATTERNS="$PATTERNS $b"
   else
-    fail "$(basename "$t") drives the hook without redirecting analytics" \
-         "it will append to ~/.ensemble/analytics on every run"
+    undeclared="$undeclared $b"
   fi
 done
+[ -z "$undeclared" ] \
+  && pass "every analytics writer declares how a suite drives it" \
+  || fail "an analytics writer has no driver pattern" \
+          "undeclared:$undeclared — add it to driver_pattern() or its suites go unchecked"
+
+drove=0
+while IFS= read -r t; do
+  # Stripped once per file, not once per (file, pattern): this loop runs over
+  # every test file in the tree, and code_only is a grep over the whole file.
+  stripped=$(code_only "$t")
+  drives=0
+  for b in $PATTERNS; do
+    pat=$(driver_pattern "$b")
+    printf '%s\n' "$stripped" | grep -qE "$pat" && { drives=1; break; }
+  done
+  [ "$drives" -eq 1 ] || continue
+  drove=$((drove + 1))
+  # EVERY DRIVING LINE, not merely a mention somewhere in the file. A suite that
+  # redirects one call and not another is the defect this guard exists for, and
+  # ensemble-run-metrics.test.sh was exactly that: a late `export` with fifteen
+  # sections of `finish` calls above it, 156 lines into the operator's store.
+  # A line passes if it sets the override itself, or if the file exports it at
+  # file scope, which covers every call below.
+  # POSITION, NOT PRESENCE. An export below the first driving line covers
+  # nothing above it, and "somewhere in the file" was satisfied by exactly that
+  # arrangement while 156 lines went into the operator's store.
+  # Line numbers from the raw file, but comment lines filtered out of the
+  # result: `$stripped` has different line numbers, and the raw file is what
+  # `exp_line` must be comparable against.
+  nocomment() { grep -vE '^[0-9]+:[[:space:]]*#'; }
+  exp_line=$(grep -nE '^[[:space:]]*export[[:space:]]+ENSEMBLE_ANALYTICS_DIR=' "$t" \
+             | nocomment | head -1 | cut -d: -f1)
+  first_drive=$(for b in $PATTERNS; do pat=$(driver_pattern "$b"); grep -nE "$pat" "$t" || true; done \
+                | nocomment | cut -d: -f1 | sort -n | head -1)
+  exported=0
+  [ -n "$exp_line" ] && [ -n "$first_drive" ] && [ "$exp_line" -lt "$first_drive" ] && exported=1
+  uncovered=0
+  while IFS= read -r ln; do
+    [ "$exported" -eq 1 ] && break
+    printf '%s' "$ln" | grep -q 'ENSEMBLE_ANALYTICS_DIR=' || uncovered=$((uncovered + 1))
+  done < <(for b in $PATTERNS; do pat=$(driver_pattern "$b"); printf '%s\n' "$stripped" | grep -E "$pat" || true; done)
+  if [ "$exported" -eq 1 ] || [ "$uncovered" -eq 0 ]; then
+    pass "$(basename "$t") redirects analytics away from the operator's store"
+  else
+    fail "$(basename "$t") drives an analytics writer without redirecting it" \
+         "$uncovered driving line(s) carry no override; it will append to ~/.ensemble/analytics"
+  fi
+done < <(
+  # Prefiltered: the per-file loop below still applies code_only and the
+  # per-pattern check, so semantics are unchanged and a comment-only mention is
+  # still rejected. If this narrowing is ever wrong, `drove >= 2` goes red.
+  alt=$(for b in $PATTERNS; do driver_pattern "$b"; printf '|'; done | sed 's/|$//')
+  grep -rlE "$alt" --include='*.test.sh' "$REPO_ROOT/tests" 2>/dev/null | sort
+)
+[ "$drove" -ge 2 ] \
+  && pass "the suite scan found the drivers it is meant to check ($drove)" \
+  || fail "the suite scan found $drove drivers; it should find the guardrail hook and the rollup"
+
 
 # --- the recorded label is explicit, never derived from a regex --------------
 AN="$REPO_ROOT/skills/en-guardrail/bin/guardrail_analyze.py"

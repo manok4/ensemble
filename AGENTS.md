@@ -21,6 +21,7 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 - **Lint:** `bin/ensemble-lint --scope docs/`
 - **Typecheck:** `<unset>`
 - **Dev server:** `<unset>`
+- **Metrics:** `bin/ensemble-metrics --peer-value | --time | --selection` — three named reports over `~/.ensemble/analytics/<repo>.jsonl`, the one-line-per-run rollup the skills write. Read-only. Set `ENSEMBLE_ANALYTICS_DIR` to point it somewhere else; every test run must.
 
 ## Test impact
 

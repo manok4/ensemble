@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-09-08
-total_entries: 15
+updated: 2026-09-11
+total_entries: 16
 ---
 
 # Plans — index
@@ -31,3 +31,4 @@ _(none)_
 - [`EN14-improvement_learning-artifact-types.md`](../plans/completed/EN14-improvement_learning-artifact-types.md) — **EN14** Three artifact types for captured knowledge, replacing the flat learnings taxonomy (shipped 2026-08-28)
 - [`EN15-feature_verification-receipt.md`](../plans/completed/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (shipped 2026-09-02)
 - [`EN16-improvement_agent-model-control.md`](../plans/completed/EN16-improvement_agent-model-control.md) — **EN16** Per-host agent model control and en-plan cost fixes (shipped 2026-09-08)
+- [`EN17-feature_per-skill-analytics.md`](../plans/completed/EN17-feature_per-skill-analytics.md) — **EN17** Per-skill analytics, helpers record what each skill run cost and produced (shipped 2026-09-11)

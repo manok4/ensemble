@@ -53,7 +53,24 @@
 
 set -u
 
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SELF_DIR=""
+
 TTL_DEFAULT_MINUTES="${ENSEMBLE_RECEIPT_TTL_MINUTES:-120}"
+
+# Record a receipt operation, if a run is open. Silent and exit-0 when no run is
+# open, when the sibling helper is not carried, or when anything here fails: a
+# receipt hit is an optimisation, and measuring it must never be able to cost one.
+_json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+_record_receipt() {  # <op> <result> <reason> [age_s] [checks-json-array]
+  local rm="$SELF_DIR/ensemble-run-metrics" age
+  [ -n "$SELF_DIR" ] && [ -x "$rm" ] || return 0
+  case "${4:-}" in ''|*[!0-9-]*) age=0 ;; *) age="$4" ;; esac
+  bash "$rm" emit --kind receipt --json "$(printf \
+    '{"op":"%s","result":"%s","reason":"%s","age_s":%s,"checks":%s}' \
+    "$(_json_escape "$1")" "$(_json_escape "$2")" "$(_json_escape "$3")" \
+    "$age" "${5:-[]}")" >/dev/null || true
+}
 
 die() { printf '%s\n' "$*" >&2; exit 3; }
 
@@ -212,6 +229,8 @@ with open(tmp, 'w') as fh:
 os.replace(tmp, sys.argv[1])
 PY
   printf 'receipt written: %s\n' "$RECEIPT"
+  _record_receipt write ok wrote 0 "$(python3 -c 'import json, sys
+print(json.dumps([t.split("=", 1)[0] for t in sys.argv[1].split() if "=" in t]))' "$checks" 2>/dev/null)"
 }
 
 # --- verify ------------------------------------------------------------------
@@ -232,6 +251,7 @@ cmd_verify() {
     else
       printf 'no receipt\n'
     fi
+    _record_receipt verify miss no-receipt
     exit 2
   fi
 
@@ -264,8 +284,10 @@ PY
   live_base=""
   [ -n "$base_ref" ] && live_base=$(resolve_base "$base_ref")
 
+  _reason_out=$(mktemp 2>/dev/null) || _reason_out=""
   FP="$(fingerprint)" REPO="$REPO_TOP" LIVE_BASE="$live_base" \
   LIVE_DEPS="$live_deps" REQUIRES="$requires" TTL="$ttl" JSON="$as_json" \
+  REASON_OUT="$_reason_out" \
   python3 - "$RECEIPT" <<'PY'
 import json, os, sys, time, calendar
 
@@ -279,6 +301,18 @@ def out(valid, reason, extra=None):
         print("valid ({} checks)".format(len(doc.get('checks') or {})))
     else:
         print("invalid: {}".format(reason))
+    side = os.environ.get('REASON_OUT') or ''
+    if side:
+        # Three lines, not a JSON object: the shell reads this back, and a JSON
+        # blob there meant three sed patterns re-deriving what was just
+        # serialized. `checks` stays JSON because it is passed through as one.
+        try:
+            with open(side, 'w') as fh:
+                fh.write("%s\n%d\n%s\n" % (
+                    reason, int(doc.get('age_seconds') or 0),
+                    json.dumps(sorted((doc.get('checks') or {}).keys()))))
+        except Exception:
+            pass
     sys.exit(0 if valid else 1)
 
 try:
@@ -327,6 +361,14 @@ if missing:
 
 out(True, "ok", {"checks": checks, "age_seconds": age, "written_by": r.get('written_by')})
 PY
+  rc=$?
+  if [ -n "$_reason_out" ] && [ -s "$_reason_out" ]; then
+    { IFS= read -r _r_reason; IFS= read -r _r_age; IFS= read -r _r_checks; } < "$_reason_out"
+    _record_receipt verify "$([ "$rc" -eq 0 ] && printf hit || printf miss)" \
+      "$_r_reason" "$_r_age" "$_r_checks"
+  fi
+  [ -z "$_reason_out" ] || rm -f "$_reason_out"
+  return $rc
 }
 
 # --- show --------------------------------------------------------------------

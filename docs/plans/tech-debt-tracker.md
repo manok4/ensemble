@@ -53,6 +53,48 @@ it is generic, and add the assertion that no retired spelling remains.
 > them, then add the lint that keeps them gone.
 
 
+### TD14. Three SKILL.md files sit within 120 bytes of the hard size budget
+
+Filed 2026-09-11 from the EN17 branch review (standards dimension).
+
+`tests/lint/skill-size.test.sh` enforces 24,576 bytes and its BASELINE is
+deliberately empty, so the next skill over budget is a regression rather than a
+legacy. After EN17: `en-build` 24,536, `en-setup` 24,524, `en-plan` 24,436. The
+tests pass. Eighteen to a hundred and forty bytes is not headroom, it is a
+rounding error, and the next flow-step added to any of the three turns a lint
+with no escape hatch into a blocker on an unrelated branch.
+
+- **Source:** branch review on EN17 (standards persona), STD-5
+- **Severity:** P3
+- **Confidence:** 7/10
+- **Location:** `skills/en-build/SKILL.md`, `skills/en-setup/SKILL.md`, `skills/en-plan/SKILL.md`
+- **Why it matters:** the cost lands on whoever next edits one of these for an
+  unrelated reason, and it lands as a failure they did not cause.
+- **Suggested fix:** a prose trim pass on the three, in their own commit, taking
+  each to roughly 23,500. Do NOT raise BUDGET and do not re-populate BASELINE;
+  the empty list is the mechanism working.
+- **Logged:** 2026-09-11
+
+### TD15. AGENTS.md states a 50-character commit-subject limit nothing follows
+
+Filed 2026-09-11 from the EN17 branch review (standards dimension).
+
+`AGENTS.md` line 96 reads "Subject <= 50 chars, imperative". Measured on `main`:
+39 of the last 42 non-merge commits exceed 50, median 69, max 82. The EN17
+branch matches that practice exactly. Type, scope, lowercase and imperative mood
+all hold; only the length clause is dead.
+
+- **Source:** branch review on EN17 (standards persona), STD-6
+- **Severity:** P3
+- **Confidence:** 5/10
+- **Location:** `AGENTS.md` line 96
+- **Why it matters:** a written rule nobody follows teaches a reader to discount
+  the rules beside it, and those are load-bearing.
+- **Suggested fix:** correct the number to what the repo holds to, around 72,
+  which is git's own wrapping convention, or delete the length clause. Do not
+  rewrite history to satisfy it.
+- **Logged:** 2026-09-11
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29

@@ -211,7 +211,13 @@ fi
 # --- the output step reaches the reference that owns both examples ---
 # Scoped to the step: the envelope and the summary are only normative if the
 # run that emits them opens the file that defines them.
-step=$(awk '/^13\. \*\*Output report/{f=1} f&&/^## /{exit} f' "$SKILL")
+# Anchored on the step NUMBER, not on its title: EN17 renamed it to "Record the
+# outcome, output the report, then close the run" and this assertion went red on
+# a step that still cited the reference exactly as required.
+step=$(awk '/^13\. \*\*/{f=1} f&&/^## /{exit} f' "$SKILL")
+printf '%s' "$step" | grep -qiE 'output (the )?report|report,' \
+  && pass "step 13 is still the step that outputs the report" \
+  || fail "step 13 no longer outputs the report; this anchor has drifted"
 if printf '%s' "$step" | grep -qF 'references/review-report.md'; then
   pass "the output-report step points at the reference that owns the envelope"
 else

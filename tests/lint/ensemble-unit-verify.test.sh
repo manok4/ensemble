@@ -220,4 +220,164 @@ done
 ( cd "$P" && timeout 5 bash "$VER" >/dev/null 2>&1 ); rc=$?
 assert_exit_code 2 $rc "no --unit is a usage error"
 
+# --- the selection is recorded (EN17 U4) -------------------------------------
+# The tier a run chose is the raw material for "did test selection narrow
+# anything". It is recorded by the helper that decided it, so nothing has to
+# remember; outside a run it records nothing at all, which is the property every
+# assertion above depends on.
+RM="$REPO_ROOT/skills/en-build/scripts/ensemble-run-metrics"
+export ENSEMBLE_ANALYTICS_DIR="$WORK/analytics"
+ledger() { ( cd "$P" && bash "$RM" "$@" ); }
+
+agents <<'A'
+- **Test:** `npm test`
+- **Test (changed):** `npm test -- {files}`
+A
+L=$(ledger start --skill en-build)
+out=$(sel --working)
+sels=$(grep -c '"kind":"select"' "$L" || true)
+assert_eq "1" "$sels" "a selection inside a run records exactly one event"
+ev=$(grep '"kind":"select"' "$L" | tail -1)
+assert_eq "$(val "$out" TEST_SELECT_TIER)"  "$(printf '%s' "$ev" | jq -r '.tier')"  "the recorded tier is the tier it printed"
+assert_eq "$(val "$out" TEST_SELECT_COUNT)" "$(printf '%s' "$ev" | jq -r '.count')" "and the recorded count matches"
+assert_eq "$(val "$out" TEST_SELECT_REASON)" "$(printf '%s' "$ev" | jq -r '.reason')" "and the reason verbatim"
+
+# Every tier, including the ones that select nothing: a tier that found no
+# tests is exactly the case worth having on disk.
+agents <<'A'
+- **Test:** `npm test`
+A
+before=$(grep -c '"kind":"select"' "$L" || true)
+sel --working >/dev/null
+sel --files "$P/nothing-here.js" >/dev/null
+after=$(grep -c '"kind":"select"' "$L" || true)
+assert_eq "$((before + 2))" "$after" "an empty or fallback selection records too"
+
+# The stdout contract is byte-identical with and without a run open. Anything
+# that eval's this output would break otherwise, and ensemble-unit-verify does.
+agents <<'A'
+- **Test:** `npm test`
+- **Test (changed):** `npm test -- {files}`
+A
+in_run=$(sel --working)
+closed=$(grep -c '"kind":"select"' "$L" || true)
+ledger finish "$L"
+no_run=$(sel --working)
+assert_eq "$in_run" "$no_run" "the stdout contract is identical whether or not a run is open"
+assert_eq "$closed" "$(grep -c '"kind":"select"' "$L" || true)" \
+  "a selection after the run closed records nothing"
+# The run log is append-only, so its size measures history rather than state.
+# The property is that nothing resolves to the closed run any more, which the
+# assertion above already proves by recording nothing.
+assert_eq "1" "$(grep -c "^-	" "$P/.git/ensemble/runs/active" || true)" \
+  "and the run log records the close"
+
+# A carrier missing the sibling helper degrades to silence, not an error.
+LONE="$WORK/lone"
+mkdir -p "$LONE"
+cp "$SEL" "$LONE/ensemble-test-select"
+out=$( cd "$P" && bash "$LONE/ensemble-test-select" --working 2>&1 )
+rc=$?
+assert_exit_code 0 $rc "a carrier without ensemble-run-metrics still exits 0"
+assert_eq "$no_run" "$out" "and prints the same selection, with nothing on stderr"
+
+# --- the verification is recorded (EN17 U5) ----------------------------------
+# All four exit codes, not just success: a failing unit is exactly the run worth
+# measuring. The emit must not change the status, which is what /en-build
+# commits on, so every assertion here checks the code as well as the event.
+V="$WORK/vproj"
+mkdir -p "$V/src"
+(cd "$V" && git init -q && git config user.email t@e && git config user.name t)
+: > "$V/src/a.js"; : > "$V/src/a.test.js"
+vled() { ( cd "$V" && bash "$RM" "$@" ); }
+ver() { ( cd "$V" && timeout 20 bash "$VER" "$@" ); }
+vagents() { cat > "$V/AGENTS.md"; }
+vevents() { grep -c '"kind":"verify"' "$VL" || true; }
+vlast() { grep '"kind":"verify"' "$VL" | tail -1; }
+
+VL=$(vled start --skill en-build)
+
+vagents <<'A'
+- **Test:** `true`
+- **Lint:** `true`
+- **Typecheck:** `true`
+A
+ver --unit U1 --working >/dev/null 2>&1; rc=$?
+assert_exit_code 0 $rc "a passing unit still exits 0"
+assert_eq "1" "$(vevents)" "and records exactly one verify event"
+e=$(vlast)
+assert_eq "U1" "$(printf '%s' "$e" | jq -r '.unit')"   "the event names the unit"
+assert_eq "0"  "$(printf '%s' "$e" | jq -r '.rc')"     "and carries the exit code it returned"
+assert_eq "0"  "$(printf '%s' "$e" | jq -r '.failed')" "and no failures"
+assert_eq "3"  "$(printf '%s' "$e" | jq -r '.checks|length')" "with one entry per check run"
+assert_eq "true" "$(printf '%s' "$e" | jq -r '[.checks[].seconds] | all(. >= 0)')" \
+  "each carrying the timing run_check already measured"
+
+# A failing check: the status must survive the emit.
+vagents <<'A'
+- **Test:** `false`
+- **Lint:** `true`
+A
+ver --unit U2 --working >/dev/null 2>&1; rc=$?
+assert_exit_code 1 $rc "a failing check still exits 1"
+e=$(vlast)
+assert_eq "1" "$(printf '%s' "$e" | jq -r '.rc')"     "the failure is recorded as rc 1"
+assert_eq "1" "$(printf '%s' "$e" | jq -r '.failed')" "with the failure counted"
+assert_eq "fail" "$(printf '%s' "$e" | jq -r '.checks[] | select(.label=="tests") | .status')" \
+  "and the failing check named"
+
+# Nothing verifiable.
+vagents <<'A'
+- **Test:** `true`
+A
+ver --unit U3 --working --no-lint --no-typecheck --no-tests >/dev/null 2>&1; rc=$?
+assert_exit_code 4 $rc "nothing verifiable still exits 4"
+assert_eq "4" "$(vlast | jq -r '.rc')" "and is recorded as rc 4"
+assert_eq "0" "$(vlast | jq -r '.ran')" "with nothing run"
+
+# The tier this unit recorded is the tier the selection recorded in the same run.
+vagents <<'A'
+- **Test:** `true`
+- **Test (changed):** `true {files}`
+A
+ver --unit U5 --working >/dev/null 2>&1
+assert_eq "$(grep '"kind":"select"' "$VL" | tail -1 | jq -r '.tier')" "$(vlast | jq -r '.tier')" \
+  "the verify event and the select event agree on the tier"
+
+# The empty tier: rc 3, which /en-build reads as "zero tests found is a finding
+# about the project, not a pass". Deleting the empty-tier branch from _verify_rc
+# recorded rc 0 while the script still exited 3, and nothing was asserting it,
+# so the number in the rollup contradicted the gate the build committed on.
+mkdir -p "$V/orphan"
+: > "$V/orphan/lonely.js"
+# Lint declared too, so something ran: with nothing at all to run the ladder
+# returns 4 (nothing verifiable) before it reaches the empty-tier branch, and
+# that ordering is the script's, faithfully mirrored.
+vagents <<'A'
+- **Test:** `true`
+- **Lint:** `true`
+A
+ver --unit U4 --files orphan/lonely.js >/dev/null 2>&1; rc=$?
+assert_exit_code 3 $rc "an empty selection still exits 3"
+assert_eq "3"     "$(vlast | jq -r '.rc')"   "and is recorded as rc 3"
+assert_eq "empty" "$(vlast | jq -r '.tier')" "with the tier that produced it"
+
+# A usage error verified nothing, so it records nothing.
+before=$(vevents)
+ver >/dev/null 2>&1; rc=$?
+assert_exit_code 2 $rc "a usage error still exits 2"
+assert_eq "$before" "$(vevents)" "and records no event, because nothing was verified"
+
+# Outside a run: identical codes on every terminal path, and no ledger.
+vled finish "$VL"
+vagents <<'A'
+- **Test:** `false`
+- **Lint:** `true`
+A
+ver --unit U6 --working >/dev/null 2>&1
+assert_exit_code 1 $? "a failing unit outside a run still exits 1"
+ver --unit U7 --working --no-lint --no-typecheck --no-tests >/dev/null 2>&1
+assert_exit_code 4 $? "nothing verifiable outside a run still exits 4"
+assert_eq "$before" "$(vevents)" "and neither recorded anything after the run closed"
+
 report

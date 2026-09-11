@@ -122,6 +122,37 @@ else
   check "ensemble-lint available" red "Reinstall the plugin"
 fi
 
+# Analytics store size (advisory; never blocks, never deletes).
+# guardrail.jsonl reached 8.6 MB and 71,171 events before anything told the
+# operator it was there, and 97% of it was test noise from four months of runs
+# with no HOME override. PR #108 stopped it growing; nothing tells anyone the
+# old data exists or what it is. So: report the size and say what each file
+# HOLDS, because the two files in that directory earn opposite advice: one is a
+# log nothing reads back, the other is the last copy of its data.
+_ch_adir="${ENSEMBLE_ANALYTICS_DIR:-$HOME/.ensemble/analytics}"
+_ch_cap=5242880
+if [ -d "$_ch_adir" ]; then
+  for _f in "$_ch_adir"/*; do
+    [ -f "$_f" ] || continue
+    _sz=$(wc -c < "$_f" 2>/dev/null | tr -d ' ')
+    case "$_sz" in ''|*[!0-9]*) continue ;; esac
+    [ "$_sz" -ge "$_ch_cap" ] || continue
+    _mb=$(( _sz / 1048576 ))
+    _ln=$(wc -l < "$_f" 2>/dev/null | tr -d ' ')
+    case "$(basename "$_f")" in
+      guardrail.jsonl|guardrail.jsonl.*)
+        check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
+          "${_ln} hook-fire records. Nothing reads them back; removing the file loses only that history." ;;
+      *.jsonl|*.jsonl.1)
+        check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
+          "${_ln} run summaries, and the only surviving record of runs whose per-clone ledgers are gone. To keep it, copy the file: no report reproduces it" ;;
+      *)
+        check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
+          "${_ln} lines, unrecognised. Left alone." ;;
+    esac
+  done
+fi
+
 echo ""
 echo "Summary: 🟢 $GREEN  🟡 $YELLOW  🔴 $RED"
 
