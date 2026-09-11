@@ -30,7 +30,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - **Auto-resume** (heuristic) — a plan in `docs/plans/active/` matching the request by title or `related_design` is offered as a resume rather than a new plan.
    - **Create** — no match; mint a new plan.
 
-   Then `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --plan <plan_id>)` and record at the call points in `references/run-metrics.md`; it never blocks a run.
+   Then `METRICS=$(bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-plan --plan <plan_id>)` and record at the call points in `references/run-metrics.md`; it never blocks a run.
 4. **Source the request.** Identify input, reading the candidates below in one message, since none depends on another:
    - Brainstorm design doc (`docs/designs/*.md`) — pre-explored, recommendation already on the table.
    - `docs/foundation.md` — pulling a requirement (R-ID) for the next slice of work.

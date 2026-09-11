@@ -1,5 +1,10 @@
 # Run metrics — what a run records about itself
 
+**Keyed on the skill, not the plan.** `--skill <name>` is required and `--plan` is
+optional context, so a skill with no plan can record too; the file is
+`<skill>-<run-id>.jsonl`. **One JSON object per line, appended**, so parallel
+dispatches cannot lose each other's events and reading a run is a line scan.
+
 Carried by `/en-plan` and `/en-build`; the call-point tables below are per skill.
 
 `scripts/ensemble-run-metrics` writes one JSON file per run under `$(git rev-parse --git-dir)/ensemble/runs/<plan_id>-<run_id>.json`, beside the verification receipt: never committed, no `.gitignore` entry, gone with the clone. The next improvement pass then has evidence without reconstructing a transcript, which is how the 2026-09-06 cost analysis had to be done.
@@ -18,7 +23,7 @@ Every call is fire-and-forget: outside a git repo, without `jq`, or on a bad pay
 
 | When | Call |
 |---|---|
-| Right after the plan id is known (resume or create) | `METRICS=$(run_metrics start --plan <plan_id>)` |
+| Right after the plan id is known (resume or create) | `METRICS=$(run_metrics start --skill en-plan --plan <plan_id>)` |
 | Each research dispatch, once it returns | `run_metrics event "$METRICS" --kind dispatch --json '{"agent":"repo-research","host":"<HOST>","model":"<AGENT_MODEL or null>","model_source":"<AGENT_MODEL_SOURCE or null>","started":<epoch>,"ended":<epoch>}'` |
 | Each peer pass | `run_metrics event "$METRICS" --kind peer --json '{"iteration":<N>,"peer_decision":<the object the invoke printed>,"tokens":{"input":<n or null>,"output":<n or null>}}'`. Codex `--json` reports `token_count`; a Claude peer reports `usage`; absent counts are `null`, never guessed. |
 | Each lint run | `run_metrics event "$METRICS" --kind lint --json '{"scope":"<scope>","seconds":<n>}'` |
@@ -33,7 +38,7 @@ Two analyses of real builds, on 2026-09-06 and 2026-09-08, had to be reconstruct
 
 | When | Call |
 |---|---|
-| Step 4a, once the plan id and baseline hash are known | `METRICS=$(run_metrics start --plan <plan_id>)` |
+| Step 4a, once the plan id and baseline hash are known | `METRICS=$(run_metrics start --skill en-build --plan <plan_id>)` |
 | Entering a unit at 9c, and again after 9e commits | `run_metrics event "$METRICS" --kind unit --json '{"unit":"U<N>","event":"start"}'` then `'{"unit":"U<N>","event":"end","commit":"<sha>","verify_exit":<n>,"selection_tier":"<TEST_SELECT_TIER>"}'` |
 | Each 9f checkpoint | `run_metrics event "$METRICS" --kind phase --json '{"checkpoint":"before-U<N>\|end-of-loop","event":"end","units":<n>,"outcome":"passed\|failed"}'` |
 | Any full-suite run (the cheap-suite tier at a checkpoint, and step 10.4) | `run_metrics event "$METRICS" --kind suite --json '{"where":"checkpoint\|post-build","seconds":<n>,"outcome":"passed\|failed"}'` |
