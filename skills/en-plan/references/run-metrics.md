@@ -81,25 +81,38 @@ Helper-emitted, with no call point for a model to remember:
 | `select` | `tier`, `reason`, `count`, `total` | `ensemble-test-select`, in `emit()` |
 | `verify` | `unit`, `tier`, `ran`, `failed`, `rc`, `checks` | `ensemble-unit-verify`, on all four exit codes |
 | `receipt` | `op`, `result`, `reason`, `age_s`, `checks` | `ensemble-verification-receipt`, on `write` and `verify` |
-| `peer` | `peer`, `decision`, `reason`, `peer_mode`, `effort`, `model_alias`, `model_actual`, `elapsed_s` | `ensemble-peer-invoke`, in `_epi_decision` |
+| `peer` | `peer`, `decision`, `reason`, `peer_mode`, `effort`, `model_alias`, `model_actual`, `elapsed_s`, `iteration` | `ensemble-peer-invoke`, in `_epi_decision`; `/en-plan` adds `iteration`, which no helper can see |
 | `child` | `run_id`, `skill`, `ledger` | `ensemble-run-metrics start`, into the parent |
 
-Model-emitted, one call point, and the only one:
+**Model-emitted, for what no helper can see.** Every one of these describes a
+decision the model made, so there is nothing for a script to observe. They are
+recorded with `emit`, like everything else; the call points are the table below.
 
-| Kind | Keys | Emitted by |
+| Kind | Keys | Call point |
 |---|---|---|
-| `outcome` | `result`, `verdict`, `findings_total`, `peer_only`, `corroborated`, `host_only`, `applied`, `deferred`, `disagreed`, `units_total`, `units_done`, `gates_failed` | `/en-review`, in its output-report step, after reconciliation |
+| `outcome` | `verdict`, `findings_total`, `peer_only`, `corroborated`, `host_only`, `applied`, `deferred`, `disagreed` | `/en-review`, after reconciliation, in its output-report step |
+| `dispatch` | `agent`, `host`, `model`, `model_source`, `started`, `ended` | `/en-plan` and `/en-build`, once each research or persona agent returns |
+| `findings` | `iteration`, `P0`, `P1`, `P2`, `P3` | `/en-plan`, after parsing each peer pass's findings |
+| `lint` | `scope`, `seconds` | `/en-plan` and `/en-build`, after each lint run |
+| `unit` | `unit`, `event`, `commit`, `verify_exit`, `selection_tier` | `/en-build`, entering a unit and again after it commits |
+| `phase` | `checkpoint`, `event`, `units`, `outcome` | `/en-build`, at each phase checkpoint |
+| `suite` | `where`, `seconds`, `outcome` | `/en-build`, around any full-suite run |
+| `review` | `event`, `reviewer`, `findings`, `personas` | `/en-build`, around its branch-level review |
+| `note` | `message`, `detail` | anywhere; free-form, and nothing reads it back |
 
 `/en-review`'s corroboration buckets are computed during reconciliation and
-`ensemble-peer-invoke` has no notion of them, so no helper can observe this one.
-That is the whole reason for the exception; do not add a second.
+`ensemble-peer-invoke` has no notion of them, so no helper can observe that one.
+The same is true of every row above it: a phase boundary and a persona roster
+are model concepts. **What is not allowed is a second call point for something a
+helper CAN see.** The four emitters exist because bookkeeping the model has to
+remember is bookkeeping the model forgets, and that verdict is already in.
 
-The kinds `/en-build` and `/en-plan` still record through `event <file>` are
-unchanged: `dispatch` (`agent`, `host`, `model`, `model_source`, `started`,
-`ended`), `lint` (`scope`, `seconds`), `findings` (`iteration`, `P0`–`P3`),
-`unit` (`unit`, `event`, `commit`, `verify_exit`, `selection_tier`), `phase`
-(`checkpoint`, `event`, `units`, `outcome`), `suite` (`where`, `seconds`,
-`outcome`), `review` (`event`, `reviewer`, `findings`, `personas`) and `note`.
+`tests/lint/metrics-vocabulary.test.sh` holds this table and `_ALLOW` to each
+other. They are two of the three places the vocabulary lives, and the third is
+each emitter's payload; without that lint, a key added to one and not the other
+becomes a column that is quietly always absent. That is not hypothetical: the
+rewrite that produced this file deleted every model call point while leaving a
+sentence saying they were unchanged, and nothing went red.
 
 ## The durable rollup
 
@@ -113,6 +126,11 @@ tier and the `peer` passes, and `dropped`.
 
 It is wide on purpose. The ledgers die with the clone, so a field omitted today
 is unrecoverable for every run before someone adds it.
+
+`start`, `closing` and `finish` are lifecycle markers rather than events. They
+are written by the helper directly, carry no payload, and are not counted in
+`counts`; `closing` is what makes publishing safe, and is described with the
+rollup below.
 
 **Published before the ledger closes**, and idempotent on `run_id` across every
 retained generation. If `finish` closed the ledger first and the rollup then

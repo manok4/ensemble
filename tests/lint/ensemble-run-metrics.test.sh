@@ -268,7 +268,7 @@ check_kind() {  # <kind> <payload>
   assert_eq "null" "$(last | jq -r '.dropped')" "kind '$1' keeps every documented key"
 }
 check_kind dispatch '{"agent":"repo-research","host":"claude-code","model":null,"model_source":"inherit","started":1,"ended":2}'
-check_kind peer     '{"iteration":1,"peer_decision":{"peer":"codex"},"tokens":{"input":null,"output":null}}'
+check_kind peer     '{"iteration":1,"peer":"codex","decision":"on","elapsed_s":126}'
 check_kind lint     '{"scope":"docs","seconds":3}'
 check_kind findings '{"iteration":1,"P0":0,"P1":3,"P2":5,"P3":2}'
 check_kind unit     '{"unit":"U3","event":"end","commit":"a3f1b9c","verify_exit":0,"selection_tier":"graph"}'
@@ -279,7 +279,7 @@ check_kind note     '{"message":"hello","detail":"world"}'
 check_kind child    '{"run_id":"r1","skill":"en-review","ledger":"/tmp/x.jsonl"}'
 check_kind verify   '{"unit":"U3","tier":"graph","ran":3,"failed":0,"rc":0,"checks":[]}'
 check_kind receipt  '{"op":"verify","result":"hit","reason":"ok","age_s":42,"checks":["full_suite"]}'
-check_kind outcome  '{"result":"ok","verdict":"revise","findings_total":9,"peer_only":3,"corroborated":4,"host_only":2,"applied":6,"deferred":2,"disagreed":1,"units_total":5,"units_done":5,"gates_failed":0}'
+check_kind outcome  '{"verdict":"revise","findings_total":9,"peer_only":3,"corroborated":4,"host_only":2,"applied":6,"deferred":2,"disagreed":1}'
 
 # The explicit-file form filters identically; one allowlist, not two.
 rm_ event "$L12" --kind lint --json '{"scope":"docs","cwd":"/Users/someone"}' 2>/dev/null

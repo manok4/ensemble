@@ -197,7 +197,7 @@ _active_pop() {  # <active-file> <ledger-path>
 # until someone edits this table, whose symptom is a number that is always zero.
 _ALLOW='{
   "dispatch": ["agent","host","model","model_source","started","ended"],
-  "peer":     ["iteration","peer_decision","tokens",
+  "peer":     ["iteration",
                "peer","decision","reason","peer_mode","effort","model_alias","model_actual","elapsed_s"],
   "lint":     ["scope","seconds"],
   "findings": ["iteration","P0","P1","P2","P3"],
@@ -207,12 +207,11 @@ _ALLOW='{
   "review":   ["event","reviewer","findings","personas"],
   "note":     ["message","detail"],
   "child":    ["run_id","skill","ledger"],
-  "closing":  [],
   "select":   ["tier","reason","count","total"],
   "verify":   ["unit","tier","ran","failed","rc","checks"],
   "receipt":  ["op","result","reason","age_s","checks"],
-  "outcome":  ["result","verdict","findings_total","peer_only","corroborated","host_only",
-               "applied","deferred","disagreed","units_total","units_done","gates_failed"]
+  "outcome":  ["verdict","findings_total","peer_only","corroborated","host_only",
+               "applied","deferred","disagreed"]
 }'
 
 _known_kind() { printf '%s' "$_ALLOW" | jq -e --arg k "$1" 'has($k)' >/dev/null 2>&1; }
