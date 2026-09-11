@@ -266,8 +266,11 @@ no_run=$(sel --working)
 assert_eq "$in_run" "$no_run" "the stdout contract is identical whether or not a run is open"
 assert_eq "$closed" "$(grep -c '"kind":"select"' "$L" || true)" \
   "a selection after the run closed records nothing"
-assert_eq "0" "$(wc -c < "$P/.git/ensemble/runs/active" | tr -d ' ')" \
-  "and the closed run is off the active stack"
+# The run log is append-only, so its size measures history rather than state.
+# The property is that nothing resolves to the closed run any more, which the
+# assertion above already proves by recording nothing.
+assert_eq "1" "$(grep -c "^-	" "$P/.git/ensemble/runs/active" || true)" \
+  "and the run log records the close"
 
 # A carrier missing the sibling helper degrades to silence, not an error.
 LONE="$WORK/lone"

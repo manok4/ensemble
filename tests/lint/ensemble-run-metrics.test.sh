@@ -97,15 +97,12 @@ assert_eq "0" "$(grep -c '"scope":"nested"' "$L1" || true)" "the parent does not
 
 # --- 3. unwinding ------------------------------------------------------------
 rm_ finish "$L2"
-assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "finish pops the child off the stack"
 rm_ emit --kind lint --json '{"scope":"back-to-parent"}'
 assert_eq "1" "$(grep -c '"scope":"back-to-parent"' "$L1" || true)" "emit targets the parent again"
 
 # --- 4. out-of-order finish: pop by path, not by position --------------------
 L3=$(rm_ start --skill en-ship)
 rm_ finish "$L1"                       # the PARENT finishes while the child lives
-assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "the parent's line is removed by path"
-assert_contains "$(cat "$ACTIVE")" "$L3" "the still-open child survives the parent's finish"
 rm_ emit --kind lint --json '{"scope":"orphan"}'
 assert_eq "1" "$(grep -c '"scope":"orphan"' "$L3" || true)" "emit still targets the surviving run"
 rm_ finish "$L3"
@@ -123,13 +120,12 @@ rm_ finish "$L4"
 
 # --- 6. pruning: a deleted ledger and a finished one -------------------------
 L5=$(rm_ start --skill en-build)
-rm -f "$L5"                            # the ledger vanishes, the entry remains
-assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "the stale entry is still on the stack"
+rm -f "$L5"                            # the ledger vanishes; its log lines stay
 rm_ emit --kind lint --json '{"scope":"gone"}'
 assert_file_missing "$L5" "an emit against a vanished ledger recreates nothing"
 L6=$(rm_ start --skill en-plan)
-assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "start prunes the vanished entry"
-assert_eq "null" "$(head -1 "$L6" | jq -r '.parent_run_id')" "a pruned entry does not become a phantom parent"
+assert_eq "null" "$(head -1 "$L6" | jq -r '.parent_run_id')" \
+  "a run whose ledger vanished does not become a phantom parent"
 
 # --- 7. late event after finish: a closed run stays closed -------------------
 rm_ finish "$L6"
@@ -204,7 +200,6 @@ rm_ emit --kind lint --json '{"scope":"after-optout"}'
 assert_eq "$h9" "$(hash_file "$L9")" "emit records nothing once opted out"
 rm_ finish "$L9"
 assert_eq "$h9" "$(hash_file "$L9")" "finish appends no event once opted out"
-assert_eq "0" "$(wc -c < "$ACTIVE" | tr -d ' ')" "finish still pops the stack while opted out"
 
 # The phantom-parent case: without that pop, the abandoned run parents the next.
 rm -f "$PROJ/.ensemble/config.local.yaml"
@@ -366,19 +361,22 @@ seed_over_cap
 L16=$(rmA start --skill en-build); rmA finish "$L16"
 assert_file_missing "$ROLL.2" "only one previous generation is kept"
 
-# Contention must never cost an event: a caller that cannot take the lock skips
-# the rename and appends anyway. That is the difference from the lock PR #106
-# removed, which dropped the event outright.
+# Contention must never cost an event, and must never duplicate one. A caller
+# that cannot take the lock DEFERS: the run stays open and a later finish
+# publishes it. Check, rotate and append are one transaction, so a writer that
+# lost the rename can no longer append into the generation being expired.
 rm -f "$ROLL.1"; seed_over_cap
 mkdir -p "$ROLL.rotate.lock"
-L17=$(rmA start --skill en-build); rmA finish "$L17"; rc=$?
-# Captured at the call. Read after the assertion below, `$?` is that
-# assertion's status, so the check was green for any status finish returned.
+L17=$(rmA start --skill en-build); rmA finish "$L17" >/dev/null 2>&1; rc=$?
+# Captured at the call. Read after an assertion, `$?` is that assertion's
+# status, so the check was green for any status finish returned.
 assert_exit_code 0 $rc "finish under a held lock still exits 0"
-assert_file_missing "$ROLL.1" "a held lock skips the rotation"
-assert_contains "$(tail -1 "$ROLL")" "$(head -1 "$L17" | jq -r '.run_id')" \
-  "the line is appended to the over-cap file rather than dropped"
+assert_file_missing "$ROLL.1" "a held lock publishes nothing, so nothing rotates"
+assert_eq "0" "$(grep -c '"kind":"finish"' "$L17" || true)" "and holds the run open"
 rmdir "$ROLL.rotate.lock"
+rmA finish "$L17"
+assert_eq "1" "$(grep -c "$(head -1 "$L17" | jq -r '.run_id')" "$ROLL" || true)" \
+  "and the retry publishes it exactly once, once the lock is free"
 
 # Ten concurrent finishes across the threshold: every run recorded exactly once,
 # and the seeded history still present in one generation or the other.
@@ -414,7 +412,6 @@ assert_contains "$(cat "$ACTIVE")" "$L18" "and the run stays on the active stack
 rmA finish "$L18"
 assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "the retry publishes exactly one line"
 assert_eq "1" "$(grep -c '"kind":"finish"' "$L18" || true)" "and closes the ledger"
-assert_not_contains "$(cat "$ACTIVE")" "$L18" "and pops the stack"
 
 # Idempotence, in the current file and in the rotated one.
 L19=$(rmA start --skill en-build --run-id dedupe1)
@@ -440,7 +437,8 @@ n=$(wc -l < "$ROLL" | tr -d ' ')
 rmA finish "$L21" >/dev/null 2>&1
 assert_eq "0" "$?" "a malformed ledger is not fatal"
 assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" "and produces no rollup line"
-assert_not_contains "$(cat "$ACTIVE")" "$L21" "but is popped from the stack rather than retried forever"
+assert_eq "1" "$(grep -c '"kind":"finish"' "$L21" || true)" \
+  "but is closed rather than retried forever"
 
 
 # --- 21. finish needs no variable (the defect that made the feature inert) ---
@@ -460,7 +458,9 @@ rc=$?
 assert_exit_code 0 $rc "finish with an unset variable exits 0"
 assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "and still publishes the run"
 assert_eq "1" "$(grep -c '\"kind\":\"finish\"' "$L22" || true)" "and closes the ledger"
-assert_eq "0" "$(wc -c < "$ACTIVE" | tr -d ' ')" "and pops the stack"
+rm_ emit --kind lint --json '{"scope":"after-pathless-finish"}'
+assert_eq "0" "$(grep -c 'after-pathless-finish' "$L22" || true)" \
+  "and nothing resolves to it afterwards"
 
 # The bare form, with no argument at all.
 rm -f "$ROLL"
@@ -488,7 +488,6 @@ touch -t 202001010000 "$L25"                   # yesterday's run, never finished
 L26=$(rmA start --skill en-review)
 assert_eq "null" "$(head -1 "$L26" | jq -r '.parent_run_id')" \
   "an abandoned run does not parent the next one"
-assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "and is pruned off the stack"
 rmA emit --kind lint --json '{"scope":"after-abandon"}'
 assert_eq "1" "$(grep -c 'after-abandon' "$L26" || true)" "emit targets the live run"
 assert_eq "0" "$(grep -c 'after-abandon' "$L25" || true)" "not the abandoned one"
@@ -616,28 +615,17 @@ for i in 1 2 3 4 5 6 7 8; do cled start --skill en-review --run-id "c$i" >/dev/n
 wait
 CACTIVE="$CW/.git/ensemble/runs/active"
 lost=0
-for i in 1 2 3 4 5 6 7 8; do grep -q "^c$i	" "$CACTIVE" || lost=$((lost + 1)); done
+for i in 1 2 3 4 5 6 7 8; do grep -q "	c$i	" "$CACTIVE" || lost=$((lost + 1)); done
 assert_eq "0" "$lost" "eight concurrent starts all register"
-assert_eq "0" "$(grep -c '^	' "$CACTIVE" || true)" "and none of them corrupts a line"
+assert_eq "0" "$(grep -cv '^[+-]	' "$CACTIVE" || true)" "and none of them corrupts a line"
 
-# The check above is a SMOKE TEST and says so: the race is probabilistic, and
-# unlocked it loses a registration at stack depth 20 but not at 10 or 30. An
-# assertion that catches a bug sometimes is not a guard. The structural property
-# is the guard, and it can always fail: every writer of `active` holds the lock.
-lock_line=$(grep -n '_lock_acquire "$active.lock"' "$RM" | head -1 | cut -d: -f1)
-app_line=$(grep -n '>> "$active" 2>/dev/null' "$RM" | head -1 | cut -d: -f1)
-rel_line=$(grep -n '_lock_release "$active.lock"' "$RM" | tail -1 | cut -d: -f1)
-[ -n "$lock_line" ] && [ -n "$app_line" ] && [ -n "$rel_line" ] \
-  && [ "$lock_line" -lt "$app_line" ] && [ "$app_line" -lt "$rel_line" ] \
-  && pass "start registers itself inside the stack lock" \
-  || fail "start's append is outside the stack lock" \
-          "acquire=$lock_line append=$app_line release=$rel_line; an append between another process's read and rename is destroyed"
-grep -q '_lock_acquire "$af.lock"' "$RM" \
-  && pass "_active_pop rewrites the stack inside the lock" \
-  || fail "_active_pop rewrites the stack unlocked"
-prune_unlocked=$(awk '/^_active_prune\(\)/,/^}/' "$RM" | grep -c '_lock_acquire' || true)
-assert_eq "0" "$prune_unlocked" \
-  "_active_prune takes no lock of its own: its one caller already holds it"
+# The race is gone rather than guarded: `active` is append-only, so there is no
+# rewrite for a concurrent append to land inside. The structural property is
+# that nothing rewrites it.
+rewriters=$(grep -cE 'mv -f "\$(tmp|af)"|> *"\$af"' "$RM" || true)
+assert_eq "0" "$rewriters" "nothing rewrites the run log; it is append-only"
+assert_eq "0" "$(grep -c '_active_prune\|_active_pop\|_active_top' "$RM" || true)" \
+  "and the mutable-stack machinery is gone with it"
 
 # --- 31. the rollup retry is bounded ----------------------------------------
 # Unbounded, one unwritable store left EVERY run in the repo open: active grew
@@ -651,7 +639,9 @@ rmA finish "$L35" >/dev/null 2>&1
 assert_eq "1" "$(grep -c '\"kind\":\"finish\"' "$L35" || true)" \
   "the second closes it rather than holding it open forever"
 chmod 700 "$ADIR"
-assert_not_contains "$(cat "$ACTIVE")" "$L35" "and it leaves the stack"
+rm_ emit --kind lint --json '{"scope":"after-bounded-retry"}'
+assert_eq "0" "$(grep -c 'after-bounded-retry' "$L35" || true)" \
+  "and nothing resolves to it once it is closed"
 
 # --- 32. a lock nobody released does not disable rotation forever -----------
 # No trap and no staleness check meant a process killed between the mkdir and
@@ -677,18 +667,19 @@ assert_eq "700" "$(ls -ld "$PA" | awk '{print $1}' | sed 's/[^rwx-]//g' | awk '{
   if (substr(p,7,1)=="r") w+=4; if (substr(p,8,1)=="w") w+=2; if (substr(p,9,1)=="x") w+=1;
   printf "%d%d%d", o, g, w }')" "the analytics directory is created 700"
 
-# --- 34. the stack lock is never left behind --------------------------------
-# `start` rejected a bad --run-id from INSIDE its critical section without
-# releasing, and every later `_active_pop` then failed to acquire and skipped
-# silently, so finished runs stayed on the stack. Nothing asserted it.
+# --- 34. a rejected argument leaves nothing broken behind -------------------
+# `start` used to reject a bad --run-id from inside a critical section without
+# releasing the lock, after which every later pop skipped silently. There is no
+# lock now, and this asserts the property that mattered: the next run still
+# resolves.
 rmA start --skill en-build --run-id 'bad id' >/dev/null 2>&1
-assert_file_missing "$ACTIVE.lock" "a rejected --run-id leaves no lock behind"
 rmA start --skill en-build --run-id "$(printf 'a\tb')" >/dev/null 2>&1
-assert_file_missing "$ACTIVE.lock" "nor does a tab in one"
+assert_file_missing "$ACTIVE.lock" "no run-log lock exists to leak"
 L37=$(rmA start --skill en-build)
-assert_file_missing "$ACTIVE.lock" "a successful start releases the lock"
+rmA emit --kind lint --json '{"scope":"after-bad-ids"}'
+assert_eq "1" "$(grep -c 'after-bad-ids' "$L37" || true)" \
+  "and a rejected run-id leaves the next run resolvable"
 rmA finish "$L37"
-assert_file_missing "$ACTIVE.lock" "and so does finish"
 
 # --- 35. a pathless retry finds the run whose publish failed ----------------
 # _active_top returns only LIVE entries, and a marked-but-unpublished run is by

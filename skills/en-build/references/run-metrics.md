@@ -22,17 +22,36 @@ Carried by `/en-plan`, `/en-build`, `/en-review`, `/en-ship` and
 
 1. `$ENSEMBLE_RUN_LEDGER` when set. An explicit override, for tests and for a
    genuine subprocess tree.
-2. the last live line of `runs/active`, the per-repo stack `start` appends to.
+2. the newest open run in `runs/active`, the per-repo run log.
 3. nothing. It writes nothing and exits 0.
+
+**`runs/active` is append-only, and that is the whole design.** `start` appends
+`+<TAB>run_id<TAB>path` and `finish` appends `-<TAB>...`; resolution replays the
+tail backwards and takes the newest `+` with no matching `-`. Nothing rewrites
+it, so there is nothing to race, nothing to lock, and nothing to prune.
+
+That shape was earned. It began as a mutable stack, and three consecutive peer
+passes found defects in it: a rewrite clobbered a concurrent append and lost
+five registrations of twelve, the lock added to fix that could be leaked by an
+argument check and stalled a contended caller for six seconds, its ownership
+test could not tell "I hold it" from "someone else does", and the prune deleted
+exactly the runs waiting to be retried. Every one is a property of rewriting a
+shared file.
 
 The environment variable alone cannot carry this, because every tool call in the
 host is a fresh shell: a variable exported by the call that ran `start` is gone
 by the call that runs `ensemble-unit-verify`. `active` survives across shells.
 
-**A line is live while its ledger holds no `finish` event anywhere in it** — not
+**A run is open while its ledger holds no `finish` event anywhere in it** — not
 "while the last line is not finish". An event arriving after `finish`, which a
 stale `ENSEMBLE_RUN_LEDGER` in some other shell produces, would otherwise
-resurrect a closed run and misattribute everything after it.
+resurrect a closed run and misattribute everything after it. A ledger also stops
+counting as open twenty-four hours after its last write, because a run killed
+before its finish step can never satisfy the first test and would otherwise
+parent every later run in the repo forever.
+
+`finish` resolves a slightly wider set than `emit`: a run that is **publishing**
+is closed to new events but is exactly what a retry must find.
 
 **Nesting needs no skill changes.** When `start` finds a live entry it appends a
 `child` pointer to that ledger and records `parent_run_id` in its own. Both
@@ -136,14 +155,22 @@ rollup below.
 retained generation. If `finish` closed the ledger first and the rollup then
 failed, the run's only durable record would be gone with nothing left to retry
 from; this way an unwritable store leaves the run open and the next `finish`
-retries. A ledger that will never parse is the opposite case and closes rather
-than retrying forever.
+retries, bounded at two attempts so one wedged store cannot hold every run in
+the repo open. The check, the rotation and the append are **one transaction**
+under a lock on the rollup file, because separately two finishes both saw no
+existing line and both appended.
+
+**One torn line costs one line.** The ledger is parsed per record, so a partial
+write is skipped rather than failing the whole file, which is the entire reason
+the format is JSONL. `jq -s` failed the complete ledger on any bad line and the
+run was then discarded.
 
 **Rotates at 5 MB**, keeping exactly one previous generation, so the ceiling is
-about 10 MB and never grows. The rename is serialized by a `mkdir` lock: two
-finishes both seeing the file over the cap would each rename it and the second
-would destroy the first's generation. Losing the lock skips the rename and
-appends anyway, so its worst case is a file briefly over the cap.
+about 10 MB and never grows. Two finishes both seeing the file over the cap
+would each rename it and the second would destroy the first's generation, so the
+rename happens inside the same transaction as the check and the append. A caller
+that cannot take that lock within a second **defers**: the run stays open and a
+later `finish` publishes it, which cannot duplicate and cannot drop.
 
 ## Reading it
 

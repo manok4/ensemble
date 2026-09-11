@@ -128,131 +128,73 @@ _ledger_closing() {
   [ -f "$1" ] && grep -qF '"kind":"closing"' "$1" 2>/dev/null && ! _ledger_closed "$1"
 }
 
-# A run killed before its finish step can never satisfy "has a finish event",
-# so without a second bound it stays live forever: it parents every later run in
-# the repo and every emit pays one grep for it. Measured at 365 such entries, an
-# emit went from 60ms to 1264ms. Age is that bound. Twenty-four hours is far
-# longer than any real run and far shorter than forever.
-_ACTIVE_STALE_MINUTES=1440
-
-# `_active_prune` and `_active_pop` read the whole file and rename a rewrite over
-# it while `start` appends to it. An append landing between another process's
-# read and its rename was destroyed: measured, 12 concurrent starts against a
-# 60-entry stack lost 5 registrations, and a run whose entry was dropped writes
-# its events into a DIFFERENT run's ledger. All three writers take this lock.
+# THE RUN LOG IS APPEND-ONLY, AND THAT IS THE WHOLE DESIGN.
 #
-# Losing it is not fatal to an event, only to the bookkeeping: the caller waits
-# a bounded moment and proceeds, because a helper that can block a run is worse
-# than a stack that is occasionally one entry stale.
-# Bounded hard. Only `start` and `finish` take it, once per run, but six seconds
-# of spinning is still a helper slowing the run it measures, which is the one
-# thing it may never do. Half a second, and losing the lock skips the REWRITE
-# rather than doing it unlocked, because an unlocked rewrite is what destroyed a
-# concurrent append. An append needs no lock: it is one atomic write.
-_LOCK_TRIES=50
-_lock_acquire() {  # <lock-dir>
-  local i=0
-  while [ "$i" -lt "$_LOCK_TRIES" ]; do
-    mkdir "$1" 2>/dev/null && return 0
-    # A lock older than a minute belongs to a process that died holding it.
-    [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$1" 2>/dev/null && continue
-    i=$((i + 1))
-    sleep 0.01 2>/dev/null || sleep 1
-  done
-  return 1
-}
-_lock_release() { rmdir "$1" 2>/dev/null || true; }
+# `start` appends "+<TAB>run_id<TAB>path"; `finish` appends "-<TAB>run_id<TAB>path".
+# Resolution replays the tail backwards: the newest `+` with no matching `-` is
+# the open run. Nothing is ever rewritten, so there is nothing to race.
+#
+# The previous version maintained this as a mutable stack, and three consecutive
+# peer passes found defects in it: a rewrite clobbered a concurrent append and
+# lost 5 registrations of 12, the lock added to fix that could be leaked by an
+# argument check and stalled a contended caller for six seconds, its ownership
+# guard could not tell "I hold it" from "someone else does", and the prune
+# deleted exactly the runs that were waiting to be retried. Every one of those
+# is a property of rewriting a shared file. An append has none of them.
+#
+# Bounded: only the last _LOG_SCAN lines are replayed, which covers any real
+# nesting depth many times over, and the file dies with the clone.
+_LOG_SCAN=500
+
+# A run killed before its finish step can never satisfy "has a finish event", so
+# without a second bound it stays open forever: it parents every later run in
+# the repo. Age is that bound. Twenty-four hours is far longer than any real run
+# and far shorter than forever.
+_ACTIVE_STALE_MINUTES=1440
 
 _ledger_abandoned() {  # <ledger-path>
   [ -n "$(find "$1" -maxdepth 0 -mmin "+$_ACTIVE_STALE_MINUTES" 2>/dev/null)" ]
 }
 
-# Drop dead entries. Rewritten through a temp file and moved into place, so a
-# reader never sees a half-written stack.
-_active_prune() {  # <active-file>  (caller holds the lock)
-  local af="$1" tmp line path
-  [ -f "$af" ] || return 0
-  [ -d "$af.lock" ] || return 0                # not held: skip rather than race
-  tmp="$af.$$"
-  : > "$tmp" 2>/dev/null || return 0
-  while IFS= read -r line; do
-    path="${line#*$'\t'}"
-    [ "$path" = "$line" ] && continue          # no tab: not a record we wrote
-    _ledger_live "$path" || continue
-    _ledger_abandoned "$path" && continue
-    printf '%s\n' "$line" >> "$tmp"
-  done < "$af"
-  mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
+_log_append() {  # <log> <+|-> <run_id> <path>
+  printf '%s\t%s\t%s\n' "$2" "$3" "$4" >> "$1" 2>/dev/null \
+    || note "cannot record the run lifecycle in $1; nesting attribution unavailable"
 }
 
-# The innermost live run, or nothing. Read BOTTOM-UP and return at the first
-# hit: the newest live entry is the answer, and scanning top-down to overwrite a
-# variable cost one grep per entry on a path that runs dozens of times a build.
-_active_top() {  # <active-file>
-  local af="$1" line path
-  [ -f "$af" ] || return 1
+# The newest run with no closing `-`, that still qualifies. `--for-finish`
+# accepts a ledger that is marked and waiting to publish; `emit` does not,
+# because the rollup has already read it.
+_log_open_run() {  # <log> [--for-finish]
+  local log="$1" mode="${2:-}" line mark rest rid path closed=""
+  [ -f "$log" ] || return 1
   while IFS= read -r line; do
-    path="${line#*$'\t'}"
-    [ "$path" = "$line" ] && continue
-    if _ledger_live "$path" && ! _ledger_abandoned "$path"; then
-      printf '%s\n' "$line"; return 0
-    fi
-  done < <(tail -r "$af" 2>/dev/null || tac "$af" 2>/dev/null)
+    mark="${line%%$'\t'*}"; rest="${line#*$'\t'}"
+    rid="${rest%%$'\t'*}"; path="${rest#*$'\t'}"
+    [ "$path" = "$rest" ] && continue          # malformed: not a record we wrote
+    case "$mark" in
+      -) closed="$closed $rid " ;;
+      +) case "$closed" in *" $rid "*) continue ;; esac
+         [ -f "$path" ] || continue
+         _ledger_closed "$path" && continue
+         _ledger_abandoned "$path" && continue
+         if [ "$mode" != "--for-finish" ]; then _ledger_live "$path" || continue; fi
+         printf '%s\n' "$path"; return 0 ;;
+    esac
+  done < <(tail -n "$_LOG_SCAN" "$log" 2>/dev/null | (tail -r 2>/dev/null || tac 2>/dev/null))
   return 1
 }
 
-# $ENSEMBLE_RUN_LEDGER, else the innermost live run, else nothing. The ONE
+# $ENSEMBLE_RUN_LEDGER, else the newest open run, else nothing. The ONE
 # resolution every pathless subcommand uses, so `finish` cannot need a variable
 # that `emit` was built not to need.
 _resolve_ledger() {  # [--for-finish]
-  local f="${ENSEMBLE_RUN_LEDGER:-}" dir top
+  local f="${ENSEMBLE_RUN_LEDGER:-}" dir
   if [ -z "$f" ]; then
     dir=$(_runs_dir) || return 1
-    if [ "${1:-}" = "--for-finish" ]; then
-      top=$(_active_finishable "$dir/active") || return 1
-    else
-      top=$(_active_top "$dir/active") || return 1
-    fi
-    f="${top#*$'\t'}"
+    f=$(_log_open_run "$dir/active" "${1:-}") || return 1
   fi
   [ -f "$f" ] || return 1
   printf '%s\n' "$f"
-}
-
-# The newest UNFINISHED run: live, or marked and waiting for a retry. What
-# `finish` should close, which is not the same as what `emit` should target.
-# Taking the newest LIVE one instead closed a live parent while its marked child
-# sat unpublishable, because a marked child is not live by definition.
-_active_finishable() {  # <active-file>
-  local af="$1" line path
-  [ -f "$af" ] || return 1
-  while IFS= read -r line; do
-    path="${line#*$'\t'}"
-    [ "$path" = "$line" ] && continue
-    [ -f "$path" ] || continue
-    _ledger_closed "$path" && continue
-    _ledger_abandoned "$path" && continue
-    printf '%s\n' "$line"; return 0
-  done < <(tail -r "$af" 2>/dev/null || tac "$af" 2>/dev/null)
-  return 1
-}
-
-# Remove the entry for one ledger BY PATH, not by position: a parent may finish
-# while its child is still open.
-_active_pop() {  # <active-file> <ledger-path>
-  local af="$1" target="$2" tmp line path
-  [ -f "$af" ] || return 0
-  # Skipped rather than raced. The entry stays until the next start prunes it,
-  # and the age bound clears it regardless.
-  _lock_acquire "$af.lock" || return 0
-  tmp="$af.$$"
-  if ! : > "$tmp" 2>/dev/null; then _lock_release "$af.lock"; return 0; fi
-  while IFS= read -r line; do
-    path="${line#*$'\t'}"
-    [ "$path" = "$target" ] || printf '%s\n' "$line" >> "$tmp"
-  done < "$af"
-  mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
-  _lock_release "$af.lock"
 }
 
 # A PER-KIND KEY ALLOWLIST, ENFORCED HERE AND NOWHERE ELSE.
@@ -331,6 +273,20 @@ _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # redirect is a writer that poisons the data it exists to produce.
 _ROLLUP_CAP=5242880          # 5 MB; one previous generation kept, so ~10 MB total
 
+_ROLLUP_LOCK_TRIES=100       # 1s ceiling: recording may not slow the run, and
+                             # only `finish` waits, once, at the end of a run
+_rollup_lock() {  # <lock-dir>
+  local i=0
+  while [ "$i" -lt "$_ROLLUP_LOCK_TRIES" ]; do
+    mkdir "$1" 2>/dev/null && return 0
+    # A lock older than a minute belongs to a process that died holding it.
+    [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$1" 2>/dev/null && continue
+    i=$((i + 1)); sleep 0.01 2>/dev/null || sleep 1
+  done
+  return 1
+}
+_rollup_unlock() { rmdir "$1" 2>/dev/null || true; }
+
 _analytics_dir() { printf '%s\n' "${ENSEMBLE_ANALYTICS_DIR:-$HOME/.ensemble/analytics}"; }
 
 # Rename an over-cap file out of the way. SERIALIZED, because two finishes both
@@ -347,16 +303,12 @@ _rotate() {  # <target>
   # A process killed between the mkdir and the rmdir left the directory behind
   # forever, and every later rotation then took the skip branch: the 5 MB cap
   # this whole feature exists to enforce was off, silently and permanently.
-  # _lock_acquire clears a lock older than a minute; the critical section here
-  # is a wc and an mv, so that cannot pre-empt a live holder.
-  lock="$t.rotate.lock"
-  _lock_acquire "$lock" || return 0
-  trap '_lock_release "'"$lock"'"' INT TERM HUP
+  # Called with the rollup lock already held by _rollup: rotation and the append
+  # that follows it are one transaction, or a writer that loses the rename can
+  # append into the generation the winner is expiring.
   size=$(wc -c < "$t" 2>/dev/null | tr -d ' ')
   case "$size" in ''|*[!0-9]*) size=0 ;; esac
   [ "$size" -lt "$_ROLLUP_CAP" ] || mv -f "$t" "$t.1" 2>/dev/null || true
-  _lock_release "$lock"
-  trap - INT TERM HUP
 }
 
 # 0 published (or already present), 1 retryable (store unwritable),
@@ -366,15 +318,16 @@ _rollup() {  # <ledger>
   _git_resolve >/dev/null 2>&1
   repo=$(basename "$_GIT_TOP" 2>/dev/null) || repo=""
   [ -n "$repo" ] || repo="unknown"
-  summary=$(jq -src --arg repo "$repo" --arg now "$(_now)" '
-      (map(select(.kind == "start")) | first) as $s
+  summary=$(jq -Rnc --arg repo "$repo" --arg now "$(_now)" '
+      [inputs | fromjson? // empty] as $doc
+      | ($doc | map(select(.kind == "start")) | first) as $s
       | if $s == null or ($s.run_id // "") == "" then null else
-          (map(select(.kind != "start" and .kind != "closing" and .kind != "finish"))) as $ev
+          ($doc | map(select(.kind != "start" and .kind != "closing" and .kind != "finish"))) as $ev
           | ($ev | group_by(.kind) | map({key: .[0].kind, value: length}) | from_entries) as $counts
-          | (map(select(.kind == "outcome")) | last) as $out
-          | (map(select(.kind == "select"))  | last) as $sel
-          | (map(select(.kind == "peer")) | map({peer, decision, elapsed_s})) as $peers
-          | (map(.dropped // 0) | add // 0) as $dropped
+          | ($doc | map(select(.kind == "outcome")) | last) as $out
+          | ($doc | map(select(.kind == "select"))  | last) as $sel
+          | ($doc | map(select(.kind == "peer")) | map({peer, decision, elapsed_s})) as $peers
+          | ($doc | map(.dropped // 0) | add // 0) as $dropped
           | {schema: 1,
              skill: $s.skill, run_id: $s.run_id, plan_id: $s.plan_id, repo: $repo,
              parent_run_id: $s.parent_run_id,
@@ -404,11 +357,19 @@ _rollup() {  # <ledger>
   fi
   [ -d "$adir" ] || return 1
   target="$adir/$repo.jsonl"
+  # Check, rotate and append are ONE transaction. Separately, two finishes of
+  # the same run both saw no existing line and both appended. Losing the lock is
+  # retryable, never a duplicate and never a silent drop.
+  _rollup_lock "$target.rotate.lock" || return 1
+  if grep -qF "\"run_id\":\"$run_id\"" "$target" "$target.1" 2>/dev/null; then
+    _rollup_unlock "$target.rotate.lock"; return 0
+  fi
   # Idempotent on run_id across EVERY retained generation. Scanning only the
   # current file would re-append a run whose line had just been rotated out.
-  grep -qF "\"run_id\":\"$run_id\"" "$target" "$target.1" 2>/dev/null && return 0
   _rotate "$target"
-  ( umask 077; printf '%s\n' "$summary" >> "$target" ) 2>/dev/null || return 1
+  ( umask 077; printf '%s\n' "$summary" >> "$target" ) 2>/dev/null || {
+    _rollup_unlock "$target.rotate.lock"; return 1; }
+  _rollup_unlock "$target.rotate.lock"
   return 0
 }
 
@@ -452,13 +413,12 @@ if [ "$cmd" = "start" ]; then
   # concurrent append landed between another process's read and its rename and
   # was destroyed, and a run whose entry was lost writes its events into a
   # different run's ledger.
-  _held=0; _lock_acquire "$active.lock" && _held=1
-  # Prune first, so a vanished or already-finished run never becomes a parent.
-  _active_prune "$active"
+  # The run this one nests inside, read before this one exists.
   parent_ledger="" parent_id=""
-  if top=$(_active_top "$active"); then
-    parent_ledger="${top#*$'\t'}"
-    parent_id="${top%%$'\t'*}"
+  if parent_ledger=$(_log_open_run "$active"); then
+    parent_id=$(sed -n 's/.*"run_id":"\([^"]*\)".*/\1/p' "$parent_ledger" 2>/dev/null | head -1)
+  else
+    parent_ledger=""
   fi
 
   # Exclusive creation: two runs started in the same second must not share a
@@ -466,14 +426,12 @@ if [ "$cmd" = "start" ]; then
   file="$dir/$skill-$run_id.jsonl"
   if ! ( set -C; : > "$file" ) 2>/dev/null; then
     note "metrics file already exists: $file; metrics disabled for this run"
-    [ "$_held" -eq 0 ] || _lock_release "$active.lock"
     exit 0
   fi
   if ! jq -nc --arg s "$skill" --arg p "$plan" --arg r "$run_id" --arg pr "$parent_id" --arg t "$(_now)" \
         '{kind:"start", skill:$s, plan_id:(if $p == "" then null else $p end), run_id:$r,
           parent_run_id:(if $pr == "" then null else $pr end), at:$t}' > "$file" 2>/dev/null; then
     note "cannot write $file; metrics disabled"; rm -f "$file"
-    [ "$_held" -eq 0 ] || _lock_release "$active.lock"
     exit 0
   fi
 
@@ -483,9 +441,7 @@ if [ "$cmd" = "start" ]; then
     _append "$parent_ledger" "$(jq -nc --arg r "$run_id" --arg s "$skill" --arg l "$file" --arg t "$(_now)" \
       '{kind:"child", at:$t, run_id:$r, skill:$s, ledger:$l}')"
   fi
-  printf '%s\t%s\n' "$run_id" "$file" >> "$active" 2>/dev/null \
-    || note "cannot register the run on $active; nested attribution unavailable"
-  [ "$_held" -eq 0 ] || _lock_release "$active.lock"
+  _log_append "$active" "+" "$run_id" "$file"
   printf '%s\n' "$file"
   exit 0
 fi
@@ -552,7 +508,8 @@ case "$cmd" in
     ;;
   finish)
     dir=$(_runs_dir) || dir=""
-    _pop() { [ -z "$dir" ] || _active_pop "$dir/active" "$file"; }
+    _rid=$(sed -n 's/.*"run_id":"\([^"]*\)".*/\1/p' "$file" 2>/dev/null | head -1)
+    _pop() { [ -z "$dir" ] || [ -z "$_rid" ] || _log_append "$dir/active" "-" "$_rid" "$file"; }
     # The stack pop happens whether or not recording is on: an entry left
     # behind by an opted-out finish parents every later run in the repo.
     if _metrics_off || _ledger_closed "$file"; then _pop; exit 0; fi
