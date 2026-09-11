@@ -269,23 +269,44 @@ def sql_from_uninspectable(cmds):
 
 
 TOOL_PATTERNS = [
-    (r"(^|\s)find\s+.*(-delete\b|-exec\s+rm\b)", "find -delete / -exec rm removes matched files."),
-    (r"(^|\s)rsync\s+.*--delete", "rsync --delete removes destination files."),
-    (r"(^|\s)shred(\s|$)", "shred irrecoverably destroys file contents."),
-    (r"(^|\s)truncate\s+.*-s[\s=]*0(\b|$)", "truncate -s 0 empties a file."),
-    (r"(^|\s)unlink(\s|$)", "unlink removes a file."),
-    (r"git\s+push\s+.*(-f\b|--force)", "git force-push rewrites remote history."),
-    (r"git\s+reset\s+--hard", "git reset --hard discards uncommitted changes."),
-    (r"git\s+(checkout|restore)\s+\.", "discards all uncommitted working-tree changes."),
-    (r"git\s+branch\s+(-[a-zA-Z]*D|--delete\s+--force)", "git branch -D force-deletes an unmerged branch."),
-    (r"git\s+tag\s+(-[a-zA-Z]*d|--delete)", "git tag -d removes a tag."),
-    (r"git\s+worktree\s+remove\s+(-[a-zA-Z]*f|--force)", "git worktree remove --force discards changes."),
-    (r"kubectl\s+delete", "kubectl delete removes Kubernetes resources."),
-    (r"docker\s+(rm\s+-f|system\s+prune)", "Docker force-remove or prune."),
-    (r"terraform\s+destroy", "terraform destroy tears down infrastructure."),
-    (r"aws\s+s3\s+rm\s+.*--recursive", "aws s3 rm --recursive bulk-deletes objects."),
-    (r"gcloud(\s+[a-z-]+)+\s+delete\b", "gcloud delete removes a cloud resource."),
-    (r"(prisma\s+migrate\s+reset|rails\s+db:(drop|reset)|drizzle-kit\s+push|sequelize\s+db:drop|php\s+artisan\s+migrate:(fresh|reset)|alembic\s+downgrade\s+base)", "ORM destructive migration can wipe the database."),
+    # (name, regex, message). The name is EXPLICIT because it is the analytics
+    # label: it used to be derived as pat.split(chr(92))[0][:20], which collapsed
+    # every `(^|\s)...` pattern to `(^|` and all six git rules to `git`, so the
+    # recorded data could not tell a force-push from a reset --hard.
+    ("find_delete", r"(^|\s)find\s+.*(-delete\b|-exec\s+rm\b)",
+     "find -delete / -exec rm removes matched files."),
+    ("rsync_delete", r"(^|\s)rsync\s+.*--delete",
+     "rsync --delete removes destination files."),
+    ("shred", r"(^|\s)shred(\s|$)",
+     "shred irrecoverably destroys file contents."),
+    ("truncate_zero", r"(^|\s)truncate\s+.*-s[\s=]*0(\b|$)",
+     "truncate -s 0 empties a file."),
+    ("unlink", r"(^|\s)unlink(\s|$)",
+     "unlink removes a file."),
+    ("git_force_push", r"git\s+push\s+.*(-f\b|--force)",
+     "git force-push rewrites remote history."),
+    ("git_reset_hard", r"git\s+reset\s+--hard",
+     "git reset --hard discards uncommitted changes."),
+    ("git_checkout_dot", r"git\s+(checkout|restore)\s+\.",
+     "discards all uncommitted working-tree changes."),
+    ("git_branch_force_delete", r"git\s+branch\s+(-[a-zA-Z]*D|--delete\s+--force)",
+     "git branch -D force-deletes an unmerged branch."),
+    ("git_tag_delete", r"git\s+tag\s+(-[a-zA-Z]*d|--delete)",
+     "git tag -d removes a tag."),
+    ("git_worktree_force_remove", r"git\s+worktree\s+remove\s+(-[a-zA-Z]*f|--force)",
+     "git worktree remove --force discards changes."),
+    ("kubectl_delete", r"kubectl\s+delete",
+     "kubectl delete removes Kubernetes resources."),
+    ("docker_force_remove", r"docker\s+(rm\s+-f|system\s+prune)",
+     "Docker force-remove or prune."),
+    ("terraform_destroy", r"terraform\s+destroy",
+     "terraform destroy tears down infrastructure."),
+    ("aws_s3_rm_recursive", r"aws\s+s3\s+rm\s+.*--recursive",
+     "aws s3 rm --recursive bulk-deletes objects."),
+    ("gcloud_delete", r"gcloud(\s+[a-z-]+)+\s+delete\b",
+     "gcloud delete removes a cloud resource."),
+    ("orm_destructive_migration", r"(prisma\s+migrate\s+reset|rails\s+db:(drop|reset)|drizzle-kit\s+push|sequelize\s+db:drop|php\s+artisan\s+migrate:(fresh|reset)|alembic\s+downgrade\s+base)",
+     "ORM destructive migration can wipe the database."),
 ]
 
 
@@ -307,9 +328,9 @@ def analyze_shell(cmd):
         if ">" in raw and redir_truncates(toks, raw):
             emit("redir_truncate", "output redirection (>) truncates an existing file or symlink.")
 
-    for pat, msg in TOOL_PATTERNS:                         # case-sensitive on raw (preserves -D vs -d)
+    for name, pat, msg in TOOL_PATTERNS:                   # case-sensitive on raw (preserves -D vs -d)
         if re.search(pat, cmd):
-            emit(pat.split(chr(92))[0][:20], msg)
+            emit(name, msg)
 
     all_toks = [t for toks, _ in cmds if toks for t in toks]
     local = targets_local_testdev(all_toks)
