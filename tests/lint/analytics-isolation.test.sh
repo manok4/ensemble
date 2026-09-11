@@ -20,6 +20,12 @@
 #   THE LABEL IS NOT DERIVED         the pattern name reaches disk, so deriving
 #                                    it from a regex put `(^|` in the data and
 #                                    collapsed six git rules into one bucket.
+#   THE WRITER SET IS DECLARED       every discovered writer names how a suite
+#                                    invokes it, so a new one cannot arrive
+#                                    without saying how it is driven.
+#   THE EXPORT PRECEDES THE CALL     an export below the first driving line
+#                                    covers nothing above it, which is exactly
+#                                    how 156 lines reached the operator's store.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -139,7 +145,13 @@ while IFS= read -r t; do
     fail "$(basename "$t") drives an analytics writer without redirecting it" \
          "$uncovered driving line(s) carry no override; it will append to ~/.ensemble/analytics"
   fi
-done < <(find "$REPO_ROOT/tests" -name '*.test.sh' -type f | sort)
+done < <(
+  # Prefiltered: the per-file loop below still applies code_only and the
+  # per-pattern check, so semantics are unchanged and a comment-only mention is
+  # still rejected. If this narrowing is ever wrong, `drove >= 2` goes red.
+  alt=$(for b in $PATTERNS; do driver_pattern "$b"; printf '|'; done | sed 's/|$//')
+  grep -rlE "$alt" --include='*.test.sh' "$REPO_ROOT/tests" 2>/dev/null | sort
+)
 [ "$drove" -ge 2 ] \
   && pass "the suite scan found the drivers it is meant to check ($drove)" \
   || fail "the suite scan found $drove drivers; it should find the guardrail hook and the rollup"

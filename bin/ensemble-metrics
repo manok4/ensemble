@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ensemble-metrics — three named reports over the per-repo analytics rollup.
+"""ensemble-metrics: three named reports over the per-repo analytics rollup.
 
 Three questions, three reports, and no generic query tool. A query language
 would need a schema anyone could hold in their head; these three are the
@@ -22,12 +22,15 @@ no --peer-value-summary and there should not be.
 """
 
 import json
+import math
 import os
 import statistics
 import subprocess
 import sys
 
 CAP_SMALL_SAMPLE = 5
+CAP_ROWS = 50          # per-run rows printed as text; --json still returns all
+CAP_BAR = 40           # widest histogram bar, in characters
 
 
 def die(msg, code=2):
@@ -71,19 +74,27 @@ def load(adir, repo):
 
 def median(sorted_vals):
     """The ordinary median, averaging the two middle values on an even count.
-    Nearest-rank would report 30 for [10,20,30,40], which is defensible and is
-    not what anyone reading a report means by "median"."""
+
+    Returned exactly. int(round(...)) turned [10, 11] into 10, both because it
+    discarded the half and because Python rounds halves to even.
+    """
     if not sorted_vals:
         return None
-    return int(round(statistics.median(sorted_vals)))
+    m = statistics.median(sorted_vals)
+    return int(m) if float(m).is_integer() else m
 
 
 def quantile(sorted_vals, q):
-    """Nearest-rank, which is the right shape for a tail figure like p90."""
+    """Nearest rank: the ceil(q * n)-th value, 1-indexed.
+
+    Not round(q * (n - 1)), which is interpolation wearing a rank's name: for
+    six values it picked the fifth rather than the sixth.
+    """
     if not sorted_vals:
         return None
-    idx = int(round(q * (len(sorted_vals) - 1)))
-    return sorted_vals[max(0, min(idx, len(sorted_vals) - 1))]
+    n = len(sorted_vals)
+    rank = int(math.ceil(q * n))
+    return sorted_vals[max(0, min(rank - 1, n - 1))]
 
 
 def small_sample(n):
@@ -121,8 +132,6 @@ def report_peer_value(rows):
 def report_time(rows):
     by_skill = {}
     for r in rows:
-        if r.get("ended_at") is None:
-            continue                      # an unfinished run has no duration
         d = by_skill.setdefault(r.get("skill") or "unknown",
                                 {"runs": 0, "durations": [], "counts": {}})
         d["runs"] += 1
@@ -168,30 +177,37 @@ def report_selection(rows):
 def render(doc, skipped):
     L = []
     if doc["report"] == "peer-value":
-        L.append("Peer value — %d run(s) with an outcome" % doc["runs_scored"])
+        L.append("Peer value, %d run(s) with an outcome" % doc["runs_scored"])
         if doc["runs_without_outcome"]:
             L.append("  %d run(s) recorded no outcome and are excluded, not counted as zero."
                      % doc["runs_without_outcome"])
         if doc["rows"]:
             L.append("")
             L.append("  %-26s %-14s %6s %6s %6s" % ("run", "skill", "peer", "both", "host"))
-            for r in doc["rows"]:
+            shown = doc["rows"][-CAP_ROWS:]
+            for r in shown:
                 L.append("  %-26s %-14s %6d %6d %6d" % (
                     r["run_id"][:26], (r["skill"] or "")[:14],
                     r["peer_only"], r["corroborated"], r["host_only"]))
+            hidden = len(doc["rows"]) - len(shown)
+            if hidden:
+                L.append("  ... and %d earlier run(s); --json returns all of them." % hidden)
             L.append("")
             L.append("  peer-only findings per run:")
+            # Scaled, not one mark per run: at the retention cap a bucket was a
+            # 12,053-character line, and it wrapped unreadably well before that.
+            widest = max(doc["peer_only_histogram"].values())
             for k in sorted(doc["peer_only_histogram"]):
-                L.append("    %3d findings  %s (%d)" % (
-                    k, "#" * doc["peer_only_histogram"][k],
-                    doc["peer_only_histogram"][k]))
+                c = doc["peer_only_histogram"][k]
+                bar = "#" * max(1, int(round(CAP_BAR * c / float(widest))))
+                L.append("    %3d findings  %s (%d)" % (k, bar, c))
             L.append("  the peer found nothing new in %d of %d run(s)."
                      % (doc["runs_where_peer_found_nothing"], doc["runs_scored"]))
             L.append("  read the spread, not an average: a peer that finds nothing on easy")
             L.append("  diffs and everything on hard ones averages to looking mediocre.")
         note = small_sample(doc["runs_scored"])
     elif doc["report"] == "time":
-        L.append("Time — %d finished run(s)" % doc["runs"])
+        L.append("Time, %d finished run(s)" % doc["runs"])
         L.append("")
         L.append("  %-14s %5s %8s %8s %8s  %s" % ("skill", "runs", "median", "p90", "max", "events"))
         for s in doc["skills"]:
@@ -203,7 +219,7 @@ def render(doc, skipped):
                 "-" if s["max_s"] is None else "%ds" % s["max_s"], ev))
         note = small_sample(doc["runs"])
     else:
-        L.append("Selection — %d run(s) that selected tests" % doc["runs"])
+        L.append("Selection, %d run(s) that selected tests" % doc["runs"])
         L.append("")
         L.append("  %-14s %5s %10s %10s %8s" % ("tier", "runs", "selected", "total", "ratio"))
         for t in doc["tiers"]:
@@ -257,19 +273,20 @@ def main(argv):
         repo = default_repo()
 
     rows, skipped = load(adir, repo)
-    if not rows:
-        if as_json:
-            print(json.dumps({"report": which, "repo": repo, "rows": [],
-                              "note": "no data yet"}, sort_keys=True))
-        else:
-            print("no data yet for '%s' in %s" % (repo, adir))
-        return 0
-
+    # The same key set whether or not there is data, so a parser never has to
+    # special-case emptiness. An empty store is a report over zero runs.
     doc = {"peer-value": report_peer_value,
            "time": report_time,
            "selection": report_selection}[which](rows)
     doc["repo"] = repo
     doc["skipped_lines"] = skipped
+    if not rows:
+        doc["note"] = "no data yet"
+        if as_json:
+            print(json.dumps(doc, sort_keys=True))
+        else:
+            print("no data yet for '%s' in %s" % (repo, adir))
+        return 0
     if as_json:
         print(json.dumps(doc, sort_keys=True))
     else:

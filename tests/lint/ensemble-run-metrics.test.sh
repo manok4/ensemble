@@ -23,6 +23,15 @@
 #                                  A run begun before the operator opted out
 #                                  must stop recording, and must still leave
 #                                  the active stack.
+#   ONLY NAMED KEYS REACH DISK     the per-kind allowlist drops the rest, loudly,
+#                                  and gates the VALUES of the one kind a model
+#                                  composes.
+#   A RUN IS PUBLISHED ONCE        marked, then published, then closed; the
+#                                  rollup is idempotent across both retained
+#                                  generations and its rotation is serialized.
+#   NOTHING NEEDS A VARIABLE       finish and summary resolve the run the way
+#                                  emit does, because the variable they used to
+#                                  take does not survive between tool calls.
 #
 # Negative controls at authoring: deleting the `active` fallback in
 # _resolve_ledger turned the cross-directory and nesting assertions red;
@@ -33,7 +42,7 @@ set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
-TEST_NAME="ensemble-run-metrics ledger addressing"
+TEST_NAME="ensemble-run-metrics: addressing, allowlist, rollup"
 
 RM="$REPO_ROOT/skills/en-build/scripts/ensemble-run-metrics"
 WORK="$(mktemp -d)"

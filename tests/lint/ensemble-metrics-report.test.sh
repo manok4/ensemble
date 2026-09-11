@@ -144,4 +144,51 @@ m --peer-value >/dev/null; m --time >/dev/null; m --selection >/dev/null
 assert_eq "$before" "$(store_hash)" \
   "running every report leaves the store byte-unchanged"
 
+# --- the statistics are the statistics they are named after ------------------
+# int(round(median)) turned [10,11] into 10, twice over: it discarded the half
+# and Python rounds halves to even. p90 used round(q*(n-1)), which is
+# interpolation wearing a rank's name and picked the fifth of six values.
+: > "$R"; rm -f "$A/proj.jsonl.1"
+line e1 en-qa 10 null null >> "$R"
+line e2 en-qa 11 null null >> "$R"
+assert_eq "10.5" "$(m --time --json | jq -r '.skills[] | select(.skill=="en-qa") | .median_s')" \
+  "an even sample reports the true median, not a rounded-to-even integer"
+
+: > "$R"
+for d in 1 2 3 4 5 6; do line "p$d" en-ship "$d" null null >> "$R"; done
+assert_eq "6" "$(m --time --json | jq -r '.skills[] | select(.skill=="en-ship") | .p90_s')" \
+  "p90 of six values is the sixth by nearest rank, not the fifth"
+assert_eq "6" "$(m --time --json | jq -r '.skills[] | select(.skill=="en-ship") | .max_s')" \
+  "and max is the largest"
+
+# --- the text report is bounded; --json is not -------------------------------
+: > "$R"
+# 120 runs, and 90 of them in ONE bucket: unscaled that bucket is a 90-character
+# bar, and at the retention cap it was 12,053 characters.
+for i in $(seq 1 120); do
+  if [ "$i" -le 90 ]; then pk=0; else pk=$((i % 3 + 1)); fi
+  line "many$i" en-review 5 "$(O 9 "$pk" 4 2)" null >> "$R"
+done
+out=$(m --peer-value)
+rows=$(printf '%s\n' "$out" | grep -c '^  many' || true)
+assert_eq "50" "$rows" "the per-run table is capped at fifty rows"
+assert_contains "$out" "and 70 earlier run(s)" "and says how many it did not print"
+longest=$(printf '%s\n' "$out" | awk '{ print length }' | sort -n | tail -1)
+[ "$longest" -le 100 ] \
+  && pass "no line exceeds a readable width ($longest chars)" \
+  || fail "the histogram bar is unbounded" "longest line is $longest chars"
+assert_eq "120" "$(m --peer-value --json | jq -r '.rows | length')" \
+  "--json still returns every row"
+
+# --- one --json shape, populated or not --------------------------------------
+: > "$R"
+for r in --time --selection --peer-value; do
+  empty_keys=$(m "$r" --json | jq -r 'keys | join(",")')
+  line z1 en-qa 5 "$(O 1 1 0 0)" "$(S graph 1 10)" >> "$R"
+  full_keys=$(m "$r" --json | jq -r 'del(.note) | keys | join(",")')
+  : > "$R"
+  assert_eq "$full_keys" "$(printf '%s' "$empty_keys" | sed 's/note,//; s/,note//')" \
+    "$r --json has the same keys empty as populated"
+done
+
 report

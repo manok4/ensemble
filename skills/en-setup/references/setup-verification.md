@@ -40,7 +40,7 @@ runs the same required-artifact table.
 **Analytics store size** (advisory; `scripts/check-health` runs it). Any file in `$ENSEMBLE_ANALYTICS_DIR` (default `~/.ensemble/analytics`) at or over 5 MB gets one 🟡 line naming its size, its line count and **what it holds**, because the two files that live there earn opposite advice:
 
 - `guardrail.jsonl` is a log of hook fires that nothing reads back. Removing it loses only that history. It reached 8.6 MB and 71,171 events, 97% of them test noise from four months of unisolated runs, before anything told the operator it was there.
-- `<repo>.jsonl` is the durable rollup and the **only** surviving record of runs whose per-clone ledgers are gone. The line says so and names the `ensemble-metrics --time --json` report as the way to export before removing anything.
+- `<repo>.jsonl` is the durable rollup and the **only** surviving record of runs whose per-clone ledgers are gone. The line says so, and says to copy the file rather than naming a report: `--time` aggregates to five numbers per skill and `--peer-value` drops durations, so no report reproduces it. `ensemble-metrics` also lives at the Ensemble repo root and is not installed into a consuming project, which is where this check runs.
 
 **It never tells the operator a file is disposable, and never deletes.** Blanket advice is wrong for the rollup and presumptuous for the rest; an unrecognised file gets its size and "left alone".
 

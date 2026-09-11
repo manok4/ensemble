@@ -63,7 +63,9 @@ big "$A/proj.jsonl"
 out=$(health)
 assert_contains "$out" "analytics: proj.jsonl is 6 MB" "an oversized rollup is named"
 assert_contains "$out" "only surviving record" "and classified as the only copy of the data"
-assert_contains "$out" "ensemble-metrics --time --json" "with the export command to run first"
+assert_contains "$out" "copy the file" "and says to copy it, since no report reproduces it"
+assert_not_contains "$out" "ensemble-metrics" \
+  "and does not name a tool this check's own project never installs"
 printf '%s' "$out" | grep -qi 'safe to delete' \
   && fail "the rollup advisory calls it safe to delete" \
           "it is the only surviving copy of that data" \
@@ -75,8 +77,15 @@ big "$A/guardrail.jsonl"
 out=$(health)
 assert_eq "2" "$(printf '%s\n' "$out" | grep -c 'analytics: ')" "two oversized files get two lines"
 
-# --- an unrecognised file is named and left alone ----------------------------
+# A rotated generation classifies with its parent, not as the opposite thing.
 rm -f "$A/guardrail.jsonl" "$A/proj.jsonl"
+big "$A/guardrail.jsonl.1"
+out=$(health)
+assert_contains "$out" "hook-fire records" "a rotated guardrail generation keeps the hook-log advice"
+assert_not_contains "$out" "only surviving record" "and is not called the durable rollup"
+
+# --- an unrecognised file is named and left alone ----------------------------
+rm -f "$A"/guardrail.jsonl* "$A/proj.jsonl"
 big "$A/something-else.log"
 out=$(health)
 assert_contains "$out" "unrecognised. Left alone" "an unrecognised file gets no advice"

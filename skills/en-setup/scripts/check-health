@@ -140,12 +140,12 @@ if [ -d "$_ch_adir" ]; then
     _mb=$(( _sz / 1048576 ))
     _ln=$(wc -l < "$_f" 2>/dev/null | tr -d ' ')
     case "$(basename "$_f")" in
-      guardrail.jsonl)
+      guardrail.jsonl|guardrail.jsonl.*)
         check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
           "${_ln} hook-fire records. Nothing reads them back; removing the file loses only that history." ;;
       *.jsonl|*.jsonl.1)
         check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
-          "${_ln} run summaries, and the only surviving record of runs whose per-clone ledgers are gone. Export first with the ensemble-metrics --time --json report" ;;
+          "${_ln} run summaries, and the only surviving record of runs whose per-clone ledgers are gone. To keep it, copy the file: no report reproduces it" ;;
       *)
         check "analytics: $(basename "$_f") is ${_mb} MB" yellow \
           "${_ln} lines, unrecognised. Left alone." ;;

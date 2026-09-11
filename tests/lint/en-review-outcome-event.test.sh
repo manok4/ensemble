@@ -9,10 +9,11 @@
 #
 #   IT EXISTS, AFTER RECONCILIATION   an outcome recorded before the buckets are
 #                                     computed would record nothing.
-#   ITS KEYS SURVIVE THE ALLOWLIST    both sides are parsed and compared, so a
-#                                     key added to one and not the other fails
-#                                     here rather than becoming a column that is
-#                                     quietly always zero.
+#   ITS KEYS SURVIVE THE ALLOWLIST    the skill's keys are parsed and checked
+#                                     against the allowlist, so one the write
+#                                     would drop fails here. The reverse
+#                                     direction, an allowlisted key nothing
+#                                     emits, is metrics-vocabulary's.
 #   THE PAYLOAD IS CARRIED            en-review holds the helper and the
 #                                     reference, so the call is not a mention.
 #   AND IT REACHES THE REPORT         an end-to-end run asserts the numbers come
