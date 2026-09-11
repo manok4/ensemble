@@ -147,6 +147,41 @@ frontmatter_field() {  # <file> <field> -> value; a quoted scalar is unquoted an
   esac
   printf '%s' "$v"
 }
+# STDOUT IS CODE, STDERR IS PROSE, AND THEY MUST NOT MEET.
+#
+# `ensemble-agent-model` is fail-soft: it writes `KEY='value'` lines to stdout,
+# any diagnostic to stderr, and exits 0 either way. The Codex path captured it
+# with `2>&1` and eval'd the lot, so a warning like
+#
+#   config.json is not valid JSON (jq: parse error: ...); every key is ignored
+#
+# was parsed as shell and died on the `(` — and because a syntax error aborts
+# the WHOLE eval, the perfectly good assignments that followed on stdout were
+# discarded too. Every agent then rendered `model: inherit, effort: inherit`,
+# which looks like a resolution rather than a lost one. The Claude path had the
+# opposite bug, `2>/dev/null`, so the same broken config degraded it in silence.
+#
+# Sets RESOLVED_STDOUT and returns the resolver's exit code. Prints the
+# resolver's first diagnostic ONCE per run: it is the same sentence for every
+# agent, and six copies of it buries the one line that matters.
+RESOLVER_NOTE_SHOWN=""
+RESOLVED_STDOUT=""
+run_agent_resolver() {  # <resolver> <args...>
+  local _err_file _rc
+  RESOLVED_STDOUT=""
+  _err_file="$(mktemp 2>/dev/null)" || _err_file=""
+  if [ -z "$_err_file" ]; then
+    RESOLVED_STDOUT="$("$@" 2>/dev/null)"; return $?
+  fi
+  RESOLVED_STDOUT="$("$@" 2>"$_err_file")"; _rc=$?
+  if [ -s "$_err_file" ] && [ -z "$RESOLVER_NOTE_SHOWN" ]; then
+    echo "  ⚠ $(head -n1 "$_err_file")" >&2
+    RESOLVER_NOTE_SHOWN=1
+  fi
+  rm -f "$_err_file"
+  return "$_rc"
+}
+
 render_codex_agent() {  # <agent.md> <dst.toml> -> 0 rendered, 1 refused (reason logged)
   local src="$1" dst="$2" name desc body model="" effort="" tmp
   name="$(frontmatter_field "$src" name)"
@@ -169,7 +204,8 @@ render_codex_agent() {  # <agent.md> <dst.toml> -> 0 rendered, 1 refused (reason
   local resolver="$SOURCE_DIR/skills/en-review/scripts/ensemble-agent-model" source_note="source ~/.ensemble/config.json"
   local AGENT_MODEL="" AGENT_EFFORT="" AGENT_TIER="" AGENT_MODEL_SOURCE="" resolved=""
   if [ -x "$resolver" ]; then
-    if resolved="$("$resolver" --agent "$name" --host codex --agent-file "$src" --global-only --home "$HOME" 2>&1)"; then
+    if run_agent_resolver "$resolver" --agent "$name" --host codex --agent-file "$src" --global-only --home "$HOME"; then
+      resolved="$RESOLVED_STDOUT"
       eval "$resolved"
     else
       echo "  ⚠ $(basename "$src"): resolver failed ($(printf '%s' "$resolved" | head -1)); rendering without model" >&2
@@ -209,7 +245,8 @@ render_claude_agent() {  # <agent.md> <dst.md> -> 0 rendered (copy), 1 no effort
   local resolver="$SOURCE_DIR/skills/en-review/scripts/ensemble-agent-model"
   local AGENT_MODEL="" AGENT_EFFORT="" AGENT_TIER="" AGENT_MODEL_SOURCE=""
   [ -x "$resolver" ] || return 1
-  resolved="$("$resolver" --agent "$name" --host claude-code --agent-file "$src" --global-only --home "$HOME" 2>/dev/null)" || return 1
+  run_agent_resolver "$resolver" --agent "$name" --host claude-code --agent-file "$src" --global-only --home "$HOME" || return 1
+  resolved="$RESOLVED_STDOUT"
   eval "$resolved"; effort="$AGENT_EFFORT"
   [ -n "$effort" ] || return 1
   local tmp; tmp="$(mktemp "$(dirname "$dst")/.$name.md.XXXXXX" 2>/dev/null)" || { echo "  ✗ $(basename "$src"): cannot create a temp file in $(dirname "$dst"); linked without effort" >&2; return 1; }
