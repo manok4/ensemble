@@ -137,6 +137,53 @@ _active_pop() {  # <active-file> <ledger-path>
   mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
 }
 
+# A PER-KIND KEY ALLOWLIST, ENFORCED HERE AND NOWHERE ELSE.
+# The kind names the schema; keys the kind does not name are dropped before the
+# line reaches disk, so nothing downstream has to re-filter and an emitter
+# cannot leak a path, a branch name or a payload nobody reviewed. The existing
+# nine kinds carry exactly what references/run-metrics.md documents, so nothing
+# already recorded starts being dropped.
+#
+# A drop is LOUD ON STDERR and counted on the written line. The failure this
+# guards against is a helper emitting a new field that is quietly discarded
+# until someone edits this table, whose symptom is a number that is always zero.
+_ALLOW='{
+  "dispatch": ["agent","host","model","model_source","started","ended"],
+  "peer":     ["iteration","peer_decision","tokens",
+               "peer","decision","reason","peer_mode","effort","model_alias","model_actual","elapsed_s"],
+  "lint":     ["scope","seconds"],
+  "findings": ["iteration","P0","P1","P2","P3"],
+  "unit":     ["unit","event","commit","verify_exit","selection_tier"],
+  "phase":    ["checkpoint","event","units","outcome"],
+  "suite":    ["where","seconds","outcome"],
+  "review":   ["event","reviewer","findings","personas"],
+  "note":     ["message","detail"],
+  "child":    ["run_id","skill","ledger"],
+  "select":   ["tier","reason","count","total"],
+  "verify":   ["unit","tier","ran","failed","rc","checks"],
+  "receipt":  ["op","result","reason","age_s","checks"],
+  "outcome":  ["result","verdict","findings_total","peer_only","corroborated","host_only",
+               "applied","deferred","disagreed","units_total","units_done","gates_failed"]
+}'
+
+_known_kind() { printf '%s' "$_ALLOW" | jq -e --arg k "$1" 'has($k)' >/dev/null 2>&1; }
+
+# Prints the composed line on stdout. Names any dropped keys on stderr.
+# Returns non-zero when the payload is not an object or cannot be encoded.
+_compose_line() {  # <kind> <payload>
+  local kind="$1" payload="$2" dropped line
+  printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1 || return 1
+  dropped=$(jq -rn --arg k "$kind" --argjson p "$payload" --argjson a "$_ALLOW" \
+    '($a[$k] // []) as $keys | [$p | keys[] | . as $x | select(($keys | index($x)) == null)] | join(", ")' 2>/dev/null) || return 1
+  [ -z "$dropped" ] || note "kind $kind does not carry: $dropped (dropped before the write)"
+  line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" --argjson a "$_ALLOW" '
+      ($a[$k] // []) as $keys
+      | ($p | with_entries(select(.key as $x | ($keys | index($x)) != null))) as $kept
+      | (($p | keys | length) - ($kept | keys | length)) as $n
+      | {kind:$k, at:$t} + $kept + (if $n > 0 then {dropped:$n} else {} end)' 2>/dev/null) || return 1
+  printf '%s\n' "$line"
+}
+
 _append() {  # <file> <compact json line>
   printf '%s\n' "$2" >> "$1" 2>/dev/null || note "cannot append to $1; event dropped"
 }
@@ -214,14 +261,9 @@ if [ "$cmd" = "emit" ]; then
     file="${top#*$'\t'}"
   fi
   [ -f "$file" ] || exit 0
-  case "$kind" in
-    dispatch|peer|lint|findings|unit|phase|suite|review|note|child) ;;
-    *) note "emit --kind must be a known kind (got '$kind')"; exit 0 ;;
-  esac
-  printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1 \
+  _known_kind "$kind" || { note "emit --kind must be a known kind (got '$kind')"; exit 0; }
+  line=$(_compose_line "$kind" "$payload") \
     || { note "emit --json must be a JSON object; file unchanged"; exit 0; }
-  line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" '{kind:$k, at:$t} + $p' 2>/dev/null) \
-    || { note "cannot encode event; file unchanged"; exit 0; }
   _append "$file" "$line"
   exit 0
 fi
@@ -242,12 +284,9 @@ case "$cmd" in
         *) note "unknown flag for event: $1"; exit 0 ;;
       esac
     done
-    case "$kind" in dispatch|peer|lint|findings|unit|phase|suite|review|note|child) ;; *) note "event --kind must be a known kind (got '$kind')"; exit 0 ;; esac
-    if ! printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1; then
-      note "event --json must be a JSON object; file unchanged"; exit 0
-    fi
-    line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" \
-      '{kind:$k, at:$t} + $p' 2>/dev/null) || { note "cannot encode event; file unchanged"; exit 0; }
+    _known_kind "$kind" || { note "event --kind must be a known kind (got '$kind')"; exit 0; }
+    line=$(_compose_line "$kind" "$payload") \
+      || { note "event --json must be a JSON object; file unchanged"; exit 0; }
     _append "$file" "$line"
     ;;
   finish)

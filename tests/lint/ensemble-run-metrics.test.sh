@@ -211,4 +211,67 @@ s=$(rm_ summary "$L11")
 assert_contains "$s" "1 dispatches" "summary still reads the ledger"
 rm_ finish "$L11"
 
+# --- 16. the per-kind key allowlist (U2) -------------------------------------
+# The allowlist is the design's privacy boundary: one place decides what can
+# reach disk, so nothing downstream has to re-filter and nothing can drift.
+L12=$(rm_ start --skill en-build)
+last() { tail -1 "$L12"; }
+
+rm_ emit --kind select --json '{"tier":"graph","reason":"changed 2 files","count":4,"total":260}'
+assert_eq "graph" "$(last | jq -r '.tier')"    "an allowed key survives"
+assert_eq "4"     "$(last | jq -r '.count')"   "all four select keys survive"
+assert_eq "null"  "$(last | jq -r '.dropped')" "a clean payload carries no dropped count"
+
+# A path from the emitting machine is exactly what must never reach disk.
+err=$(rm_ emit --kind select --json '{"tier":"graph","cwd":"/Users/someone/secret-project"}' 2>&1)
+assert_eq "graph" "$(last | jq -r '.tier')"     "the allowed key is still written"
+assert_eq "null"  "$(last | jq -r '.cwd')"      "an unknown key is dropped before the write"
+assert_eq "1"     "$(last | jq -r '.dropped')"  "the written line counts the drop"
+assert_contains "$err" "cwd" "the dropped key is named on stderr"
+
+rm_ emit --kind select --json '{"nope":1,"also":2}' 2>/dev/null
+assert_eq "select" "$(last | jq -r '.kind')"   "a payload of only unknown keys still writes its kind"
+assert_eq "2"      "$(last | jq -r '.dropped')" "and counts every drop"
+
+rm_ emit --kind select --json '{}'
+assert_eq "null" "$(last | jq -r '.dropped')" "an empty payload carries no dropped count"
+
+# The eight keys ensemble-peer-invoke will pass, all of them.
+rm_ emit --kind peer --json '{"peer":"codex","decision":"on","reason":"default-on","peer_mode":"cross-agent","effort":"high","model_alias":"gpt-5.6-sol","model_actual":"gpt-5.6-sol","elapsed_s":126}'
+assert_eq "null" "$(last | jq -r '.dropped')" "all eight peer keys survive"
+assert_eq "126"  "$(last | jq -r '.elapsed_s')" "elapsed_s reaches disk"
+
+# An unknown KIND stays a rejection, not a drop: the kind names the schema.
+h=$(shasum "$L12" | awk '{print $1}')
+rm_ emit --kind nonsense --json '{"tier":"graph"}' 2>/dev/null
+assert_eq "$h" "$(shasum "$L12" | awk '{print $1}')" "an unknown kind is rejected, not filtered"
+
+# --- 17. nothing already recorded starts being dropped -----------------------
+# Each payload below is the shape references/run-metrics.md documents. If this
+# block goes red, the allowlist broke what /en-build and /en-plan already write.
+check_kind() {  # <kind> <payload>
+  rm_ emit --kind "$1" --json "$2"
+  assert_eq "$1"   "$(last | jq -r '.kind')"    "kind '$1' is accepted and written"
+  assert_eq "null" "$(last | jq -r '.dropped')" "kind '$1' keeps every documented key"
+}
+check_kind dispatch '{"agent":"repo-research","host":"claude-code","model":null,"model_source":"inherit","started":1,"ended":2}'
+check_kind peer     '{"iteration":1,"peer_decision":{"peer":"codex"},"tokens":{"input":null,"output":null}}'
+check_kind lint     '{"scope":"docs","seconds":3}'
+check_kind findings '{"iteration":1,"P0":0,"P1":3,"P2":5,"P3":2}'
+check_kind unit     '{"unit":"U3","event":"end","commit":"a3f1b9c","verify_exit":0,"selection_tier":"graph"}'
+check_kind phase    '{"checkpoint":"end-of-loop","event":"end","units":5,"outcome":"passed"}'
+check_kind suite    '{"where":"post-build","seconds":286,"outcome":"passed"}'
+check_kind review   '{"event":"end","reviewer":"cross-agent","findings":11,"personas":[{"dimension":"testing","seconds":null}]}'
+check_kind note     '{"message":"hello","detail":"world"}'
+check_kind child    '{"run_id":"r1","skill":"en-review","ledger":"/tmp/x.jsonl"}'
+check_kind verify   '{"unit":"U3","tier":"graph","ran":3,"failed":0,"rc":0,"checks":[]}'
+check_kind receipt  '{"op":"verify","result":"hit","reason":"ok","age_s":42,"checks":["full_suite"]}'
+check_kind outcome  '{"result":"ok","verdict":"revise","findings_total":9,"peer_only":3,"corroborated":4,"host_only":2,"applied":6,"deferred":2,"disagreed":1,"units_total":5,"units_done":5,"gates_failed":0}'
+
+# The explicit-file form filters identically; one allowlist, not two.
+rm_ event "$L12" --kind lint --json '{"scope":"docs","cwd":"/Users/someone"}' 2>/dev/null
+assert_eq "null" "$(last | jq -r '.cwd')"     "the explicit-file form filters through the same allowlist"
+assert_eq "1"    "$(last | jq -r '.dropped')" "the explicit-file form counts drops too"
+rm_ finish "$L12"
+
 report
