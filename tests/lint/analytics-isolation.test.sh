@@ -17,6 +17,9 @@
 #                                    it from a regex put `(^|` in the data and
 #                                    collapsed six git rules into one bucket.
 
+# ensemble-analytics: names-writers-as-data — every mention of an analytics
+# writer below is a pattern or a fixture body, never an invocation.
+
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
@@ -60,12 +63,16 @@ done
 driver_pattern() {
   case "$1" in
     check-guardrail.sh)   printf '%s' 'bash "\$HOOK"|bash "\$HOOK_SCRIPT"|\| *bash .*check-guardrail' ;;
-    ensemble-run-metrics) printf '%s' 'bash "\$RM"|ensemble-run-metrics" +(start|emit|event|finish|summary)' ;;
+    # Anchored on an EXECUTION, not on the name: tests/lint/skill-run-lifecycle
+    # greps SKILL.md bodies for the call text and never runs the helper, so a
+    # bare-name pattern made a static lint look like a writer.
+    ensemble-run-metrics) printf '%s' 'bash "\$RM"|bash [^|]*ensemble-run-metrics' ;;
     *) return 1 ;;
   esac
 }
 
 undeclared=""
+declared=""
 PATTERNS=""
 for w in $writers; do
   b=$(basename "$w")
@@ -89,10 +96,16 @@ while IFS= read -r t; do
     code_only "$t" | grep -qE "$pat" && { drives=1; break; }
   done
   [ "$drives" -eq 1 ] || continue
-  # This file matches its own driver_pattern table, because the table holds the
-  # invocation shapes as literal text. That is data, not execution. Its one real
-  # driving call is asserted directly below, with the override on the line.
-  [ "$(basename "$t")" = "analytics-isolation.test.sh" ] && continue
+  # A file may name a writer as DATA rather than run it: this guard holds the
+  # invocation shapes as literal text, and skill-run-lifecycle holds fixture
+  # SKILL.md bodies in quoted strings. Telling that from an execution needs a
+  # shell parser, so the file declares it instead. The marker is one fixed
+  # phrase, so adding one is deliberate and greppable, and the count is printed
+  # below where it cannot spread unnoticed.
+  if grep -q 'ensemble-analytics: names-writers-as-data' "$t"; then
+    declared="$declared $(basename "$t")"
+    continue
+  fi
   drove=$((drove + 1))
   # EVERY DRIVING LINE, not merely a mention somewhere in the file. A suite that
   # redirects one call and not another is the defect this guard exists for, and
@@ -123,6 +136,13 @@ done < <(find "$REPO_ROOT/tests" -name '*.test.sh' -type f | sort)
 [ "$drove" -ge 2 ] \
   && pass "the suite scan found the drivers it is meant to check ($drove)" \
   || fail "the suite scan found $drove drivers; it should find the guardrail hook and the rollup"
+
+# Printed, always, so an opt-out cannot accumulate quietly.
+n_declared=$(printf '%s' "$declared" | wc -w | tr -d ' ')
+[ "$n_declared" -le 3 ] \
+  && pass "suites naming a writer as data, not running it: $n_declared ($declared )" \
+  || fail "$n_declared suites claim to name writers as data" \
+          "that opt-out is meant to be rare; check each one actually runs nothing"
 
 # --- the recorded label is explicit, never derived from a regex --------------
 AN="$REPO_ROOT/skills/en-guardrail/bin/guardrail_analyze.py"

@@ -27,6 +27,9 @@
 # sentence turned the contract assertion red. The fixtures below re-run all
 # three mechanically.
 
+# ensemble-analytics: names-writers-as-data — every mention of an analytics
+# writer below is a pattern or a fixture body, never an invocation.
+
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
