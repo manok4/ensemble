@@ -115,17 +115,17 @@ _runs_dir() {
 # a write, and an event landing between those two was in the ledger, absent from
 # the rollup, and then unrecoverable because the run was closed. Marking the
 # ledger first means no later emit resolves to it at all.
-_ledger_closed() { [ -f "$1" ] && grep -qF '"kind":"finish"' "$1" 2>/dev/null; }
+_ledger_closed() { [ -f "$1" ] && grep -q '^{"kind":"finish"' "$1" 2>/dev/null; }
 _ledger_live() {
   [ -f "$1" ] || return 1
-  grep -qF '"kind":"finish"' "$1" 2>/dev/null && return 1
-  ! grep -qF '"kind":"closing"' "$1" 2>/dev/null
+  grep -q '^{"kind":"finish"' "$1" 2>/dev/null && return 1
+  ! grep -q '^{"kind":"closing"' "$1" 2>/dev/null
 }
 
 # A ledger that began closing and never finished: the rollup failed and the run
 # is waiting for a retry. Not live, but not done either.
 _ledger_closing() {
-  [ -f "$1" ] && grep -qF '"kind":"closing"' "$1" 2>/dev/null && ! _ledger_closed "$1"
+  [ -f "$1" ] && grep -q '^{"kind":"closing"' "$1" 2>/dev/null && ! _ledger_closed "$1"
 }
 
 # THE RUN LOG IS APPEND-ONLY, AND THAT IS THE WHOLE DESIGN.
@@ -142,9 +142,11 @@ _ledger_closing() {
 # deleted exactly the runs that were waiting to be retried. Every one of those
 # is a property of rewriting a shared file. An append has none of them.
 #
-# Bounded: only the last _LOG_SCAN lines are replayed, which covers any real
-# nesting depth many times over, and the file dies with the clone.
-_LOG_SCAN=500
+# Bounded, but generously: the scan walks BACKWARDS and stops at the first open
+# run, so this ceiling costs anything only when none is open. Counting lifecycle
+# records rather than nesting depth, 500 forgot a live parent with 250 completed
+# runs beneath it; 20,000 needs 10,000, and the file dies with the clone.
+_LOG_SCAN=20000
 
 # A run killed before its finish step can never satisfy "has a finish event", so
 # without a second bound it stays open forever: it parents every later run in
@@ -165,15 +167,17 @@ _log_append() {  # <log> <+|-> <run_id> <path>
 # accepts a ledger that is marked and waiting to publish; `emit` does not,
 # because the rollup has already read it.
 _log_open_run() {  # <log> [--for-finish]
-  local log="$1" mode="${2:-}" line mark rest rid path closed=""
+  local log="$1" mode="${2:-}" line mark rest path closed=""
   [ -f "$log" ] || return 1
   while IFS= read -r line; do
     mark="${line%%$'\t'*}"; rest="${line#*$'\t'}"
-    rid="${rest%%$'\t'*}"; path="${rest#*$'\t'}"
+    path="${rest#*$'\t'}"
     [ "$path" = "$rest" ] && continue          # malformed: not a record we wrote
     case "$mark" in
-      -) closed="$closed $rid " ;;
-      +) case "$closed" in *" $rid "*) continue ;; esac
+      # Keyed on the PATH, not the run id: a caller-supplied id can repeat
+      # across skills, and closing one of them suppressed all of them.
+      -) closed="$closed $path " ;;
+      +) case "$closed" in *" $path "*) continue ;; esac
          [ -f "$path" ] || continue
          _ledger_closed "$path" && continue
          _ledger_abandoned "$path" && continue
@@ -273,8 +277,9 @@ _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # redirect is a writer that poisons the data it exists to produce.
 _ROLLUP_CAP=5242880          # 5 MB; one previous generation kept, so ~10 MB total
 
-_ROLLUP_LOCK_TRIES=100       # 1s ceiling: recording may not slow the run, and
-                             # only `finish` waits, once, at the end of a run
+_ROLLUP_LOCK_TRIES=40        # 0.4s ceiling. Only `finish` waits, once, at the
+                             # end of a run, and it defers rather than blocking
+                             # longer: an unpublished run is retried, never lost.
 _rollup_lock() {  # <lock-dir>
   local i=0
   while [ "$i" -lt "$_ROLLUP_LOCK_TRIES" ]; do
@@ -343,8 +348,12 @@ _rollup() {  # <ledger>
              dropped: $dropped}
         end' "$f" 2>/dev/null) || return 2
   [ -n "$summary" ] && [ "$summary" != "null" ] || return 2
-  run_id=$(printf '%s' "$summary" | jq -r '.run_id' 2>/dev/null) || return 2
-  [ -n "$run_id" ] && [ "$run_id" != "null" ] || return 2
+  # Keyed on skill AND run_id, which together are what the ledger filename is
+  # and what actually identifies a run. On run_id alone, two runs given the same
+  # caller-supplied id in different skills collapsed into one durable record and
+  # the second was silently dropped.
+  run_id=$(printf '%s' "$summary" | jq -r '"\"skill\":\"" + .skill + "\",\"run_id\":\"" + .run_id + "\""' 2>/dev/null) || return 2
+  case "$run_id" in ''|*null*) return 2 ;; esac
 
   adir=$(_analytics_dir)
   # Repo names, plan ids, timings and outcomes, permanently, outside any repo.
@@ -361,7 +370,7 @@ _rollup() {  # <ledger>
   # the same run both saw no existing line and both appended. Losing the lock is
   # retryable, never a duplicate and never a silent drop.
   _rollup_lock "$target.rotate.lock" || return 1
-  if grep -qF "\"run_id\":\"$run_id\"" "$target" "$target.1" 2>/dev/null; then
+  if grep -qF "$run_id" "$target" "$target.1" 2>/dev/null; then
     _rollup_unlock "$target.rotate.lock"; return 0
   fi
   # Idempotent on run_id across EVERY retained generation. Scanning only the

@@ -415,14 +415,14 @@ assert_eq "1" "$(grep -c '"kind":"finish"' "$L18" || true)" "and closes the ledg
 
 # Idempotence, in the current file and in the rotated one.
 L19=$(rmA start --skill en-build --run-id dedupe1)
-printf '{"schema":1,"run_id":"dedupe1","skill":"en-build"}\n' >> "$ROLL"
+printf '{"schema":1,"skill":"en-build","run_id":"dedupe1"}\n' >> "$ROLL"
 n=$(wc -l < "$ROLL" | tr -d ' ')
 rmA finish "$L19"
 assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" "a run already in the rollup is not appended twice"
 assert_eq "1" "$(grep -c '"kind":"finish"' "$L19" || true)" "and its ledger still closes"
 
 L20=$(rmA start --skill en-build --run-id dedupe2)
-printf '{"schema":1,"run_id":"dedupe2","skill":"en-build"}\n' > "$ROLL.1"
+printf '{"schema":1,"skill":"en-build","run_id":"dedupe2"}\n' > "$ROLL.1"
 n=$(wc -l < "$ROLL" | tr -d ' ')
 rmA finish "$L20"
 assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" \
@@ -719,5 +719,54 @@ assert_eq "$h" "$(hash_file "$L39")" "an explicit-path event on a closed ledger 
 ( cd "$PROJ" && ENSEMBLE_RUN_LEDGER="$L39" ENSEMBLE_ANALYTICS_DIR="$ADIR" bash "$RM" \
     emit --kind lint --json '{"scope":"env-after-close"}' )
 assert_eq "$h" "$(hash_file "$L39")" "and neither does one addressed by ENSEMBLE_RUN_LEDGER"
+
+# --- 37. payload data cannot masquerade as lifecycle state ------------------
+# The predicates grepped for a JSON fragment ANYWHERE in the ledger, and the
+# allowlist permits `note.detail` as arbitrary JSON, so a note carrying
+# {"kind":"finish"} made a live run read as closed: finish would pop it without
+# publishing, and emit would stop resolving to it.
+rm -f "$ROLL"
+L40=$(rmA start --skill en-build)
+rmA emit --kind note --json '{"message":"m","detail":{"kind":"finish","at":"2020-01-01T00:00:00Z"}}'
+assert_eq "1" "$(grep -c '"kind":"finish"' "$L40" || true)" \
+  "the ledger really does contain that literal, nested in a payload"
+rmA emit --kind lint --json '{"scope":"still-open"}'
+assert_eq "1" "$(grep -c 'still-open' "$L40" || true)" \
+  "and the run is still open, because the predicate anchors on the line"
+rmA emit --kind note --json '{"message":"m","detail":{"kind":"closing"}}'
+rmA emit --kind lint --json '{"scope":"still-open-2"}'
+assert_eq "1" "$(grep -c 'still-open-2' "$L40" || true)" "same for a nested closing marker"
+rmA finish "$L40"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "and it publishes normally at the end"
+
+# --- 38. a reused run id in another skill is a different run ----------------
+# The closed set was keyed on the run id, so closing one suppressed every
+# earlier record sharing it; a caller-supplied id can repeat across skills.
+# The close record must be NEWER than the second start, or the backwards scan
+# reaches the second `+` before the `-` and the bug never shows.
+rm -f "$ROLL"
+LA=$(rmA start --skill en-build  --run-id shared)
+LB=$(rmA start --skill en-review --run-id shared)
+assert_ne "$LA" "$LB" "the same id in two skills is two ledgers"
+rmA finish "$LA"                       # closes the OUTER run, after the inner started
+rmA emit --kind lint --json '{"scope":"second-run"}'
+assert_eq "1" "$(grep -c 'second-run' "$LB" || true)" \
+  "closing one run does not suppress another that happens to share its id"
+rmA finish "$LB"
+assert_eq "2" "$(wc -l < "$ROLL" | tr -d ' ')" "and both publish"
+
+# --- 39. a live run survives many completed runs beneath it -----------------
+# The scan bound counts lifecycle records, not nesting depth, so a long-lived
+# parent with enough completed runs after it fell out of the window entirely.
+rm -f "$ROLL"
+LPAR=$(rmA start --skill en-build --run-id longlived)
+for i in $(seq 1 40); do
+  lx=$(rmA start --skill en-review --run-id "burst$i")
+  rmA finish "$lx"
+done
+rmA emit --kind lint --json '{"scope":"parent-still-found"}'
+assert_eq "1" "$(grep -c 'parent-still-found' "$LPAR" || true)" \
+  "the parent is still resolvable after 40 completed runs beneath it"
+rmA finish "$LPAR"
 
 report
