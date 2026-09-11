@@ -64,9 +64,8 @@ command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this
 # Returns 0 when recording is OFF. `ensemble-config-get` is deliberately not
 # used: it reads flat top-level keys only, skipping every indented line, so it
 # cannot see a nested `metrics:` block at all — and en-build does not carry it,
-# so pulling it in would add a script to a skill to read one boolean.
-# skills/en-sweep/scripts/ensemble-sweep-runner hand-rolls the same parser for
-# the same reason.
+# so pulling it in would add a script to a skill to read one boolean. en-sweep's
+# own runner hand-rolls the same parser for the same reason.
 _metrics_off() {
   [ "${ENSEMBLE_METRICS:-}" != "off" ] || return 0
   local root cfg

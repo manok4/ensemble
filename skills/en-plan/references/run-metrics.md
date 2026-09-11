@@ -79,7 +79,7 @@ Model-emitted, one call point, and the only one:
 
 | Kind | Keys | Emitted by |
 |---|---|---|
-| `outcome` | `result`, `verdict`, `findings_total`, `peer_only`, `corroborated`, `host_only`, `applied`, `deferred`, `disagreed`, `units_total`, `units_done`, `gates_failed` | `/en-review` step 13 |
+| `outcome` | `result`, `verdict`, `findings_total`, `peer_only`, `corroborated`, `host_only`, `applied`, `deferred`, `disagreed`, `units_total`, `units_done`, `gates_failed` | `/en-review`, in its output-report step, after reconciliation |
 
 `/en-review`'s corroboration buckets are computed during reconciliation and
 `ensemble-peer-invoke` has no notion of them, so no helper can observe this one.
