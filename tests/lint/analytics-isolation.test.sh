@@ -67,6 +67,10 @@ driver_pattern() {
     # greps SKILL.md bodies for the call text and never runs the helper, so a
     # bare-name pattern made a static lint look like a writer.
     ensemble-run-metrics) printf '%s' 'bash "\$RM"|bash [^|]*ensemble-run-metrics' ;;
+    # A reader, not a writer, but it resolves the same path: a suite that runs
+    # it against the operator's real HOME is stat-ing their files, and the rule
+    # here is that nothing in the suite reaches that directory at all.
+    check-health)         printf '%s' 'bash "\$CH"|bash [^|]*check-health' ;;
     *) return 1 ;;
   esac
 }

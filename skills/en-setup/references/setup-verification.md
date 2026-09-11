@@ -37,6 +37,13 @@ runs the same required-artifact table.
 | `timeout` or `gtimeout` on PATH (GNU coreutils) | `command -v timeout \|\| command -v gtimeout` | macOS: `brew install coreutils`. Linux distros typically already have it. |
 | `gnhf` on PATH (optional; only for `/en-loop`) | `command -v gnhf` | `npm i -g gnhf` (agent-agnostic loop engine; every other skill works without it) |
 
+**Analytics store size** (advisory; `scripts/check-health` runs it). Any file in `$ENSEMBLE_ANALYTICS_DIR` (default `~/.ensemble/analytics`) at or over 5 MB gets one 🟡 line naming its size, its line count and **what it holds**, because the two files that live there earn opposite advice:
+
+- `guardrail.jsonl` is a log of hook fires that nothing reads back. Removing it loses only that history. It reached 8.6 MB and 71,171 events, 97% of them test noise from four months of unisolated runs, before anything told the operator it was there.
+- `<repo>.jsonl` is the durable rollup and the **only** surviving record of runs whose per-clone ledgers are gone. The line says so and names `bin/ensemble-metrics --time --json` as the way to export before removing anything.
+
+**It never tells the operator a file is disposable, and never deletes.** Blanket advice is wrong for the rollup and presumptuous for the rest; an unrecognised file gets its size and "left alone".
+
 Surface the timeout-binary check as an advisory in the report — do NOT block install on missing it. Users may have legitimate reasons to defer (offline, restricted brew, container without coreutils). The 🟡 line in the report tells them what to install:
 
 ```
