@@ -1,143 +1,214 @@
 #!/usr/bin/env bash
 # tests/lint/ensemble-run-metrics.test.sh
 #
-# EN16 U11. The 2026-09-06 cost analysis was a manual transcript reconstruction.
-# This helper leaves a per-run file behind so the next pass reads evidence.
-# Two properties matter more than the schema: it never blocks a run (every
-# failure is one stderr line and exit 0), and a failed update never truncates
-# the file it was updating.
+# ensemble-run-metrics existed for weeks and wrote nothing, because recording
+# was the model's job and the model forgot. EN17 moves it into the helpers, and
+# the property that makes that possible is addressing: a helper anywhere in the
+# repo must find the current run WITHOUT being handed a path and WITHOUT an
+# environment variable, because every tool call here is a fresh shell.
+#
+# Guarded here:
+#
+#   ADDRESSING WITHOUT ARGUMENTS   `emit` resolves the ledger from a file on
+#                                  disk, so a helper invoked from another
+#                                  directory in another shell still lands.
+#   SILENCE IS THE DEFAULT         outside a run, emit writes nothing, creates
+#                                  nothing, and exits 0. Every existing test of
+#                                  every emitter depends on this.
+#   A CLOSED RUN STAYS CLOSED      liveness is the absence of a finish event
+#                                  anywhere in the ledger, not a last-line test:
+#                                  an event arriving after finish must not
+#                                  resurrect the run.
+#   OPT-OUT MEANS OPT-OUT          checked by every subcommand, not just start.
+#                                  A run begun before the operator opted out
+#                                  must stop recording, and must still leave
+#                                  the active stack.
+#
+# Negative controls at authoring: deleting the `active` fallback in
+# _resolve_ledger turned the cross-directory and nesting assertions red;
+# testing liveness on the last line alone turned the late-event assertion red;
+# skipping the active pop when opted out turned the phantom-parent assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
-TEST_NAME="ensemble-run-metrics"
+TEST_NAME="ensemble-run-metrics ledger addressing"
 
-M="$REPO_ROOT/skills/en-plan/scripts/ensemble-run-metrics"
+RM="$REPO_ROOT/skills/en-build/scripts/ensemble-run-metrics"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
-command -v jq >/dev/null 2>&1 || { pass "SKIPPED — jq not installed"; report; }
+# A throwaway repo. Every call below runs inside it, never in the real one.
+PROJ="$WORK/proj"
+mkdir -p "$PROJ/sub/deeper"
+cd "$PROJ"
+git init -q .
+git config user.email t@example.com
+git config user.name T
+GIT_DIR_ABS="$PROJ/.git"
+RUNS="$GIT_DIR_ABS/ensemble/runs"
+ACTIVE="$RUNS/active"
 
-# --- happy path in a temp git repo ---
-mkdir -p "$WORK/repo" && (cd "$WORK/repo" && git init -q)
-f=$(cd "$WORK/repo" && bash "$M" start --skill en-build --plan EN99 --run-id t1 2>"$WORK/err")
-assert_eq "" "$(cat "$WORK/err")" "start prints nothing to stderr in a git repo"
-case "$f" in */repo/.git/ensemble/runs/en-build-t1.jsonl) pass "start writes .git/ensemble/runs/<skill>-<run>.jsonl" ;; *) fail "start writes under .git/ensemble/runs/" "$f" ;; esac
-assert_eq "EN99" "$(head -1 "$f" | jq -r .plan_id)" "the file carries plan_id"
-assert_eq "en-build" "$(head -1 "$f" | jq -r .skill)" "the file is keyed on the skill"
-assert_eq "true" "$(head -1 "$f" | jq -r '.kind == "start" and .at != null')" "line 1 is the start event"
+# Each call is its own process with a clean environment, which is the point:
+# nothing may be carried between them but the filesystem.
+rm_() { env -u ENSEMBLE_RUN_LEDGER bash "$RM" "$@"; }
 
-(cd "$WORK/repo" && bash "$M" event "$f" --kind dispatch --json '{"agent":"repo-research","model":"sonnet"}' \
-                  && bash "$M" event "$f" --kind peer --json '{"iteration":1}' \
-                  && bash "$M" event "$f" --kind lint --json '{"scope":"docs/plans/active","seconds":5}') 2>"$WORK/err"
-assert_eq "" "$(cat "$WORK/err")" "three events append silently"
-assert_eq "3" "$(jq -s '[.[] | select(.kind|IN("dispatch","peer","lint"))] | length' "$f")" "three events recorded in order"
-assert_eq "dispatch peer lint" "$(jq -rs '[.[] | select(.kind|IN("dispatch","peer","lint")) | .kind] | join(" ")' "$f")" "events keep insertion order"
-assert_eq "true" "$(jq -rs '.[1].at != null and .[1].agent == "repo-research"' "$f")" "an event carries its timestamp and payload"
-(cd "$WORK/repo" && bash "$M" finish "$f")
-assert_eq "finish" "$(tail -1 "$f" | jq -r .kind)" "finish appends a terminal event"
-assert_eq "1 dispatches, 1 peer passes, 1 lint runs" "$(cd "$WORK/repo" && bash "$M" summary "$f")" "summary counts by kind"
-# Every LINE must parse: a partial write costs one event, not the file, which is
-# the property the array format could not offer.
-if jq -e . "$f" >/dev/null 2>&1; then pass "every line is valid JSON"; else fail "every line is valid JSON"; fi
+# --- 1. addressing without arguments, from another directory -----------------
+L1=$(cd "$PROJ" && rm_ start --skill en-build --plan EN17)
+assert_contains "$L1" "en-build-" "start prints the ledger path"
+assert_file_exists "$L1" "start creates the ledger"
+assert_file_exists "$ACTIVE" "start registers the run on the active stack"
+assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "active holds exactly one line"
 
-# --- bad payloads never truncate the file ---
-cp "$f" "$WORK/before.json"
-(cd "$WORK/repo" && bash "$M" event "$f" --kind lint --json '["not","an","object"]') 2>"$WORK/err"; rc=$?
-assert_exit_code 0 $rc "a non-object payload exits 0"
-grep -q "must be a JSON object" "$WORK/err" && pass "a non-object payload is named on stderr" || fail "a non-object payload is named on stderr" "$(cat "$WORK/err")"
-cmp -s "$f" "$WORK/before.json" && pass "a rejected payload leaves the file unchanged" || fail "a rejected payload leaves the file unchanged"
-(cd "$WORK/repo" && bash "$M" event "$f" --kind bogus --json '{}') 2>"$WORK/err"
-grep -q "kind must be" "$WORK/err" && cmp -s "$f" "$WORK/before.json" \
-  && pass "an unknown kind is rejected and the file is unchanged" \
-  || fail "an unknown kind is rejected and the file is unchanged" "$(cat "$WORK/err")"
+( cd "$PROJ/sub/deeper" && env -u ENSEMBLE_RUN_LEDGER bash "$RM" emit --kind lint --json '{"scope":"docs"}' )
+n=$(grep -c '"kind":"lint"' "$L1" || true)
+assert_eq "1" "$n" "emit from another directory, with no env and no path, lands in the run"
 
-# --- a flag with no value must not hang (correctness: shift 2 on one arg is a no-op, so the loop spun forever) ---
-for args in "start --skill" "start --skill en-build --plan P1 --run-id" "event $f --kind" "event $f --kind note --json"; do
-  ( cd "$WORK/repo" && timeout 5 bash "$M" $args >/dev/null 2>"$WORK/err" ); rc=$?
-  [ "$rc" -eq 0 ] && grep -q "needs a value" "$WORK/err" && pass "'$args' exits 0 with a stderr note instead of hanging" \
-    || fail "'$args' exits 0 with a stderr note instead of hanging" "rc=$rc err=$(cat "$WORK/err")"
-done
+# --- 2. nesting: child ledger, parent pointer --------------------------------
+L2=$(rm_ start --skill en-review)
+assert_ne "$L1" "$L2" "a nested start mints its own ledger"
+parent_id=$(head -1 "$L1" | jq -r '.run_id')
+child_parent=$(head -1 "$L2" | jq -r '.parent_run_id')
+assert_eq "$parent_id" "$child_parent" "the child records the parent's run_id"
+ptr=$(grep '"kind":"child"' "$L1" | jq -r '.ledger')
+assert_eq "$L2" "$ptr" "the parent holds a pointer to the child's ledger"
+assert_eq "2" "$(wc -l < "$ACTIVE" | tr -d ' ')" "active holds both runs"
 
-# --- two starts in the same second get distinct files; a caller-supplied id never truncates (peer 1-4) ---
-f1=$(cd "$WORK/repo" && bash "$M" start --skill en-build --plan EN98); f2=$(cd "$WORK/repo" && bash "$M" start --skill en-build --plan EN98)
-[ -n "$f1" ] && [ -n "$f2" ] && [ "$f1" != "$f2" ] && pass "two starts in the same second write distinct files" || fail "two starts in the same second write distinct files" "$f1 $f2"
-before=$(cat "$f")
-out=$(cd "$WORK/repo" && bash "$M" start --skill en-build --plan EN99 --run-id t1 2>"$WORK/err")
-[ -z "$out" ] && grep -q "already exists" "$WORK/err" && [ "$before" = "$(cat "$f")" ] \
-  && pass "a repeated --run-id refuses to truncate the existing run" || fail "a repeated --run-id refuses to truncate the existing run" "out=$out err=$(cat "$WORK/err")"
-# concurrent writers: twenty events from two background writers all land
-for i in $(seq 1 10); do (cd "$WORK/repo" && bash "$M" event "$f" --kind note --json "{\"n\":$i}") & done; wait
-for i in $(seq 11 20); do (cd "$WORK/repo" && bash "$M" event "$f" --kind note --json "{\"n\":$i}") & done; wait
-assert_eq "23" "$(jq -s '[.[] | select(.kind|IN("start","finish") | not)] | length' "$f")" "twenty concurrent events all land (3 earlier + 20)"
-[ -d "$f.lock" ] && fail "no lock directory left behind" || pass "no lock directory left behind"
+rm_ emit --kind lint --json '{"scope":"nested"}'
+assert_eq "1" "$(grep -c '"scope":"nested"' "$L2" || true)" "emit targets the innermost run"
+assert_eq "0" "$(grep -c '"scope":"nested"' "$L1" || true)" "the parent does not also receive it"
 
-# --- outside a git repo: disabled, never fatal ---
-mkdir -p "$WORK/nogit"
-out=$(cd "$WORK/nogit" && bash "$M" start --skill en-build --plan EN99 2>"$WORK/err"); rc=$?
-assert_exit_code 0 $rc "start outside a git repo exits 0"
-assert_eq "" "$out" "start outside a git repo prints no path"
-grep -q "not inside a git repository" "$WORK/err" && pass "start outside a git repo says why on stderr" || fail "start outside a git repo says why on stderr" "$(cat "$WORK/err")"
-(cd "$WORK/nogit" && bash "$M" event "" --kind lint --json '{}' 2>"$WORK/err"); rc=$?
-assert_exit_code 0 $rc "event with an empty file argument is a silent no-op"
-assert_eq "" "$(cat "$WORK/err")" "event with an empty file argument prints nothing"
+# --- 3. unwinding ------------------------------------------------------------
+rm_ finish "$L2"
+assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "finish pops the child off the stack"
+rm_ emit --kind lint --json '{"scope":"back-to-parent"}'
+assert_eq "1" "$(grep -c '"scope":"back-to-parent"' "$L1" || true)" "emit targets the parent again"
 
-# --- the skill names the helper and the reference documents the call points ---
-S="$REPO_ROOT/skills/en-plan/SKILL.md"; R="$REPO_ROOT/skills/en-plan/references/run-metrics.md"
-grep -qF "scripts/ensemble-run-metrics" "$S" && pass "SKILL.md names the helper" || fail "SKILL.md names the helper"
-grep -qF "references/run-metrics.md" "$S" && pass "SKILL.md points at the run-metrics reference" || fail "SKILL.md points at the run-metrics reference"
-grep -qF "metrics: <path>" "$S" && pass "the report line is in SKILL.md" || fail "the report line is in SKILL.md"
-for k in dispatch peer lint findings; do
-  grep -qF -- "--kind $k" "$R" && pass "the reference documents the $k call point" || fail "the reference documents the $k call point"
-done
-grep -qi "compaction count and dollar cost are not" "$R" && pass "the reference says what is not observable" || fail "the reference says what is not observable"
+# --- 4. out-of-order finish: pop by path, not by position --------------------
+L3=$(rm_ start --skill en-ship)
+rm_ finish "$L1"                       # the PARENT finishes while the child lives
+assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "the parent's line is removed by path"
+assert_contains "$(cat "$ACTIVE")" "$L3" "the still-open child survives the parent's finish"
+rm_ emit --kind lint --json '{"scope":"orphan"}'
+assert_eq "1" "$(grep -c '"scope":"orphan"' "$L3" || true)" "emit still targets the surviving run"
+rm_ finish "$L3"
 
-# --- the build kinds (D106) --------------------------------------------------
-# /en-build's own cost analyses were reconstructed by hand twice, and the
-# persona timings came out Unknown both times because nothing recorded them.
-b=$(cd "$WORK/repo" && bash "$M" start --skill en-build --plan EN97 --run-id b1)
-(cd "$WORK/repo" && bash "$M" event "$b" --kind unit  --json '{"unit":"U1","event":"start"}' \
-                 && bash "$M" event "$b" --kind unit  --json '{"unit":"U1","event":"end","commit":"abc"}' \
-                 && bash "$M" event "$b" --kind phase --json '{"phase":"P1","event":"end"}' \
-                 && bash "$M" event "$b" --kind suite --json '{"where":"post-build","seconds":226}' \
-                 && bash "$M" event "$b" --kind review --json '{"event":"end","reviewer":"cross-agent"}') 2>"$WORK/err"
-assert_eq "" "$(cat "$WORK/err")" "unit, phase, suite and review events append silently"
-assert_eq "5" "$(jq -s '[.[] | select(.kind|IN("start","finish") | not)] | length' "$b")" "five build events recorded"
-assert_eq "1 dispatches, 0 peer passes, 0 lint runs, 1 units, 1 phases, 1 suite runs" \
-  "$( (cd "$WORK/repo" && bash "$M" event "$b" --kind dispatch --json '{}' >/dev/null; bash "$M" summary "$b") )" \
-  "the summary appends the build counts after the three it always reports"
-# A start event without its end is work still in flight, not a finished unit.
-(cd "$WORK/repo" && bash "$M" event "$b" --kind unit --json '{"unit":"U2","event":"start"}')
-assert_contains "$(cd "$WORK/repo" && bash "$M" summary "$b")" "1 units" "an unfinished unit is not counted as done"
+# --- 5. the env var overrides the stack --------------------------------------
+L4=$(rm_ start --skill en-build)
+OVER="$WORK/override.jsonl"
+: > "$OVER"
+before=$(shasum "$ACTIVE" | awk '{print $1}')
+ENSEMBLE_RUN_LEDGER="$OVER" bash "$RM" emit --kind lint --json '{"scope":"override"}'
+assert_eq "1" "$(grep -c '"scope":"override"' "$OVER" || true)" "ENSEMBLE_RUN_LEDGER wins over the stack"
+assert_eq "0" "$(grep -c '"scope":"override"' "$L4" || true)" "the stack's run is untouched"
+assert_eq "$before" "$(shasum "$ACTIVE" | awk '{print $1}')" "active is not consulted or rewritten"
+rm_ finish "$L4"
 
-B="$REPO_ROOT/skills/en-build/SKILL.md"; BR="$REPO_ROOT/skills/en-build/references/run-metrics.md"
-grep -qF "scripts/ensemble-run-metrics" "$B" && pass "en-build names the helper" || fail "en-build names the helper"
-grep -qF "references/run-metrics.md" "$B" && pass "en-build points at the run-metrics reference" || fail "en-build points at the run-metrics reference"
-grep -qF "metrics: <path>" "$B" && pass "the report line is in en-build" || fail "the report line is in en-build"
-for k in unit phase suite review; do
-  grep -qF -- "--kind $k" "$BR" && pass "the reference documents the $k call point" || fail "the reference documents the $k call point"
-done
-grep -qF "never estimated" "$BR" && pass "an unmeasured duration is recorded as unmeasured" || fail "an unmeasured duration is recorded as unmeasured"
+# --- 6. pruning: a deleted ledger and a finished one -------------------------
+L5=$(rm_ start --skill en-build)
+rm -f "$L5"                            # the ledger vanishes, the entry remains
+assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "the stale entry is still on the stack"
+rm_ emit --kind lint --json '{"scope":"gone"}'
+assert_file_missing "$L5" "an emit against a vanished ledger recreates nothing"
+L6=$(rm_ start --skill en-plan)
+assert_eq "1" "$(wc -l < "$ACTIVE" | tr -d ' ')" "start prunes the vanished entry"
+assert_eq "null" "$(head -1 "$L6" | jq -r '.parent_run_id')" "a pruned entry does not become a phantom parent"
 
-# --- the skill key, which is what unblocked the other fourteen ---------------
-# `start --plan` required a plan_id, so only /en-build and /en-plan could record
-# and the other fourteen skills produced nothing. --skill is required now and
-# --plan is optional context.
-np=$(cd "$WORK/repo" && bash "$M" start --skill en-review 2>"$WORK/err")
-[ -n "$np" ] && assert_eq "null" "$(head -1 "$np" | jq -r .plan_id)" \
-  "a skill with no plan still records" || fail "a plan-less skill must be able to start"
-assert_eq "en-review" "$(head -1 "$np" | jq -r .skill)" "the ledger names the skill that wrote it"
+# --- 7. late event after finish: a closed run stays closed -------------------
+rm_ finish "$L6"
+printf '{"kind":"note","at":"2026-01-01T00:00:00Z"}\n' >> "$L6"   # arrives after finish
+printf '%s\t%s\n' "late" "$L6" >> "$ACTIVE"                       # and back on the stack
+L7=$(rm_ start --skill en-build)
+assert_eq "null" "$(head -1 "$L7" | jq -r '.parent_run_id')" \
+  "a ledger with a finish event is dead even when another line follows it"
+rm_ finish "$L7"
 
-out=$(cd "$WORK/repo" && bash "$M" start --plan EN01 2>"$WORK/err")
-[ -z "$out" ] && grep -q 'needs --skill' "$WORK/err" \
-  && pass "start without --skill says so and disables metrics" \
-  || fail "--skill must be required" "out=$out err=$(cat "$WORK/err")"
+# --- 8. no run: silence, and no directory -----------------------------------
+BARE="$WORK/bare"
+mkdir -p "$BARE"
+( cd "$BARE" && git init -q . )
+out=$(cd "$BARE" && env -u ENSEMBLE_RUN_LEDGER bash "$RM" emit --kind lint --json '{"scope":"x"}' 2>&1)
+rc=$?
+assert_eq "0" "$rc" "emit with no run exits 0"
+assert_eq "" "$out" "emit with no run says nothing"
+assert_file_missing "$BARE/.git/ensemble/runs/active" "emit with no run creates no run directory"
 
-# The skill name reaches a filename, so it cannot carry a path or a space.
-out=$(cd "$WORK/repo" && bash "$M" start --skill '../escape' 2>"$WORK/err")
-[ -z "$out" ] && grep -q 'must be' "$WORK/err" \
-  && pass "a skill name that is not [a-z0-9-]+ is refused" \
-  || fail "the skill name must be validated before it becomes a path" "out=$out"
+# --- 9. outside a git repository ---------------------------------------------
+OUTSIDE="$WORK/outside"
+mkdir -p "$OUTSIDE"
+( cd "$OUTSIDE" && env -u ENSEMBLE_RUN_LEDGER bash "$RM" emit --kind lint --json '{"a":1}' ) >/dev/null 2>&1
+assert_exit_code 0 $? "emit outside a git repo exits 0"
+
+# --- 10. malformed payloads leave the ledger byte-unchanged ------------------
+L8=$(rm_ start --skill en-build)
+rm_ emit --kind lint --json '{"ok":1}'
+h=$(shasum "$L8" | awk '{print $1}')
+rm_ emit --kind lint --json 'not json'  >/dev/null 2>&1
+rm_ emit --kind lint --json '[1,2]'     >/dev/null 2>&1
+assert_eq "$h" "$(shasum "$L8" | awk '{print $1}')" "a malformed payload leaves the ledger byte-unchanged"
+rm_ emit --kind nonsense --json '{}'    >/dev/null 2>&1
+assert_eq "$h" "$(shasum "$L8" | awk '{print $1}')" "an unknown kind leaves the ledger byte-unchanged"
+
+# --- 11. an unwritable runs directory is not fatal ---------------------------
+chmod 500 "$RUNS"
+rm_ emit --kind lint --json '{"scope":"ro"}' >/dev/null 2>&1
+assert_exit_code 0 $? "emit into a read-only runs directory exits 0"
+chmod 700 "$RUNS"
+
+# --- 12. concurrent appends --------------------------------------------------
+for i in $(seq 1 20); do rm_ emit --kind note --json "{\"i\":$i}" & done
+wait
+good=$(grep -c '"kind":"note"' "$L8" || true)
+assert_eq "20" "$good" "twenty concurrent appends produce twenty lines"
+bad=0
+while IFS= read -r line; do printf '%s' "$line" | jq -e . >/dev/null 2>&1 || bad=$((bad+1)); done < "$L8"
+assert_eq "0" "$bad" "every line parses as JSON after concurrent appends"
+rm_ finish "$L8"
+
+# --- 13. opt-out via ENSEMBLE_METRICS ----------------------------------------
+out=$(ENSEMBLE_METRICS=off bash "$RM" start --skill en-build 2>/dev/null)
+assert_eq "" "$out" "ENSEMBLE_METRICS=off makes start print nothing"
+
+# --- 14. opt-out via config, including mid-run -------------------------------
+L9=$(rm_ start --skill en-build)
+rm_ emit --kind lint --json '{"scope":"before-optout"}'
+h9=$(shasum "$L9" | awk '{print $1}')
+mkdir -p "$PROJ/.ensemble"
+printf 'metrics:\n  enabled: false\n' > "$PROJ/.ensemble/config.local.yaml"
+out=$(rm_ start --skill en-review 2>/dev/null)
+assert_eq "" "$out" "config opt-out makes start print nothing"
+rm_ emit --kind lint --json '{"scope":"after-optout"}'
+assert_eq "$h9" "$(shasum "$L9" | awk '{print $1}')" "emit records nothing once opted out"
+rm_ finish "$L9"
+assert_eq "$h9" "$(shasum "$L9" | awk '{print $1}')" "finish appends no event once opted out"
+assert_eq "0" "$(wc -c < "$ACTIVE" | tr -d ' ')" "finish still pops the stack while opted out"
+
+# The phantom-parent case: without that pop, the abandoned run parents the next.
+rm -f "$PROJ/.ensemble/config.local.yaml"
+L10=$(rm_ start --skill en-build)
+assert_eq "null" "$(head -1 "$L10" | jq -r '.parent_run_id')" \
+  "a run finished while opted out leaves no phantom parent"
+rm_ finish "$L10"
+
+# A metrics block without `enabled`, and enabled:true, both leave recording on.
+printf 'metrics:\n  note: hello\n' > "$PROJ/.ensemble/config.local.yaml"
+out=$(rm_ start --skill en-build 2>/dev/null)
+assert_ne "" "$out" "a metrics block with no enabled key leaves recording on"
+rm_ finish "$out"
+printf 'metrics:\n  enabled: true\n' > "$PROJ/.ensemble/config.local.yaml"
+out=$(rm_ start --skill en-build 2>/dev/null)
+assert_ne "" "$out" "enabled: true leaves recording on"
+rm_ finish "$out"
+rm -f "$PROJ/.ensemble/config.local.yaml"
+
+# --- 15. the explicit-file form still works ----------------------------------
+L11=$(rm_ start --skill en-build)
+rm_ event "$L11" --kind dispatch --json '{"agent":"repo-research"}'
+assert_eq "1" "$(grep -c '"agent":"repo-research"' "$L11" || true)" \
+  "the pre-existing 'event <file>' form is unchanged"
+s=$(rm_ summary "$L11")
+assert_contains "$s" "1 dispatches" "summary still reads the ledger"
+rm_ finish "$L11"
 
 report

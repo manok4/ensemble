@@ -1,21 +1,30 @@
 #!/usr/bin/env bash
-# ensemble-run-metrics — record what a run can observe (EN16 U11, D106).
+# ensemble-run-metrics — record what a run can observe (EN16 U11, EN17 U1, D106).
 #
-# One JSONL file per run under $(git rev-parse --git-dir)/ensemble/runs/, next
-# to the verification receipt: never committed, no .gitignore entry, gone with
-# the clone. Events are what the skill can see: agent dispatches with the model
-# the resolver chose, peer passes with the peer_decision and token counts when
-# the CLI reports them, lint runs, and findings per severity per pass.
-# Compaction count and dollar cost are not observable from inside a run and
-# are not recorded.
+# One JSONL file per SKILL RUN under $(git rev-parse --git-dir)/ensemble/runs/,
+# next to the verification receipt: never committed, no .gitignore entry, gone
+# with the clone. Events are what a helper can see: the tier a selection chose,
+# the exit code a verification returned, the decision and elapsed seconds of a
+# peer pass. A model composing a JSON payload by hand is the intrusion this
+# removes, and it is why two skills carried call points for weeks and produced
+# nothing.
 #
-# /en-build records the same way: a unit or phase is two events (`"event":"start"`
-# then `"event":"end"`), which is what turns commit timestamps into per-unit
-# durations without a transcript to reconstruct.
+# THE LEDGER IS ADDRESSED THROUGH A FILE, NOT AN ENVIRONMENT VARIABLE.
+# `emit` takes no path. It resolves, in order: $ENSEMBLE_RUN_LEDGER when set,
+# else the last live line of `runs/active`, else nothing at all. The env var
+# alone cannot work here, because every tool call in the host is a fresh shell:
+# a variable exported by the call that ran `start` is gone by the call that runs
+# ensemble-unit-verify. `active` survives across shells, is per-repo, is never
+# committed, and disappears with the clone like the ledgers it points at.
 #
-# KEYED ON THE SKILL, not the plan. `--plan` required a plan_id, which only
-# /en-build and /en-plan have, so the other fourteen skills could not record at
-# all. The plan is optional context now.
+# A LINE IS LIVE WHEN ITS LEDGER HAS NO `finish` EVENT ANYWHERE IN IT.
+# Not "when the last line is not finish": an event arriving after finish, which
+# a stale $ENSEMBLE_RUN_LEDGER in some other shell produces, would otherwise
+# resurrect a closed run and misattribute everything after it.
+#
+# NESTING NEEDS NO SKILL CHANGES. When `start` finds a live entry it appends a
+# `child` pointer to that ledger and records `parent_run_id` in its own. Both
+# directions are written by the helper that holds both paths.
 #
 # ONE JSON OBJECT PER LINE, appended. The previous format rewrote the whole
 # document through jq under a lock, which cost O(n) per event and, worse, DROPPED
@@ -25,24 +34,118 @@
 #
 # Usage:
 #   ensemble-run-metrics start  --skill <name> [--plan <id>] [--run-id <id>]  -> prints the file path
-#   ensemble-run-metrics event  <file> --kind <dispatch|peer|lint|findings|unit|phase|suite|review|note> --json '<object>'
+#   ensemble-run-metrics emit   --kind <kind> --json '<object>'               -> no path; resolves the run
+#   ensemble-run-metrics event  <file> --kind <kind> --json '<object>'        -> explicit path
 #   ensemble-run-metrics finish <file>
 #   ensemble-run-metrics summary <file>   -> "N dispatches, M peer passes, K lint runs"
 #
+# OPT-OUT IS CHECKED BY EVERY SUBCOMMAND. `ENSEMBLE_METRICS=off`, or a
+# `metrics:` block with `enabled: false` in <repo>/.ensemble/config.local.yaml.
+# Checking it only at `start` would leave a run begun before the operator opted
+# out still recording afterwards. `finish` is the one exception that still does
+# work while off: it pops `active`, because that stack is run bookkeeping rather
+# than analytics, and an entry left behind becomes a phantom parent for every
+# later run in the repo.
+#
 # NEVER BLOCKS A RUN. Outside a git repo, without jq, or on a malformed
 # payload it prints one stderr line and exits 0; `start` then prints nothing,
-# and every later call with an empty file argument is a no-op.
+# and every later call is a no-op.
 
 set -u
 
 note() { printf 'ensemble-run-metrics: %s\n' "$*" >&2; }
 
 cmd="${1:-}"; [ $# -gt 0 ] && shift
-case "$cmd" in start|event|finish|summary) ;; -h|--help|"") sed -n '2,20p' "$0" >&2; exit 0 ;; *) note "unknown command: $cmd"; exit 0 ;; esac
+case "$cmd" in start|emit|event|finish|summary) ;; -h|--help|"") sed -n '2,20p' "$0" >&2; exit 0 ;; *) note "unknown command: $cmd"; exit 0 ;; esac
 
 command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this run"; exit 0; }
 
+# --- opt-out -----------------------------------------------------------------
+# Returns 0 when recording is OFF. `ensemble-config-get` is deliberately not
+# used: it reads flat top-level keys only, skipping every indented line, so it
+# cannot see a nested `metrics:` block at all — and en-build does not carry it,
+# so pulling it in would add a script to a skill to read one boolean.
+# skills/en-sweep/scripts/ensemble-sweep-runner hand-rolls the same parser for
+# the same reason.
+_metrics_off() {
+  [ "${ENSEMBLE_METRICS:-}" != "off" ] || return 0
+  local root cfg
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  cfg="$root/.ensemble/config.local.yaml"
+  [ -f "$cfg" ] || return 1
+  awk '
+    /^metrics:[[:space:]]*(#.*)?$/ { inblk = 1; next }
+    /^[^[:space:]#]/               { inblk = 0 }
+    inblk && /^[[:space:]]+enabled:[[:space:]]*false[[:space:]]*(#.*)?$/ { found = 1 }
+    END { exit(found ? 0 : 1) }
+  ' "$cfg"
+}
+
+# --- the runs directory and the active stack ---------------------------------
+# Absolute: `--git-dir` answers `.git` from the top level, and later calls come
+# from wherever the helper happens to be when it records an event.
+_runs_dir() {
+  local git_dir
+  git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) \
+    || git_dir=$(d=$(git rev-parse --git-dir 2>/dev/null) && cd "$d" 2>/dev/null && pwd) \
+    || return 1
+  printf '%s\n' "$git_dir/ensemble/runs"
+}
+
+# A ledger is live while it exists and holds no finish event ANYWHERE.
+_ledger_live() { [ -f "$1" ] && ! grep -qF '"kind":"finish"' "$1" 2>/dev/null; }
+
+# Drop dead entries. Rewritten through a temp file and moved into place, so a
+# reader never sees a half-written stack.
+_active_prune() {  # <active-file>
+  local af="$1" tmp line path
+  [ -f "$af" ] || return 0
+  tmp="$af.$$"
+  : > "$tmp" 2>/dev/null || return 0
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$line" ] && continue          # no tab: not a record we wrote
+    _ledger_live "$path" && printf '%s\n' "$line" >> "$tmp"
+  done < "$af"
+  mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
+}
+
+# The innermost live run, or nothing.
+_active_top() {  # <active-file>
+  local af="$1" line path top=""
+  [ -f "$af" ] || return 1
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$line" ] && continue
+    _ledger_live "$path" && top="$line"
+  done < "$af"
+  [ -n "$top" ] || return 1
+  printf '%s\n' "$top"
+}
+
+# Remove the entry for one ledger BY PATH, not by position: a parent may finish
+# while its child is still open.
+_active_pop() {  # <active-file> <ledger-path>
+  local af="$1" target="$2" tmp line path
+  [ -f "$af" ] || return 0
+  tmp="$af.$$"
+  : > "$tmp" 2>/dev/null || return 0
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$target" ] || printf '%s\n' "$line" >> "$tmp"
+  done < "$af"
+  mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
+}
+
+_append() {  # <file> <compact json line>
+  printf '%s\n' "$2" >> "$1" 2>/dev/null || note "cannot append to $1; event dropped"
+}
+
+_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# --- start -------------------------------------------------------------------
 if [ "$cmd" = "start" ]; then
+  _metrics_off && exit 0
   plan="" run_id="" skill=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -54,43 +157,83 @@ if [ "$cmd" = "start" ]; then
   done
   [ -n "$skill" ] || { note "start needs --skill <name>"; exit 0; }
   case "$skill" in *[!a-z0-9-]*) note "--skill must be [a-z0-9-]+ (got '$skill'); metrics disabled"; exit 0 ;; esac
-  # Absolute: `--git-dir` answers `.git` from the top level, and later calls
-  # come from wherever the skill happens to be when it records an event.
-  git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) \
-    || git_dir=$(d=$(git rev-parse --git-dir 2>/dev/null) && cd "$d" 2>/dev/null && pwd) \
-    || { note "not inside a git repository; metrics disabled"; exit 0; }
-  dir="$git_dir/ensemble/runs"
+  dir=$(_runs_dir) || { note "not inside a git repository; metrics disabled"; exit 0; }
   mkdir -p "$dir" 2>/dev/null || { note "cannot create $dir; metrics disabled"; exit 0; }
+  active="$dir/active"
+
+  # Prune first, so a vanished or already-finished run never becomes a parent.
+  _active_prune "$active"
+  parent_ledger="" parent_id=""
+  if top=$(_active_top "$active"); then
+    parent_ledger="${top#*$'\t'}"
+    parent_id="${top%%$'\t'*}"
+  fi
+
   # Exclusive creation: two runs started in the same second must not share a
   # file, and a caller-supplied --run-id must never truncate an existing run.
   [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   file="$dir/$skill-$run_id.jsonl"
   if ! ( set -C; : > "$file" ) 2>/dev/null; then
-    [ -n "$run_id" ] && note "metrics file already exists: $file; metrics disabled for this run"; exit 0
+    note "metrics file already exists: $file; metrics disabled for this run"; exit 0
   fi
-  if jq -nc --arg s "$skill" --arg p "$plan" --arg r "$run_id" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{kind:"start", skill:$s, plan_id:(if $p == "" then null else $p end), run_id:$r, at:$t}' > "$file" 2>/dev/null; then
-    printf '%s\n' "$file"
-  else
-    note "cannot write $file; metrics disabled"; rm -f "$file"
+  if ! jq -nc --arg s "$skill" --arg p "$plan" --arg r "$run_id" --arg pr "$parent_id" --arg t "$(_now)" \
+        '{kind:"start", skill:$s, plan_id:(if $p == "" then null else $p end), run_id:$r,
+          parent_run_id:(if $pr == "" then null else $pr end), at:$t}' > "$file" 2>/dev/null; then
+    note "cannot write $file; metrics disabled"; rm -f "$file"; exit 0
   fi
+
+  # The pointer goes in before the stack entry, so a parent that dies between
+  # the two still records that a child existed.
+  if [ -n "$parent_ledger" ]; then
+    _append "$parent_ledger" "$(jq -nc --arg r "$run_id" --arg s "$skill" --arg l "$file" --arg t "$(_now)" \
+      '{kind:"child", at:$t, run_id:$r, skill:$s, ledger:$l}')"
+  fi
+  printf '%s\t%s\n' "$run_id" "$file" >> "$active" 2>/dev/null \
+    || note "cannot register the run on $active; nested attribution unavailable"
+  printf '%s\n' "$file"
   exit 0
 fi
 
+# --- emit: no path, resolve the run ------------------------------------------
+if [ "$cmd" = "emit" ]; then
+  _metrics_off && exit 0
+  kind="" payload=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --kind) [ $# -ge 2 ] || { note "--kind needs a value"; exit 0; }; kind="$2"; shift 2 ;;
+      --json) [ $# -ge 2 ] || { note "--json needs a value"; exit 0; }; payload="$2"; shift 2 ;;
+      *) note "unknown flag for emit: $1"; exit 0 ;;
+    esac
+  done
+  # Resolution order. Silence when nothing resolves is the contract every
+  # emitter's "no run started" test depends on: no output, no directory, exit 0.
+  file="${ENSEMBLE_RUN_LEDGER:-}"
+  if [ -z "$file" ]; then
+    dir=$(_runs_dir) || exit 0
+    top=$(_active_top "$dir/active") || exit 0
+    file="${top#*$'\t'}"
+  fi
+  [ -f "$file" ] || exit 0
+  case "$kind" in
+    dispatch|peer|lint|findings|unit|phase|suite|review|note|child) ;;
+    *) note "emit --kind must be a known kind (got '$kind')"; exit 0 ;;
+  esac
+  printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1 \
+    || { note "emit --json must be a JSON object; file unchanged"; exit 0; }
+  line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" '{kind:$k, at:$t} + $p' 2>/dev/null) \
+    || { note "cannot encode event; file unchanged"; exit 0; }
+  _append "$file" "$line"
+  exit 0
+fi
+
+# --- the explicit-file subcommands -------------------------------------------
 file="${1:-}"; [ $# -gt 0 ] && shift
 [ -n "$file" ] || exit 0                      # metrics were disabled at start: silent no-op
 [ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
 
-# One line, appended. No lock: a single write() of a short line is atomic enough
-# for concurrent appenders on every filesystem this runs on, and the failure it
-# replaces was worse — the old lock DROPPED an event after five seconds of
-# contention, which is the case /en-review's seven parallel personas produce.
-_append() {  # <compact json line>
-  printf '%s\n' "$1" >> "$file" 2>/dev/null || note "cannot append to $file; event dropped"
-}
-
 case "$cmd" in
   event)
+    _metrics_off && exit 0
     kind="" payload=""
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -99,16 +242,21 @@ case "$cmd" in
         *) note "unknown flag for event: $1"; exit 0 ;;
       esac
     done
-    case "$kind" in dispatch|peer|lint|findings|unit|phase|suite|review|note) ;; *) note "event --kind must be dispatch|peer|lint|findings|unit|phase|suite|review|note (got '$kind')"; exit 0 ;; esac
+    case "$kind" in dispatch|peer|lint|findings|unit|phase|suite|review|note|child) ;; *) note "event --kind must be a known kind (got '$kind')"; exit 0 ;; esac
     if ! printf '%s' "$payload" | jq -e 'type == "object"' >/dev/null 2>&1; then
       note "event --json must be a JSON object; file unchanged"; exit 0
     fi
-    line=$(jq -nc --arg k "$kind" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$payload" \
+    line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" \
       '{kind:$k, at:$t} + $p' 2>/dev/null) || { note "cannot encode event; file unchanged"; exit 0; }
-    _append "$line"
+    _append "$file" "$line"
     ;;
   finish)
-    _append "$(jq -nc --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{kind:"finish", at:$t}')"
+    # The stack pop happens whether or not recording is on: an entry left
+    # behind by an opted-out finish parents every later run in the repo.
+    dir=$(_runs_dir) && _active_pop "$dir/active" "$file"
+    _metrics_off && exit 0
+    _ledger_live "$file" || exit 0            # already finished: do not double-close
+    _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"finish", at:$t}')"
     ;;
   summary)
     # The three original counts are always present, so a caller can match on
