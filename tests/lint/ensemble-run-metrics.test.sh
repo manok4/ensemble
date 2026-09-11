@@ -677,4 +677,56 @@ assert_eq "700" "$(ls -ld "$PA" | awk '{print $1}' | sed 's/[^rwx-]//g' | awk '{
   if (substr(p,7,1)=="r") w+=4; if (substr(p,8,1)=="w") w+=2; if (substr(p,9,1)=="x") w+=1;
   printf "%d%d%d", o, g, w }')" "the analytics directory is created 700"
 
+# --- 34. the stack lock is never left behind --------------------------------
+# `start` rejected a bad --run-id from INSIDE its critical section without
+# releasing, and every later `_active_pop` then failed to acquire and skipped
+# silently, so finished runs stayed on the stack. Nothing asserted it.
+rmA start --skill en-build --run-id 'bad id' >/dev/null 2>&1
+assert_file_missing "$ACTIVE.lock" "a rejected --run-id leaves no lock behind"
+rmA start --skill en-build --run-id "$(printf 'a\tb')" >/dev/null 2>&1
+assert_file_missing "$ACTIVE.lock" "nor does a tab in one"
+L37=$(rmA start --skill en-build)
+assert_file_missing "$ACTIVE.lock" "a successful start releases the lock"
+rmA finish "$L37"
+assert_file_missing "$ACTIVE.lock" "and so does finish"
+
+# --- 35. a pathless retry finds the run whose publish failed ----------------
+# _active_top returns only LIVE entries, and a marked-but-unpublished run is by
+# definition not live, so the pathless form walked past it and closed the outer
+# parent instead: a run that failed its first publish could never be closed.
+rm -f "$ROLL" "$ROLL.1"
+L38=$(rmA start --skill en-build)
+chmod 500 "$ADIR"
+rmA finish >/dev/null 2>&1
+chmod 700 "$ADIR"
+assert_eq "1" "$(grep -c '\"kind\":\"closing\"' "$L38" || true)" "the pathless finish marked it"
+assert_eq "0" "$(grep -c '\"kind\":\"finish\"' "$L38" || true)" "and held it open"
+rmA finish >/dev/null 2>&1
+assert_eq "1" "$(grep -c '\"kind\":\"finish\"' "$L38" || true)" \
+  "and a pathless retry finds the marked run and closes it"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "publishing it exactly once"
+
+# A retry must not close somebody else's run when the marked one is nested.
+rm -f "$ROLL"
+LP2=$(rmA start --skill en-build)
+LC2=$(rmA start --skill en-review)
+chmod 500 "$ADIR"; rmA finish >/dev/null 2>&1; chmod 700 "$ADIR"
+rmA finish >/dev/null 2>&1
+assert_eq "1" "$(grep -c '\"kind\":\"finish\"' "$LC2" || true)" "the retry closes the marked child"
+assert_eq "0" "$(grep -c '\"kind\":\"finish\"' "$LP2" || true)" "and leaves the live parent open"
+rmA finish "$LP2"
+
+# --- 36. a published ledger takes nothing further ---------------------------
+# The marker stops a pathless emit resolving, but an explicit path and an
+# env-var path both bypassed it, and the rollup has already read the file.
+rm -f "$ROLL"
+L39=$(rmA start --skill en-build)
+rmA finish "$L39"
+h=$(hash_file "$L39")
+rmA event "$L39" --kind lint --json '{"scope":"after-close"}'
+assert_eq "$h" "$(hash_file "$L39")" "an explicit-path event on a closed ledger writes nothing"
+( cd "$PROJ" && ENSEMBLE_RUN_LEDGER="$L39" ENSEMBLE_ANALYTICS_DIR="$ADIR" bash "$RM" \
+    emit --kind lint --json '{"scope":"env-after-close"}' )
+assert_eq "$h" "$(hash_file "$L39")" "and neither does one addressed by ENSEMBLE_RUN_LEDGER"
+
 report

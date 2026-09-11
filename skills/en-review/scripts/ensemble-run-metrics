@@ -118,7 +118,7 @@ _runs_dir() {
 _ledger_closed() { [ -f "$1" ] && grep -qF '"kind":"finish"' "$1" 2>/dev/null; }
 _ledger_live() {
   [ -f "$1" ] || return 1
-  grep -qEF '"kind":"finish"' "$1" 2>/dev/null && return 1
+  grep -qF '"kind":"finish"' "$1" 2>/dev/null && return 1
   ! grep -qF '"kind":"closing"' "$1" 2>/dev/null
 }
 
@@ -144,10 +144,12 @@ _ACTIVE_STALE_MINUTES=1440
 # Losing it is not fatal to an event, only to the bookkeeping: the caller waits
 # a bounded moment and proceeds, because a helper that can block a run is worse
 # than a stack that is occasionally one entry stale.
-# Only `start` and `finish` take it, once per run, so the budget can be
-# generous: at 25 tries the spin expired under deep contention and the caller
-# fell through unlocked, which is the race it was there to stop.
-_LOCK_TRIES=150
+# Bounded hard. Only `start` and `finish` take it, once per run, but six seconds
+# of spinning is still a helper slowing the run it measures, which is the one
+# thing it may never do. Half a second, and losing the lock skips the REWRITE
+# rather than doing it unlocked, because an unlocked rewrite is what destroyed a
+# concurrent append. An append needs no lock: it is one atomic write.
+_LOCK_TRIES=50
 _lock_acquire() {  # <lock-dir>
   local i=0
   while [ "$i" -lt "$_LOCK_TRIES" ]; do
@@ -155,7 +157,7 @@ _lock_acquire() {  # <lock-dir>
     # A lock older than a minute belongs to a process that died holding it.
     [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$1" 2>/dev/null && continue
     i=$((i + 1))
-    sleep 0.04 2>/dev/null || sleep 1
+    sleep 0.01 2>/dev/null || sleep 1
   done
   return 1
 }
@@ -170,6 +172,7 @@ _ledger_abandoned() {  # <ledger-path>
 _active_prune() {  # <active-file>  (caller holds the lock)
   local af="$1" tmp line path
   [ -f "$af" ] || return 0
+  [ -d "$af.lock" ] || return 0                # not held: skip rather than race
   tmp="$af.$$"
   : > "$tmp" 2>/dev/null || return 0
   while IFS= read -r line; do
@@ -201,31 +204,55 @@ _active_top() {  # <active-file>
 # $ENSEMBLE_RUN_LEDGER, else the innermost live run, else nothing. The ONE
 # resolution every pathless subcommand uses, so `finish` cannot need a variable
 # that `emit` was built not to need.
-_resolve_ledger() {
+_resolve_ledger() {  # [--for-finish]
   local f="${ENSEMBLE_RUN_LEDGER:-}" dir top
   if [ -z "$f" ]; then
     dir=$(_runs_dir) || return 1
-    top=$(_active_top "$dir/active") || return 1
+    if [ "${1:-}" = "--for-finish" ]; then
+      top=$(_active_finishable "$dir/active") || return 1
+    else
+      top=$(_active_top "$dir/active") || return 1
+    fi
     f="${top#*$'\t'}"
   fi
   [ -f "$f" ] || return 1
   printf '%s\n' "$f"
 }
 
+# The newest UNFINISHED run: live, or marked and waiting for a retry. What
+# `finish` should close, which is not the same as what `emit` should target.
+# Taking the newest LIVE one instead closed a live parent while its marked child
+# sat unpublishable, because a marked child is not live by definition.
+_active_finishable() {  # <active-file>
+  local af="$1" line path
+  [ -f "$af" ] || return 1
+  while IFS= read -r line; do
+    path="${line#*$'\t'}"
+    [ "$path" = "$line" ] && continue
+    [ -f "$path" ] || continue
+    _ledger_closed "$path" && continue
+    _ledger_abandoned "$path" && continue
+    printf '%s\n' "$line"; return 0
+  done < <(tail -r "$af" 2>/dev/null || tac "$af" 2>/dev/null)
+  return 1
+}
+
 # Remove the entry for one ledger BY PATH, not by position: a parent may finish
 # while its child is still open.
 _active_pop() {  # <active-file> <ledger-path>
-  local af="$1" target="$2" tmp line path held=0
+  local af="$1" target="$2" tmp line path
   [ -f "$af" ] || return 0
-  _lock_acquire "$af.lock" && held=1
+  # Skipped rather than raced. The entry stays until the next start prunes it,
+  # and the age bound clears it regardless.
+  _lock_acquire "$af.lock" || return 0
   tmp="$af.$$"
-  : > "$tmp" 2>/dev/null || return 0
+  if ! : > "$tmp" 2>/dev/null; then _lock_release "$af.lock"; return 0; fi
   while IFS= read -r line; do
     path="${line#*$'\t'}"
     [ "$path" = "$target" ] || printf '%s\n' "$line" >> "$tmp"
   done < "$af"
   mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
-  [ "$held" -eq 0 ] || _lock_release "$af.lock"
+  _lock_release "$af.lock"
 }
 
 # A PER-KIND KEY ALLOWLIST, ENFORCED HERE AND NOWHERE ELSE.
@@ -411,6 +438,16 @@ if [ "$cmd" = "start" ]; then
   mkdir -p "$dir" 2>/dev/null || { note "cannot create $dir; metrics disabled"; exit 0; }
   active="$dir/active"
 
+  # Validated like --skill one screen above, and for the same two reasons: it
+  # becomes part of a filename, and it is the key field of a tab-delimited,
+  # newline-delimited record. A tab in it silently unregisters the run. BEFORE
+  # the lock: an argument check needs no critical section, and rejecting inside
+  # one leaked the lock, after which every later pop skipped silently.
+  case "$run_id" in
+    *[!A-Za-z0-9._-]*) note "--run-id must be [A-Za-z0-9._-]+; metrics disabled"; exit 0 ;;
+  esac
+  [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+
   # Prune, read the parent and register: ONE critical section. Split, a
   # concurrent append landed between another process's read and its rename and
   # was destroyed, and a run whose entry was lost writes its events into a
@@ -426,13 +463,6 @@ if [ "$cmd" = "start" ]; then
 
   # Exclusive creation: two runs started in the same second must not share a
   # file, and a caller-supplied --run-id must never truncate an existing run.
-  # Validated like --skill one screen above, and for the same two reasons: it
-  # becomes part of a filename, and it is the key field of a tab-delimited,
-  # newline-delimited record. A tab in it silently unregisters the run.
-  case "$run_id" in
-    *[!A-Za-z0-9._-]*) note "--run-id must be [A-Za-z0-9._-]+; metrics disabled"; exit 0 ;;
-  esac
-  [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   file="$dir/$skill-$run_id.jsonl"
   if ! ( set -C; : > "$file" ) 2>/dev/null; then
     note "metrics file already exists: $file; metrics disabled for this run"
@@ -474,6 +504,9 @@ if [ "$cmd" = "emit" ]; then
   # Resolution order. Silence when nothing resolves is the contract every
   # emitter's "no run started" test depends on: no output, no directory, exit 0.
   file=$(_resolve_ledger) || exit 0
+  # A published ledger takes nothing further, however it was addressed: the
+  # rollup has already read it, so an event appended now would never be counted.
+  _ledger_live "$file" || exit 0
   _known_kind "$kind" || { note "emit --kind must be a known kind (got '$kind')"; exit 0; }
   line=$(_compose_line "$kind" "$payload") \
     || { note "emit --json must be a JSON object; file unchanged"; exit 0; }
@@ -491,7 +524,11 @@ fi
 file="${1:-}"
 case "${1:-}" in -*) file="" ;; *) [ $# -gt 0 ] && shift ;; esac
 if [ -z "$file" ] && [ "$cmd" != "event" ]; then
-  file=$(_resolve_ledger) || exit 0           # no run open: silent no-op
+  if [ "$cmd" = "finish" ]; then
+    file=$(_resolve_ledger --for-finish) || exit 0
+  else
+    file=$(_resolve_ledger) || exit 0         # no run open: silent no-op
+  fi
 fi
 [ -n "$file" ] || exit 0                      # metrics were disabled at start
 [ -f "$file" ] || { note "no such metrics file: $file"; exit 0; }
@@ -499,6 +536,7 @@ fi
 case "$cmd" in
   event)
     _metrics_off && exit 0
+    _ledger_live "$file" || exit 0
     kind="" payload=""
     while [ $# -gt 0 ]; do
       case "$1" in
