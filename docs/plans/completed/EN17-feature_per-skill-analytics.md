@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN17
 title: Per-skill analytics, helpers record what each skill run cost and produced
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-09-10
-shipped:
+shipped: 2026-09-11
 deepened:
 covers_requirements: []
 requirements_pending: true

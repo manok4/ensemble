@@ -64,7 +64,10 @@ than an omission.
 
 ### Gate
 A check that stops work when it fails. A gate that cannot fail is decorative, so
-each one is proven by breaking what it protects and confirming it goes red.
+each one is proven by breaking what it protects and confirming it goes red — and
+it must go red **for the reason the gate names**. A control that perturbs the
+wrong copy of a duplicated helper, or trips a different assertion in the same
+file, proves the suite reacts to something and says nothing about the gate.
 
 ## Captured knowledge
 

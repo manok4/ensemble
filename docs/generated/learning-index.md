@@ -2,12 +2,12 @@
 type: learning-index
 generated: true
 generator: en-learn
-updated: 2026-08-28
-total_entries: 0
+updated: 2026-09-11
+total_entries: 1
 ---
 
 # Learnings — generated index
 
 > Auto-maintained. Do not hand-edit.
 
-_(no entries yet)_
+- [`repeated-review-rejects-are-a-design-signal-2026-09-11.md`](../learnings/repeated-review-rejects-are-a-design-signal-2026-09-11.md) — A second round of findings inside the first round's fixes is a design signal
