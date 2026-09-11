@@ -560,4 +560,112 @@ rmA finish "$L31"
 assert_eq "null" "$(jq -r '.duration_s' "$ROLL")" \
   "a finish earlier than its start records duration_s null, never a negative"
 
+# --- 28. the durable store gates values, not just keys ----------------------
+# `outcome` is the one kind a model composes and the only free text on the path
+# to the operator's permanent store. A verdict reading "leaked /Users/alice/..."
+# landed there byte-for-byte with dropped:0.
+rm -f "$ROLL"
+L32=$(rmA start --skill en-review)
+rmA emit --kind outcome --json '{"verdict":"revise: saw /Users/alice/.aws/credentials on fix/CVE-1","findings_total":9,"peer_only":3}'
+e=$(grep '"kind":"outcome"' "$L32" | tail -1)
+assert_eq "unknown" "$(printf '%s' "$e" | jq -r '.verdict')" \
+  "a verdict outside the enum is recorded as unknown, not verbatim"
+assert_not_contains "$e" "/Users/alice" "so no path reaches the ledger through it"
+assert_eq "3" "$(printf '%s' "$e" | jq -r '.peer_only')" "and the counts beside it survive"
+
+rmA emit --kind outcome --json '{"verdict":"approve","findings_total":0}'
+assert_eq "approve" "$(grep '\"kind\":\"outcome\"' "$L32" | tail -1 | jq -r '.verdict')" \
+  "a verdict inside the enum is kept"
+rmA emit --kind outcome --json '{"verdict":"revise","findings_total":"lots"}'
+assert_eq "null" "$(grep '\"kind\":\"outcome\"' "$L32" | tail -1 | jq -r '.findings_total')" \
+  "a count that is not a number is recorded as null"
+rmA finish "$L32"
+assert_not_contains "$(cat "$ROLL")" "/Users/alice" "and nothing of it reaches the durable store"
+
+# --- 29. a plan PATH does not become durable data ---------------------------
+# Every caller is handed a path (`/en-build docs/plans/active/EN17-....md`), so
+# passing it where a plan id belongs is the likely mistake, not an exotic one.
+rm -f "$ROLL"
+L33=$(rmA start --skill en-review --plan '/Users/someone/CodeRepo/acme-client/docs/plans/secret.md')
+rmA finish "$L33"
+assert_eq "null" "$(jq -r '.plan_id' "$ROLL")" "a plan path is recorded as null"
+assert_not_contains "$(cat "$ROLL")" "acme-client" "so no client name reaches the store"
+rm -f "$ROLL"
+L34=$(rmA start --skill en-review --plan EN17)
+rmA finish "$L34"
+assert_eq "EN17" "$(jq -r '.plan_id' "$ROLL")" "a plan id is kept"
+
+# --- 30. concurrent starts do not lose registrations ------------------------
+# Unlocked, `start`'s append landed between another process's read and its
+# rename and was destroyed; a run whose entry was lost then wrote its events
+# into a different run's ledger. Measured at 5 of 12 before the lock.
+CW="$WORK/conc"; mkdir -p "$CW"
+( cd "$CW" && git init -q . && git config user.email t@e && git config user.name t )
+cled() { ( cd "$CW" && env -u ENSEMBLE_RUN_LEDGER ENSEMBLE_ANALYTICS_DIR="$ADIR" bash "$RM" "$@" ); }
+for i in 1 2 3; do cled start --skill en-build --run-id "pad$i" >/dev/null; done
+for i in 1 2 3 4 5 6 7 8; do cled start --skill en-review --run-id "c$i" >/dev/null & done
+wait
+CACTIVE="$CW/.git/ensemble/runs/active"
+lost=0
+for i in 1 2 3 4 5 6 7 8; do grep -q "^c$i	" "$CACTIVE" || lost=$((lost + 1)); done
+assert_eq "0" "$lost" "eight concurrent starts all register"
+assert_eq "0" "$(grep -c '^	' "$CACTIVE" || true)" "and none of them corrupts a line"
+
+# The check above is a SMOKE TEST and says so: the race is probabilistic, and
+# unlocked it loses a registration at stack depth 20 but not at 10 or 30. An
+# assertion that catches a bug sometimes is not a guard. The structural property
+# is the guard, and it can always fail: every writer of `active` holds the lock.
+lock_line=$(grep -n '_lock_acquire "$active.lock"' "$RM" | head -1 | cut -d: -f1)
+app_line=$(grep -n '>> "$active" 2>/dev/null' "$RM" | head -1 | cut -d: -f1)
+rel_line=$(grep -n '_lock_release "$active.lock"' "$RM" | tail -1 | cut -d: -f1)
+[ -n "$lock_line" ] && [ -n "$app_line" ] && [ -n "$rel_line" ] \
+  && [ "$lock_line" -lt "$app_line" ] && [ "$app_line" -lt "$rel_line" ] \
+  && pass "start registers itself inside the stack lock" \
+  || fail "start's append is outside the stack lock" \
+          "acquire=$lock_line append=$app_line release=$rel_line; an append between another process's read and rename is destroyed"
+grep -q '_lock_acquire "$af.lock"' "$RM" \
+  && pass "_active_pop rewrites the stack inside the lock" \
+  || fail "_active_pop rewrites the stack unlocked"
+prune_unlocked=$(awk '/^_active_prune\(\)/,/^}/' "$RM" | grep -c '_lock_acquire' || true)
+assert_eq "0" "$prune_unlocked" \
+  "_active_prune takes no lock of its own: its one caller already holds it"
+
+# --- 31. the rollup retry is bounded ----------------------------------------
+# Unbounded, one unwritable store left EVERY run in the repo open: active grew
+# forever and every later rollup line named a parent that was not its parent.
+rm -f "$ROLL" "$ROLL.1"
+L35=$(rmA start --skill en-build)
+chmod 500 "$ADIR"
+rmA finish "$L35" >/dev/null 2>&1
+assert_eq "0" "$(grep -c '\"kind\":\"finish\"' "$L35" || true)" "the first failure holds the run open"
+rmA finish "$L35" >/dev/null 2>&1
+assert_eq "1" "$(grep -c '\"kind\":\"finish\"' "$L35" || true)" \
+  "the second closes it rather than holding it open forever"
+chmod 700 "$ADIR"
+assert_not_contains "$(cat "$ACTIVE")" "$L35" "and it leaves the stack"
+
+# --- 32. a lock nobody released does not disable rotation forever -----------
+# No trap and no staleness check meant a process killed between the mkdir and
+# the rmdir turned the 5 MB cap off silently and permanently.
+rm -f "$ROLL" "$ROLL.1"
+seed_over_cap
+mkdir -p "$ROLL.rotate.lock"
+touch -t 202001010000 "$ROLL.rotate.lock"
+L36=$(rmA start --skill en-build); rmA finish "$L36"
+assert_file_exists "$ROLL.1" "a stale rotate lock is cleared and rotation resumes"
+rmdir "$ROLL.rotate.lock" 2>/dev/null || true
+
+# --- 33. the store is created private ---------------------------------------
+PW="$WORK/perm"; mkdir -p "$PW"
+( cd "$PW" && git init -q . && git config user.email t@e && git config user.name t )
+PA="$PW/analytics"
+( cd "$PW" && env -u ENSEMBLE_RUN_LEDGER ENSEMBLE_ANALYTICS_DIR="$PA" bash "$RM" start --skill en-build >/dev/null )
+( cd "$PW" && env -u ENSEMBLE_RUN_LEDGER ENSEMBLE_ANALYTICS_DIR="$PA" bash "$RM" finish )
+assert_eq "700" "$(ls -ld "$PA" | awk '{print $1}' | sed 's/[^rwx-]//g' | awk '{
+  p=$0; o=0; g=0; w=0;
+  if (substr(p,1,1)=="r") o+=4; if (substr(p,2,1)=="w") o+=2; if (substr(p,3,1)=="x") o+=1;
+  if (substr(p,4,1)=="r") g+=4; if (substr(p,5,1)=="w") g+=2; if (substr(p,6,1)=="x") g+=1;
+  if (substr(p,7,1)=="r") w+=4; if (substr(p,8,1)=="w") w+=2; if (substr(p,9,1)=="x") w+=1;
+  printf "%d%d%d", o, g, w }')" "the analytics directory is created 700"
+
 report

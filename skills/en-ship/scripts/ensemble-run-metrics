@@ -68,9 +68,10 @@ command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this
 # own runner hand-rolls the same parser for the same reason.
 _metrics_off() {
   [ "${ENSEMBLE_METRICS:-}" != "off" ] || return 0
-  local root cfg
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
-  cfg="$root/.ensemble/config.local.yaml"
+  local cfg
+  _git_resolve >/dev/null 2>&1
+  [ -n "$_GIT_TOP" ] || return 1
+  cfg="$_GIT_TOP/.ensemble/config.local.yaml"
   [ -f "$cfg" ] || return 1
   awk '
     /^metrics:[[:space:]]*(#.*)?$/ { inblk = 1; next }
@@ -81,14 +82,28 @@ _metrics_off() {
 }
 
 # --- the runs directory and the active stack ---------------------------------
+# ONE git call answers both questions. _metrics_off wants the toplevel and
+# _runs_dir wants the git dir, and asking twice was 34ms of a 60ms emit.
 # Absolute: `--git-dir` answers `.git` from the top level, and later calls come
 # from wherever the helper happens to be when it records an event.
+_GIT_TOP="" _GIT_DIR="" _GIT_RESOLVED=""
+_git_resolve() {
+  [ -z "$_GIT_RESOLVED" ] || return "$_GIT_RESOLVED"
+  local out
+  if out=$(git rev-parse --show-toplevel --absolute-git-dir 2>/dev/null) && [ -n "$out" ]; then
+    _GIT_TOP=$(printf '%s\n' "$out" | sed -n 1p)
+    _GIT_DIR=$(printf '%s\n' "$out" | sed -n 2p)
+  else
+    _GIT_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || _GIT_TOP=""
+    _GIT_DIR=$(d=$(git rev-parse --git-dir 2>/dev/null) && cd "$d" 2>/dev/null && pwd) || _GIT_DIR=""
+  fi
+  [ -n "$_GIT_DIR" ] && _GIT_RESOLVED=0 || _GIT_RESOLVED=1
+  return "$_GIT_RESOLVED"
+}
+
 _runs_dir() {
-  local git_dir
-  git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) \
-    || git_dir=$(d=$(git rev-parse --git-dir 2>/dev/null) && cd "$d" 2>/dev/null && pwd) \
-    || return 1
-  printf '%s\n' "$git_dir/ensemble/runs"
+  _git_resolve || return 1
+  printf '%s\n' "$_GIT_DIR/ensemble/runs"
 }
 
 # THREE STATES, NOT TWO.
@@ -120,13 +135,39 @@ _ledger_closing() {
 # longer than any real run and far shorter than forever.
 _ACTIVE_STALE_MINUTES=1440
 
+# `_active_prune` and `_active_pop` read the whole file and rename a rewrite over
+# it while `start` appends to it. An append landing between another process's
+# read and its rename was destroyed: measured, 12 concurrent starts against a
+# 60-entry stack lost 5 registrations, and a run whose entry was dropped writes
+# its events into a DIFFERENT run's ledger. All three writers take this lock.
+#
+# Losing it is not fatal to an event, only to the bookkeeping: the caller waits
+# a bounded moment and proceeds, because a helper that can block a run is worse
+# than a stack that is occasionally one entry stale.
+# Only `start` and `finish` take it, once per run, so the budget can be
+# generous: at 25 tries the spin expired under deep contention and the caller
+# fell through unlocked, which is the race it was there to stop.
+_LOCK_TRIES=150
+_lock_acquire() {  # <lock-dir>
+  local i=0
+  while [ "$i" -lt "$_LOCK_TRIES" ]; do
+    mkdir "$1" 2>/dev/null && return 0
+    # A lock older than a minute belongs to a process that died holding it.
+    [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$1" 2>/dev/null && continue
+    i=$((i + 1))
+    sleep 0.04 2>/dev/null || sleep 1
+  done
+  return 1
+}
+_lock_release() { rmdir "$1" 2>/dev/null || true; }
+
 _ledger_abandoned() {  # <ledger-path>
   [ -n "$(find "$1" -maxdepth 0 -mmin "+$_ACTIVE_STALE_MINUTES" 2>/dev/null)" ]
 }
 
 # Drop dead entries. Rewritten through a temp file and moved into place, so a
 # reader never sees a half-written stack.
-_active_prune() {  # <active-file>
+_active_prune() {  # <active-file>  (caller holds the lock)
   local af="$1" tmp line path
   [ -f "$af" ] || return 0
   tmp="$af.$$"
@@ -174,8 +215,9 @@ _resolve_ledger() {
 # Remove the entry for one ledger BY PATH, not by position: a parent may finish
 # while its child is still open.
 _active_pop() {  # <active-file> <ledger-path>
-  local af="$1" target="$2" tmp line path
+  local af="$1" target="$2" tmp line path held=0
   [ -f "$af" ] || return 0
+  _lock_acquire "$af.lock" && held=1
   tmp="$af.$$"
   : > "$tmp" 2>/dev/null || return 0
   while IFS= read -r line; do
@@ -183,6 +225,7 @@ _active_pop() {  # <active-file> <ledger-path>
     [ "$path" = "$target" ] || printf '%s\n' "$line" >> "$tmp"
   done < "$af"
   mv -f "$tmp" "$af" 2>/dev/null || rm -f "$tmp"
+  [ "$held" -eq 0 ] || _lock_release "$af.lock"
 }
 
 # A PER-KIND KEY ALLOWLIST, ENFORCED HERE AND NOWHERE ELSE.
@@ -227,6 +270,18 @@ _compose_line() {  # <kind> <payload>
   line=$(jq -nc --arg k "$kind" --arg t "$(_now)" --argjson p "$payload" --argjson a "$_ALLOW" '
       ($a[$k] // []) as $keys
       | ($p | with_entries(select(.key as $x | ($keys | index($x)) != null))) as $kept
+      # The allowlist decides KEYS. `outcome` is the one kind a model composes,
+      # and it is carried verbatim into the durable store, so its values are
+      # constrained too: `verdict` is a three-value enum and everything else in
+      # it is a count. Without this a free-text verdict put whatever the model
+      # wrote permanently outside the repo.
+      | (if $k == "outcome"
+         then ($kept
+               | (if has("verdict") and (["approve","revise","reject"] | index($kept.verdict)) == null
+                  then .verdict = "unknown" else . end)
+               | with_entries(if .key == "verdict" then . else
+                   (if (.value | type) == "number" then . else .value = null end) end))
+         else $kept end) as $kept
       | (($p | keys | length) - ($kept | keys | length)) as $n
       | {kind:$k, at:$t} + $kept + (if $n > 0 then {dropped:$n} else {} end)' 2>/dev/null) || return 1
   printf '%s\n' "$line"
@@ -262,19 +317,27 @@ _rotate() {  # <target>
   size=$(wc -c < "$t" 2>/dev/null | tr -d ' ') || return 0
   case "$size" in ''|*[!0-9]*) return 0 ;; esac
   [ "$size" -ge "$_ROLLUP_CAP" ] || return 0
+  # A process killed between the mkdir and the rmdir left the directory behind
+  # forever, and every later rotation then took the skip branch: the 5 MB cap
+  # this whole feature exists to enforce was off, silently and permanently.
+  # _lock_acquire clears a lock older than a minute; the critical section here
+  # is a wc and an mv, so that cannot pre-empt a live holder.
   lock="$t.rotate.lock"
-  mkdir "$lock" 2>/dev/null || return 0
+  _lock_acquire "$lock" || return 0
+  trap '_lock_release "'"$lock"'"' INT TERM HUP
   size=$(wc -c < "$t" 2>/dev/null | tr -d ' ')
   case "$size" in ''|*[!0-9]*) size=0 ;; esac
   [ "$size" -lt "$_ROLLUP_CAP" ] || mv -f "$t" "$t.1" 2>/dev/null || true
-  rmdir "$lock" 2>/dev/null || true
+  _lock_release "$lock"
+  trap - INT TERM HUP
 }
 
 # 0 published (or already present), 1 retryable (store unwritable),
 # 2 unrecoverable (the ledger will never parse).
 _rollup() {  # <ledger>
   local f="$1" repo adir target summary run_id
-  repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null) || repo=""
+  _git_resolve >/dev/null 2>&1
+  repo=$(basename "$_GIT_TOP" 2>/dev/null) || repo=""
   [ -n "$repo" ] || repo="unknown"
   summary=$(jq -src --arg repo "$repo" --arg now "$(_now)" '
       (map(select(.kind == "start")) | first) as $s
@@ -304,13 +367,21 @@ _rollup() {  # <ledger>
   [ -n "$run_id" ] && [ "$run_id" != "null" ] || return 2
 
   adir=$(_analytics_dir)
-  mkdir -p "$adir" 2>/dev/null || return 1
+  # Repo names, plan ids, timings and outcomes, permanently, outside any repo.
+  # The default umask leaves that 0755/0644, which is the Linux $HOME default,
+  # so the directory is created private. Only at CREATION: an operator who
+  # tightened or loosened an existing directory meant it, and re-chmod'ing on
+  # every write would silently re-grant access they removed.
+  if [ ! -d "$adir" ]; then
+    ( umask 077; mkdir -p "$adir" ) 2>/dev/null || return 1
+  fi
+  [ -d "$adir" ] || return 1
   target="$adir/$repo.jsonl"
   # Idempotent on run_id across EVERY retained generation. Scanning only the
   # current file would re-append a run whose line had just been rotated out.
   grep -qF "\"run_id\":\"$run_id\"" "$target" "$target.1" 2>/dev/null && return 0
   _rotate "$target"
-  printf '%s\n' "$summary" >> "$target" 2>/dev/null || return 1
+  ( umask 077; printf '%s\n' "$summary" >> "$target" ) 2>/dev/null || return 1
   return 0
 }
 
@@ -328,10 +399,23 @@ if [ "$cmd" = "start" ]; then
   done
   [ -n "$skill" ] || { note "start needs --skill <name>"; exit 0; }
   case "$skill" in *[!a-z0-9-]*) note "--skill must be [a-z0-9-]+ (got '$skill'); metrics disabled"; exit 0 ;; esac
+  # --plan reaches the DURABLE store, which outlives the clone. Every caller is
+  # handed a plan path (`/en-build docs/plans/active/EN17-....md`), so a model
+  # passing the argument it was given rather than the bare id is the likely
+  # case, not an exotic one: an absolute path, and often a client name, written
+  # permanently outside the repo. Blanked rather than fatal; this is bookkeeping.
+  case "$plan" in
+    *[!A-Za-z0-9._-]*) note "--plan must be a plan id, not a path; recording it as null"; plan="" ;;
+  esac
   dir=$(_runs_dir) || { note "not inside a git repository; metrics disabled"; exit 0; }
   mkdir -p "$dir" 2>/dev/null || { note "cannot create $dir; metrics disabled"; exit 0; }
   active="$dir/active"
 
+  # Prune, read the parent and register: ONE critical section. Split, a
+  # concurrent append landed between another process's read and its rename and
+  # was destroyed, and a run whose entry was lost writes its events into a
+  # different run's ledger.
+  _held=0; _lock_acquire "$active.lock" && _held=1
   # Prune first, so a vanished or already-finished run never becomes a parent.
   _active_prune "$active"
   parent_ledger="" parent_id=""
@@ -351,12 +435,16 @@ if [ "$cmd" = "start" ]; then
   [ -n "$run_id" ] || run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   file="$dir/$skill-$run_id.jsonl"
   if ! ( set -C; : > "$file" ) 2>/dev/null; then
-    note "metrics file already exists: $file; metrics disabled for this run"; exit 0
+    note "metrics file already exists: $file; metrics disabled for this run"
+    [ "$_held" -eq 0 ] || _lock_release "$active.lock"
+    exit 0
   fi
   if ! jq -nc --arg s "$skill" --arg p "$plan" --arg r "$run_id" --arg pr "$parent_id" --arg t "$(_now)" \
         '{kind:"start", skill:$s, plan_id:(if $p == "" then null else $p end), run_id:$r,
           parent_run_id:(if $pr == "" then null else $pr end), at:$t}' > "$file" 2>/dev/null; then
-    note "cannot write $file; metrics disabled"; rm -f "$file"; exit 0
+    note "cannot write $file; metrics disabled"; rm -f "$file"
+    [ "$_held" -eq 0 ] || _lock_release "$active.lock"
+    exit 0
   fi
 
   # The pointer goes in before the stack entry, so a parent that dies between
@@ -367,6 +455,7 @@ if [ "$cmd" = "start" ]; then
   fi
   printf '%s\t%s\n' "$run_id" "$file" >> "$active" 2>/dev/null \
     || note "cannot register the run on $active; nested attribution unavailable"
+  [ "$_held" -eq 0 ] || _lock_release "$active.lock"
   printf '%s\n' "$file"
   exit 0
 fi
@@ -443,14 +532,20 @@ case "$cmd" in
     # the clone: if `finish` went first and the rollup then failed, this run's
     # only durable record would be gone with nothing left to retry from. A
     # marked-but-unfinished ledger is exactly that retry state.
-    _ledger_closing "$file" \
+    _was_retry=0; _ledger_closing "$file" && _was_retry=1
+    [ "$_was_retry" -eq 1 ] \
       || _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"closing", at:$t}')"
 
+    # One retry, not unbounded. An unwritable store is almost never transient,
+    # and leaving every run open meant `active` grew forever, every later run
+    # recorded a parent that was not its parent, and the prune cost grew with
+    # it. The `closing` marker already tells us this is the second attempt.
     _rollup "$file"; rc=$?
-    if [ "$rc" -eq 1 ]; then
+    if [ "$rc" -eq 1 ] && [ "$_was_retry" -eq 0 ]; then
       note "cannot write the analytics rollup; run held open, finish again to retry"
       exit 0                                  # marked, unpublished, stack entry kept
     fi
+    [ "$rc" -ne 1 ] || note "analytics rollup failed twice; closing the run without a rollup line"
     [ "$rc" -eq 0 ] || note "ledger has no usable start line; closing without a rollup line"
     _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"finish", at:$t}')"
     _pop
