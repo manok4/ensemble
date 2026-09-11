@@ -281,4 +281,83 @@ else
        "took ${elapsed}s — EN15's cheap-hashing assumption is falsified; record the set, not the contents"
 fi
 
+# --- receipt hits and misses are recorded (EN17 U6) --------------------------
+# The whole point of the receipt is skipping a suite the tree already proved, so
+# "did it hit" needs evidence. The exit code is the contract /en-build and
+# /en-ship branch on, and 1 and 2 mean different things to them, so every
+# assertion below checks the code alongside the event.
+RM="$REPO_ROOT/skills/en-build/scripts/ensemble-run-metrics"
+export ENSEMBLE_ANALYTICS_DIR="$WORK/analytics"
+RD=$(new_repo recorded)
+led() { ( cd "$RD" && bash "$RM" "$@" ); }
+rcp() { ( cd "$RD" && "$R" "$@" ); }
+nev() { grep -c '"kind":"receipt"' "$RL" || true; }
+last() { grep '"kind":"receipt"' "$RL" | tail -1; }
+
+RL=$(led start --skill en-build)
+
+rcp write --check unit=passed --check full_suite=passed >/dev/null 2>&1
+assert_exit_code 0 $? "a write inside a run still exits 0"
+assert_eq "1" "$(nev)" "and records one receipt event"
+e=$(last)
+assert_eq "write" "$(printf '%s' "$e" | jq -r '.op')" "the event names the operation"
+assert_eq "full_suite unit" "$(printf '%s' "$e" | jq -r '.checks | sort | join(" ")')" \
+  "and the checks it recorded"
+
+rcp verify --requires full_suite >/dev/null 2>&1
+assert_exit_code 0 $? "a valid receipt still exits 0"
+e=$(last)
+assert_eq "verify" "$(printf '%s' "$e" | jq -r '.op')"     "the verify is recorded"
+assert_eq "hit"    "$(printf '%s' "$e" | jq -r '.result')" "as a hit"
+assert_eq "ok"     "$(printf '%s' "$e" | jq -r '.reason')" "with the ok reason"
+assert_eq "true"   "$(printf '%s' "$e" | jq -r '.age_s >= 0')" "and a non-negative age"
+
+# Each miss keeps its own exit code and its own reason from the published enum.
+( cd "$RD" && printf 'two\n' >> src.txt )
+rcp verify --requires full_suite >/dev/null 2>&1
+assert_exit_code 1 $? "a changed tree still exits 1"
+assert_eq "miss" "$(last | jq -r '.result')" "and records a miss"
+assert_eq "fingerprint-mismatch" "$(last | jq -r '.reason')" "naming the reason verbatim"
+( cd "$RD" && git checkout -q -- src.txt )
+
+rcp verify --requires nothing-recorded >/dev/null 2>&1
+assert_exit_code 1 $? "an unrecorded check still exits 1"
+assert_eq "check-not-recorded" "$(last | jq -r '.reason')" "and records that reason"
+
+rcp verify --ttl 0 >/dev/null 2>&1
+assert_exit_code 1 $? "an expired receipt still exits 1"
+assert_eq "expired" "$(last | jq -r '.reason')" "and records expired"
+
+# No receipt at all is exit 2, which is a DIFFERENT signal from exit 1 to every
+# caller, so it is asserted on its own.
+NR=$(new_repo norecord)
+nled() { ( cd "$NR" && bash "$RM" "$@" ); }
+NL=$(nled start --skill en-ship)
+( cd "$NR" && "$R" verify ) >/dev/null 2>&1
+assert_exit_code 2 $? "a missing receipt still exits 2"
+assert_eq "no-receipt" "$(grep '"kind":"receipt"' "$NL" | tail -1 | jq -r '.reason')" \
+  "and records no-receipt rather than a generic miss"
+nled finish "$NL"
+
+# `show` reads and prints; measuring a read of a read is noise.
+before=$(nev)
+rcp show >/dev/null 2>&1
+assert_eq "$before" "$(nev)" "show records nothing"
+
+# Two operations in one run, in order.
+assert_eq "true" "$(jq -rs '[.[] | select(.kind=="receipt") | .op] | length >= 2' "$RL")" \
+  "a write and a verify both land in one ledger"
+
+# Outside a run: every exit code and every byte of stdout unchanged.
+led finish "$RL"
+# age_seconds legitimately advances between two calls, so it is normalised out;
+# everything else in the envelope must be byte-identical.
+noage() { printf '%s' "$1" | jq -Sc 'del(.age_seconds)'; }
+in_run_out=$( cd "$RD" && "$R" verify --json 2>/dev/null ); in_rc=$?
+no_run_out=$( cd "$RD" && "$R" verify --json 2>/dev/null ); no_rc=$?
+assert_eq "$(noage "$in_run_out")" "$(noage "$no_run_out")" \
+  "stdout is identical whether or not a run is open"
+assert_eq "$in_rc" "$no_rc" "and so is the exit code"
+assert_eq "$before" "$(nev)" "nothing is recorded once the run has closed"
+
 report

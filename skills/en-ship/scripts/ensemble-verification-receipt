@@ -53,7 +53,20 @@
 
 set -u
 
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SELF_DIR=""
+
 TTL_DEFAULT_MINUTES="${ENSEMBLE_RECEIPT_TTL_MINUTES:-120}"
+
+# Record a receipt operation, if a run is open. Silent and exit-0 when no run is
+# open, when the sibling helper is not carried, or when anything here fails: a
+# receipt hit is an optimisation, and measuring it must never be able to cost one.
+_record_receipt() {  # <op> <result> <reason> [age_s] [checks-json-array]
+  local rm="$SELF_DIR/ensemble-run-metrics"
+  [ -n "$SELF_DIR" ] && [ -x "$rm" ] || return 0
+  bash "$rm" emit --kind receipt --json "$(printf \
+    '{"op":"%s","result":"%s","reason":"%s","age_s":%s,"checks":%s}' \
+    "$1" "$2" "$3" "${4:-0}" "${5:-[]}")" >/dev/null 2>&1 || true
+}
 
 die() { printf '%s\n' "$*" >&2; exit 3; }
 
@@ -212,6 +225,8 @@ with open(tmp, 'w') as fh:
 os.replace(tmp, sys.argv[1])
 PY
   printf 'receipt written: %s\n' "$RECEIPT"
+  _record_receipt write ok wrote 0 "$(printf '%s' "$checks" | tr ' ' '\n' \
+    | sed -n 's/^\([a-zA-Z0-9_-]*\)=.*/"\1"/p' | paste -sd, - | sed 's/^/[/; s/$/]/')"
 }
 
 # --- verify ------------------------------------------------------------------
@@ -232,6 +247,7 @@ cmd_verify() {
     else
       printf 'no receipt\n'
     fi
+    _record_receipt verify miss no-receipt
     exit 2
   fi
 
@@ -264,8 +280,10 @@ PY
   live_base=""
   [ -n "$base_ref" ] && live_base=$(resolve_base "$base_ref")
 
+  _reason_out=$(mktemp 2>/dev/null) || _reason_out=""
   FP="$(fingerprint)" REPO="$REPO_TOP" LIVE_BASE="$live_base" \
   LIVE_DEPS="$live_deps" REQUIRES="$requires" TTL="$ttl" JSON="$as_json" \
+  REASON_OUT="$_reason_out" \
   python3 - "$RECEIPT" <<'PY'
 import json, os, sys, time, calendar
 
@@ -279,6 +297,15 @@ def out(valid, reason, extra=None):
         print("valid ({} checks)".format(len(doc.get('checks') or {})))
     else:
         print("invalid: {}".format(reason))
+    side = os.environ.get('REASON_OUT') or ''
+    if side:
+        try:
+            with open(side, 'w') as fh:
+                json.dump({"reason": reason,
+                           "age_s": doc.get('age_seconds') or 0,
+                           "checks": sorted((doc.get('checks') or {}).keys())}, fh)
+        except Exception:
+            pass
     sys.exit(0 if valid else 1)
 
 try:
@@ -327,6 +354,15 @@ if missing:
 
 out(True, "ok", {"checks": checks, "age_seconds": age, "written_by": r.get('written_by')})
 PY
+  rc=$?
+  if [ -n "$_reason_out" ] && [ -s "$_reason_out" ]; then
+    _record_receipt verify "$([ "$rc" -eq 0 ] && printf hit || printf miss)" \
+      "$(sed -n 's/.*"reason": *"\([^"]*\)".*/\1/p' "$_reason_out")" \
+      "$(sed -n 's/.*"age_s": *\([0-9-]*\).*/\1/p' "$_reason_out")" \
+      "$(sed -n 's/.*\("checks": *\[[^]]*\]\).*/\1/p' "$_reason_out" | sed 's/"checks": *//')"
+  fi
+  [ -z "$_reason_out" ] || rm -f "$_reason_out"
+  return $rc
 }
 
 # --- show --------------------------------------------------------------------
