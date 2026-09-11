@@ -171,6 +171,61 @@ if printf '%s' "$probe_out" | grep -qi "flag drift"; then
 else
   fail "ensemble_smoke_probe output unexpected" "$probe_out"
 fi
+
+# --- the probe reads stdout, because stdout is what answers its question -----
+# `claude -p --max-turns 1 "ping"` exits 1 with EMPTY stderr while writing a
+# complete result envelope to stdout: the model reached for a tool and the turn
+# cap cut it off, having parsed every flag correctly. Judging on stderr and the
+# exit code alone reported `probe failed -` with nothing after the dash.
+cat > "$STMP/capped" <<'STUB'
+#!/usr/bin/env bash
+echo '{"type":"result","session_id":"abc","subtype":"success"}'
+exit 1
+STUB
+cat > "$STMP/codexcap" <<'STUB'
+#!/usr/bin/env bash
+echo '{"type":"thread.started","thread_id":"t1"}'
+exit 1
+STUB
+cat > "$STMP/silent" <<'STUB'
+#!/usr/bin/env bash
+exit 7
+STUB
+cat > "$STMP/driftout" <<'STUB'
+#!/usr/bin/env bash
+echo "error: unexpected argument '--max-turns' found"
+exit 2
+STUB
+chmod +x "$STMP"/*
+
+out=$(set -e; ensemble_smoke_probe "Capped CLI" "$STMP/capped")
+printf '%s' "$out" | grep -q "flags accepted" \
+  && pass "a non-zero exit with a result envelope on stdout is flags-accepted" \
+  || fail "a capped-but-valid run should read as flags accepted" "$out"
+
+out=$(set -e; ensemble_smoke_probe "Codex CLI" "$STMP/codexcap")
+printf '%s' "$out" | grep -q "flags accepted" \
+  && pass "the Codex envelope shape counts too" \
+  || fail "codex thread.started should read as flags accepted" "$out"
+
+# Drift still wins over the envelope check, including when the CLI writes its
+# usage error to stdout rather than stderr.
+out=$(set -e; ensemble_smoke_probe "Drift CLI" "$STMP/driftout")
+printf '%s' "$out" | grep -qi "flag drift" \
+  && pass "a usage error on stdout is still flag drift, not flags-accepted" \
+  || fail "stdout usage error should classify as flag drift" "$out"
+
+# And the message never trails off after the dash.
+out=$(set -e; ensemble_smoke_probe "Silent CLI" "$STMP/silent")
+printf '%s' "$out" | grep -q "exit 7, nothing on stderr" \
+  && pass "an empty stderr is reported as such, with the exit code" \
+  || fail "the empty-stderr case must say so" "$out"
+if printf '%s' "$out" | grep -qE '(-|\xe2\x80\x94)[[:space:]]*$'; then
+  fail "the failure line trails off after the dash" "$out"
+else
+  pass "no failure line ends in a bare dash"
+fi
+
 rm -rf "$STMP"
 
 # ============================================================

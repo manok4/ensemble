@@ -497,8 +497,12 @@ fi
 if [ "$QUIET" != "true" ]; then
   log "CLI smoke test (verifies references/cli-wrappers.md matches your installed CLI)..."
   # claude -p supports --max-turns; codex exec does not (single-shot) — EN10.
-  $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "ping"
-  $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "ping"
+  # The prompt must not invite tool use: "ping" reads as ambiguous, the model
+  # reaches for a tool, --max-turns 1 cuts it off, and the CLI exits non-zero
+  # having parsed every flag correctly.
+  _smoke_prompt='Reply with the single word ok and nothing else.'
+  $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "$_smoke_prompt"
+  $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "$_smoke_prompt"
   log ""
 fi
 
