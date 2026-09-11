@@ -211,13 +211,19 @@ _verify_rc() {
   if [ "$DO_TESTS" = true ] && [ "$TEST_SELECT_TIER" = "empty" ]; then printf 3; return; fi
   printf 0
 }
+# $UNIT comes from --unit and is substituted raw. A quote in it makes the
+# payload unparseable, _compose_line rejects it, and the whole verify event
+# vanishes with no trace, because the call below used to mute stderr too.
+_json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
 _record_verify() {  # <rc>
   local rm="$SELF_DIR/ensemble-run-metrics" nfail
   [ -x "$rm" ] || return 0
   nfail=$(printf '%s' "$FAILED" | wc -w | tr -d ' ')
   bash "$rm" emit --kind verify --json "$(printf \
     '{"unit":"%s","tier":"%s","ran":%s,"failed":%s,"rc":%s,"checks":[%s]}' \
-    "$UNIT" "${TEST_SELECT_TIER:-none}" "$RAN" "$nfail" "$1" "$CHECKS_JSON")" >/dev/null 2>&1 || true
+    "$(_json_escape "$UNIT")" "$(_json_escape "${TEST_SELECT_TIER:-none}")" \
+    "$RAN" "$nfail" "$1" "$CHECKS_JSON")" >/dev/null || true
 }
 _record_verify "$(_verify_rc)"
 

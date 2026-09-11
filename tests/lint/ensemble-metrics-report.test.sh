@@ -105,7 +105,9 @@ line z1 en-qa 7 null null >> "$R"
 j=$(m --time --json)
 assert_eq "13" "$(printf '%s' "$j" | jq -r '.runs')" \
   "a rotated generation is read alongside the current one"
-assert_eq "1" "$(printf '%s' "$j" | jq -r '[.skills[] | select(.skill=="en-qa")] | length')" \
+# `.runs`, not the entry count: report_time groups per skill, so the cardinality
+# is 1 whether the store is read once or twice. A double read raises `.runs`.
+assert_eq "1" "$(printf '%s' "$j" | jq -r '.skills[] | select(.skill=="en-qa") | .runs')" \
   "and neither file is read twice"
 
 # --- junk survives -----------------------------------------------------------

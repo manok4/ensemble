@@ -341,6 +341,24 @@ ver --unit U5 --working >/dev/null 2>&1
 assert_eq "$(grep '"kind":"select"' "$VL" | tail -1 | jq -r '.tier')" "$(vlast | jq -r '.tier')" \
   "the verify event and the select event agree on the tier"
 
+# The empty tier: rc 3, which /en-build reads as "zero tests found is a finding
+# about the project, not a pass". Deleting the empty-tier branch from _verify_rc
+# recorded rc 0 while the script still exited 3, and nothing was asserting it,
+# so the number in the rollup contradicted the gate the build committed on.
+mkdir -p "$V/orphan"
+: > "$V/orphan/lonely.js"
+# Lint declared too, so something ran: with nothing at all to run the ladder
+# returns 4 (nothing verifiable) before it reaches the empty-tier branch, and
+# that ordering is the script's, faithfully mirrored.
+vagents <<'A'
+- **Test:** `true`
+- **Lint:** `true`
+A
+ver --unit U4 --files orphan/lonely.js >/dev/null 2>&1; rc=$?
+assert_exit_code 3 $rc "an empty selection still exits 3"
+assert_eq "3"     "$(vlast | jq -r '.rc')"   "and is recorded as rc 3"
+assert_eq "empty" "$(vlast | jq -r '.tier')" "with the tier that produced it"
+
 # A usage error verified nothing, so it records nothing.
 before=$(vevents)
 ver >/dev/null 2>&1; rc=$?

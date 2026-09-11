@@ -102,7 +102,7 @@ _record_select() {  # <tier> <reason> <count> <total>
   case "${4:-}" in ''|*[!0-9]*) t=0 ;; *) t="$4" ;; esac
   bash "$rm" emit --kind select \
     --json "$(printf '{"tier":"%s","reason":"%s","count":%s,"total":%s}' "${1:-}" "$r" "$c" "$t")" \
-    >/dev/null 2>&1 || true
+    >/dev/null || true
 }
 
 emit() {  # <tier> <command> <paths> <count> <total> <reason>

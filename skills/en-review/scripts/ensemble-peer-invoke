@@ -169,8 +169,13 @@ _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6
       '{"peer":"%s","decision":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"model_actual":%s,"elapsed_s":%s}' \
       "$(_epi_json_escape "${_epi_peer_name:-unknown}")" "$(_epi_json_escape "$1")" \
       "$(_epi_json_escape "$2")" "$(_epi_json_escape "${3:-off}")" \
-      "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_actual" "$_el")" >/dev/null 2>&1 || true
+      "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_actual" "$_el")" >/dev/null || true
   fi
+  # The recording block is this function's last command, so an absent helper
+  # made `if` false and _epi_decision returned 1 while printing a valid decision
+  # object. Its status must be a fact about the decision, not about the
+  # filesystem: every direct caller in the test suite reads it.
+  return 0
 }
 
 # Recover the JSON envelope from a response wrapped in fences or prose. Applied
@@ -292,7 +297,10 @@ ensemble_peer_invoke() {
     echo "ensemble_peer_invoke: --peer-cmd and --prompt-file are required" >&2
     return 2
   fi
-  _epi_peer_name=$(printf '%s' "$peer_cmd" | awk '{print $1}')
+  # basename, not the first word: an operator invoking the CLI by absolute path
+  # would otherwise write that path into the durable store on every peer pass.
+  _epi_peer_name=$(basename "$(printf '%s' "$peer_cmd" | awk '{print $1}')" 2>/dev/null) \
+    || _epi_peer_name="unknown"
   case "$access" in none|read-tree) ;; *) echo "ensemble_peer_invoke: --access must be none or read-tree" >&2; return 2 ;; esac
   if [ -n "$schema_file" ] && [ ! -f "$schema_file" ]; then
     echo "ensemble_peer_invoke: --schema file not found: $schema_file" >&2; return 2

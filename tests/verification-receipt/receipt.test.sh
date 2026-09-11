@@ -349,15 +349,21 @@ assert_eq "true" "$(jq -rs '[.[] | select(.kind=="receipt") | .op] | length >= 2
   "a write and a verify both land in one ledger"
 
 # Outside a run: every exit code and every byte of stdout unchanged.
-led finish "$RL"
 # age_seconds legitimately advances between two calls, so it is normalised out;
 # everything else in the envelope must be byte-identical.
 noage() { printf '%s' "$1" | jq -Sc 'del(.age_seconds)'; }
+# CAPTURED BEFORE THE RUN CLOSES. Both captures used to sit after `led finish`,
+# so the in-run case was never exercised and a recorder leaking a whole JSON
+# line into the stdout /en-build parses passed this assertion by name.
 in_run_out=$( cd "$RD" && "$R" verify --json 2>/dev/null ); in_rc=$?
+# That verify was inside the run, so it recorded. Baseline the count here, so
+# the closed-run assertion below measures the closed run and nothing else.
+closed_base=$(nev)
+led finish "$RL"
 no_run_out=$( cd "$RD" && "$R" verify --json 2>/dev/null ); no_rc=$?
 assert_eq "$(noage "$in_run_out")" "$(noage "$no_run_out")" \
   "stdout is identical whether or not a run is open"
 assert_eq "$in_rc" "$no_rc" "and so is the exit code"
-assert_eq "$before" "$(nev)" "nothing is recorded once the run has closed"
+assert_eq "$closed_base" "$(nev)" "nothing is recorded once the run has closed"
 
 report

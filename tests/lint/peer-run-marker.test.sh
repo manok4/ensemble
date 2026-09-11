@@ -139,9 +139,28 @@ PL=$(mled start --skill en-review)
 pev() { grep -c '"kind":"peer"' "$PL" || true; }
 plast() { grep '"kind":"peer"' "$PL" | tail -1; }
 
+# Driven END TO END through ensemble_peer_invoke with a stub CLI, so the one
+# production line that sets the peer name actually runs. Setting
+# _epi_peer_name by hand asserted the test's own value: deleting that line from
+# all three carriers left every peer suite green while every real event would
+# have recorded "unknown".
+STUB="$MW/bin"; mkdir -p "$STUB"
+cat > "$STUB/stubpeer" <<'STUBEOF'
+#!/usr/bin/env bash
+cat >/dev/null
+printf '{"verdict":"approve","findings":[]}\n'
+STUBEOF
+chmod +x "$STUB/stubpeer"
+printf 'review this\n' > "$MW/prompt.md"
+( cd "$MW" && ensemble_peer_invoke --peer-cmd "$STUB/stubpeer" --prompt-file "$MW/prompt.md" \
+    --out-file "$MW/out.json" --peer-mode cross-agent --effort high ) >/dev/null 2>&1
+assert_eq "stubpeer" "$(grep '"kind":"peer"' "$PL" | tail -1 | jq -r '.peer')" \
+  "an end-to-end invoke records the CLI it actually ran"
+PEV_BASE=$(pev)
+
 _epi_peer_name="codex"
 ( cd "$MW" && _epi_decision "on" "default-on" "cross-agent" "high" "gpt-5.6-sol" "126" "gpt-5.6-sol" ) >/dev/null
-assert_eq "1" "$(pev)" "a decision inside a run records exactly one peer event"
+assert_eq "$((PEV_BASE + 1))" "$(pev)" "a decision inside a run records exactly one peer event"
 e=$(plast)
 assert_eq "codex"       "$(printf '%s' "$e" | jq -r '.peer')"         "the event names the CLI"
 assert_eq "on"          "$(printf '%s' "$e" | jq -r '.decision')"     "and the decision"
@@ -159,7 +178,7 @@ for combo in "off peer-failed:timeout" "off peer-failed:auth" "degraded dropped-
 done
 
 # A finalize loop is two passes, and both must be countable.
-assert_eq "4" "$(pev)" "four decisions recorded four events, one each"
+assert_eq "$((PEV_BASE + 4))" "$(pev)" "four decisions recorded four events, one each"
 assert_eq "null" "$(plast | jq -r '.dropped')" "and none of their keys was dropped at the allowlist"
 
 # The decision object on stdout is byte-identical with and without a run open:
@@ -175,7 +194,7 @@ assert_eq "decision_keys=7" \
 mled finish "$PL"
 no_run=$( cd "$MW" && _epi_decision "on" "default-on" "cross-agent" "high" "alias" "9" "actual" )
 assert_eq "$in_run" "$no_run" "the decision object is unchanged by the recording"
-assert_eq "5" "$(pev)" "and a decision after the run closed records nothing"
+assert_eq "$((PEV_BASE + 5))" "$(pev)" "and a decision after the run closed records nothing"
 
 # Positive evidence that the redirect at the top of this file worked: the
 # decisions at lines 33-79 ran before any temp repo existed, and their events

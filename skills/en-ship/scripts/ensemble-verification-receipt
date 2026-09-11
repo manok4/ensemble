@@ -60,12 +60,16 @@ TTL_DEFAULT_MINUTES="${ENSEMBLE_RECEIPT_TTL_MINUTES:-120}"
 # Record a receipt operation, if a run is open. Silent and exit-0 when no run is
 # open, when the sibling helper is not carried, or when anything here fails: a
 # receipt hit is an optimisation, and measuring it must never be able to cost one.
+_json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
 _record_receipt() {  # <op> <result> <reason> [age_s] [checks-json-array]
-  local rm="$SELF_DIR/ensemble-run-metrics"
+  local rm="$SELF_DIR/ensemble-run-metrics" age
   [ -n "$SELF_DIR" ] && [ -x "$rm" ] || return 0
+  case "${4:-}" in ''|*[!0-9-]*) age=0 ;; *) age="$4" ;; esac
   bash "$rm" emit --kind receipt --json "$(printf \
     '{"op":"%s","result":"%s","reason":"%s","age_s":%s,"checks":%s}' \
-    "$1" "$2" "$3" "${4:-0}" "${5:-[]}")" >/dev/null 2>&1 || true
+    "$(_json_escape "$1")" "$(_json_escape "$2")" "$(_json_escape "$3")" \
+    "$age" "${5:-[]}")" >/dev/null || true
 }
 
 die() { printf '%s\n' "$*" >&2; exit 3; }
