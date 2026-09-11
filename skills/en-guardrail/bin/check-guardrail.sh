@@ -45,11 +45,19 @@ PATTERN=${REST%%$'\t'*}
 MESSAGE=${REST#*$'\t'}
 [ "$MESSAGE" = "$REST" ] && MESSAGE="destructive command detected."
 
-mkdir -p ~/.ensemble/analytics 2>/dev/null || true
+# Analytics. ENSEMBLE_ANALYTICS_DIR exists so a test suite can redirect this:
+# without it, every run of tests/en-guardrail/check-guardrail.test.sh appended
+# to the operator's real store, and by 2026-09-10 that file was 71,171 events
+# of which 97% landed in the same second as another — test noise, not use.
+ANALYTICS_DIR=${ENSEMBLE_ANALYTICS_DIR:-$HOME/.ensemble/analytics}
+mkdir -p "$ANALYTICS_DIR" 2>/dev/null || true
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
 REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")
+# PATTERN is escaped like MESSAGE below. It was not, and a label containing a
+# quote or backslash wrote a line no reader could parse.
+PATTERN_ESCAPED=$(printf '%s' "$PATTERN" | sed 's/\\/\\\\/g; s/"/\\"/g')
 printf '{"event":"hook_fire","skill":"en-guardrail","pattern":"%s","ts":"%s","repo":"%s"}\n' \
-  "$PATTERN" "$TS" "$REPO" >> ~/.ensemble/analytics/guardrail.jsonl 2>/dev/null || true
+  "$PATTERN_ESCAPED" "$TS" "$REPO" >> "$ANALYTICS_DIR/guardrail.jsonl" 2>/dev/null || true
 
 MSG_ESCAPED=$(printf '%s' "$MESSAGE" | sed 's/\\/\\\\/g; s/"/\\"/g')
 printf '{"permissionDecision":"ask","message":"[guardrail] %s"}\n' "$MSG_ESCAPED"

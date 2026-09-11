@@ -16,6 +16,14 @@ TEST_NAME="en-guardrail hook"
 HOOK="$REPO_ROOT/skills/en-guardrail/bin/check-guardrail.sh"
 [ -x "$HOOK" ] || { fail "hook script missing or not executable: $HOOK"; report; exit 1; }
 
+# Every invocation below writes an analytics line. Without this redirect they
+# went to the operator's real ~/.ensemble/analytics/guardrail.jsonl, and by
+# 2026-09-10 that file held 71,171 events of which 97% landed in the same second
+# as another: this suite, not anybody's actual destructive commands.
+ANALYTICS_TMP=$(mktemp -d)
+export ENSEMBLE_ANALYTICS_DIR="$ANALYTICS_TMP"
+trap 'rm -rf "$ANALYTICS_TMP"' EXIT
+
 # Pipe one synthetic Bash tool-input through the hook and assert the verdict.
 check() {
   local label="$1" expect="$2" cmd="$3"
