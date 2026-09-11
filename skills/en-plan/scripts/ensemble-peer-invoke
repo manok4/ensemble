@@ -40,6 +40,11 @@
 # review. zsh sets $0 to the sourced file, bash does not, so the fallback covers
 # sourced and executed under both shells.
 _epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# The CLI this run is talking to, for the recorded event. Set by the entry
+# points; defaulted here because _epi_decision is also called directly by tests
+# and this file runs under the caller's `set -u`.
+_epi_peer_name=""
 # shellcheck source=$SKILL_DIR/scripts/ensemble-cli-smoke
 . "$_epi_dir/ensemble-cli-smoke"
 # shellcheck source=$SKILL_DIR/scripts/ensemble-extract-json
@@ -153,6 +158,19 @@ _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6
   printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"elapsed_s":%s,"model_actual":%s}\n' \
     "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
     "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_el" "$_actual"
+
+  # Record the pass. AFTER the printf and to /dev/null, because this function's
+  # stdout IS the decision object the caller parses. Every return path in
+  # ensemble_peer_invoke passes through here, and so does the detached trio, so
+  # one pass is one event however it was run. Outside a run the helper writes
+  # nothing and exits 0, which is why no caller had to change.
+  if [ -x "$_epi_dir/ensemble-run-metrics" ]; then
+    bash "$_epi_dir/ensemble-run-metrics" emit --kind peer --json "$(printf \
+      '{"peer":"%s","decision":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"model_actual":%s,"elapsed_s":%s}' \
+      "$(_epi_json_escape "${_epi_peer_name:-unknown}")" "$(_epi_json_escape "$1")" \
+      "$(_epi_json_escape "$2")" "$(_epi_json_escape "${3:-off}")" \
+      "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_actual" "$_el")" >/dev/null 2>&1 || true
+  fi
 }
 
 # Recover the JSON envelope from a response wrapped in fences or prose. Applied
@@ -274,6 +292,7 @@ ensemble_peer_invoke() {
     echo "ensemble_peer_invoke: --peer-cmd and --prompt-file are required" >&2
     return 2
   fi
+  _epi_peer_name=$(printf '%s' "$peer_cmd" | awk '{print $1}')
   case "$access" in none|read-tree) ;; *) echo "ensemble_peer_invoke: --access must be none or read-tree" >&2; return 2 ;; esac
   if [ -n "$schema_file" ] && [ ! -f "$schema_file" ]; then
     echo "ensemble_peer_invoke: --schema file not found: $schema_file" >&2; return 2
