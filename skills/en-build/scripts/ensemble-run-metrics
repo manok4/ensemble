@@ -190,6 +190,81 @@ _append() {  # <file> <compact json line>
 
 _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# --- the durable rollup ------------------------------------------------------
+# The per-clone ledgers die with the clone. This one line per run is the only
+# record that outlives it, so it is wide on purpose: a field omitted today is
+# unrecoverable for every run before someone adds it.
+#
+# It lands beside ~/.ensemble/analytics/guardrail.jsonl rather than in a new
+# directory, and honours ENSEMBLE_ANALYTICS_DIR for exactly the reason that file
+# reached 71,171 events of which 97% were test noise: a writer a suite cannot
+# redirect is a writer that poisons the data it exists to produce.
+_ROLLUP_CAP=5242880          # 5 MB; one previous generation kept, so ~10 MB total
+
+_analytics_dir() { printf '%s\n' "${ENSEMBLE_ANALYTICS_DIR:-$HOME/.ensemble/analytics}"; }
+
+# Rename an over-cap file out of the way. SERIALIZED, because two finishes both
+# seeing it over the cap would each mv it to .1 and the second would overwrite
+# the first's generation — 5 MB of history gone, not merely reordered.
+# Failing to take the lock skips the rename and appends anyway: the worst case
+# is a file that stays over the cap until the next run. Never a dropped event.
+_rotate() {  # <target>
+  local t="$1" lock size
+  [ -f "$t" ] || return 0
+  size=$(wc -c < "$t" 2>/dev/null | tr -d ' ') || return 0
+  case "$size" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$size" -ge "$_ROLLUP_CAP" ] || return 0
+  lock="$t.rotate.lock"
+  mkdir "$lock" 2>/dev/null || return 0
+  size=$(wc -c < "$t" 2>/dev/null | tr -d ' ')
+  case "$size" in ''|*[!0-9]*) size=0 ;; esac
+  [ "$size" -lt "$_ROLLUP_CAP" ] || mv -f "$t" "$t.1" 2>/dev/null || true
+  rmdir "$lock" 2>/dev/null || true
+}
+
+# 0 published (or already present), 1 retryable (store unwritable),
+# 2 unrecoverable (the ledger will never parse).
+_rollup() {  # <ledger>
+  local f="$1" repo adir target summary run_id
+  repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null) || repo=""
+  [ -n "$repo" ] || repo="unknown"
+  summary=$(jq -src --arg repo "$repo" --arg now "$(_now)" '
+      (map(select(.kind == "start")) | first) as $s
+      | if $s == null or ($s.run_id // "") == "" then null else
+          (map(select(.kind != "start"))) as $ev
+          | ($ev | group_by(.kind) | map({key: .[0].kind, value: length}) | from_entries) as $counts
+          | (map(select(.kind == "outcome")) | last) as $out
+          | (map(select(.kind == "select"))  | last) as $sel
+          | (map(select(.kind == "peer")) | map({peer, decision, elapsed_s})) as $peers
+          | (map(.dropped // 0) | add // 0) as $dropped
+          | {schema: 1,
+             skill: $s.skill, run_id: $s.run_id, plan_id: $s.plan_id, repo: $repo,
+             parent_run_id: $s.parent_run_id,
+             started_at: $s.at, ended_at: $now,
+             duration_s: (($now | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)
+                          - ($s.at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime)),
+             counts: $counts,
+             outcome: (if $out == null then null else ($out | del(.kind, .at, .dropped)) end),
+             detail: {select: (if $sel == null then null
+                               else {tier: $sel.tier, count: $sel.count, total: $sel.total} end),
+                      peer: $peers},
+             dropped: $dropped}
+        end' "$f" 2>/dev/null) || return 2
+  [ -n "$summary" ] && [ "$summary" != "null" ] || return 2
+  run_id=$(printf '%s' "$summary" | jq -r '.run_id' 2>/dev/null) || return 2
+  [ -n "$run_id" ] && [ "$run_id" != "null" ] || return 2
+
+  adir=$(_analytics_dir)
+  mkdir -p "$adir" 2>/dev/null || return 1
+  target="$adir/$repo.jsonl"
+  # Idempotent on run_id across EVERY retained generation. Scanning only the
+  # current file would re-append a run whose line had just been rotated out.
+  grep -qF "\"run_id\":\"$run_id\"" "$target" "$target.1" 2>/dev/null && return 0
+  _rotate "$target"
+  printf '%s\n' "$summary" >> "$target" 2>/dev/null || return 1
+  return 0
+}
+
 # --- start -------------------------------------------------------------------
 if [ "$cmd" = "start" ]; then
   _metrics_off && exit 0
@@ -290,12 +365,24 @@ case "$cmd" in
     _append "$file" "$line"
     ;;
   finish)
+    dir=$(_runs_dir) || dir=""
+    _pop() { [ -z "$dir" ] || _active_pop "$dir/active" "$file"; }
     # The stack pop happens whether or not recording is on: an entry left
     # behind by an opted-out finish parents every later run in the repo.
-    dir=$(_runs_dir) && _active_pop "$dir/active" "$file"
-    _metrics_off && exit 0
-    _ledger_live "$file" || exit 0            # already finished: do not double-close
+    if _metrics_off || ! _ledger_live "$file"; then _pop; exit 0; fi
+
+    # PUBLISH BEFORE CLOSING. The ledger dies with the clone, so if the finish
+    # event went first and the rollup then failed, this run's only durable
+    # record would be gone with nothing left to retry from. Publishing first
+    # means a failed write leaves the run open and the next finish retries it.
+    _rollup "$file"; rc=$?
+    if [ "$rc" -eq 1 ]; then
+      note "cannot write the analytics rollup; run left open, finish again to retry"
+      exit 0                                  # ledger open, stack entry kept
+    fi
+    [ "$rc" -eq 0 ] || note "ledger has no usable start line; closing without a rollup line"
     _append "$file" "$(jq -nc --arg t "$(_now)" '{kind:"finish", at:$t}')"
+    _pop
     ;;
   summary)
     # The three original counts are always present, so a caller can match on

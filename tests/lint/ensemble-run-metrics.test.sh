@@ -50,6 +50,13 @@ GIT_DIR_ABS="$PROJ/.git"
 RUNS="$GIT_DIR_ABS/ensemble/runs"
 ACTIVE="$RUNS/active"
 
+# EXPORTED BEFORE THE FIRST CALL, not halfway down. `finish` writes the rollup,
+# so a section that drives it before this line is set appends to the operator's
+# real ~/.ensemble/analytics — which is exactly what this suite found itself
+# doing, 156 lines into their store, on the run that added the rollup.
+ADIR="$WORK/analytics"
+export ENSEMBLE_ANALYTICS_DIR="$ADIR"
+
 # Each call is its own process with a clean environment, which is the point:
 # nothing may be carried between them but the filesystem.
 rm_() { env -u ENSEMBLE_RUN_LEDGER bash "$RM" "$@"; }
@@ -273,5 +280,150 @@ rm_ event "$L12" --kind lint --json '{"scope":"docs","cwd":"/Users/someone"}' 2>
 assert_eq "null" "$(last | jq -r '.cwd')"     "the explicit-file form filters through the same allowlist"
 assert_eq "1"    "$(last | jq -r '.dropped')" "the explicit-file form counts drops too"
 rm_ finish "$L12"
+
+# --- 18. the durable rollup (U3) ---------------------------------------------
+# One line per run, in the only file that survives the clone. ENSEMBLE_ANALYTICS_DIR
+# is what keeps this suite out of the operator's real store; without it, this
+# test would do to <repo>.jsonl exactly what check-guardrail.test.sh did to
+# guardrail.jsonl for four months.
+ROLL="$ADIR/proj.jsonl"
+# Sections 1-17 finished runs too, so the rollup already holds their lines.
+rm -f "$ROLL" "$ROLL.1"
+rmA() { env -u ENSEMBLE_RUN_LEDGER ENSEMBLE_ANALYTICS_DIR="$ADIR" bash "$RM" "$@"; }
+
+L13=$(rmA start --skill en-review --plan EN17)
+rmA emit --kind select --json '{"tier":"graph","reason":"two files","count":4,"total":260}'
+rmA emit --kind peer   --json '{"peer":"codex","decision":"on","elapsed_s":126}'
+rmA emit --kind peer   --json '{"peer":"codex","decision":"degraded","elapsed_s":31}'
+rmA emit --kind outcome --json '{"findings_total":9,"peer_only":3,"corroborated":4,"host_only":2}'
+rmA finish "$L13"
+
+assert_file_exists "$ROLL" "finish writes one line to the repo's rollup"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "exactly one line per run"
+R=$(cat "$ROLL")
+assert_eq "1"         "$(printf '%s' "$R" | jq -r '.schema')"          "the line is schema-versioned"
+assert_eq "en-review" "$(printf '%s' "$R" | jq -r '.skill')"           "it names the skill"
+assert_eq "EN17"      "$(printf '%s' "$R" | jq -r '.plan_id')"         "and the plan"
+assert_eq "proj"      "$(printf '%s' "$R" | jq -r '.repo')"            "and the repo"
+assert_eq "2"         "$(printf '%s' "$R" | jq -r '.counts.peer')"     "counts are per kind"
+assert_eq "1"         "$(printf '%s' "$R" | jq -r '.counts.outcome')"  "including the outcome event"
+assert_eq "2"         "$(printf '%s' "$R" | jq -r '.detail.peer|length')" "detail carries every peer pass"
+assert_eq "126"       "$(printf '%s' "$R" | jq -r '.detail.peer[0].elapsed_s')" "in emit order"
+assert_eq "graph"     "$(printf '%s' "$R" | jq -r '.detail.select.tier')" "and the selection tier"
+assert_eq "260"       "$(printf '%s' "$R" | jq -r '.detail.select.total')" "and its ratio"
+assert_eq "3"         "$(printf '%s' "$R" | jq -r '.outcome.peer_only')" "the outcome object is carried verbatim"
+assert_eq "true"      "$(printf '%s' "$R" | jq -r '.duration_s >= 0')"  "duration_s is a non-negative integer"
+assert_eq "null"      "$(printf '%s' "$R" | jq -r '.parent_run_id')"    "a top-level run has no parent"
+
+# A nested pair, finished child first.
+: > "$ROLL"
+LP=$(rmA start --skill en-build)
+LC=$(rmA start --skill en-review)
+rmA finish "$LC"; rmA finish "$LP"
+assert_eq "2" "$(wc -l < "$ROLL" | tr -d ' ')" "a nested pair leaves two rollup lines"
+pid=$(head -1 "$LP" | jq -r '.run_id')
+assert_eq "$pid" "$(jq -rs '.[] | select(.skill=="en-review") | .parent_run_id' "$ROLL")" \
+  "the child's rollup line names the parent run"
+
+# No outcome, no select: null rather than absent, so a reader can tell the
+# difference between "did not happen" and "older schema".
+: > "$ROLL"
+L14=$(rmA start --skill en-ship); rmA finish "$L14"
+assert_eq "null" "$(jq -r '.outcome' "$ROLL")"        "a run with no outcome records null, not absence"
+assert_eq "null" "$(jq -r '.detail.select' "$ROLL")"  "a run with no selection records null"
+assert_eq "0"    "$(jq -r '.detail.peer|length' "$ROLL")" "and an empty peer list"
+
+# Finishing twice appends nothing the second time.
+before=$(wc -l < "$ROLL" | tr -d ' ')
+rmA finish "$L14"
+assert_eq "$before" "$(wc -l < "$ROLL" | tr -d ' ')" "a second finish adds no second rollup line"
+
+# --- 19. rotation at the size cap --------------------------------------------
+seed_over_cap() { dd if=/dev/zero bs=1024 count=5121 2>/dev/null | tr '\0' 'x' | sed 's/^/{"seed":"/; s/$/"}/' > "$ROLL"; }
+seed_over_cap
+seeded=$(wc -c < "$ROLL" | tr -d ' ')
+L15=$(rmA start --skill en-build); rmA finish "$L15"
+assert_file_exists "$ROLL.1" "an over-cap file is rotated to .1"
+assert_eq "$seeded" "$(wc -c < "$ROLL.1" | tr -d ' ')" "the whole previous generation moves intact"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "the current file holds only the new line"
+
+seed_over_cap
+L16=$(rmA start --skill en-build); rmA finish "$L16"
+assert_file_missing "$ROLL.2" "only one previous generation is kept"
+
+# Contention must never cost an event: a caller that cannot take the lock skips
+# the rename and appends anyway. That is the difference from the lock PR #106
+# removed, which dropped the event outright.
+rm -f "$ROLL.1"; seed_over_cap
+mkdir -p "$ROLL.rotate.lock"
+L17=$(rmA start --skill en-build); rmA finish "$L17"
+assert_file_missing "$ROLL.1" "a held lock skips the rotation"
+assert_eq "0" "$?" "and finish still exits 0"
+assert_contains "$(tail -1 "$ROLL")" "$(head -1 "$L17" | jq -r '.run_id')" \
+  "the line is appended to the over-cap file rather than dropped"
+rmdir "$ROLL.rotate.lock"
+
+# Ten concurrent finishes across the threshold: every run recorded exactly once,
+# and the seeded history still present in one generation or the other.
+rm -f "$ROLL.1"; seed_over_cap
+ids=""
+for i in $(seq 1 10); do
+  l=$(rmA start --skill en-build --run-id "conc$i")
+  ids="$ids $l"
+done
+for l in $ids; do rmA finish "$l" & done
+wait
+missing=0; dupes=0
+for i in $(seq 1 10); do
+  n=$(cat "$ROLL" "$ROLL.1" 2>/dev/null | grep -cF "\"run_id\":\"conc$i\"" || true)
+  [ "$n" -eq 1 ] || { [ "$n" -eq 0 ] && missing=$((missing+1)) || dupes=$((dupes+1)); }
+done
+assert_eq "0" "$missing" "ten concurrent finishes: every run recorded"
+assert_eq "0" "$dupes"   "ten concurrent finishes: none recorded twice"
+assert_eq "1" "$(cat "$ROLL" "$ROLL.1" 2>/dev/null | grep -c '"seed"' || true)" \
+  "the seeded generation survives the concurrent rotation"
+
+# --- 20. failure and retry ---------------------------------------------------
+# An unwritable store leaves the run OPEN, which is what makes the retry work.
+rm -f "$ROLL" "$ROLL.1"
+L18=$(rmA start --skill en-build)
+chmod 500 "$ADIR"
+rmA finish "$L18" >/dev/null 2>&1
+rc=$?
+chmod 700 "$ADIR"
+assert_eq "0" "$rc" "an unwritable analytics store is not fatal"
+assert_eq "0" "$(grep -c '"kind":"finish"' "$L18" || true)" "the ledger is left open"
+assert_contains "$(cat "$ACTIVE")" "$L18" "and the run stays on the active stack"
+rmA finish "$L18"
+assert_eq "1" "$(wc -l < "$ROLL" | tr -d ' ')" "the retry publishes exactly one line"
+assert_eq "1" "$(grep -c '"kind":"finish"' "$L18" || true)" "and closes the ledger"
+assert_not_contains "$(cat "$ACTIVE")" "$L18" "and pops the stack"
+
+# Idempotence, in the current file and in the rotated one.
+L19=$(rmA start --skill en-build --run-id dedupe1)
+printf '{"schema":1,"run_id":"dedupe1","skill":"en-build"}\n' >> "$ROLL"
+n=$(wc -l < "$ROLL" | tr -d ' ')
+rmA finish "$L19"
+assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" "a run already in the rollup is not appended twice"
+assert_eq "1" "$(grep -c '"kind":"finish"' "$L19" || true)" "and its ledger still closes"
+
+L20=$(rmA start --skill en-build --run-id dedupe2)
+printf '{"schema":1,"run_id":"dedupe2","skill":"en-build"}\n' > "$ROLL.1"
+n=$(wc -l < "$ROLL" | tr -d ' ')
+rmA finish "$L20"
+assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" \
+  "a run already in the ROTATED generation is not re-appended"
+
+# A ledger that will never parse is unrecoverable, so it closes rather than
+# retrying forever. That is the opposite call from the unwritable store above,
+# and it is deliberate.
+L21=$(rmA start --skill en-build)
+printf 'not json at all\n' > "$L21"
+n=$(wc -l < "$ROLL" | tr -d ' ')
+rmA finish "$L21" >/dev/null 2>&1
+assert_eq "0" "$?" "a malformed ledger is not fatal"
+assert_eq "$n" "$(wc -l < "$ROLL" | tr -d ' ')" "and produces no rollup line"
+assert_not_contains "$(cat "$ACTIVE")" "$L21" "but is popped from the stack rather than retried forever"
+
 
 report
