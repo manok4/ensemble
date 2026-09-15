@@ -179,6 +179,31 @@ peer_timeout_seconds=42 inv "claude -p" "$T/p" "$T/out" --access read-tree >/dev
 [ "$t_none" = "600" ] && [ "$t_rt" = "1200" ] && [ "$t_cfg" = "42" ] \
   && pass "timeout: 600 one-shot, 1200 read-tree, peer_timeout_seconds overrides both" \
   || fail "timeout follows the access mode" "none=$t_none read-tree=$t_rt cfg=$t_cfg"
+
+# en-review step 9 tells the host how long to keep waiting before it reaps, and
+# it can only say so by naming these same two numbers. When they disagree the
+# host reaps a peer that the helper is still bounding: on 2026-09-15 step 9 said
+# only "or the ceiling", and three read-tree peers were reaped at 532s, 615s and
+# 618s and reported as peer-failed:timeout. Assert the prose against the values
+# the helper just resolved, not against a literal, so moving a ceiling moves one
+# number and this clause names the other.
+# Everything AFTER the wait call, not the whole bullet: step 9 also names the
+# ceilings when it introduces the access modes, so grepping the line passed
+# even with the wait clause reverted to its unnamed-"the ceiling" form. The
+# budget has to be stated where the host reads it, next to the call it bounds.
+STEP9=$(grep 'ensemble_peer_wait' "$REPO_ROOT/skills/en-review/SKILL.md" | head -1)
+STEP9=${STEP9#*ensemble_peer_wait}
+# "<n>s for", not a bare "<n>s": the clause also cites the incident that
+# produced it ("against a 1200s ceiling"), and a bare match let that citation
+# satisfy the assertion about the budget.
+for want in "$t_rt" "$t_none"; do
+  printf '%s' "$STEP9" | grep -q "${want}s for " \
+    && pass "en-review step 9 names the ${want}s ceiling the helper enforces" \
+    || fail "en-review step 9 names the ${want}s ceiling the helper enforces" "$STEP9"
+done
+printf '%s' "$STEP9" | grep -q 'ensemble_peer_reap' \
+  && pass "en-review step 9 still says when reaping is correct" \
+  || fail "en-review step 9 still says when reaping is correct" "$STEP9"
 rm -f "$T/bin/timeout"
 
 # --- 11. the claude result envelope is unwrapped; modelUsage becomes model_actual ----
@@ -263,6 +288,12 @@ if printf '%s' "$res" | grep -q 'peer-failed:timeout' && printf '%s' "$res" | gr
 else
   fail "reap: kills the running peer and records peer-failed:timeout" "res=$res rc=$rrc alive=$alive took=${t_reap}s"
 fi
+# A reaped pass must still say WHICH CLI it killed. _epi_peer_name is set inside
+# ensemble_peer_invoke, which runs in the detached subshell, so the parent that
+# reaps had never seen it and every reaped pass reached the durable store as
+# "peer":"unknown". Three of the five peer events ever recorded lost their CLI
+# that way, on exactly the runs worth diagnosing. The name is asserted from the
+# job dir, which is the only state the two shells share.
 pkill -P "$pid" 2>/dev/null || true
 
 report
