@@ -253,10 +253,16 @@ assert_eq "2"      "$(last | jq -r '.dropped')" "and counts every drop"
 rm_ emit --kind select --json '{}'
 assert_eq "null" "$(last | jq -r '.dropped')" "an empty payload carries no dropped count"
 
-# The eight keys ensemble-peer-invoke will pass, all of them.
-rm_ emit --kind peer --json '{"peer":"codex","decision":"on","reason":"default-on","peer_mode":"cross-agent","effort":"high","model_alias":"gpt-5.6-sol","model_actual":"gpt-5.6-sol","elapsed_s":126}'
-assert_eq "null" "$(last | jq -r '.dropped')" "all eight peer keys survive"
+# Every key ensemble-peer-invoke passes, all of them. cost_usd, tokens_in and
+# tokens_out are the CLI's own receipt: a key missing from the allowlist is
+# dropped at the write, and its symptom is a column that is always null, which
+# reads as "the CLI reported nothing" rather than as "nobody allowed it".
+rm_ emit --kind peer --json '{"peer":"codex","decision":"on","reason":"default-on","peer_mode":"cross-agent","effort":"high","model_alias":"gpt-5.6-sol","model_actual":"gpt-5.6-sol","elapsed_s":126,"cost_usd":2.865682,"tokens_in":55102,"tokens_out":78}'
+assert_eq "null" "$(last | jq -r '.dropped')" "every peer key survives, receipt included"
 assert_eq "126"  "$(last | jq -r '.elapsed_s')" "elapsed_s reaches disk"
+assert_eq "2.865682" "$(last | jq -r '.cost_usd')"   "cost_usd reaches disk as a number"
+assert_eq "55102"    "$(last | jq -r '.tokens_in')"  "tokens_in reaches disk"
+assert_eq "78"       "$(last | jq -r '.tokens_out')" "tokens_out reaches disk"
 
 # An unknown KIND stays a rejection, not a drop: the kind names the schema.
 h=$(hash_file "$L12")
@@ -303,7 +309,7 @@ rmA() { env -u ENSEMBLE_RUN_LEDGER ENSEMBLE_ANALYTICS_DIR="$ADIR" bash "$RM" "$@
 
 L13=$(rmA start --skill en-review --plan EN17)
 rmA emit --kind select --json '{"tier":"graph","reason":"two files","count":4,"total":260}'
-rmA emit --kind peer   --json '{"peer":"codex","decision":"on","elapsed_s":126}'
+rmA emit --kind peer   --json '{"peer":"codex","decision":"on","reason":"default-on","effort":"high","model_actual":"gpt-5.6-sol","elapsed_s":126,"cost_usd":2.865682,"tokens_in":55102,"tokens_out":78}'
 rmA emit --kind peer   --json '{"peer":"codex","decision":"degraded","elapsed_s":31}'
 rmA emit --kind outcome --json '{"findings_total":9,"peer_only":3,"corroborated":4,"host_only":2}'
 rmA finish "$L13"
@@ -319,6 +325,21 @@ assert_eq "2"         "$(printf '%s' "$R" | jq -r '.counts.peer')"     "counts a
 assert_eq "1"         "$(printf '%s' "$R" | jq -r '.counts.outcome')"  "including the outcome event"
 assert_eq "2"         "$(printf '%s' "$R" | jq -r '.detail.peer|length')" "detail carries every peer pass"
 assert_eq "126"       "$(printf '%s' "$R" | jq -r '.detail.peer[0].elapsed_s')" "in emit order"
+# The ledger dies with the clone and this line is the only survivor, so the
+# projection has to carry WHAT HAPPENED, not just that something did. It kept
+# {peer, decision, elapsed_s} until 2026-09-15, and five recorded
+# "decision":"off" passes could not be told apart as a timeout, an auth failure
+# or a deliberate auto-skip; the answer had to come out of /tmp job dirs that
+# get cleaned. Same argument for the receipt: an unprojected cost is a cost
+# nobody can ever ask about again.
+for k in reason effort model_actual cost_usd tokens_in tokens_out; do
+  v=$(printf '%s' "$R" | jq -r ".detail.peer[0].$k")
+  [ -n "$v" ] && [ "$v" != "null" ] \
+    && pass "the rollup projects $k, not just the decision" \
+    || fail "the rollup projects $k, not just the decision" "$(printf '%s' "$R" | jq -c '.detail.peer[0]')"
+done
+assert_eq "null" "$(printf '%s' "$R" | jq -r '.detail.peer[1].cost_usd')" \
+  "a pass with no receipt projects null rather than dropping the key"
 assert_eq "graph"     "$(printf '%s' "$R" | jq -r '.detail.select.tier')" "and the selection tier"
 assert_eq "260"       "$(printf '%s' "$R" | jq -r '.detail.select.total')" "and its ratio"
 assert_eq "3"         "$(printf '%s' "$R" | jq -r '.outcome.peer_only')" "the outcome object is carried verbatim"

@@ -96,6 +96,35 @@ else
     pkill -f "$SLOW" 2>/dev/null || true
   done
 
+  # Multi-word fragments reach exec as separate arguments under both shells.
+  # Every clause above passes a ONE-WORD --peer-cmd and no --peer-format, so
+  # none of them touched the splitter, and zsh does not split unquoted
+  # expansions: production's `claude -p` + `--output-format json` arrived as
+  # two arguments instead of four, exec found no command named "claude -p",
+  # and the peer was reported peer-failed:unknown in zero seconds with the
+  # CLI never launched. Assert the argv the peer RECEIVES, not the decision:
+  # a decision object is emitted either way.
+  ARGVSTUB="$WORK/argv-peer"
+  cat > "$ARGVSTUB" <<'S'
+#!/bin/sh
+for a in "$@"; do printf '%s\n' "$a"; done > "$ARGV_OUT"
+printf '%s\n' '{"verdict":"approve","peer_mode":"cross-agent","summary":"ok","findings":[],"coverage":{"reviewed":"all","not_reviewed":""}}'
+S
+  chmod +x "$ARGVSTUB"
+  for sh in zsh bash; do
+    rm -f "$WORK/$sh.argv"
+    ARGV_OUT="$WORK/$sh.argv" "$sh" -c ". '$INVOKE'; ensemble_peer_invoke \
+      --peer-cmd '$ARGVSTUB' --peer-format '--output-format json' \
+      --peer-turns '--max-turns 1' --peer-model '--model opus' \
+      --prompt-file '$WORK/prompt.md' --out-file /dev/null" >/dev/null 2>&1
+    # Join on a delimiter that is NOT the separator under test. Joining on a
+    # space reads the same whether the peer got six arguments or three, which
+    # is precisely the failure, so it would have passed against the bug.
+    got=$(tr '\n' '|' < "$WORK/$sh.argv" 2>/dev/null)
+    assert_eq "--output-format|json|--max-turns|1|--model|opus|" "$got" \
+      "$sh: multi-word flag fragments reach the peer as separate arguments"
+  done
+
   # Missing --job-dir is a usage error under both shells.
   for sh in zsh bash; do
     err=$("$sh" -c ". '$INVOKE'; ensemble_peer_start --peer-cmd '$STUB' --prompt-file '$WORK/prompt.md'" 2>&1 >/dev/null); rc=$?

@@ -100,7 +100,7 @@ Helper-emitted, with no call point for a model to remember:
 | `select` | `tier`, `reason`, `count`, `total` | `ensemble-test-select`, in `emit()` |
 | `verify` | `unit`, `tier`, `ran`, `failed`, `rc`, `checks` | `ensemble-unit-verify`, on all four exit codes |
 | `receipt` | `op`, `result`, `reason`, `age_s`, `checks` | `ensemble-verification-receipt`, on `write` and `verify` |
-| `peer` | `peer`, `decision`, `reason`, `peer_mode`, `effort`, `model_alias`, `model_actual`, `elapsed_s`, `iteration` | `ensemble-peer-invoke`, in `_epi_decision`; `/en-plan` adds `iteration`, which no helper can see |
+| `peer` | `peer`, `decision`, `reason`, `peer_mode`, `effort`, `model_alias`, `model_actual`, `elapsed_s`, `cost_usd`, `tokens_in`, `tokens_out`, `iteration` | `ensemble-peer-invoke`, in `_epi_decision`; `/en-plan` adds `iteration`, which no helper can see. `cost_usd`, `tokens_in` and `tokens_out` come from the CLI's own result envelope, so they cost nothing to collect and are null when the CLI does not report them (`codex exec --json` reports tokens but no cost and no served model) |
 | `child` | `run_id`, `skill`, `ledger` | `ensemble-run-metrics start`, into the parent |
 
 **Model-emitted, for what no helper can see.** Every one of these describes a
@@ -143,8 +143,15 @@ directory. It carries `schema`, `skill`, `run_id`, `plan_id`, `repo`,
 kind, the `outcome` object verbatim, a `detail` object holding the `select`
 tier and the `peer` passes, and `dropped`.
 
+Each `peer` pass carries `peer`, `decision`, `reason`, `effort`, `model_actual`,
+`elapsed_s`, `cost_usd`, `tokens_in` and `tokens_out`.
+
 It is wide on purpose. The ledgers die with the clone, so a field omitted today
-is unrecoverable for every run before someone adds it.
+is unrecoverable for every run before someone adds it. `reason` is the field
+that proves it: the projection once kept only `peer`, `decision` and
+`elapsed_s`, so five recorded `"decision":"off"` passes could not be told apart
+as a timeout, an auth failure or a deliberate `auto-skip`, and the answer had to
+be read out of `/tmp` job dirs before they were cleaned.
 
 `start`, `closing` and `finish` are lifecycle markers rather than events. They
 are written by the helper directly, carry no payload, and are not counted in

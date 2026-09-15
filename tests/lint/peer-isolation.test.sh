@@ -179,6 +179,31 @@ peer_timeout_seconds=42 inv "claude -p" "$T/p" "$T/out" --access read-tree >/dev
 [ "$t_none" = "600" ] && [ "$t_rt" = "1200" ] && [ "$t_cfg" = "42" ] \
   && pass "timeout: 600 one-shot, 1200 read-tree, peer_timeout_seconds overrides both" \
   || fail "timeout follows the access mode" "none=$t_none read-tree=$t_rt cfg=$t_cfg"
+
+# en-review step 9 tells the host how long to keep waiting before it reaps, and
+# it can only say so by naming these same two numbers. When they disagree the
+# host reaps a peer that the helper is still bounding: on 2026-09-15 step 9 said
+# only "or the ceiling", and three read-tree peers were reaped at 532s, 615s and
+# 618s and reported as peer-failed:timeout. Assert the prose against the values
+# the helper just resolved, not against a literal, so moving a ceiling moves one
+# number and this clause names the other.
+# Everything AFTER the wait call, not the whole bullet: step 9 also names the
+# ceilings when it introduces the access modes, so grepping the line passed
+# even with the wait clause reverted to its unnamed-"the ceiling" form. The
+# budget has to be stated where the host reads it, next to the call it bounds.
+STEP9=$(grep 'ensemble_peer_wait' "$REPO_ROOT/skills/en-review/SKILL.md" | head -1)
+STEP9=${STEP9#*ensemble_peer_wait}
+# "<n>s for", not a bare "<n>s": the clause also cites the incident that
+# produced it ("against a 1200s ceiling"), and a bare match let that citation
+# satisfy the assertion about the budget.
+for want in "$t_rt" "$t_none"; do
+  printf '%s' "$STEP9" | grep -q "${want}s for " \
+    && pass "en-review step 9 names the ${want}s ceiling the helper enforces" \
+    || fail "en-review step 9 names the ${want}s ceiling the helper enforces" "$STEP9"
+done
+printf '%s' "$STEP9" | grep -q 'ensemble_peer_reap' \
+  && pass "en-review step 9 still says when reaping is correct" \
+  || fail "en-review step 9 still says when reaping is correct" "$STEP9"
 rm -f "$T/bin/timeout"
 
 # --- 11. the claude result envelope is unwrapped; modelUsage becomes model_actual ----
@@ -263,6 +288,75 @@ if printf '%s' "$res" | grep -q 'peer-failed:timeout' && printf '%s' "$res" | gr
 else
   fail "reap: kills the running peer and records peer-failed:timeout" "res=$res rc=$rrc alive=$alive took=${t_reap}s"
 fi
+# A reaped pass must still say WHICH CLI it killed. _epi_peer_name is set inside
+# ensemble_peer_invoke, which runs in the detached subshell, so the parent that
+# reaps had never seen it and every reaped pass reached the durable store as
+# "peer":"unknown". Three of the five peer events ever recorded lost their CLI
+# that way, on exactly the runs worth diagnosing. The name is asserted from the
+# job dir, which is the only state the two shells share.
+assert_eq "claude" "$(cat "$J2/peer" 2>/dev/null)" "start leaves the CLI name for a reap in another shell"
 pkill -P "$pid" 2>/dev/null || true
+# And the reap READS it. Asserting only that start wrote the file left the fix
+# itself uncovered: deleting the read in ensemble_peer_reap kept this section
+# green. _epi_peer_name is the variable the ledger line is built from one line
+# later, so that is what the clause reads, in a fresh shell, on a live job.
+mkstub claude 'sleep 30'
+J3="$T/job3"
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --prompt-file "$4" --out-file "$3/peer.json" >/dev/null
+' _ "$T/bin" "$INVOKE" "$J3" "$T/p" 2>/dev/null
+named=$(bash --noprofile --norc -c '
+  set -u; . "$1"; ensemble_peer_reap "$2" >/dev/null 2>&1; printf "%s" "${_epi_peer_name:-}"
+' _ "$INVOKE" "$J3" 2>/dev/null)
+assert_eq "claude" "$named" "reap attributes the pass to the CLI it killed, not to 'unknown'"
+pid3=$(cat "$J3/pid" 2>/dev/null); [ -z "$pid3" ] || pkill -P "$pid3" 2>/dev/null || true
+
+# --- 13. the peer's own receipt: what the pass cost, in the CLI's own numbers ----
+# Nothing recorded cost or tokens, so no report could ask whether a peer earned
+# what it charged. Both CLIs already print it in the response the helper is
+# parsing anyway. Claude reports cost, tokens and the served model; codex
+# reports tokens only, and null there means "the CLI did not say", never zero.
+# The codex branch must also leave its stream BYTE-INTACT, because
+# ensemble_extract_json still has to read it afterwards.
+CLAUDE_ENV='{"type":"result","subtype":"success","total_cost_usd":2.8656819999999996,"usage":{"input_tokens":41,"output_tokens":1902},"modelUsage":{"claude-opus-5-20260101":{"canonicalModel":"claude-opus-5","inputTokens":41,"outputTokens":1902}},"structured_output":{"verdict":"revise","peer_mode":"cross-agent","summary":"s","findings":[]}}'
+cat > "$T/bin/claude" <<STUB
+#!/usr/bin/env bash
+printf '%s' '$CLAUDE_ENV'
+STUB
+chmod +x "$T/bin/claude"
+receipt() {  # <peer-cmd> -> "model|cost|tin|tout" after one invoke
+  bash --noprofile --norc -c '
+    set -u; export PATH="$1:$PATH"; . "$2"
+    ensemble_peer_invoke --peer-cmd "$3" --prompt-file "$4" --out-file "$5" >/dev/null 2>&1
+    printf "%s|%s|%s|%s\n" "$_epi_model_actual" \
+      "$(_epi_num_or_null "$_epi_cost_usd")" \
+      "$(_epi_num_or_null "$_epi_tokens_in")" \
+      "$(_epi_num_or_null "$_epi_tokens_out")"
+  ' _ "$T/bin" "$INVOKE" "$1" "$T/p" "$T/out" 2>/dev/null
+}
+assert_eq "claude-opus-5|2.865682|41|1902" "$(receipt 'claude -p')" \
+  "claude envelope: served model, cost and tokens all reach the recorded event"
+
+CODEX_STREAM='{"type":"thread.started","thread_id":"t"}
+{"type":"item.completed","item":{"type":"agent_message","text":"{\"verdict\":\"approve\",\"peer_mode\":\"cross-agent\",\"summary\":\"s\",\"findings\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":55102,"cached_input_tokens":33536,"output_tokens":78}}'
+cat > "$T/bin/codex" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' '$CODEX_STREAM'
+STUB
+chmod +x "$T/bin/codex"
+assert_eq "|null|55102|78" "$(receipt 'codex exec')" \
+  "codex stream: tokens are read, cost and served model stay null"
+grep -q '"verdict"' "$T/out" \
+  && pass "codex stream: the findings still parse out of the untouched stream" \
+  || fail "codex stream: the findings still parse out of the untouched stream" "$(head -c 200 "$T/out")"
+
+# A pass whose CLI reported nothing must not inherit the previous pass's
+# receipt. `read` past end-of-input leaves the variable alone in some shells,
+# which would have made a silent CLI look like a $2.87 one.
+mkstub claude ''
+assert_eq "|null|null|null" "$(receipt 'claude -p')" \
+  "a CLI that reports no receipt records nulls, not the previous pass's numbers"
 
 report

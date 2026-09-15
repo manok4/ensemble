@@ -214,7 +214,8 @@ _resolve_ledger() {  # [--for-finish]
 _ALLOW='{
   "dispatch": ["agent","host","model","model_source","started","ended"],
   "peer":     ["iteration",
-               "peer","decision","reason","peer_mode","effort","model_alias","model_actual","elapsed_s"],
+               "peer","decision","reason","peer_mode","effort","model_alias","model_actual","elapsed_s",
+               "cost_usd","tokens_in","tokens_out"],
   "lint":     ["scope","seconds"],
   "findings": ["iteration","P0","P1","P2","P3"],
   "unit":     ["unit","event","commit","verify_exit","selection_tier"],
@@ -331,7 +332,9 @@ _rollup() {  # <ledger>
           | ($ev | group_by(.kind) | map({key: .[0].kind, value: length}) | from_entries) as $counts
           | ($doc | map(select(.kind == "outcome")) | last) as $out
           | ($doc | map(select(.kind == "select"))  | last) as $sel
-          | ($doc | map(select(.kind == "peer")) | map({peer, decision, elapsed_s})) as $peers
+          | ($doc | map(select(.kind == "peer"))
+             | map({peer, decision, reason, effort, model_actual,
+                    elapsed_s, cost_usd, tokens_in, tokens_out})) as $peers
           | ($doc | map(.dropped // 0) | add // 0) as $dropped
           | {schema: 1,
              skill: $s.skill, run_id: $s.run_id, plan_id: $s.plan_id, repo: $repo,
