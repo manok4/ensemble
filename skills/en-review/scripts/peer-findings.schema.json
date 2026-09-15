@@ -1,7 +1,6 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Ensemble peer review findings",
-  "description": "The object ensemble-build-peer-prompt asks the peer for. Passed to the peer CLI as its output schema so a malformed answer is refused at the source instead of recovered after the fact (D81). STRICT on purpose: Codex's --output-schema (OpenAI structured outputs) requires additionalProperties:false on every object and every property listed in required, so optional fields are nullable rather than absent (2026-09-08, Codex CLI 0.153.2 returned invalid_json_schema without it). Field semantics: references/peer-contract.md.",
+  "description": "The object ensemble-build-peer-prompt asks the peer for. Passed to the peer CLI as its output schema so a malformed answer is refused at the source instead of recovered after the fact (D81). NO $schema KEY: Claude's --json-schema validator resolves the declared meta-schema and has none registered, so any $schema line makes it refuse the whole schema with `no schema with key or ref \"...\"` before the peer runs (2026-09-15, Claude Code 2.1.271, draft 2020-12). Neither CLI needs the declaration and this schema uses no draft-specific keywords. STRICT on purpose: Codex's --output-schema (OpenAI structured outputs) requires additionalProperties:false on every object and every property listed in required, so optional fields are nullable rather than absent (2026-09-08, Codex CLI 0.153.2 returned invalid_json_schema without it). Field semantics: references/peer-contract.md.",
   "type": "object",
   "additionalProperties": false,
   "required": [
