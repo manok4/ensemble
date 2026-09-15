@@ -294,7 +294,23 @@ fi
 # "peer":"unknown". Three of the five peer events ever recorded lost their CLI
 # that way, on exactly the runs worth diagnosing. The name is asserted from the
 # job dir, which is the only state the two shells share.
+assert_eq "claude" "$(cat "$J2/peer" 2>/dev/null)" "start leaves the CLI name for a reap in another shell"
 pkill -P "$pid" 2>/dev/null || true
+# And the reap READS it. Asserting only that start wrote the file left the fix
+# itself uncovered: deleting the read in ensemble_peer_reap kept this section
+# green. _epi_peer_name is the variable the ledger line is built from one line
+# later, so that is what the clause reads, in a fresh shell, on a live job.
+mkstub claude 'sleep 30'
+J3="$T/job3"
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --prompt-file "$4" --out-file "$3/peer.json" >/dev/null
+' _ "$T/bin" "$INVOKE" "$J3" "$T/p" 2>/dev/null
+named=$(bash --noprofile --norc -c '
+  set -u; . "$1"; ensemble_peer_reap "$2" >/dev/null 2>&1; printf "%s" "${_epi_peer_name:-}"
+' _ "$INVOKE" "$J3" 2>/dev/null)
+assert_eq "claude" "$named" "reap attributes the pass to the CLI it killed, not to 'unknown'"
+pid3=$(cat "$J3/pid" 2>/dev/null); [ -z "$pid3" ] || pkill -P "$pid3" 2>/dev/null || true
 
 # --- 13. the peer's own receipt: what the pass cost, in the CLI's own numbers ----
 # Nothing recorded cost or tokens, so no report could ask whether a peer earned

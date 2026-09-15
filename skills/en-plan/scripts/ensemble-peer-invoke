@@ -542,12 +542,17 @@ ensemble_peer_invoke() {
 #   <dir>/exit           the invoke's exit code; its presence means terminal
 #   <dir>/pid            the detached process id
 #   <dir>/started        epoch seconds at start
+#   <dir>/peer           the CLI's name, so a reap in the parent can attribute it
 ensemble_peer_start() {
-  local job_dir=""
+  local job_dir="" peer_cmd=""
   local -a rest=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --job-dir) job_dir="$2"; shift 2 ;;
+      # Captured on the way past, never consumed: the invoke still receives it.
+      # Indexing `rest` afterwards would have been the portable-looking way to
+      # find it, and arrays are 0-based in bash and 1-based in zsh.
+      --peer-cmd) peer_cmd="$2"; rest+=("$1" "$2"); shift 2 ;;
       *) rest+=("$1"); shift ;;
     esac
   done
@@ -555,6 +560,13 @@ ensemble_peer_start() {
   mkdir -p "$job_dir" || return 2
   rm -f "$job_dir/exit" "$job_dir/decision.json" "$job_dir/stderr"
   date +%s > "$job_dir/started"
+  # Which CLI this job is running, for the reap path below. _epi_peer_name is
+  # set inside ensemble_peer_invoke, which runs in the detached subshell, so the
+  # parent that reaps has never seen it: every reaped pass reached the durable
+  # store as "peer":"unknown", and three of the five peer events ever recorded
+  # lost which CLI ran them. The job dir is the only state both sides share.
+  printf '%s\n' "$(basename "$(printf '%s' "$peer_cmd" | awk '{print $1}')" 2>/dev/null)" \
+    > "$job_dir/peer" 2>/dev/null || true
   (
     trap '' HUP
     set +e
@@ -611,6 +623,9 @@ ensemble_peer_reap() {  # <dir> [--peer-mode m] [--effort t] [--model-alias a]
     kill -KILL "$_pid" 2>/dev/null || true
   fi
   local _t0; _t0=$(cat "$job_dir/started" 2>/dev/null || date +%s)
+  # Recorded as the CLI that was killed, not as "unknown": ensemble_peer_start
+  # left the name here precisely because this function runs in the parent.
+  _epi_peer_name=$(cat "$job_dir/peer" 2>/dev/null || true)
   _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" > "$job_dir/decision.json"
   printf '1\n' > "$job_dir/exit"
   return 0
