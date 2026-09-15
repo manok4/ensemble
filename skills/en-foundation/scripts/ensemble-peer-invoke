@@ -50,16 +50,24 @@ _epi_peer_name=""
 # shellcheck source=$SKILL_DIR/scripts/ensemble-extract-json
 . "$_epi_dir/ensemble-extract-json"
 
-# Split a flag fragment into argv under a CONTROLLED IFS with globbing off.
-# Relying on the caller's ambient IFS is not safe: a shell with a non-default
-# IFS would pass a whole fragment as one argument and the CLI would reject it.
+# Split a flag fragment into argv, WITHOUT asking the shell to word-split.
+# Two shells, two reasons. Setting IFS is not enough on its own: a caller with
+# a non-default IFS would pass a whole fragment as one argument. And zsh does
+# not split unquoted parameter expansions at all, so `for _w in $_frag` handed
+# `claude -p` to exec as ONE argument there and the peer never launched at all
+# (peer-failed:unknown in zero seconds). On macOS the sourcing shell is
+# routinely zsh, which is why this cannot be left to the shell.
+# Reading a newline-per-word stream behaves identically in both, and `read`
+# neither globs nor strips quotes, so `set -f` is no longer needed either.
 _epi_push() {
   local _frag="$1" _w
   [ -n "$_frag" ] || return 0
-  local IFS=' '
-  set -f
-  for _w in $_frag; do _epi_argv+=("$_w"); done
-  set +f
+  while IFS= read -r _w; do
+    [ -n "$_w" ] || continue
+    _epi_argv+=("$_w")
+  done <<EOF
+$(printf '%s' "$_frag" | tr ' \t' '\n\n')
+EOF
 }
 
 # Decide which fragment a flag rejection is about.
