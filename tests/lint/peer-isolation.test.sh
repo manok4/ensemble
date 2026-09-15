@@ -296,4 +296,51 @@ fi
 # job dir, which is the only state the two shells share.
 pkill -P "$pid" 2>/dev/null || true
 
+# --- 13. the peer's own receipt: what the pass cost, in the CLI's own numbers ----
+# Nothing recorded cost or tokens, so no report could ask whether a peer earned
+# what it charged. Both CLIs already print it in the response the helper is
+# parsing anyway. Claude reports cost, tokens and the served model; codex
+# reports tokens only, and null there means "the CLI did not say", never zero.
+# The codex branch must also leave its stream BYTE-INTACT, because
+# ensemble_extract_json still has to read it afterwards.
+CLAUDE_ENV='{"type":"result","subtype":"success","total_cost_usd":2.8656819999999996,"usage":{"input_tokens":41,"output_tokens":1902},"modelUsage":{"claude-opus-5-20260101":{"canonicalModel":"claude-opus-5","inputTokens":41,"outputTokens":1902}},"structured_output":{"verdict":"revise","peer_mode":"cross-agent","summary":"s","findings":[]}}'
+cat > "$T/bin/claude" <<STUB
+#!/usr/bin/env bash
+printf '%s' '$CLAUDE_ENV'
+STUB
+chmod +x "$T/bin/claude"
+receipt() {  # <peer-cmd> -> "model|cost|tin|tout" after one invoke
+  bash --noprofile --norc -c '
+    set -u; export PATH="$1:$PATH"; . "$2"
+    ensemble_peer_invoke --peer-cmd "$3" --prompt-file "$4" --out-file "$5" >/dev/null 2>&1
+    printf "%s|%s|%s|%s\n" "$_epi_model_actual" \
+      "$(_epi_num_or_null "$_epi_cost_usd")" \
+      "$(_epi_num_or_null "$_epi_tokens_in")" \
+      "$(_epi_num_or_null "$_epi_tokens_out")"
+  ' _ "$T/bin" "$INVOKE" "$1" "$T/p" "$T/out" 2>/dev/null
+}
+assert_eq "claude-opus-5|2.865682|41|1902" "$(receipt 'claude -p')" \
+  "claude envelope: served model, cost and tokens all reach the recorded event"
+
+CODEX_STREAM='{"type":"thread.started","thread_id":"t"}
+{"type":"item.completed","item":{"type":"agent_message","text":"{\"verdict\":\"approve\",\"peer_mode\":\"cross-agent\",\"summary\":\"s\",\"findings\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":55102,"cached_input_tokens":33536,"output_tokens":78}}'
+cat > "$T/bin/codex" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' '$CODEX_STREAM'
+STUB
+chmod +x "$T/bin/codex"
+assert_eq "|null|55102|78" "$(receipt 'codex exec')" \
+  "codex stream: tokens are read, cost and served model stay null"
+grep -q '"verdict"' "$T/out" \
+  && pass "codex stream: the findings still parse out of the untouched stream" \
+  || fail "codex stream: the findings still parse out of the untouched stream" "$(head -c 200 "$T/out")"
+
+# A pass whose CLI reported nothing must not inherit the previous pass's
+# receipt. `read` past end-of-input leaves the variable alone in some shells,
+# which would have made a silent CLI look like a $2.87 one.
+mkstub claude ''
+assert_eq "|null|null|null" "$(receipt 'claude -p')" \
+  "a CLI that reports no receipt records nulls, not the previous pass's numbers"
+
 report

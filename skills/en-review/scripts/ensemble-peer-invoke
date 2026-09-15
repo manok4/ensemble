@@ -174,10 +174,13 @@ _epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6
   # nothing and exits 0, which is why no caller had to change.
   if [ -x "$_epi_dir/ensemble-run-metrics" ]; then
     bash "$_epi_dir/ensemble-run-metrics" emit --kind peer --json "$(printf \
-      '{"peer":"%s","decision":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"model_actual":%s,"elapsed_s":%s}' \
+      '{"peer":"%s","decision":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"model_actual":%s,"elapsed_s":%s,"cost_usd":%s,"tokens_in":%s,"tokens_out":%s}' \
       "$(_epi_json_escape "${_epi_peer_name:-unknown}")" "$(_epi_json_escape "$1")" \
       "$(_epi_json_escape "$2")" "$(_epi_json_escape "${3:-off}")" \
-      "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_actual" "$_el")" >/dev/null || true
+      "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_actual" "$_el" \
+      "$(_epi_num_or_null "${_epi_cost_usd:-}")" \
+      "$(_epi_num_or_null "${_epi_tokens_in:-}")" \
+      "$(_epi_num_or_null "${_epi_tokens_out:-}")")" >/dev/null || true
   fi
   # The recording block is this function's last command, so an absent helper
   # made `if` false and _epi_decision returned 1 while printing a valid decision
@@ -206,31 +209,123 @@ _epi_normalize_out() {
 # present), which becomes the decision's model_actual so a degraded or
 # fallback run records what actually served it (D81). Leaves anything that is
 # not that envelope untouched, so codex streams and plain JSON pass through.
+#
+# It also reads the RECEIPT both CLIs already print: what the pass cost and how
+# many tokens it moved. Nothing anywhere recorded that, so no report could ask
+# whether a peer was worth what it charged, and the numbers behind "$3.23 for a
+# run that returned nothing, $2.87 for one that returned seven findings" had to
+# be measured by hand. The CLI hands them over in the response being parsed
+# here, so collecting them costs one more field each and no extra call.
+#
+# Codex's `--json` is a JSONL STREAM, not one envelope: its `turn.completed`
+# line carries usage. That branch is READ-ONLY, because ensemble_extract_json
+# downstream still needs the stream intact. Codex reports no cost and no served
+# model, so those stay null: null means "the CLI did not say", never zero.
 _epi_model_actual=""
+_epi_cost_usd=""
+_epi_tokens_in=""
+_epi_tokens_out=""
 _epi_unwrap_envelope() {  # $1=out_file
   local _f="$1" _res
   command -v python3 >/dev/null 2>&1 || return 0
   _res=$(python3 - "$_f" <<'PY' 2>/dev/null
 import json, sys
+
+def emit(model, cost, tin, tout):
+    # Four lines, in this order, empty where unknown. The caller reads them
+    # with `read` rather than jq: this helper has no jq dependency and is not
+    # going to acquire one for a receipt.
+    #
+    # Numbers are normalised HERE, so the shell never has to judge a float it
+    # did not produce. repr of a small cost is "1e-05", which is a valid JSON
+    # number and not something a [0-9.] test accepts, so a cheap pass would
+    # have recorded null and read as "the CLI said nothing".
+    def dec(v):
+        try:
+            return "%.6f" % float(v)
+        except Exception:
+            return ""
+
+    def whole(v):
+        try:
+            return "%d" % int(v)
+        except Exception:
+            return ""
+
+    print(model or "")
+    print(dec(cost) if cost is not None else "")
+    print(whole(tin) if tin is not None else "")
+    print(whole(tout) if tout is not None else "")
+
 p = sys.argv[1]
+raw = open(p, encoding="utf-8", errors="replace").read()
+
 try:
-    d = json.load(open(p, encoding="utf-8"))
+    d = json.loads(raw)
 except Exception:
+    d = None
+
+# Claude: one envelope. Unwrap it in place to the findings.
+if isinstance(d, dict) and d.get("type") == "result":
+    mu = d.get("modelUsage") or {}
+    actual, tin, tout = "", None, None
+    for k, v in mu.items():
+        v = v or {}
+        actual = v.get("canonicalModel") or k
+        tin, tout = v.get("inputTokens"), v.get("outputTokens")
+        break
+    u = d.get("usage") or {}
+    if tin is None:
+        tin = u.get("input_tokens")
+    if tout is None:
+        tout = u.get("output_tokens")
+    so = d.get("structured_output")
+    body = json.dumps(so) if isinstance(so, dict) else (d.get("result") or "")
+    open(p, "w", encoding="utf-8").write(body)
+    emit(actual, d.get("total_cost_usd"), tin, tout)
     sys.exit(0)
-if not isinstance(d, dict) or d.get("type") != "result":
-    sys.exit(0)
-mu = d.get("modelUsage") or {}
-actual = ""
-for k, v in mu.items():
-    actual = (v or {}).get("canonicalModel") or k
-    break
-so = d.get("structured_output")
-body = json.dumps(so) if isinstance(so, dict) else (d.get("result") or "")
-open(p, "w", encoding="utf-8").write(body)
-print(actual)
+
+# Codex: a stream. Read the last turn.completed and touch nothing.
+tin = tout = None
+for line in raw.splitlines():
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        ev = json.loads(line)
+    except Exception:
+        continue
+    if isinstance(ev, dict) and ev.get("type") == "turn.completed":
+        u = ev.get("usage") or {}
+        tin, tout = u.get("input_tokens"), u.get("output_tokens")
+if tin is not None or tout is not None:
+    emit("", None, tin, tout)
 PY
 ) || true
-  _epi_model_actual="${_res:-}"
+  # `read` in the current shell, not a pipeline: a pipeline would run the loop
+  # in a subshell and every assignment would be discarded.
+  # Cleared first: `read` past end-of-input leaves the variable ALONE in some
+  # shells, so a pass whose CLI reported nothing would inherit the previous
+  # pass's receipt and look like it had one.
+  _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""
+  {
+    IFS= read -r _epi_model_actual || true
+    IFS= read -r _epi_cost_usd     || true
+    IFS= read -r _epi_tokens_in    || true
+    IFS= read -r _epi_tokens_out   || true
+  } <<EOF
+${_res:-}
+EOF
+}
+
+# A receipt field reaches the ledger as a JSON NUMBER or as null, never as a
+# quoted string a report would have to re-parse, and never as a value the CLI
+# did not actually print. Anything that is not a plain number is null.
+_epi_num_or_null() {
+  case "${1:-}" in
+    ''|*[!0-9.]*|*.*.*|.*|*.) printf 'null' ;;
+    *) printf '%s' "$1" ;;
+  esac
 }
 
 # --- run marker: make a killed host call visible -----------------------------
@@ -326,7 +421,7 @@ ensemble_peer_invoke() {
   if [ "$access" = "read-tree" ] && _epi_is_claude "$peer_cmd" && _epi_isolation_applies "$peer_cmd"; then
     peer_turns=""
   fi
-  _epi_model_actual=""
+  _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""
 
   # A stuck peer must not block a default-on review forever (EN11-CR-002).
   # `timeout` exits 124 when it fires, which maps to the published
