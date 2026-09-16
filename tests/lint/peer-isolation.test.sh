@@ -312,6 +312,54 @@ named=$(bash --noprofile --norc -c '
 assert_eq "claude" "$named" "reap attributes the pass to the CLI it killed, not to 'unknown'"
 pid3=$(cat "$J3/pid" 2>/dev/null); [ -z "$pid3" ] || pkill -P "$pid3" 2>/dev/null || true
 
+# --- 12b. a job whose process is gone is terminal, not "still thinking" -------
+# ensemble_peer_wait tested for the exit file alone, so a peer that died before
+# exec was indistinguishable from a slow one for the caller's whole budget. On
+# 2026-09-15 a Codex-hosted review waited 1276s on a subshell that never reached
+# exec and reported peer-failed:timeout, which is a ceiling that never fired
+# blamed on a peer that never ran. Reproduced by killing the job's process the
+# way the field failure did, and asserting on the SIGNATURE of that run: the
+# out-file absent (the shell creates it before the command execs, so its absence
+# is proof nothing ran) while the job is still not terminal.
+J4="$T/job4"
+mkstub claude 'sleep 60'
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --prompt-file "$4" \
+    --out-file "$3/peer.json" --peer-mode cross-agent --effort high --model-alias opus >/dev/null
+' _ "$T/bin" "$INVOKE" "$J4" "$T/p" 2>/dev/null
+sleep 1
+kill -9 "$(cat "$J4/pid")" 2>/dev/null || true
+pkill -9 -P "$(cat "$J4/pid")" 2>/dev/null || true
+sleep 1
+t0=$(date +%s)
+w=$(bash --noprofile --norc -c '. "$1"; ensemble_peer_wait "$2" --max-secs 30' _ "$INVOKE" "$J4" 2>/dev/null); wrc=$?
+t_wait=$(( $(date +%s) - t0 ))
+[ "$w" = "done" ] && [ "$wrc" = "0" ] && [ "$t_wait" -le 5 ] \
+  && pass "wait reports a dead job at once instead of burning the budget (${t_wait}s of 30)" \
+  || fail "wait reports a dead job at once" "wait=$w/$wrc took=${t_wait}s"
+res=$(bash --noprofile --norc -c '. "$1"; ensemble_peer_result "$2"' _ "$INVOKE" "$J4" 2>/dev/null)
+printf '%s' "$res" | grep -q 'peer-failed:died' \
+  && pass "a dead job records peer-failed:died, not a timeout that never fired" \
+  || fail "a dead job records peer-failed:died" "$res"
+# The context comes from the job dir, so a decision written by the PARENT still
+# names the tier the job ran at rather than re-defaulting it to medium.
+printf '%s' "$res" | grep -q '"effort":"high"' && printf '%s' "$res" | grep -q '"model_alias":"opus"' \
+  && pass "the dead job's decision keeps the tier and alias start recorded" \
+  || fail "the dead job's decision keeps the tier and alias" "$res"
+# A LIVE job must not be called dead: the ceiling is still what bounds it.
+J5="$T/job5"
+mkstub claude 'sleep 60'
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --prompt-file "$4" --out-file "$3/peer.json" >/dev/null
+' _ "$T/bin" "$INVOKE" "$J5" "$T/p" 2>/dev/null
+w=$(bash --noprofile --norc -c '. "$1"; ensemble_peer_wait "$2" --max-secs 2' _ "$INVOKE" "$J5" 2>/dev/null); wrc=$?
+[ "$w" = "running" ] && [ "$wrc" = "3" ] \
+  && pass "a live peer still reports running, not died" \
+  || fail "a live peer still reports running" "wait=$w/$wrc"
+pid5=$(cat "$J5/pid" 2>/dev/null); [ -z "$pid5" ] || { pkill -P "$pid5" 2>/dev/null; kill "$pid5" 2>/dev/null; } || true
+
 # --- 13. the peer's own receipt: what the pass cost, in the CLI's own numbers ----
 # Nothing recorded cost or tokens, so no report could ask whether a peer earned
 # what it charged. Both CLIs already print it in the response the helper is
