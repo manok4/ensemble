@@ -449,4 +449,63 @@ mkstub claude ''
 assert_eq "|null|null|null" "$(receipt 'claude -p')" \
   "a CLI that reports no receipt records nulls, not the previous pass's numbers"
 
+# --- 14. a failure the CLI already named, and the receipt it came with -------
+# A peer that spends its turn budget and returns nothing exits non-zero with a
+# COMPLETE envelope on stdout and silence on stderr. The classifier reads
+# stderr, so it reported peer-failed:unknown for a failure the CLI had named in
+# plain text, and the receipt was dropped because the envelope was only ever
+# parsed on the success path: 26 turns and $2.09 recorded as cost_usd null
+# (2026-09-16, a Codex-hosted review that then fell back to same-agent).
+MT_ENV='{"type":"result","subtype":"error_max_turns","is_error":true,"terminal_reason":"max_turns","num_turns":26,"total_cost_usd":2.089528,"usage":{"input_tokens":91,"output_tokens":3120},"modelUsage":{"claude-opus-5":{"canonicalModel":"claude-opus-5","inputTokens":91,"outputTokens":3120}}}'
+cat > "$T/bin/claude" <<STUB
+#!/usr/bin/env bash
+printf '%s' '$MT_ENV'
+exit 1
+STUB
+chmod +x "$T/bin/claude"
+d=$(inv "claude -p" "$T/p" "$T/out")
+printf '%s' "$d" | grep -q 'peer-failed:max-turns' \
+  && pass "the CLI's own subtype names the failure instead of 'unknown'" \
+  || fail "the CLI's own subtype names the failure" "$d"
+printf '%s' "$d" | grep -q '"model_actual":"claude-opus-5"' \
+  && pass "a FAILED pass still reports what served it" \
+  || fail "a failed pass still reports what served it" "$d"
+# Read, not rewritten: the classifier and the one retry still need the CLI's
+# own answer on disk, and there are no findings in an error envelope to unwrap.
+grep -q 'error_max_turns' "$T/out" \
+  && pass "a failing envelope is left intact for the classifier" \
+  || fail "a failing envelope is left intact" "$(head -c 200 "$T/out")"
+# The receipt the ledger needs: the shell-side gate turns it into JSON numbers.
+rcpt=$(bash --noprofile --norc -c '
+  set -u; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_invoke --peer-cmd "claude -p" --prompt-file "$3" --out-file "$4" >/dev/null 2>&1
+  printf "%s|%s|%s\n" "$(_epi_num_or_null "$_epi_cost_usd")" \
+    "$(_epi_num_or_null "$_epi_tokens_in")" "$(_epi_num_or_null "$_epi_tokens_out")"
+' _ "$T/bin" "$INVOKE" "$T/p" "$T/out" 2>/dev/null)
+assert_eq "2.089528|91|3120" "$rcpt" "a failed pass records what it cost, not nulls"
+
+# --- 15. the trace says which flags were exec'd ------------------------------
+# "Was --json-schema actually bound?" was the first question the 2026-09-16
+# failure raised, and the trace could not answer it. Names only: one flag's
+# value is the whole schema and another is a prompt path.
+mkstub claude ''
+JT="$T/job-trace"
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --peer-format "--output-format json" \
+    --prompt-file "$4" --out-file "$3/peer.json" --schema "$5" --access read-tree \
+    --peer-model "--model opus" >/dev/null
+' _ "$T/bin" "$INVOKE" "$JT" "$T/p" "$REPO_ROOT/skills/en-review/scripts/peer-findings.schema.json" 2>/dev/null
+sleep 1
+flagline=$(grep 'invoke:exec-begin' "$JT/trace" 2>/dev/null || true)
+miss=""
+for f in --json-schema --tools --permission-mode --model; do
+  printf '%s' "$flagline" | grep -q -- "$f" || miss="$miss $f"
+done
+[ -z "$miss" ] && pass "the trace names the flags the peer was exec'd with" \
+               || fail "the trace names the flags the peer was exec'd with" "missing:$miss line=$flagline"
+printf '%s' "$flagline" | grep -q 'mcpServers' \
+  && fail "the trace leaks flag VALUES" "$flagline" \
+  || pass "the trace carries flag names only, never their values"
+
 report
