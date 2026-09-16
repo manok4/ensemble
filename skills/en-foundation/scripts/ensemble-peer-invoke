@@ -271,17 +271,30 @@ except Exception:
 
 # Claude: one envelope. Unwrap it in place to the findings.
 if isinstance(d, dict) and d.get("type") == "result":
+    # modelUsage lists EVERY model the CLI touched, and Claude Code puts its own
+    # small internal model first: a --model opus pass reports
+    #   [0] claude-haiku-4-5  in=905 out=12     <- side tasks
+    #   [1] claude-opus-5     in=4   out=383    <- the actual work
+    # Reading entry [0] named haiku as the server of an opus review and
+    # reported 12 output tokens as the whole pass. A real review recorded
+    # tokens_out 17, which is what gave it away (2026-09-16). The model that
+    # did the work is the one that produced the output; the pass consumed all
+    # of them, so the tokens are the sum, not one entry's share.
     mu = d.get("modelUsage") or {}
+
+    def _out(v):
+        return (v or {}).get("outputTokens") or 0
+
     actual, tin, tout = "", None, None
-    for k, v in mu.items():
-        v = v or {}
-        actual = v.get("canonicalModel") or k
-        tin, tout = v.get("inputTokens"), v.get("outputTokens")
-        break
+    if mu:
+        k, v = max(mu.items(), key=lambda kv: _out(kv[1]))
+        actual = (v or {}).get("canonicalModel") or k
+        tin = sum((x or {}).get("inputTokens") or 0 for x in mu.values())
+        tout = sum(_out(x) for x in mu.values())
     u = d.get("usage") or {}
-    if tin is None:
+    if not tin:
         tin = u.get("input_tokens")
-    if tout is None:
+    if not tout:
         tout = u.get("output_tokens")
     # A FAILING envelope is read, never rewritten: the classifier and the one
     # retry still need the CLI's own answer on disk, and there are no findings

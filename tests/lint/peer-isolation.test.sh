@@ -484,6 +484,41 @@ rcpt=$(bash --noprofile --norc -c '
 ' _ "$T/bin" "$INVOKE" "$T/p" "$T/out" 2>/dev/null)
 assert_eq "2.089528|91|3120" "$rcpt" "a failed pass records what it cost, not nulls"
 
+# --- 14b. the receipt names the model that DID THE WORK ----------------------
+# modelUsage lists every model the CLI touched, and Claude Code puts its own
+# small internal model FIRST. Reading entry [0] reported claude-haiku-4-5 as
+# the server of a --model opus review, and reported that side model's handful
+# of output tokens as the whole pass: a real review recorded tokens_out 17,
+# which is what gave it away (2026-09-16). Ordered side-model-first on purpose,
+# because that is the order the CLI actually emits.
+SIDE_FIRST='{"type":"result","subtype":"success","total_cost_usd":0.2145395,"usage":{"input_tokens":4,"output_tokens":383},"modelUsage":{"claude-haiku-4-5-20251001":{"canonicalModel":"claude-haiku-4-5","inputTokens":905,"outputTokens":12},"claude-opus-5":{"canonicalModel":"claude-opus-5","inputTokens":4,"outputTokens":383}},"structured_output":{"verdict":"approve","peer_mode":"cross-agent","summary":"s","findings":[]}}'
+cat > "$T/bin/claude" <<STUB
+#!/usr/bin/env bash
+printf '%s' '$SIDE_FIRST'
+STUB
+chmod +x "$T/bin/claude"
+d=$(inv "claude -p" "$T/p" "$T/out" --peer-model "--model opus")
+printf '%s' "$d" | grep -q '"model_actual":"claude-opus-5"' \
+  && pass "model_actual names the model that produced the output, not the side model" \
+  || fail "model_actual names the model that produced the output" "$d"
+rcpt=$(bash --noprofile --norc -c '
+  set -u; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_invoke --peer-cmd "claude -p" --prompt-file "$3" --out-file "$4" >/dev/null 2>&1
+  printf "%s|%s\n" "$(_epi_num_or_null "$_epi_tokens_in")" "$(_epi_num_or_null "$_epi_tokens_out")"
+' _ "$T/bin" "$INVOKE" "$T/p" "$T/out" 2>/dev/null)
+assert_eq "909|395" "$rcpt" "tokens are the whole pass, summed across every model it touched"
+# The single-model case must be unaffected: one entry is still that entry.
+ONE_MODEL='{"type":"result","subtype":"success","total_cost_usd":1.5,"modelUsage":{"claude-opus-5":{"canonicalModel":"claude-opus-5","inputTokens":50,"outputTokens":700}},"structured_output":{"verdict":"approve","peer_mode":"cross-agent","summary":"s","findings":[]}}'
+cat > "$T/bin/claude" <<STUB
+#!/usr/bin/env bash
+printf '%s' '$ONE_MODEL'
+STUB
+chmod +x "$T/bin/claude"
+d=$(inv "claude -p" "$T/p" "$T/out")
+printf '%s' "$d" | grep -q '"model_actual":"claude-opus-5"' \
+  && pass "a single-model receipt is unchanged" \
+  || fail "a single-model receipt is unchanged" "$d"
+
 # --- 15. the trace says which flags were exec'd ------------------------------
 # "Was --json-schema actually bound?" was the first question the 2026-09-16
 # failure raised, and the trace could not answer it. Names only: one flag's
