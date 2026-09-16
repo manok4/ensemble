@@ -438,6 +438,7 @@ ensemble_peer_invoke() {
   # trace that a peer was ever asked. Cleared by _epi_decision on every exit.
   _epi_marker_write "$out_file" "$peer_cmd" "$peer_mode"
   _epi_marker_out="$out_file"
+  _epi_trace "invoke:marker-written"
   local _t0; _t0=$(date +%s)
   local _epi_argv=() _err _rc _class _iso_on=0
   [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
@@ -447,6 +448,7 @@ ensemble_peer_invoke() {
 
   # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
   # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
+  _epi_trace "invoke:exec-begin"
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_normalize_out "$out_file"
     _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
@@ -543,8 +545,12 @@ ensemble_peer_invoke() {
 #   <dir>/pid            the detached process id
 #   <dir>/started        epoch seconds at start
 #   <dir>/peer           the CLI's name, so a reap in the parent can attribute it
+#   <dir>/meta           peer_mode, effort, model_alias: the context a decision
+#                        written by the parent needs and cannot otherwise know
+#   <dir>/trace          timestamped checkpoints either side of the fork and the
+#                        exec, so a job that dies in between says where
 ensemble_peer_start() {
-  local job_dir="" peer_cmd=""
+  local job_dir="" peer_cmd="" peer_mode="" effort="" model_alias=""
   local -a rest=()
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -552,30 +558,152 @@ ensemble_peer_start() {
       # Captured on the way past, never consumed: the invoke still receives it.
       # Indexing `rest` afterwards would have been the portable-looking way to
       # find it, and arrays are 0-based in bash and 1-based in zsh.
-      --peer-cmd) peer_cmd="$2"; rest+=("$1" "$2"); shift 2 ;;
+      --peer-cmd)    peer_cmd="$2";    rest+=("$1" "$2"); shift 2 ;;
+      --peer-mode)   peer_mode="$2";   rest+=("$1" "$2"); shift 2 ;;
+      --effort)      effort="$2";      rest+=("$1" "$2"); shift 2 ;;
+      --model-alias) model_alias="$2"; rest+=("$1" "$2"); shift 2 ;;
       *) rest+=("$1"); shift ;;
     esac
   done
   [ -n "$job_dir" ] || { echo "ensemble_peer_start: --job-dir is required" >&2; return 2; }
   mkdir -p "$job_dir" || return 2
   rm -f "$job_dir/exit" "$job_dir/decision.json" "$job_dir/stderr"
+  rm -f "$job_dir/trace"
   date +%s > "$job_dir/started"
-  # Which CLI this job is running, for the reap path below. _epi_peer_name is
-  # set inside ensemble_peer_invoke, which runs in the detached subshell, so the
-  # parent that reaps has never seen it: every reaped pass reached the durable
-  # store as "peer":"unknown", and three of the five peer events ever recorded
-  # lost which CLI ran them. The job dir is the only state both sides share.
+  _EPI_TRACE_DIR="$job_dir"
+  # Which CLI this job is running, for the terminal paths below. _epi_peer_name
+  # is set inside ensemble_peer_invoke, which runs in the detached subshell, so
+  # the parent that reaps has never seen it: every reaped pass reached the
+  # durable store as "peer":"unknown", and three of the five peer events ever
+  # recorded lost which CLI ran them. The job dir is the only state both sides
+  # share. Same reason for meta: a decision written by the parent has to name
+  # the tier the job actually ran at, and re-defaulting it to "medium" would put
+  # a fresh lie in the ledger the receipt fields exist to keep honest.
   printf '%s\n' "$(basename "$(printf '%s' "$peer_cmd" | awk '{print $1}')" 2>/dev/null)" \
     > "$job_dir/peer" 2>/dev/null || true
+  printf '%s\n%s\n%s\n' "$peer_mode" "$effort" "$model_alias" \
+    > "$job_dir/meta" 2>/dev/null || true
+  if ! _epi_detach_ok; then
+    _epi_trace "start:no-detach-on-this-host"
+    _epi_run_here "$job_dir" "${rest[@]}"
+    printf '%s\n' "$job_dir"
+    return 0
+  fi
+  _epi_trace "start:forking"
   (
     trap '' HUP
     set +e
+    _epi_trace "child:entered"
     ensemble_peer_invoke "${rest[@]}" > "$job_dir/decision.json" 2> "$job_dir/stderr"
     printf '%s\n' "$?" > "$job_dir/exit.tmp" && mv -f "$job_dir/exit.tmp" "$job_dir/exit"
+    _epi_trace "child:exit-written"
   ) </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "$job_dir/pid"
   disown "$!" 2>/dev/null || true
+  # Did the fork actually take? The host signal above is deterministic where it
+  # applies, and silent where the marker is absent, so this covers the same
+  # failure on a host nobody has identified yet: a job provably dead this early
+  # never ran, and running it here beats reporting it dead in 20 minutes.
+  local _w=0
+  while [ "$_w" -lt 20 ]; do
+    _epi_job_died "$job_dir" || { printf '%s\n' "$job_dir"; return 0; }
+    _w=$((_w + 1)); sleep 0.1 2>/dev/null || sleep 1
+  done
+  _epi_trace "start:fork-died-before-exec, running in the foreground instead"
+  rm -f "$job_dir/exit" "$job_dir/decision.json"
+  _epi_run_here "$job_dir" "${rest[@]}"
   printf '%s\n' "$job_dir"
+}
+
+# --- a job that will never finish --------------------------------------------
+# ensemble_peer_wait tested for the exit file and nothing else, so "the peer
+# died in its first second" and "the peer is still thinking" were the same
+# observation for the whole budget. On 2026-09-15 a Codex-hosted review spent
+# 1276 seconds waiting on a subshell that never reached exec (its out-file was
+# never created, which the shell does before the command runs), and reported
+# peer-failed:timeout: a ceiling that never fired, blamed on a peer that never
+# ran. The pid has been in the job dir since the detached form was written.
+#
+# Three guards against calling a live job dead:
+#   no pid file yet   the parent writes it just after the fork; still starting
+#   kill -0 succeeds  alive (a recycled pid reads as alive, which errs toward
+#                     waiting, and the ceiling still bounds that)
+#   exit re-checked   the job routinely finishes between the two tests
+_epi_job_died() {  # <dir> -> 0 only when the job is provably dead
+  local d="${1:-}" pid
+  [ -n "$d" ] && [ ! -f "$d/exit" ] || return 1
+  pid=$(cat "$d/pid" 2>/dev/null) || return 1
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null && return 1
+  [ -f "$d/exit" ] && return 1
+  return 0
+}
+
+# ONE terminal path for both parent-side endings, death and reap, so the two
+# cannot drift on what they record. Explicit arguments win; otherwise the
+# context comes from the job dir, where start left it.
+_epi_job_finalize() {  # <dir> <reason> [peer_mode] [effort] [model_alias]
+  local d="$1" reason="$2" pm="${3:-}" ef="${4:-}" ma="${5:-}" _t0
+  [ -n "$pm" ] || pm=$(sed -n 1p "$d/meta" 2>/dev/null || true)
+  [ -n "$ef" ] || ef=$(sed -n 2p "$d/meta" 2>/dev/null || true)
+  [ -n "$ma" ] || ma=$(sed -n 3p "$d/meta" 2>/dev/null || true)
+  [ -n "$pm" ] || pm="cross-agent"
+  [ -n "$ef" ] || ef="medium"
+  _epi_peer_name=$(cat "$d/peer" 2>/dev/null || true)
+  _t0=$(cat "$d/started" 2>/dev/null || date +%s)
+  _epi_decision "off" "$reason" "$pm" "$ef" "$ma" "$(( $(date +%s) - _t0 ))" > "$d/decision.json"
+  printf '1\n' > "$d/exit"
+}
+
+# --- a trace across the fork, and the hosts where the fork does not survive ---
+# Three Codex-hosted reviews in one day started a detached peer that never
+# reached exec: the job dir held the run marker but NOT the out-file, and the
+# shell creates the out-file when it sets up the redirection, BEFORE the command
+# runs. So the subshell died in the gap between the two. Nothing recorded that
+# gap, and the parent could only report what it saw much later: a timeout.
+#
+# _epi_trace closes it. It writes only inside a job dir, so the foreground path
+# that four skills use is untouched, and it brackets the exec exactly, which is
+# where the evidence stops.
+_epi_trace() {  # <msg>
+  [ -n "${_EPI_TRACE_DIR:-}" ] && [ -d "${_EPI_TRACE_DIR}" ] || return 0
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${1:-}" \
+    >> "${_EPI_TRACE_DIR}/trace" 2>/dev/null || true
+}
+
+# Whether the detached form can be trusted on this host.
+#
+# On a Codex host it cannot: the same foreground invoke reaches the CLI and gets
+# an answer (a peer-direct pass in the same session came back in 0s with the
+# CLI's own flag error), while the detached one never execs. D81 introduced the
+# fork so no tool call stays open for the peer's lifetime, which buys nothing on
+# a host where the forked job never runs, and buys nothing at all under --peer,
+# where the peer is the sole reviewer and no personas run alongside it.
+#
+# The signal is the one ensemble-detect-host already uses, rather than a new
+# one invented here, and it is checked in the safe direction: only a positive
+# Codex marker disables the fork, so a host that sets neither keeps today's
+# behaviour. ENSEMBLE_PEER_DETACH=never|always overrides for one session.
+_epi_detach_ok() {
+  case "${ENSEMBLE_PEER_DETACH:-auto}" in
+    never)  return 1 ;;
+    always) return 0 ;;
+  esac
+  [ -n "${CODEX_HOME:-}" ] || [ -n "${CODEX_VERSION:-}" ] || return 0
+  return 1
+}
+
+# The peer, in THIS process, filling the same job-dir contract the fork does, so
+# wait, result and reap need no special case and no caller changes at all.
+_epi_run_here() {  # <dir> <invoke args...>
+  local job_dir="$1" rc; shift
+  printf '%s\n' "$$" > "$job_dir/pid" 2>/dev/null || true
+  _epi_trace "foreground:begin"
+  # `if` form, not a bare $?: a caller running under errexit would abort here
+  # on the peer's own non-zero exit, which is an ordinary outcome.
+  if ensemble_peer_invoke "$@" > "$job_dir/decision.json" 2> "$job_dir/stderr"; then rc=0; else rc=$?; fi
+  _epi_trace "foreground:end rc=$rc"
+  printf '%s\n' "$rc" > "$job_dir/exit.tmp" && mv -f "$job_dir/exit.tmp" "$job_dir/exit"
 }
 
 ensemble_peer_wait() {  # <dir> [--max-secs <n>]
@@ -587,6 +715,14 @@ ensemble_peer_wait() {  # <dir> [--max-secs <n>]
   [ -d "$job_dir" ] || { echo "ensemble_peer_wait: no such job dir: $job_dir" >&2; return 2; }
   local _t0; _t0=$(date +%s)
   while [ ! -f "$job_dir/exit" ]; do
+    # `done` means TERMINAL, not successful, exactly as it already does for a
+    # peer that exited non-zero: the caller reads the decision either way. So a
+    # dead job is recorded and reported here rather than needing a third word
+    # every caller would have to learn.
+    if _epi_job_died "$job_dir"; then
+      _epi_job_finalize "$job_dir" "peer-failed:died"
+      echo done; return 0
+    fi
     if [ $(( $(date +%s) - _t0 )) -ge "$max_secs" ]; then echo running; return 3; fi
     sleep 1
   done
@@ -602,7 +738,9 @@ ensemble_peer_result() {  # <dir> -> prints decision.json; returns the invoke's 
 
 ensemble_peer_reap() {  # <dir> [--peer-mode m] [--effort t] [--model-alias a]
   local job_dir="${1:-}"; shift || true
-  local peer_mode="cross-agent" effort="medium" model_alias=""
+  # Empty, not defaulted: _epi_job_finalize can only prefer the job dir's own
+  # context over a re-invented default if it can tell the two apart.
+  local peer_mode="" effort="" model_alias=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --peer-mode) peer_mode="$2"; shift 2 ;;
@@ -622,11 +760,6 @@ ensemble_peer_reap() {  # <dir> [--peer-mode m] [--effort t] [--model-alias a]
     pkill -KILL -P "$_pid" 2>/dev/null || true
     kill -KILL "$_pid" 2>/dev/null || true
   fi
-  local _t0; _t0=$(cat "$job_dir/started" 2>/dev/null || date +%s)
-  # Recorded as the CLI that was killed, not as "unknown": ensemble_peer_start
-  # left the name here precisely because this function runs in the parent.
-  _epi_peer_name=$(cat "$job_dir/peer" 2>/dev/null || true)
-  _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" > "$job_dir/decision.json"
-  printf '1\n' > "$job_dir/exit"
+  _epi_job_finalize "$job_dir" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
   return 0
 }

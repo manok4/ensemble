@@ -312,6 +312,96 @@ named=$(bash --noprofile --norc -c '
 assert_eq "claude" "$named" "reap attributes the pass to the CLI it killed, not to 'unknown'"
 pid3=$(cat "$J3/pid" 2>/dev/null); [ -z "$pid3" ] || pkill -P "$pid3" 2>/dev/null || true
 
+# --- 12a. the fork is skipped where it does not survive, and traced either way -
+# On a Codex host the detached job never reached exec: the job dir held the run
+# marker but not the out-file, which the shell creates BEFORE the command runs.
+# The same foreground invoke on that host reached the CLI and got an answer. So
+# the fork is what fails there, and D81's reason for it (no tool call held open)
+# buys nothing under --peer, where the peer is the only reviewer. The signal is
+# the one ensemble-detect-host already uses, checked in the safe direction: only
+# a positive Codex marker disables the fork.
+J6="$T/job6"; J7="$T/job7"
+mkstub claude ''
+start_job() {  # <dir> <env-prefix...>
+  local d="$1"; shift
+  env "$@" PATH="$T/bin:$PATH" bash --noprofile --norc -c '
+    set -eu; . "$1"
+    ensemble_peer_start --job-dir "$2" --peer-cmd "claude -p" --prompt-file "$3" \
+      --out-file "$2/peer.json" --effort high >/dev/null
+  ' _ "$INVOKE" "$d" "$T/p" 2>/dev/null
+}
+start_job "$J6" CODEX_HOME=/tmp/not-real
+grep -q 'start:no-detach-on-this-host' "$J6/trace" 2>/dev/null && [ -f "$J6/exit" ] \
+  && pass "a Codex host runs the peer in the foreground, terminal when start returns" \
+  || fail "a Codex host runs the peer in the foreground" "trace=$(cat "$J6/trace" 2>/dev/null | tr '\n' ';')"
+grep -q '"peer":"on"' "$J6/decision.json" 2>/dev/null && grep -q '"verdict"' "$J6/peer.json" 2>/dev/null \
+  && pass "the foreground path fills the same job-dir contract, findings included" \
+  || fail "the foreground path fills the same job-dir contract" "$(cat "$J6/decision.json" 2>/dev/null)"
+start_job "$J7" ENSEMBLE_PEER_DETACH=auto
+grep -q 'start:forking' "$J7/trace" 2>/dev/null \
+  && pass "a host with no Codex marker still forks" \
+  || fail "a host with no Codex marker still forks" "trace=$(cat "$J7/trace" 2>/dev/null | tr '\n' ';')"
+# The override, both ways, so an operator can pin either behaviour.
+J8="$T/job8"; start_job "$J8" ENSEMBLE_PEER_DETACH=never
+J9="$T/job9"; start_job "$J9" CODEX_HOME=/tmp/not-real ENSEMBLE_PEER_DETACH=always
+grep -q 'start:no-detach-on-this-host' "$J8/trace" 2>/dev/null \
+  && grep -q 'start:forking' "$J9/trace" 2>/dev/null \
+  && pass "ENSEMBLE_PEER_DETACH pins the launch either way" \
+  || fail "ENSEMBLE_PEER_DETACH pins the launch" "never=$(cat "$J8/trace" 2>/dev/null|tr '\n' ';') always=$(cat "$J9/trace" 2>/dev/null|tr '\n' ';')"
+# The trace has to bracket the exec, because that is the gap the field failure
+# died in: marker present, out-file never created, nothing in between recorded.
+grep -q 'invoke:marker-written' "$J7/trace" && grep -q 'invoke:exec-begin' "$J7/trace" \
+  && pass "the trace brackets the exec on both sides of the fork" \
+  || fail "the trace brackets the exec" "$(cat "$J7/trace" 2>/dev/null | tr '\n' ';')"
+
+# --- 12b. a job whose process is gone is terminal, not "still thinking" -------
+# ensemble_peer_wait tested for the exit file alone, so a peer that died before
+# exec was indistinguishable from a slow one for the caller's whole budget. On
+# 2026-09-15 a Codex-hosted review waited 1276s on a subshell that never reached
+# exec and reported peer-failed:timeout, which is a ceiling that never fired
+# blamed on a peer that never ran. Reproduced by killing the job's process the
+# way the field failure did, and asserting on the SIGNATURE of that run: the
+# out-file absent (the shell creates it before the command execs, so its absence
+# is proof nothing ran) while the job is still not terminal.
+J4="$T/job4"
+mkstub claude 'sleep 60'
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --prompt-file "$4" \
+    --out-file "$3/peer.json" --peer-mode cross-agent --effort high --model-alias opus >/dev/null
+' _ "$T/bin" "$INVOKE" "$J4" "$T/p" 2>/dev/null
+sleep 1
+kill -9 "$(cat "$J4/pid")" 2>/dev/null || true
+pkill -9 -P "$(cat "$J4/pid")" 2>/dev/null || true
+sleep 1
+t0=$(date +%s)
+w=$(bash --noprofile --norc -c '. "$1"; ensemble_peer_wait "$2" --max-secs 30' _ "$INVOKE" "$J4" 2>/dev/null); wrc=$?
+t_wait=$(( $(date +%s) - t0 ))
+[ "$w" = "done" ] && [ "$wrc" = "0" ] && [ "$t_wait" -le 5 ] \
+  && pass "wait reports a dead job at once instead of burning the budget (${t_wait}s of 30)" \
+  || fail "wait reports a dead job at once" "wait=$w/$wrc took=${t_wait}s"
+res=$(bash --noprofile --norc -c '. "$1"; ensemble_peer_result "$2"' _ "$INVOKE" "$J4" 2>/dev/null)
+printf '%s' "$res" | grep -q 'peer-failed:died' \
+  && pass "a dead job records peer-failed:died, not a timeout that never fired" \
+  || fail "a dead job records peer-failed:died" "$res"
+# The context comes from the job dir, so a decision written by the PARENT still
+# names the tier the job ran at rather than re-defaulting it to medium.
+printf '%s' "$res" | grep -q '"effort":"high"' && printf '%s' "$res" | grep -q '"model_alias":"opus"' \
+  && pass "the dead job's decision keeps the tier and alias start recorded" \
+  || fail "the dead job's decision keeps the tier and alias" "$res"
+# A LIVE job must not be called dead: the ceiling is still what bounds it.
+J5="$T/job5"
+mkstub claude 'sleep 60'
+bash --noprofile --norc -c '
+  set -eu; export PATH="$1:$PATH"; . "$2"
+  ensemble_peer_start --job-dir "$3" --peer-cmd "claude -p" --prompt-file "$4" --out-file "$3/peer.json" >/dev/null
+' _ "$T/bin" "$INVOKE" "$J5" "$T/p" 2>/dev/null
+w=$(bash --noprofile --norc -c '. "$1"; ensemble_peer_wait "$2" --max-secs 2' _ "$INVOKE" "$J5" 2>/dev/null); wrc=$?
+[ "$w" = "running" ] && [ "$wrc" = "3" ] \
+  && pass "a live peer still reports running, not died" \
+  || fail "a live peer still reports running" "wait=$w/$wrc"
+pid5=$(cat "$J5/pid" 2>/dev/null); [ -z "$pid5" ] || { pkill -P "$pid5" 2>/dev/null; kill "$pid5" 2>/dev/null; } || true
+
 # --- 13. the peer's own receipt: what the pass cost, in the CLI's own numbers ----
 # Nothing recorded cost or tokens, so no report could ask whether a peer earned
 # what it charged. Both CLIs already print it in the response the helper is
