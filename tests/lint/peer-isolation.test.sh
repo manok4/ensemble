@@ -312,6 +312,48 @@ named=$(bash --noprofile --norc -c '
 assert_eq "claude" "$named" "reap attributes the pass to the CLI it killed, not to 'unknown'"
 pid3=$(cat "$J3/pid" 2>/dev/null); [ -z "$pid3" ] || pkill -P "$pid3" 2>/dev/null || true
 
+# --- 12a. the fork is skipped where it does not survive, and traced either way -
+# On a Codex host the detached job never reached exec: the job dir held the run
+# marker but not the out-file, which the shell creates BEFORE the command runs.
+# The same foreground invoke on that host reached the CLI and got an answer. So
+# the fork is what fails there, and D81's reason for it (no tool call held open)
+# buys nothing under --peer, where the peer is the only reviewer. The signal is
+# the one ensemble-detect-host already uses, checked in the safe direction: only
+# a positive Codex marker disables the fork.
+J6="$T/job6"; J7="$T/job7"
+mkstub claude ''
+start_job() {  # <dir> <env-prefix...>
+  local d="$1"; shift
+  env "$@" PATH="$T/bin:$PATH" bash --noprofile --norc -c '
+    set -eu; . "$1"
+    ensemble_peer_start --job-dir "$2" --peer-cmd "claude -p" --prompt-file "$3" \
+      --out-file "$2/peer.json" --effort high >/dev/null
+  ' _ "$INVOKE" "$d" "$T/p" 2>/dev/null
+}
+start_job "$J6" CODEX_HOME=/tmp/not-real
+grep -q 'start:no-detach-on-this-host' "$J6/trace" 2>/dev/null && [ -f "$J6/exit" ] \
+  && pass "a Codex host runs the peer in the foreground, terminal when start returns" \
+  || fail "a Codex host runs the peer in the foreground" "trace=$(cat "$J6/trace" 2>/dev/null | tr '\n' ';')"
+grep -q '"peer":"on"' "$J6/decision.json" 2>/dev/null && grep -q '"verdict"' "$J6/peer.json" 2>/dev/null \
+  && pass "the foreground path fills the same job-dir contract, findings included" \
+  || fail "the foreground path fills the same job-dir contract" "$(cat "$J6/decision.json" 2>/dev/null)"
+start_job "$J7" ENSEMBLE_PEER_DETACH=auto
+grep -q 'start:forking' "$J7/trace" 2>/dev/null \
+  && pass "a host with no Codex marker still forks" \
+  || fail "a host with no Codex marker still forks" "trace=$(cat "$J7/trace" 2>/dev/null | tr '\n' ';')"
+# The override, both ways, so an operator can pin either behaviour.
+J8="$T/job8"; start_job "$J8" ENSEMBLE_PEER_DETACH=never
+J9="$T/job9"; start_job "$J9" CODEX_HOME=/tmp/not-real ENSEMBLE_PEER_DETACH=always
+grep -q 'start:no-detach-on-this-host' "$J8/trace" 2>/dev/null \
+  && grep -q 'start:forking' "$J9/trace" 2>/dev/null \
+  && pass "ENSEMBLE_PEER_DETACH pins the launch either way" \
+  || fail "ENSEMBLE_PEER_DETACH pins the launch" "never=$(cat "$J8/trace" 2>/dev/null|tr '\n' ';') always=$(cat "$J9/trace" 2>/dev/null|tr '\n' ';')"
+# The trace has to bracket the exec, because that is the gap the field failure
+# died in: marker present, out-file never created, nothing in between recorded.
+grep -q 'invoke:marker-written' "$J7/trace" && grep -q 'invoke:exec-begin' "$J7/trace" \
+  && pass "the trace brackets the exec on both sides of the fork" \
+  || fail "the trace brackets the exec" "$(cat "$J7/trace" 2>/dev/null | tr '\n' ';')"
+
 # --- 12b. a job whose process is gone is terminal, not "still thinking" -------
 # ensemble_peer_wait tested for the exit file alone, so a peer that died before
 # exec was indistinguishable from a slow one for the caller's whole budget. On
