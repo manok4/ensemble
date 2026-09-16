@@ -92,7 +92,7 @@ _epi_attribute() {
 #              review, or a lite code review: the artifact is the whole input.
 #   read-tree  --tools Read,Grep,Glob, --permission-mode dontAsk so a denied
 #              tool fails fast instead of waiting for an answer, and a turn cap
-#              of ENSEMBLE_PEER_MAX_TURNS (25) so the peer can open the caller
+#              of ENSEMBLE_PEER_MAX_TURNS (150) so the peer can open the caller
 #              of a changed function and the test beside it. A turn is one
 #              model-to-tool round trip inside the peer; the host sees one
 #              report either way. No Bash, Edit, Write, Agent, web or MCP.
@@ -121,7 +121,15 @@ _epi_push_isolation() {
   if _epi_is_claude "$1"; then
     _epi_argv+=("${_EPI_ISOLATION_BASE[@]}")
     if [ "$2" = "read-tree" ]; then
-      _epi_argv+=("${_EPI_ACCESS_READ_TREE[@]}" --max-turns "${ENSEMBLE_PEER_MAX_TURNS:-25}")
+      # 150, not 25. 25 was a borrowed convention rather than a measured
+      # budget, and it is the one bound here whose failure mode throws the
+      # work away: the CLI returns error_max_turns with an EMPTY result, so a
+      # peer that has already finished thinking is billed in full and reports
+      # nothing. It bound at 117s on a 19-file diff, $2.76 and 21,976 output
+      # tokens for no findings, while the 1200s ceiling went untouched
+      # (2026-09-16). The wall clock is the real guard; this is a backstop
+      # against a peer that loops, and it should not bind on a real diff.
+      _epi_argv+=("${_EPI_ACCESS_READ_TREE[@]}" --max-turns "${ENSEMBLE_PEER_MAX_TURNS:-150}")
     else
       _epi_argv+=("${_EPI_ACCESS_NONE[@]}")
     fi
