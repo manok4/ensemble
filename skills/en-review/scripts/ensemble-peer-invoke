@@ -225,13 +225,16 @@ _epi_model_actual=""
 _epi_cost_usd=""
 _epi_tokens_in=""
 _epi_tokens_out=""
-_epi_unwrap_envelope() {  # $1=out_file
+_epi_err_subtype=""
+_epi_unwrap_envelope() {  # $1=out_file [$2=readonly]
   local _f="$1" _res
   command -v python3 >/dev/null 2>&1 || return 0
-  _res=$(python3 - "$_f" <<'PY' 2>/dev/null
+  _res=$(python3 - "$_f" "${2:-}" <<'PY' 2>/dev/null
 import json, sys
 
-def emit(model, cost, tin, tout):
+READONLY = len(sys.argv) > 2 and sys.argv[2] == "readonly"
+
+def emit(model, cost, tin, tout, subtype=""):
     # Four lines, in this order, empty where unknown. The caller reads them
     # with `read` rather than jq: this helper has no jq dependency and is not
     # going to acquire one for a receipt.
@@ -256,6 +259,7 @@ def emit(model, cost, tin, tout):
     print(dec(cost) if cost is not None else "")
     print(whole(tin) if tin is not None else "")
     print(whole(tout) if tout is not None else "")
+    print(subtype or "")
 
 p = sys.argv[1]
 raw = open(p, encoding="utf-8", errors="replace").read()
@@ -279,10 +283,17 @@ if isinstance(d, dict) and d.get("type") == "result":
         tin = u.get("input_tokens")
     if tout is None:
         tout = u.get("output_tokens")
-    so = d.get("structured_output")
-    body = json.dumps(so) if isinstance(so, dict) else (d.get("result") or "")
-    open(p, "w", encoding="utf-8").write(body)
-    emit(actual, d.get("total_cost_usd"), tin, tout)
+    # A FAILING envelope is read, never rewritten: the classifier and the one
+    # retry still need the CLI's own answer on disk, and there are no findings
+    # in it to unwrap. Its receipt is the point. An error_max_turns pass cost
+    # $2.09 and recorded cost_usd null, because this only ran on the success
+    # path (2026-09-16).
+    sub = d.get("subtype") or ""
+    if not READONLY:
+        so = d.get("structured_output")
+        body = json.dumps(so) if isinstance(so, dict) else (d.get("result") or "")
+        open(p, "w", encoding="utf-8").write(body)
+    emit(actual, d.get("total_cost_usd"), tin, tout, sub)
     sys.exit(0)
 
 # Codex: a stream. Read the last turn.completed and touch nothing.
@@ -299,7 +310,7 @@ for line in raw.splitlines():
         u = ev.get("usage") or {}
         tin, tout = u.get("input_tokens"), u.get("output_tokens")
 if tin is not None or tout is not None:
-    emit("", None, tin, tout)
+    emit("", None, tin, tout, "")
 PY
 ) || true
   # `read` in the current shell, not a pipeline: a pipeline would run the loop
@@ -308,11 +319,13 @@ PY
   # shells, so a pass whose CLI reported nothing would inherit the previous
   # pass's receipt and look like it had one.
   _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""
+  _epi_err_subtype=""
   {
     IFS= read -r _epi_model_actual || true
     IFS= read -r _epi_cost_usd     || true
     IFS= read -r _epi_tokens_in    || true
     IFS= read -r _epi_tokens_out   || true
+    IFS= read -r _epi_err_subtype  || true
   } <<EOF
 ${_res:-}
 EOF
@@ -421,7 +434,7 @@ ensemble_peer_invoke() {
   if [ "$access" = "read-tree" ] && _epi_is_claude "$peer_cmd" && _epi_isolation_applies "$peer_cmd"; then
     peer_turns=""
   fi
-  _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""
+  _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""; _epi_err_subtype=""
 
   # A stuck peer must not block a default-on review forever (EN11-CR-002).
   # `timeout` exits 124 when it fires, which maps to the published
@@ -448,7 +461,10 @@ ensemble_peer_invoke() {
 
   # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
   # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
-  _epi_trace "invoke:exec-begin"
+  # Flag NAMES only, never their values: one of them is the whole schema and
+  # another is a prompt path. "Was --json-schema actually bound?" was the first
+  # question a failing run raised, and the trace could not answer it.
+  _epi_trace "invoke:exec-begin flags=$(printf '%s\n' "${_epi_argv[@]}" 2>/dev/null | grep '^-' | tr '\n' ' ')"
   if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
     _epi_normalize_out "$out_file"
     _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
@@ -462,11 +478,23 @@ ensemble_peer_invoke() {
     return 1
   fi
 
+  # A failed attempt still has a receipt, and the CLI usually names its own
+  # failure. Read both BEFORE classifying on stderr, which is empty in exactly
+  # the case that matters: a peer that spends its turn budget and returns
+  # nothing exits non-zero with a complete envelope on STDOUT and silence on
+  # stderr, so `unknown` was reported for a failure the CLI had already named
+  # (2026-09-16: subtype error_max_turns, 26 turns, $2.09, no findings).
+  _epi_unwrap_envelope "$out_file" readonly
+  if [ "${_epi_err_subtype:-}" = "error_max_turns" ]; then
+    _epi_decision "off" "peer-failed:max-turns" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+    return 1
+  fi
+
   _class=$(ensemble_smoke_classify "$_err" "$_rc")
 
   case "$_class" in
-    auth)    _epi_decision "off" "peer-failed:auth"    "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"; return 1 ;;
-    unknown) _epi_decision "off" "peer-failed:unknown" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"; return 1 ;;
+    auth)    _epi_decision "off" "peer-failed:auth"    "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"; return 1 ;;
+    unknown) _epi_decision "off" "peer-failed:unknown" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"; return 1 ;;
   esac
 
   # --- flagdrift: ONE bounded retry, dropping ONLY the rejected fragment ---
@@ -529,7 +557,12 @@ ensemble_peer_invoke() {
     return 1
   fi
 
-  _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
+  _epi_unwrap_envelope "$out_file" readonly
+  if [ "${_epi_err_subtype:-}" = "error_max_turns" ]; then
+    _epi_decision "off" "peer-failed:max-turns" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+    return 1
+  fi
+  _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
   return 1
 }
 
