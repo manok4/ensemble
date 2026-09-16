@@ -19,7 +19,7 @@
 # clause (only one carrier had been edited), which is the pair you want.
 #
 # D81 added a second access mode. read-tree gives the Claude peer Read, Grep
-# and Glob, --permission-mode dontAsk and a 25-turn cap; codex gets
+# and Glob, --permission-mode dontAsk and a turn cap; codex gets
 # -s read-only in both modes; --schema binds the CLI's output schema; the
 # claude result envelope is unwrapped to the findings and its modelUsage key
 # becomes the decision's model_actual; and a detached start/wait/result/reap
@@ -127,11 +127,11 @@ arg_after() { awk -v k="$1" '$0==k{getline; print; exit}' "$ARGV"; }
 rt_ok=1; rt_why=""
 [ "$(arg_after --tools)" = "Read,Grep,Glob" ] || { rt_ok=0; rt_why="$rt_why tools=$(arg_after --tools)"; }
 [ "$(arg_after --permission-mode)" = "dontAsk" ] || { rt_ok=0; rt_why="$rt_why permission-mode=$(arg_after --permission-mode)"; }
-[ "$(arg_after --max-turns)" = "25" ] || { rt_ok=0; rt_why="$rt_why max-turns=$(arg_after --max-turns)"; }
+[ "$(arg_after --max-turns)" = "150" ] || { rt_ok=0; rt_why="$rt_why max-turns=$(arg_after --max-turns)"; }
 [ "$(grep -cx -- '--max-turns' "$ARGV")" = "1" ] || { rt_ok=0; rt_why="$rt_why caller-turn-cap-survived"; }
 has_arg "--strict-mcp-config" && has_arg "--setting-sources" || { rt_ok=0; rt_why="$rt_why base-set-missing"; }
-[ "$rt_ok" -eq 1 ] && pass "read-tree: Read,Grep,Glob + dontAsk + a single 25-turn cap, base set intact" \
-                   || fail "read-tree: Read,Grep,Glob + dontAsk + a single 25-turn cap" "$rt_why"
+[ "$rt_ok" -eq 1 ] && pass "read-tree: Read,Grep,Glob + dontAsk + a single 150-turn cap, base set intact" \
+                   || fail "read-tree: Read,Grep,Glob + dontAsk + a single 150-turn cap" "$rt_why"
 ENSEMBLE_PEER_MAX_TURNS=7 inv "claude -p" "$T/p" "$T/out" --access read-tree >/dev/null
 [ "$(arg_after --max-turns)" = "7" ] && pass "ENSEMBLE_PEER_MAX_TURNS sets the read-tree turn cap" \
                                      || fail "ENSEMBLE_PEER_MAX_TURNS sets the read-tree turn cap" "got $(arg_after --max-turns)"
