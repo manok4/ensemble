@@ -238,6 +238,7 @@ rm_ emit --kind select --json '{"tier":"graph","reason":"changed 2 files","count
 assert_eq "graph" "$(last | jq -r '.tier')"    "an allowed key survives"
 assert_eq "4"     "$(last | jq -r '.count')"   "all four select keys survive"
 assert_eq "null"  "$(last | jq -r '.dropped')" "a clean payload carries no dropped count"
+assert_eq "null"  "$(last | jq -r '.dropped_keys')" "and no dropped_keys either"
 
 # A path from the emitting machine is exactly what must never reach disk.
 err=$(rm_ emit --kind select --json '{"tier":"graph","cwd":"/Users/someone/secret-project"}' 2>&1)
@@ -245,10 +246,18 @@ assert_eq "graph" "$(last | jq -r '.tier')"     "the allowed key is still writte
 assert_eq "null"  "$(last | jq -r '.cwd')"      "an unknown key is dropped before the write"
 assert_eq "1"     "$(last | jq -r '.dropped')"  "the written line counts the drop"
 assert_contains "$err" "cwd" "the dropped key is named on stderr"
+# And on the LINE, because stderr is not where anyone looks: every call point
+# is fire-and-forget by design, so the names went nowhere. A count says
+# something was lost and never what, which is the difference between "the
+# emitter sends the wrong names" and "the allowlist is missing a key". Two
+# kinds landed with 0 of 6 keys kept and the store could not say what had been
+# sent (2026-09-18).
+assert_eq '["cwd"]' "$(last | jq -c '.dropped_keys')" "and names it on the line, where a reader will see it"
 
 rm_ emit --kind select --json '{"nope":1,"also":2}' 2>/dev/null
 assert_eq "select" "$(last | jq -r '.kind')"   "a payload of only unknown keys still writes its kind"
 assert_eq "2"      "$(last | jq -r '.dropped')" "and counts every drop"
+assert_eq "2" "$(last | jq -r '.dropped_keys | length')" "and names every one of them"
 
 rm_ emit --kind select --json '{}'
 assert_eq "null" "$(last | jq -r '.dropped')" "an empty payload carries no dropped count"
@@ -340,6 +349,18 @@ for k in reason effort model_actual cost_usd tokens_in tokens_out; do
 done
 assert_eq "null" "$(printf '%s' "$R" | jq -r '.detail.peer[1].cost_usd')" \
   "a pass with no receipt projects null rather than dropping the key"
+# The rollup outlives the ledger, so the names have to reach it too: `dropped`
+# alone tells a reader that this run lost something and leaves them nowhere.
+rmB() { env -u ENSEMBLE_RUN_LEDGER ENSEMBLE_ANALYTICS_DIR="$ADIR" bash "$RM" "$@"; }
+LDK=$(rmB start --skill en-build)
+rmB emit --kind suite --json '{"tests":345,"failed":5}' >/dev/null 2>&1
+rmB emit --kind lint  --json '{"scope":"docs","minutes":3}' >/dev/null 2>&1
+rmB finish "$LDK" >/dev/null
+RB=$(grep -F "$(printf '%s' "$LDK" | sed 's|.*/||; s|\.jsonl$||')" "$ROLL" 2>/dev/null | tail -1)
+[ -n "$RB" ] || RB=$(tail -1 "$ROLL")
+assert_eq "3" "$(printf '%s' "$RB" | jq -r '.dropped')" "the rollup still counts every drop in the run"
+assert_eq '["failed","minutes","tests"]' "$(printf '%s' "$RB" | jq -c '.dropped_keys')" \
+  "and carries the union of their names, deduped and sorted"
 assert_eq "graph"     "$(printf '%s' "$R" | jq -r '.detail.select.tier')" "and the selection tier"
 assert_eq "260"       "$(printf '%s' "$R" | jq -r '.detail.select.total')" "and its ratio"
 assert_eq "3"         "$(printf '%s' "$R" | jq -r '.outcome.peer_only')" "the outcome object is carried verbatim"

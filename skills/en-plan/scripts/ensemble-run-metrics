@@ -257,7 +257,16 @@ _compose_line() {  # <kind> <payload>
                    (if (.value | type) == "number" then . else .value = null end) end))
          else $kept end) as $kept
       | (($p | keys | length) - ($kept | keys | length)) as $n
-      | {kind:$k, at:$t} + $kept + (if $n > 0 then {dropped:$n} else {} end)' 2>/dev/null) || return 1
+      # The NAMES, not just how many. The count says something was lost and
+      # never what, and the names only ever went to stderr, which no caller
+      # reads: every call point is fire-and-forget by design. So a `findings`
+      # event that kept 0 of 6 keys and a `suite` event that kept 0 of 6
+      # landed as rows with nothing in them, and the store could not say what
+      # the emitter had actually sent (2026-09-18). A dropped key is either an
+      # emitter to fix or a key to add, and both need the name.
+      | ($p | keys | map(select(. as $x | ($keys | index($x)) == null))) as $lost
+      | {kind:$k, at:$t} + $kept
+        + (if $n > 0 then {dropped:$n, dropped_keys:$lost} else {} end)' 2>/dev/null) || return 1
   printf '%s\n' "$line"
 }
 
@@ -336,6 +345,7 @@ _rollup() {  # <ledger>
              | map({peer, decision, reason, effort, model_actual,
                     elapsed_s, cost_usd, tokens_in, tokens_out})) as $peers
           | ($doc | map(.dropped // 0) | add // 0) as $dropped
+          | ($doc | map(.dropped_keys // []) | add // [] | unique) as $dropped_keys
           | {schema: 1,
              skill: $s.skill, run_id: $s.run_id, plan_id: $s.plan_id, repo: $repo,
              parent_run_id: $s.parent_run_id,
@@ -348,7 +358,7 @@ _rollup() {  # <ledger>
              detail: {select: (if $sel == null then null
                                else {tier: $sel.tier, count: $sel.count, total: $sel.total} end),
                       peer: $peers},
-             dropped: $dropped}
+             dropped: $dropped, dropped_keys: $dropped_keys}
         end' "$f" 2>/dev/null) || return 2
   [ -n "$summary" ] && [ "$summary" != "null" ] || return 2
   # Keyed on skill AND run_id, which together are what the ledger filename is
