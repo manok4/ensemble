@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN18
 title: Linear plan store — publish reviewed plans to Linear and build from them
-status: open
+status: in_progress
 location: active
 created: 2026-09-19
 shipped:
