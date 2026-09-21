@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-09-08
+updated: 2026-09-21
 ---
 
 # Tech debt tracker
@@ -94,6 +94,33 @@ all hold; only the length clause is dead.
   which is git's own wrapping convention, or delete the length clause. Do not
   rewrite history to satisfy it.
 - **Logged:** 2026-09-11
+
+### TD16. `/en-build`'s pre-flight matrix has no row for a plan accepted at the peer-review cap
+
+Filed 2026-09-21 from the EN18 build, which stopped on it.
+
+`/en-plan` step 17 promotes a plan to `status: open` while leaving
+`peer_review_verdict: revise` when the iteration cap is hit and the user chooses
+"accept as-is". That is a documented, supported path. `/en-build`'s pre-flight
+sub-state matrix in `references/build-preflight.md` has rows for `open`+`approve`,
+`open`+`null`, `draft`+`revise`, `draft`+`null`, `draft`+`reject` and
+`completed`/`abandoned`, but none for `open`+`revise`. The matrix states that it
+owns every buildable and refused combination, so the absence reads as a gap
+rather than an implicit refusal, and the agent has to infer an answer.
+
+- **Source:** EN18 build pre-flight, 2026-09-21
+- **Severity:** P2
+- **Confidence:** 9/10
+- **Location:** `skills/en-build/references/build-preflight.md`, the sub-state matrix
+- **Why it matters:** every plan accepted at the cap lands in this state, and each
+  build re-derives whether it is allowed to proceed. Two agents can reasonably
+  reach opposite answers, and neither is contradicted by the contract.
+- **Suggested fix:** add an `open` + `revise` + 0 unresolved + tracked row
+  resolving to Proceed, matching `open`+`approve`, since promotion already
+  required every finding to be resolved and a human to accept. Add a drift test
+  asserting the matrix covers every `status` x `verdict` pair `/en-plan` can emit,
+  so the next gap fails a test instead of a build.
+- **Logged:** 2026-09-21
 
 ## Resolved
 
