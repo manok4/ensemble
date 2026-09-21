@@ -185,3 +185,17 @@ default_branch_fallback: main
 #   - develop
 #   - trunk
 #   - release/*  # glob patterns will be supported
+
+# --- Plan store (EN18) ---
+
+# Where this repo's plans live. `local` keeps them in docs/plans/active/ as
+# today. `linear` publishes a peer-reviewed plan to Linear on promotion and
+# archives the local files; /en-build then takes a Linear identifier.
+# Absent means `local`, so a repo that never opted in is unaffected. A value
+# that is neither is an error rather than a silent fall back to local, because
+# believing a plan was published when it was not is the expensive mistake.
+# plan_store: local
+
+# The Linear team plans are filed under. Required when plan_store is `linear`,
+# and checked before any Linear call rather than after a parent issue exists.
+# linear_team: ENG
