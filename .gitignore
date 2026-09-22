@@ -37,6 +37,9 @@ bun.lockb
 .ensemble/archive-plans/
 .ensemble/archive-designs/
 
+# Plans materialized from Linear for a build (EN18); generated, never authored.
+.ensemble/materialized-plans/
+
 # Build / test output
 dist/
 build/

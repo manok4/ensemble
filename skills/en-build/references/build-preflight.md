@@ -39,6 +39,65 @@ Recovery prompt (when offering finalize-and-build):
 
 Declining the offer at the prompt is how you skip it; `--finalize-only` runs finalize and stops without building.
 
+## Resolving the argument: path or Linear identifier
+
+**The mode comes from `plan_store`, not from the argument's shape.** Selecting on shape alone
+would let `/en-build ENG-412` reach Linear in a repo configured `local`, which is the one thing
+the per-repo switch exists to prevent. Resolve all four combinations **before any fetch and
+before the branch is created**:
+
+| `plan_store` | argument | outcome |
+|---|---|---|
+| `local` | a path | unchanged, today's behaviour |
+| `local` | an `ABC-123` identifier | refuse, naming `plan_store: local`; no fetch, no branch |
+| `linear` | an `ABC-123` identifier | fetch and materialize |
+| `linear` | a path | build it, and record provenance as `local` |
+
+The last row is deliberate rather than a refusal: a repo mid-migration still has plans on disk,
+and refusing them would strand work the switch was never meant to touch. What matters is that
+the **resolved mode is recorded as immutable build provenance**, so `/en-ship` and `/en-learn`
+act on what this build did rather than on what the config says later.
+
+## Materializing a plan from Linear
+
+Write the fetched plan to `.ensemble/materialized-plans/<identifier>.md`, then let the normal
+"Read `<plan-path>`" proceed against it. A materialized file is always **overwritten, never
+merged**, and its path cannot collide with an authoring plan because the directories are
+disjoint. Everything downstream, the state matrix above, the plan-hash baseline, the status
+flip and the checkpoint, is untouched: that is the point of materializing rather than teaching
+the pre-flight about Linear.
+
+`references/linear-plan-format.md` owns the mapping. Three of its rules decide whether the
+result is usable at all, and each was measured rather than assumed:
+
+- **Normalize `* **` back to `- **` at the start of every unit body**, before anything reads
+  the result. Linear rewrites `- ` list markers to `* `, and `ensemble-plan-hash` anchors on
+  `^- \*\*(Goal|Files|Approach|Risk|Category|Gated|Dependencies):\*\*`. A plan materialized
+  as returned still hashes; it hashes **seven empty fields per unit**, so every unit's digest is
+  identical and the checkpoint compares two meaningless values. Field values themselves survive
+  byte-for-byte, so the normalization is the whole of the repair, not the first of several.
+- **Fetch one `list_issues` for the children plus a `get_issue` per unit.** `list_issues`
+  truncates descriptions, returning `(truncated, use get_issue for full description)`; a build
+  that read the truncated form would silently implement a plan with its Approach cut off. Refuse
+  on a description still carrying that marker rather than treating it as the unit's content.
+- **Order units by the `(U<N>)` title suffix**, never by Linear's own ordering. The default is
+  `updatedAt` descending, so it is not merely unspecified, it is actively wrong for a build.
+  Two sub-issues claiming the same U-ID refuse, naming the duplicate, and write no file.
+
+| status | verdict | unresolved findings | git tracked | Pre-flight action |
+|---|---|---|---|---|
+| materialized from Linear | as published | 0 | **no** (not git-tracked, by design) | Proceed; do **not** offer auto-commit |
+
+A materialized plan is a generated artifact in a gitignored directory, so its untracked state
+is expected and is not the "plan file was never committed" case the auto-commit offer exists
+for. The directory is also how `/en-learn` and `/en-ship` tell a generated file from an
+authoring plan whose archive failed: same shape, different directory.
+
+**Name the branch from the Linear identifier**, `ENG-412-<slug>`. This is what lets Linear's
+GitHub integration associate the PR with the plan and move it to Done on merge; the state
+hand-off in `/en-build` assumes that link exists and nothing else establishes it. In `local`
+mode the branch name is unchanged.
+
 ## The plan-hash baseline
 
 **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.

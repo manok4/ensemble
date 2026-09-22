@@ -46,15 +46,22 @@ assert_eq "1" "$distinct" "every ensemble-config-get carrier is byte-identical"
   && pass "en-ship carries the reader, for the provenance-drift check" \
   || fail "en-ship carries the reader"
 
-# en-build must NOT carry it, and this is not an oversight. D52 stripped the
-# peer-dispatch stack out of en-build and tests/lint/en-build-payload-shape.test.sh
-# guards the absence; ensemble-run-metrics states the same rule in prose ("en-build
-# does not carry it, so pulling it in would add a script to a skill to read one
-# boolean"). en-build needs no config read anyway: a plan path means local and a
-# Linear identifier means linear, so the argument's own shape carries the mode.
-[ -e "$REPO_ROOT/skills/en-build/scripts/ensemble-config-get" ] \
-  && fail "en-build must not carry ensemble-config-get" "D52 removed it; en-build infers mode from its argument" \
-  || pass "en-build still carries no config reader, per D52"
+# en-build DOES carry it, reversing what this clause asserted when U2 shipped.
+# U2 argued en-build needed no config read, because a plan path meant local and
+# a Linear identifier meant linear, so the argument's own shape carried the
+# mode. EN18 U4's peer pass found the hole: shape-only selection lets
+# `/en-build ENG-412` reach Linear in a repo configured `local`, which is the
+# one thing the per-repo switch exists to prevent. The operator chose the
+# carrier over the gap on 2026-09-22.
+#
+# D52 is not relaxed by this. D52 is about peer and worker dispatch, and
+# en-build still dispatches neither; the reader was collateral in the list
+# en-build-payload-shape.test.sh kept, and that list moved rather than the
+# decision.
+[ -x "$REPO_ROOT/skills/en-build/scripts/ensemble-config-get" ] \
+  && pass "en-build carries the reader, to resolve plan_store before the argument is read" \
+  || fail "en-build must carry ensemble-config-get" \
+         "without it the mode falls back to argument shape, and the switch stops switching"
 
 # --- 2. resolution, unchanged ----------------------------------------------
 set_repo 'plan_store: linear'
