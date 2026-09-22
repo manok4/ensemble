@@ -5,7 +5,7 @@
 # cost of getting that wrong is asymmetric: an operator who writes
 # `plan_store: Linear` and gets local mode commits a plan they believe was
 # published, and nothing tells them. ensemble-config-get is fail-soft BY
-# DESIGN — a value outside --allowed falls through to the next layer — which is
+# DESIGN: a value outside --allowed falls through to the next layer, which is
 # right for a model alias and wrong for a mode switch.
 #
 # So two generic opt-outs, usable by any skill for any key, rather than
@@ -121,9 +121,7 @@ out=$(cg peer_model_claude --default sonnet); rc=$?
 [ "$rc" -eq 0 ] && [ "$out" = "sonnet" ] \
   && pass "malformed global JSON still falls through with exit 0 (fail-soft intact)" \
   || fail "malformed global JSON still falls through" "rc=$rc out=[$out]"
-printf '%s' "$(cat "$T/err")" | grep -q "not valid JSON" \
-  && pass "and still warns once on stderr naming the file" \
-  || fail "and still warns once on stderr" "$(cat "$T/err")"
+assert_contains "$(cat "$T/err")" "not valid JSON" "and still warns once on stderr naming the file"
 printf '{}\n' > "$T/home/.ensemble/config.json"
 set_repo 'plan_store: nonsense'
 out=$(cg plan_store --allowed local,linear --default local); rc=$?

@@ -64,10 +64,17 @@ tests pass. Eighteen to a hundred and forty bytes is not headroom, it is a
 rounding error, and the next flow-step added to any of the three turns a lint
 with no escape hatch into a blocker on an unrelated branch.
 
+**Updated 2026-09-22 (EN18 U8).** Two of the three are resolved: moving
+`en-build`'s autonomy contract and `en-plan`'s finalize-loop policy into
+references took them to **23,848** (728 spare) and **23,936** (640 spare). This
+entry now covers **`en-setup` alone, at 24,524 with 52 bytes spare**, which is
+tighter than any figure in the paragraph above and is the one file where the
+next added line is a blocker. Scope and severity are unchanged otherwise.
+
 - **Source:** branch review on EN17 (standards persona), STD-5
 - **Severity:** P3
 - **Confidence:** 7/10
-- **Location:** `skills/en-build/SKILL.md`, `skills/en-setup/SKILL.md`, `skills/en-plan/SKILL.md`
+- **Location:** `skills/en-setup/SKILL.md` (the remaining one; `en-build` and `en-plan` resolved by EN18 U8)
 - **Why it matters:** the cost lands on whoever next edits one of these for an
   unrelated reason, and it lands as a failure they did not cause.
 - **Suggested fix:** a prose trim pass on the three, in their own commit, taking

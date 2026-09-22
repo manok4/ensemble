@@ -29,6 +29,10 @@ IGNORE="$REPO_ROOT/.gitignore"
 FIX="$REPO_ROOT/tests/fixtures/linear"
 
 has()   { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basename "$1"): $2"; }
+# Across line breaks, so a clause can require two facts TOGETHER. BSD grep -z
+# does not match across newlines despite the flag, and rejects intervals over
+# 255; flattening with tr avoids both.
+has_near() { tr '\n' ' ' < "$1" | grep -qiE -- "$2" && pass "$3" || fail "$3" "not found together in $(basename "$1"): $2"; }
 
 # --- 1. the round-trip, against U1's real capture ----------------------------
 # Materializes tests/fixtures/linear/EN18-readback.json per the format doc's
@@ -36,7 +40,7 @@ has()   { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basen
 # from. Run twice: once normalized (must match) and once as-returned (must
 # not), so the clause cannot pass for the wrong reason.
 if ! command -v python3 >/dev/null 2>&1; then
-  pass "SKIPPED — python3 not installed; the round-trip is unchecked on this machine"
+  pass "SKIPPED: python3 not installed; the round-trip is unchecked on this machine"
 else
   rt=$(python3 - "$REPO_ROOT" <<'PY'
 import json, re, subprocess, sys, tempfile, os
@@ -127,6 +131,28 @@ has "$PRE" 'truncat' "because list_issues truncates descriptions"
 has "$PRE" 'U-ID|U<N>' "units order by their U-ID suffix, not Linear's ordering"
 has "$PRE" 'git tracked.*no|not git-tracked|never git-tracked' \
   "a materialized plan reads as untracked and must not trigger the auto-commit offer"
+
+# --- 3b. malformed Linear data refuses, naming what is wrong ---------------
+# All three are the ordinary result of someone hand-editing a parent in Linear,
+# and guessing which sub-issue was meant is worse than stopping. The plan
+# declared these scenarios; none had an assertion until the branch review.
+has "$PRE" 'duplicate' "duplicate U-IDs refuse, naming the duplicate"
+has "$PRE" 'unparseable|missing its `\(U<N>\)` suffix|does not resolve' \
+  "an unresolvable identifier or a missing (U<N>) suffix refuses"
+has "$PRE" 'write no file|writes no file' "and no materialized file is written"
+
+# --- 3c. the config read is fail-closed, with the flags spelled out --------
+# ensemble-config-get is fail-soft unless the caller opts in. U2 built --strict
+# and --required for exactly this key and no call site asked for them, so
+# `plan_store: Linear` fell through to local and the operator shipped believing
+# a plan was published. Asserting the KEY NAME appears is not enough; the flags
+# are the whole mechanism.
+has "$PRE" 'allowed local,linear' "plan_store is read with --allowed local,linear"
+has "$PRE" '\-\-strict' "and --strict, so a present-but-invalid value cannot fall through"
+has "$PRE" 'linear_team' "linear_team is resolved"
+has "$PRE" '\-\-required' "with --required, since it has no sensible default"
+has_near "$PRE" 'linear_team[^#]{0,240}before any Linear call|before any Linear call[^#]{0,240}linear_team' \
+  "and resolved before any Linear call, not after a parent exists"
 
 # --- 4. the branch carries the identifier -----------------------------------
 # This is the only thing that makes Linear's GitHub integration associate the

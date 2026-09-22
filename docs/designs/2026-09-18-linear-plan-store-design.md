@@ -247,7 +247,7 @@ gate, and cannot carry a negative control. EN18 carries this as a named risk.
 - Unit order in the canonical form comes from the U-ID parsed out of the sub-issue title,
   not from Linear's sub-issue ordering, which is not guaranteed stable. Confirm the title
   suffix survives a round-trip alongside the field markup.
-- What is the idempotency key for re-publish — U-ID stored in the sub-issue, or a local
+- What is the idempotency key for re-publish? A U-ID stored in the sub-issue, or a local
   publish receipt written as each unit lands?
 - Which state category should "Agent Ready" sit in, and is the workspace's GitHub
   integration configured to move issues on PR open as well as merge?

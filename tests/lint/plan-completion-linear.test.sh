@@ -33,6 +33,12 @@ PRE="$REPO_ROOT/skills/en-build/references/build-preflight.md"
 
 has() { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basename "$1"): $2"; }
 
+# Labels a path by its SKILL. basename(dirname(f)) gives "references" for
+# en-ship's reference and "en-learn" for en-learn's SKILL.md, so the two sides
+# of every loop below were labelled inconsistently; walking a fixed number of
+# levels cannot fix it, because the two files sit at different depths.
+skill_of() { printf '%s' "$1" | sed -n 's|.*/skills/\([^/]*\)/.*|\1|p'; }
+
 # --- 1. the producer: /en-build writes provenance on BOTH paths -------------
 has "$PRE" 'provenance' "en-build records the resolved mode as build provenance"
 # Anchored on the both-paths claim itself. A looser alternation also matched
@@ -46,9 +52,12 @@ has "$PRE" 'immutable|not re-read|never re-resolved' \
 
 # --- 2. the consumers read provenance, never the live config ----------------
 for f in "$COMP" "$LEARN"; do
-  n=$(basename "$(dirname "$f")")
+  n=$(skill_of "$f")
   has "$f" 'provenance' "$n reads the build's provenance"
-  has "$f" 'mutable|changed between|since flipped|config(uration)? drift' \
+  # en-learn/SKILL.md is a large multi-topic file: `mutable` matched its
+  # unrelated "leaving `date:` immutable" line, so the loose alternation was
+  # decorative on that side of the loop.
+  has "$f" 'plan_store` is mutable|mutable: flipping' \
     "$n records why the live plan_store is not the input"
 done
 
@@ -58,14 +67,17 @@ done
 # expensive of the two: the git mv is skipped and the plan never reaches
 # docs/plans/completed/.
 for f in "$COMP" "$LEARN"; do
-  n=$(basename "$(dirname "$f")")
+  n=$(skill_of "$f")
   if grep -qiE 'both direction|either direction' "$f"; then
     pass "$n: drift is caught in both directions"
   else
     fail "$n: drift must be caught in both directions" \
          "a linear-only provenance field misses a local build shipped under plan_store: linear"
   fi
-  has "$f" 'blocking error|stop|refuse' "$n: drift stops rather than guessing"
+  # `stop|refuse` matched en-learn's unrelated sync-conflict table ("Stop
+  # sync...", "Refuse the move..."), so gutting the drift enforcement to a
+  # warning would have left this green.
+  has "$f" 'blocking error naming both' "$n: drift stops rather than guessing"
   has "$f" 'naming both|both values' "$n: the error names the recorded mode and the current one"
 done
 
@@ -80,8 +92,10 @@ has "$LEARN" 'linear' "en-learn branches on the mode too"
 # Every plan written before this feature is one. Refusing them would break
 # every in-flight branch on the day this ships.
 for f in "$COMP" "$LEARN"; do
-  n=$(basename "$(dirname "$f")")
-  has "$f" 'legacy|predat|no provenance|absent' "$n: a plan with no provenance field is legacy"
+  n=$(skill_of "$f")
+  # `legacy|predat` matched en-learn's unrelated legacy-layout migration
+  # section in four places.
+  has "$f" 'legacy plan' "$n: a plan with no provenance field is legacy"
   has "$f" 'treat.*local|read as `?local|assume.*local' "$n: and is read as local"
 done
 

@@ -13,11 +13,31 @@ sub-issues, and **the auto-commit step is skipped entirely**: a repo in Linear m
 plan-related commit. That is the whole point of the mode, and it is also what makes the
 tracked-file rule below load-bearing.
 
+## Resolving the configuration, fail-closed
+
+Before anything else, and with these exact invocations. The reader is fail-soft by default,
+which is right for a model alias and wrong for a mode switch: without `--strict`,
+`plan_store: Linear` (or `[linear]`, or any value the narrow YAML grammar cannot represent)
+falls through to `local`, and the operator promotes believing the plan was published when it
+never was.
+
+```
+plan_store:  ensemble-config-get plan_store --allowed local,linear --default local --strict
+linear_team: ensemble-config-get linear_team --required          # linear mode only
+```
+
+`--strict` turns a present-but-invalid value into exit 3 instead of a fall-through; an absent
+key still falls through, so a repo that never opted in is unaffected. `linear_team` has no
+sensible default and is resolved **before any Linear call**: failing here beats failing once a
+parent issue exists, and the idempotency protocol's "search the team for an existing parent"
+has no team to search without it.
+
 ## Order of operations
 
 The sequence is not arbitrary. Each step exists because doing it later loses something.
 
-1. **Resolve tracked status for both sources**, the plan and its design doc, *before any Linear mutation*.
+1. **Resolve tracked status for both sources**, the plan and its design doc, *before any Linear mutation*
+   and before the finalize loop writes anything. **A tracked source refuses Linear promotion.**
    Deciding after the publish means deciding with a half-published plan on the other side.
 2. **Confirm the design doc's amendments.** Once the design is archived or closed out, an
    un-amended copy is the version that survives. `/en-plan` is the only skill holding both
@@ -78,27 +98,44 @@ Two measured behaviours shape how the read-back is fetched and compared:
   truncated description that silently verified is worse than a slow read-back that
   verified honestly.
 
-## Archiving, and the tracked-file rule
+## Archiving, and the tracked-source refusal
 
-**Moving a tracked file into a gitignored directory leaves a tracked deletion in the
-working tree**, which would dirty the tree the no-commit promotion promises not to touch.
-So the rule keys on tracked status, and it applies to **both sources, plan and design**.
+**A tracked plan or design refuses `linear`-mode promotion.** Check both before the finalize
+loop writes anything, name which source is tracked, and stop with an actionable message: remove
+it from git (`git rm --cached <path>`, commit that), then re-run. Nothing is published, nothing
+is moved, and the tree is exactly as it was.
 
-An earlier draft assumed the plan is always untracked because `/en-plan` wrote it that
-run. That is false on `--resume`: an `/en-sweep` draft, or any plan committed before
-promotion, arrives tracked.
+**Why refusal rather than a cleverer rule.** Two weaker attempts failed in review, and both
+failed the same way. Moving a tracked file into a gitignored directory leaves a tracked
+*deletion*. Leaving it in place but stamping `linear_issue:` and `archived:` into it leaves a
+tracked *modification*, which dirties the tree exactly as much. And the stamp is not even the
+whole of it: in `linear` mode the finalize loop has already written `peer_review_verdict`,
+`peer_review_iterations` and `peer_review_resolutions`, promotion has written
+`peer_review_plan_hash` and flipped `status`, and the idempotency protocol writes
+`linear_issue:` before any sub-issue exists. A promotion that skips the commit cannot leave a
+tracked source clean, whatever the archive rule says.
+
+The two alternatives both hide something. Restoring the committed bytes after publish discards
+the review state locally, so an operator reading the file sees no evidence the review happened.
+Committing the lifecycle change breaks the headline promise that a `linear`-mode repo makes no
+plan-related commit. Refusing hides nothing and the remedy is one command.
+
+**When this actually fires.** A plan authored and promoted in the same `/en-plan` run is
+untracked, so the common path is unaffected. It fires on `--resume` of a plan committed earlier,
+including an `/en-sweep` draft, which is exactly the case an earlier draft of this rule assumed
+away.
 
 | Source | Tracked | What happens |
 |---|---|---|
 | plan | no | moves to `.ensemble/archive-plans/`, stamped `linear_issue:` and `archived:` |
-| plan | yes | stays in `docs/plans/active/`, stamped `linear_issue:` and `archived:` |
+| plan | yes | **refuse before any write**; name the path and the `git rm --cached` remedy |
 | design | no | moves to `.ensemble/archive-designs/`, stamped the same way |
-| design | yes | stays where it is, closed out to `accepted` in the normal way |
+| design | yes | **refuse before any write**, same message |
 
-A tracked source is already durable and in history, which is what archiving was for. The
-stamps make it read as superseded either way, and they double as the plan-to-issue audit
-trail. Removing a tracked source afterwards is a normal committed change someone makes
-deliberately, never a side effect of promotion.
+An untracked source is stamped and moved, because nothing git tracks is changed by either.
+
+**The contract is auditable, not aspirational:** after a `linear`-mode promotion,
+`git status --porcelain` is empty. That is the check, not "no deletion appeared".
 
 ## Recovery
 

@@ -41,6 +41,22 @@ Declining the offer at the prompt is how you skip it; `--finalize-only` runs fin
 
 ## Resolving the argument: path or Linear identifier
 
+**Resolve the configuration fail-closed, with these exact invocations.** The reader is
+fail-soft by default, which is right for a model alias and wrong for a mode switch: without
+`--strict`, `plan_store: Linear` (or any typo) falls through to `local` and the operator ships
+believing a plan was published that never was.
+
+```
+plan_store:  ensemble-config-get plan_store --allowed local,linear --default local --strict
+linear_team: ensemble-config-get linear_team --required          # linear mode only
+```
+
+`--strict` makes a present-but-invalid value exit non-zero instead of falling through; an absent
+key still falls through, so a repo that never opted in is unaffected. `linear_team` has no
+sensible default and is resolved **before any Linear call**, because failing here beats failing
+once a parent issue already exists, and because the idempotency protocol's "search the team for
+an existing parent" step has no team to search without it.
+
 **The mode comes from `plan_store`, not from the argument's shape.** Selecting on shape alone
 would let `/en-build ENG-412` reach Linear in a repo configured `local`, which is the one thing
 the per-repo switch exists to prevent. Resolve all four combinations **before any fetch and
@@ -58,12 +74,23 @@ and refusing them would strand work the switch was never meant to touch. What ma
 the **resolved mode is recorded as immutable build provenance**, so `/en-ship` and `/en-learn`
 act on what this build did rather than on what the config says later.
 
-**Provenance is written on both paths**, `plan_store: linear` into the materialized plan's
-frontmatter alongside `linear_issue:`, and `plan_store: local` into the plan file on a local
-build. Once written it is never re-resolved. A field written only on the Linear path catches a
-Linear build shipped under a config since flipped to `local`, and misses the inverse, a local
-build shipped under a config since flipped to `linear`, which is the one that skips the
-`git mv` and leaves the plan out of `docs/plans/completed/`.
+**Provenance is written on both paths, and it is TWO fields, not one.** Collapsing them makes
+the `linear` + path row above unshippable: it resolves a source of `local` under a configured
+store of `linear`, so a single field forces ship to read one of the two as drift and stop on
+every mid-migration build. So record both, and never re-resolve either:
+
+| field | value | what reads it |
+|---|---|---|
+| `plan_source:` | `linear` or `local` | picks the lifecycle: `git mv` to `completed/`, or the Linear hand-off |
+| `configured_store:` | `plan_store` as it read at intake | the only thing compared against the repo's current `plan_store` |
+
+`plan_source` answers "where did this plan come from", `configured_store` answers "what was the
+repo set to at the time". Drift is `configured_store` against the live config, in **either**
+direction; the mid-migration row is then simply `configured_store: linear` with
+`plan_source: local`, which is internally consistent and ships cleanly. A single field written
+only on the Linear path would have caught a Linear build shipped under a config since flipped to
+`local` and missed the inverse, the one that skips the `git mv` and leaves the plan out of
+`docs/plans/completed/` entirely.
 
 ## Materializing a plan from Linear
 
@@ -89,7 +116,12 @@ result is usable at all, and each was measured rather than assumed:
   on a description still carrying that marker rather than treating it as the unit's content.
 - **Order units by the `(U<N>)` title suffix**, never by Linear's own ordering. The default is
   `updatedAt` descending, so it is not merely unspecified, it is actively wrong for a build.
-  Two sub-issues claiming the same U-ID refuse, naming the duplicate, and write no file.
+- **Refuse before any build work, naming what is wrong, and write no file** when: the identifier
+  does not resolve to an issue; a sub-issue title is missing its `(U<N>)` suffix, so its unit is
+  unparseable; or two sub-issues claim the same U-ID, a duplicate. Name the offending unit in
+  each case. A
+  parent edited by hand in Linear is the ordinary way to reach all three, and guessing which
+  sub-issue was meant is worse than stopping.
 
 | status | verdict | unresolved findings | git tracked | Pre-flight action |
 |---|---|---|---|---|
@@ -129,7 +161,14 @@ happens to list them in the convenient order. The third state is spelled **In Re
 | build start, beside the status flip | the parent moves to **In Progress** |
 | a unit starts | its sub-issue moves to **In Progress** |
 | a unit commits | its sub-issue moves to **Done** |
-| after the last unit commits | the parent moves to **In Review** |
+| after the post-build gates pass | the parent moves to **In Review** |
+
+**In Review comes after the post-build gates, not after the last unit commits.** The
+simplification pass, the branch review, the evidence audit and any fix loop all run after the
+last commit, and any of them can fail gracefully. Setting In Review at the last commit and then
+forbidding further writes leaves those failures with no way to honour the promise below of
+returning the parent to `Agent Ready`. So the transition is the **last thing before the ship
+hand-off**, ordered after the evidence audit.
 
 **`/en-build` stops touching the parent once it sets In Review.** From the moment `/en-ship`
 pushes a branch, Linear's own GitHub integration owns it, and the PR is the hand-off point.

@@ -23,6 +23,10 @@ IGNORE="$REPO_ROOT/.gitignore"
 
 has()   { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basename "$1"): $2"; }
 hasnt() { grep -qiE -- "$2" "$1" && fail "$3" "present in $(basename "$1") but should not be: $2" || pass "$3"; }
+# Across line breaks, so a clause can require two facts TOGETHER. BSD grep -z
+# does not match across newlines despite the flag and rejects intervals above
+# 255; flattening with tr avoids both.
+has_near() { tr '\n' ' ' < "$1" | grep -qiE -- "$2" && pass "$3" || fail "$3" "not found together in $(basename "$1"): $2"; }
 
 # --- 0. the step exists and the skill routes to it ---------------------------
 # Asserted first: every clause below passes against an orphaned reference that
@@ -31,6 +35,16 @@ hasnt() { grep -qiE -- "$2" "$1" && fail "$3" "present in $(basename "$1") but s
   || { fail "references/linear-publish.md must exist"; report; }
 has "$SKILL" 'references/linear-publish\.md' "en-plan SKILL.md routes to the publish step"
 has "$SKILL" 'plan_store' "en-plan SKILL.md branches on plan_store at promotion"
+# The flags ARE the mechanism. U2 built --strict for this key and the first
+# draft of this unit named only the key, so `plan_store: Linear` fell through
+# to local and the operator promoted believing a plan was published. Asserted
+# in both the skill and the reference, because the review found the fix applied
+# to en-build's side only.
+has "$SKILL" '\-\-strict' "and reads it fail-closed, with --strict"
+has "$PUB" 'allowed local,linear' "the publish step spells out the allowed set"
+has "$PUB" '\-\-strict' "and --strict, so an invalid value cannot fall through"
+has "$PUB" 'linear_team' "linear_team is resolved"
+has "$PUB" '\-\-required' "with --required, since it has no sensible default"
 
 # --- 1. local mode is untouched, and still commits ---------------------------
 # The whole feature is opt-in. A future edit that quietly stops local mode
@@ -67,7 +81,11 @@ has "$FMT" 'normali[sz]' "the format doc owns the normalization rule both sides 
 # Measured: a sub-issue created under an Agent Ready parent lands in Backlog.
 has "$PUB" '(state|status).*(explicit|set at creation)|explicitly at creation' \
   "each sub-issue's state is set explicitly at creation"
-has "$PUB" 'inherit' "the prose records that state is not inherited"
+# Negation-blind before: bare `inherit` passed just as happily against the
+# inverted claim ("a sub-issue DOES inherit its parent's state"), which is the
+# opposite of what U1 measured.
+has "$PUB" 'does not inherit|never inherits?' \
+  "the prose records that state is not inherited"
 
 # --- 5. the N+1 read-back is deliberate, not an oversight --------------------
 has "$PUB" 'get_issue' "read-back fetches each unit with get_issue"
@@ -84,7 +102,22 @@ has "$PUB" 'both sources|plan or design|plan and design' \
   "the tracked check covers both the plan and the design doc"
 has "$PUB" 'before any Linear mutation|before the Linear write|before any linear write' \
   "tracked status is resolved before any Linear mutation, not after"
-has "$PUB" 'tracked deletion' "the prose names the failure the check prevents"
+has_near "$PUB" 'tracked *\*?deletion' "the prose names the first failure the check prevents"
+has "$PUB" 'tracked \*?modification' \
+  "and the second, which the first fix introduced"
+
+# A tracked source REFUSES. Two weaker rules shipped and were caught in review:
+# moving a tracked file leaves a tracked deletion, and leaving it in place but
+# stamping it leaves a tracked modification. Neither could satisfy the empty
+# `git status --porcelain` the contract asserts, because by then the finalize
+# loop and promotion have already written to the same tracked file.
+has_near "$PUB" 'tracked (plan|source)[^#]{0,80}refuse|refuse[^#]{0,80}tracked' \
+  "a tracked source refuses linear-mode promotion"
+has "$PUB" 'git rm --cached' "and the refusal names the remedy"
+has "$PUB" 'before the finalize loop writes' \
+  "the check runs before the finalize loop writes, not just before the Linear call"
+has "$PUB" 'git status --porcelain' \
+  "the clean-tree contract is stated as something someone can run"
 has "$PUB" '\.ensemble/archive-plans' "untracked plans archive to .ensemble/archive-plans/"
 has "$PUB" '\.ensemble/archive-designs' "untracked designs archive to .ensemble/archive-designs/"
 has "$PUB" 'linear_issue:' "archived sources are stamped with linear_issue:"
@@ -101,7 +134,8 @@ has "$PUB" 'move nothing|archives nothing|nothing is moved' \
   "on failure nothing is archived and the plan stays in active/"
 # U1 found no delete-issue tool on the MCP server. A prose rollback that says
 # "delete" describes an operation that does not exist.
-has "$PUB" 'cancel' "rollback cancels what it created"
+has "$PUB" 'Rollback cancels|cancels what it created' \
+  "rollback cancels what it created"
 # Anchored on the tool's absence, not on the word "delete": a looser pattern
 # matched "Rollback cancels; it does not delete" and stayed green when the
 # absence claim itself was flipped, which is the only fact this clause guards.
@@ -130,7 +164,13 @@ assert_eq "5" "$steps" "the idempotency protocol keeps all five ordered steps"
 
 # --- 10. the /en-flow boundary is enforced, not documented -------------------
 has "$PUB" 'en-flow' "the /en-flow boundary is named"
-has "$PUB" 'refuse' "and enforced by refusing before publishing"
+# Scoped to the boundary's own section. A bare `refuse` matched the two
+# unrelated refusals in the idempotency protocol, so this clause could not fail
+# even with the /en-flow rule softened to a note.
+flow=$(awk '/^## The `\/en-flow` boundary/{f=1; next} f&&/^## /{exit} f' "$PUB")
+printf '%s' "$flow" | grep -qiE 'refuse' \
+  && pass "and enforced by refusing before publishing" \
+  || fail "and enforced by refusing before publishing" "the /en-flow section itself must say refuse"
 
 # --- 11. .gitignore carries the two archive entries, precisely ---------------
 has "$IGNORE" '^\.ensemble/archive-plans/' ".gitignore ignores .ensemble/archive-plans/"

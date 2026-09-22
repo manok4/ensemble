@@ -196,7 +196,14 @@ lookup() {
         '['*|'{'*) val="" ;;
       esac
       if is_valid "$val"; then printf '%s\n' "$val"; return 0; fi
-      if [ "$STRICT" = true ] && is_present "$val"; then strict_reject "$k" "$val"; fi
+      # Strict rejection keys on RAW presence, not on the cleaned value. `raw`
+      # being non-empty means the operator wrote the key; `val` can still be
+      # blank because the cleaner could not represent what they wrote (a flow
+      # collection, an unterminated quote). Testing `val` let all three fall
+      # through to the default as though nobody had set the key at all, which
+      # is precisely the silent mode-selection failure --strict exists to
+      # prevent: `plan_store: [linear]` resolved to `local`, exit 0, no warning.
+      if [ "$STRICT" = true ]; then strict_reject "$k" "${val:-$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')}"; fi
     fi
   fi
   # --- layer 2: global JSON ---

@@ -18,10 +18,24 @@ Read at the plan-completion checkpoint. `ensemble-plan-checkpoint` returns one
 
 **The input is the build's recorded provenance, never the repo's current `plan_store`.**
 `plan_store` is mutable: flipping it between build and ship would make a Linear build run local
-completion logic, or a local build skip its move to `completed/`. `/en-build` records the
-resolved mode at intake and it is immutable thereafter, so ship acts on what the build did.
+completion logic, or a local build skip its move to `completed/`. `/en-build` records provenance
+at intake and it is immutable thereafter, so ship acts on what the build did.
 
-| provenance | outcome |
+**Two frontmatter fields, read by name.** `/en-build` writes both into the plan's own
+frontmatter; do not infer a key name, and do not confuse either with the repo's live
+`plan_store` config value:
+
+| field | what it means | what it decides here |
+|---|---|---|
+| `plan_source:` | `linear` or `local`, where the plan came from | the lifecycle, per the table below |
+| `configured_store:` | what `plan_store` read at intake | the **only** value compared against the repo's current `plan_store` |
+
+Splitting them is load-bearing. The intake matrix deliberately allows a path argument under
+`plan_store: linear` for a repo mid-migration, which resolves `plan_source: local` with
+`configured_store: linear`. Against one combined field that build is guaranteed to read as
+drift and stop on every ship.
+
+| `plan_source` | outcome |
 |---|---|
 | `local` | unchanged: flip the frontmatter and `git mv` the plan to `docs/plans/completed/` |
 | `linear` | record `plan_completion_checkpoint: linear_mode`; **no `git mv`, no frontmatter flip** |
@@ -35,9 +49,10 @@ A plan with **no provenance field at all** is a legacy plan. Every plan written 
 feature is one, so refusing them would break every in-flight branch the day it ships. Read them
 as `local`, which is what they actually were.
 
-**Configuration drift, in both directions.** When the current `plan_store` disagrees with the
-recorded provenance, stop with a blocking error naming both values rather than guessing which
-is right. Both directions matter, and provenance is written on **both paths** for that reason:
+**Configuration drift, in both directions.** When the repo's current `plan_store` disagrees with
+the recorded `configured_store:`, stop with a blocking error naming both values rather than
+guessing which is right. Both directions matter, and provenance is written on **both paths** for
+that reason:
 
 - a **linear** build shipped under `plan_store: local`, and
 - a **local** build shipped under `plan_store: linear`, which is the more expensive of the two,
