@@ -98,6 +98,50 @@ GitHub integration associate the PR with the plan and move it to Done on merge; 
 hand-off in `/en-build` assumes that link exists and nothing else establishes it. In `local`
 mode the branch name is unchanged.
 
+## Linear state, through the build
+
+**Only in `linear` mode.** A `local` build makes no state lookup and no MCP call: this whole
+section fires after the mode is resolved, on the Linear branch only. Worth saying plainly,
+because the resolution below is described as happening before the first mutation and a
+workspace-wide state preflight on every local build would be both a latency cost and a hard
+failure for a repo with no Linear workspace at all.
+
+**Resolve all four states before the first mutation of this run, local or remote**, which means
+before the branch is created. The four are `Agent Ready`, `In Progress`, `In Review` and `Done`.
+Only `Agent Ready` is one the operator is told to create, so the other three are assumptions
+until checked. A missing or ambiguous state is a **blocking error** naming which one, raised
+**before any commit exists**, not discovered halfway through a build.
+
+**Match states by name, never by type.** `In Progress` and `In Review` share the type `started`,
+so resolving "the started one" picks arbitrarily between them and passes on whichever team
+happens to list them in the convenient order. The third state is spelled **In Review**; a bare
+"Review" does not exist on a correctly configured team.
+
+| When | Transition |
+|---|---|
+| build start, beside the status flip | the parent moves to **In Progress** |
+| a unit starts | its sub-issue moves to **In Progress** |
+| a unit commits | its sub-issue moves to **Done** |
+| after the last unit commits | the parent moves to **In Review** |
+
+**`/en-build` stops touching the parent once it sets In Review.** From the moment `/en-ship`
+pushes a branch, Linear's own GitHub integration owns it, and the PR is the hand-off point.
+**Progress is never written back into the plan body**, in either mode: Linear holds the state,
+the plan holds the work.
+
+### Abort, and the gap it cannot cover
+
+On a **graceful** failure or abort, return the parent to `Agent Ready` and leave every
+sub-issue at whatever state it reached, so a resumed build can see which units are already
+Done. A killed process cannot run that transition, so the guarantee is narrowed to graceful
+exits rather than promised outright.
+
+The gap closes at the other end. **At build start, reconcile a parent already In Progress** by
+comparing its sub-issue states against the branch's commits, and **surface the discrepancy for
+an operator decision** rather than silently resuming or silently restarting. A resumed build
+does not reset sub-issues already at Done. Without this, an interrupted build sits In Progress
+forever and nothing ever notices.
+
 ## The plan-hash baseline
 
 **4a. Plan-hash baseline.** If `peer_review_plan_hash` is present, record it as the build's baseline; the phase-boundary check will compare against it. If absent (legacy plan), compute one with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>` and record it (but skip the boundary check this run; surface a notice). **Always use that helper — never canonicalize the fields yourself**, or the baseline and the boundary check will disagree and refuse a plan nobody edited.

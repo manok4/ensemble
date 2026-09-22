@@ -27,6 +27,19 @@ The sequence is not arbitrary. Each step exists because doing it later loses som
 4. **Read back and verify.**
 5. **Archive, or leave in place**, per the tracked-file rule.
 
+## Workflow states
+
+**Only in `linear` mode.** On `local` none of this runs: no state lookup, no MCP call.
+
+`/en-plan` needs the same four states `/en-build` does, and checks them here because a missing
+one should surface **before publishing** rather than once a parent issue already exists:
+`Agent Ready`, `In Progress`, `In Review` and `Done`. The third is spelled **In Review**, and
+states are matched by name rather than type, since `In Progress` and `In Review` share the type
+`started`. A missing or ambiguous state is a blocking error naming which one.
+
+`/en-plan` sets the parent to `Agent Ready` on publish and touches state no further;
+`/en-build` owns every transition after that.
+
 ## Publishing
 
 Follow the idempotency protocol below rather than creating anything directly. Units are
