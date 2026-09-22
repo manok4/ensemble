@@ -20,6 +20,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 > **Peer contract.** Severity, confidence, autofix class and the `peer_decision` object are defined once in `references/peer-contract.md`, byte-identical across every skill that exchanges findings. What this skill does with a finding is its own policy.
 
+> **Linear plan format.** `references/linear-plan-format.md` owns publish and read-back under `plan_store: linear`.
+
 ## Process
 
 1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.

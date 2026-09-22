@@ -1,0 +1,43 @@
+{
+  "_comment": "Real Linear read-back captured by the EN18 U1 spike on 2026-09-22, team Emble. Not hand-written. The scratch issues were cancelled afterwards; these bytes are the record.",
+  "source_plan": "tests/fixtures/linear/EN18-sample-plan.md",
+  "source_plan_hash": "40a510c01c931be6a3f6c67996f42dbabedee4c334f5ba0103ca76ed6a577a04",
+  "team": "Emble",
+  "parent": {
+    "id": "EMB-1",
+    "uuid": "11b89eca-ebb5-4b3d-845c-14d83417e554",
+    "title": "[EN18 spike] en-build simplify gate — round-trip format probe",
+    "status": "Agent Ready",
+    "statusType": "unstarted",
+    "gitBranchName": "mano/emb-1-en18-spike-en-build-simplify-gate-round-trip-format-probe"
+  },
+  "sub_issues": [
+    {
+      "id": "EMB-2",
+      "uuid": "9c60db73-b3ef-4b46-8b9e-786670fb1dad",
+      "title": "Verifier (U1)",
+      "u_id": "U1",
+      "status": "Backlog",
+      "statusType": "backlog",
+      "parentId": "EMB-1",
+      "gitBranchName": "mano/emb-2-verifier-u1",
+      "description": "* **Goal:** Teach `bin/ensemble-verify-peer-evidence` the `simplify-verdict:` trailer, emit `simplify_pass` + `branch_review_pass` in `--branch-coverage --json`, and fail closed under a new `--require-simplify` flag.\n* **Files:** `bin/ensemble-verify-peer-evidence`, `tests/peer-resolution-trailer/verify-peer-evidence.test.sh` (extend).\n* **Approach:** Add `validate_simplify_verdict()` mirroring `validate_review_verdict()` (validate `outcome` enum; require non-empty `reason` when outcome is not_applicable/failed; `findings_count` non-negative int; `units_covered` array of strings; malformed => treated as missing). In `--branch-coverage`: while scanning `review-verdict:` commits, also parse any `simplify-verdict:` trailer and the review-verdict `reviewer`; derive `simplify_pass` and `branch_review_pass` per the Technical design. Add `--require-simplify` to the arg parser; when set, exit non-zero if either derived field is `missing`/`failed`. Extend the `--json` object (both branch-coverage and, harmlessly, keep single-commit output unchanged). Update the usage/`--help` header block to document the new trailer, flag, and fields.\n* **Risk:** low\n* **Category:** feature\n* **Gated:** false\n* **Dependencies:** none."
+    },
+    {
+      "id": "EMB-3",
+      "uuid": "a702b5ce-b38d-4404-adc6-d5e8c6a2a4ee",
+      "title": "en-build (U2)",
+      "u_id": "U2",
+      "status": "Backlog",
+      "statusType": "backlog",
+      "parentId": "EMB-1",
+      "gitBranchName": "mano/emb-3-en-build-u2",
+      "description": "* **Goal:** en-build step 10.4 emits `simplify-verdict:`; step 10.5 passes `--require-simplify`, surfaces `simplify_pass` + `branch_review_pass`, and treats a `failed` audit as blocking; the learning-checkpoint deferral guard also defers on missing/failed simplify or review.\n* **Files:** `skills/en-build/SKILL.md`, `tests/lint/en-build-simplify-gate.test.sh` (new).\n* **Risk:** low\n* **Category:** feature\n* **Gated:** false\n* **Dependencies:** U1."
+    }
+  ],
+  "list_issues_order": [
+    "EMB-3",
+    "EMB-2"
+  ],
+  "list_issues_truncates_description": true
+}

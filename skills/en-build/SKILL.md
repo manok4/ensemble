@@ -8,7 +8,7 @@ description: "Execute an implementation plan unit by unit on a feature branch: i
 
 > **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
 
-Execute a plan, unit by unit. **The host implements every unit**: the agent `/en-build` runs in writes the code, runs the tests, makes the commits. The peer is never a worker here; it enters once, at the branch-level review in step 10, after `/en-simplify` has run. That is what keeps implementer ≠ reviewer (D52).
+Execute a plan, unit by unit. **The host implements every unit**: the session running it writes the code, runs the tests, commits. The peer is never a worker here; it enters once, at the branch-level review in step 10, after `/en-simplify` has run. That is what keeps implementer ≠ reviewer (D52).
 
 > **Hard preconditions.** A plan in `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`; `<PREFIX>` from foundation's `plan_id_prefix`, default `FR`) with `status: open` (or `in_progress` when resuming), all U-IDs present, no unblocked dependencies. A recoverable `status: draft` is offered one finalize-and-build prompt instead of being refused.
 >
@@ -22,7 +22,7 @@ Execute a plan, unit by unit. **The host implements every unit**: the agent `/en
 
 1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex, for the confirmation prompts at 9a. That is all en-build needs from the host: it resolves no peer variables and runs no host-detection script.
 
-   **Payload check, fail-fast.** Confirm the files `references/build-preflight.md` lists are present. Any missing → **fail at start with a clear error**, naming the paths, and tell the user to re-run `/en-setup` or sync the plugin. A degraded build is never started.
+   **Payload check, fail-fast.** `references/linear-plan-format.md` owns Linear intake. Confirm the files `references/build-preflight.md` lists are present. Any missing → **fail at start with a clear error**, naming the paths, and tell the user to re-run `/en-setup` or sync the plugin. A degraded build is never started.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip step 10.3's review and record `review-verdict: {"verdict":"skipped","reviewer":"recursion-guard-active",...}`, so the step 10.6 audit reads a reason rather than an absence. Every unit is still implemented and committed.
 3. **Confirm the implementer.** The host, on any host: `/en-build` never hands authoring to another agent. `/en-review` decides at step 10.3 whether the branch-level review is cross-agent, single-agent fallback, or skipped; that never changes who writes the code.
 4. **Load plan and run pre-flight.** Read `<plan-path>`. Verify all U-IDs present and unblocked, and each unit carrying Goal, Files, Approach, Test scenarios, **Risk, Gated**. **Then resolve the plan's state against the pre-flight sub-state matrix in `references/build-preflight.md`**, which owns every buildable and refused combination and the recovery prompt. It returns one of four:
