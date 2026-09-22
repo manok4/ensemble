@@ -12,9 +12,9 @@ covers_requirements: []
 requirements_pending: true
 related_design: docs/designs/2026-09-18-linear-plan-store-design.md
 peer_review_verdict: revise
-peer_review_iterations: 2
-peer_review_last_run: 2026-09-19
-peer_review_plan_hash: 624580e417b8f69eb04a9a0646b1991ac2b07f9d696893272cc76044cf0f3d9c
+peer_review_iterations: 3
+peer_review_last_run: 2026-09-22
+peer_review_plan_hash: d60bd1a2f2d91322d6da0c2903fc9f66b9b4aa968e8e6d56f1de76e244fc396a
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -107,6 +107,54 @@ peer_review_resolutions:
     title: Materialization does not reject duplicate unit identifiers
     status: applied
     location: U4
+  - finding_id: "3-1"
+    iteration: 3
+    severity: P1
+    title: The read-back gate still verifies only the hashed subset
+    status: applied
+    location: U3
+  - finding_id: "3-2"
+    iteration: 3
+    severity: P1
+    title: The retry protocol still has unrecoverable publish windows
+    status: applied
+    location: U3
+  - finding_id: "3-3"
+    iteration: 3
+    severity: P1
+    title: The plan itself can be tracked when promotion archives it
+    status: applied
+    location: U3
+  - finding_id: "3-4"
+    iteration: 3
+    severity: P1
+    title: U4 consumes an ignore rule without depending on U3
+    status: applied
+    location: U4
+  - finding_id: "3-5"
+    iteration: 3
+    severity: P1
+    title: Linear intake is selected by argument shape instead of plan_store
+    status: applied
+    location: U4
+  - finding_id: "3-6"
+    iteration: 3
+    severity: P1
+    title: Workflow-state validation is not scoped to Linear mode
+    status: applied
+    location: U5
+  - finding_id: "3-7"
+    iteration: 3
+    severity: P1
+    title: Build provenance remains asymmetric
+    status: applied
+    location: U6
+  - finding_id: "3-8"
+    iteration: 3
+    severity: P2
+    title: The design amendment check is ordered after possible archival
+    status: applied
+    location: U7
 depth: standard
 data_scale: small
 ---
@@ -120,6 +168,10 @@ operator wants one place to watch work, with app-reported issues triaged in Line
 plans that `/en-build` executes. A second driver is a reframing recorded in the design: plans
 are transient execution artifacts, not documentation, so the durable record belongs in ADRs
 and architecture docs derived from the actual diff.
+
+**Build state, 2026-09-22.** U1 and U2 are built and committed on
+`EN18-linear-plan-store` (`ee14ac9`, `aadaf67`). U1 was a live round-trip spike and its
+findings changed what the remaining units must do; this revision is that rewrite.
 
 ## Requirements covered
 
@@ -221,14 +273,14 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Requirements covered:** none (requirements_pending)
 - **Dependencies:** none
 - **Interfaces:**
-  - *Produces:* `references/linear-plan-format.md` — an **invertible** mapping for every part of
+  - *Produces:* `references/linear-plan-format.md`, an **invertible** mapping for every part of
     a plan that materialization must reproduce, not just the unit fields:
     (a) the seven hashed unit fields (Goal, Files, Approach, Risk, Category, Gated,
     Dependencies); (b) the two hashed plan-level frontmatter values `depth` and `data_scale`,
     without which `ensemble-plan-hash` cannot match; (c) the frontmatter the preflight matrix
-    reads — `status`, `peer_review_verdict`, `peer_review_resolutions`,
+    reads, namely `status`, `peer_review_verdict`, `peer_review_resolutions`,
     `peer_review_plan_hash`, `plan_id`, `title`, `related_design`; (d) the unit fields
-    `/en-build` step 4 validates but the hash excludes — Test scenarios, Verification,
+    `/en-build` step 4 validates but the hash excludes, namely Test scenarios, Verification,
     Requirements covered, Reversibility, Ship scope, Execution note, Interfaces; (e) the
     `(U<N>)` title suffix; (f) the ordering rule (sort by U-ID, never Linear's sub-issue
     order); and (g) the materialization rules that invert all of it.
@@ -307,42 +359,131 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Verification:** new drift test passes; carrier parity test picks up the two new copies;
   `ensemble-lint` clean.
 
+### U8. Make room in the two SKILL.md files every remaining unit edits
+
+- **Goal:** `skills/en-build/SKILL.md` and `skills/en-plan/SKILL.md` have enough headroom
+  under the 24576-byte budget for U3 through U7 to add their pointers.
+- **Requirements covered:** none (requirements_pending)
+- **Resolves:** TD14
+- **Dependencies:** none
+- **Files:** `skills/en-build/SKILL.md`, `skills/en-build/references/autonomy-contract.md`,
+  `skills/en-plan/SKILL.md`, `skills/en-plan/references/finalize-loop.md`,
+  `tests/lint/en-build-autonomy-contract.test.sh`, `tests/lint/en-qa-autonomy-contract.test.sh`,
+  `tests/lint/en-build-stop-conditions.test.sh`, `tests/lint/en-build-suite-sequencing.test.sh`,
+  `tests/peer-resolution-trailer/peer-resolution-trailer.test.sh`
+- **Approach:** This is listed first because it unblocks everything after it, and numbered U8
+  because U-IDs are never reassigned. Measured on 2026-09-22: en-build has **2 bytes** of
+  headroom and en-plan **23**, so U1's one-line pointer already had to be paid for by trimming
+  prose. Five more units edit these same two files.
+  Move en-build's `## Agent autonomy contract` block (the scope note, the five legitimate pause
+  cases and the anti-pattern table, about 2.1KB) into `references/autonomy-contract.md`, leaving
+  a pointer in the flow that names it. Move `/en-plan`'s step 16 finalize-loop **policy** (the
+  severity gate on the re-loop, the iteration cap, the resolutions log) into a new en-plan-only
+  `references/finalize-loop.md`. Deliberately NOT into the existing `references/outside-voice.md`:
+  that file is carried byte-identical by three skills, so editing it turns a headroom fix into a
+  three-carrier parity change. Five tests assert on the moved prose; each must follow the text to
+  its new location rather than be deleted or loosened. This is a move, not a rewrite: the words
+  that land in the references are the words that left the skills.
+- **Risk:** low
+- **Category:** other
+- **Reversibility:** reversible
+- **Gated:** false
+- **Ship scope:** in
+- **Execution note:** pragmatic
+- **Test scenarios:**
+  - *Happy path:* both files are under 24576 with at least 1KB spare, asserted by the existing
+    `skill-size` test; `skill-payload` still passes, so both new references are reached from
+    their skill's own flow.
+  - *Edge case:* every assertion in the five coupled tests still passes, now reading the
+    reference rather than the SKILL.md. A test that cannot find its text must be repointed, never
+    deleted: the prose it guards did not stop mattering because it moved.
+  - *Error / failure path:* `references/outside-voice.md` is untouched, so the three-carrier
+    parity test is unaffected. Asserted, because editing it is the tempting shortcut here.
+  - *Integration:* `tests/lint/en-qa-autonomy-contract.test.sh` compares en-qa's contract against
+    en-build's; it must still find both after the move.
+- **Verification:** `skill-size` and `skill-payload` pass; all five coupled tests pass; carrier
+  parity unchanged; `./tests/run.sh` green.
+
 ### U3. `/en-plan` publishes to Linear, verifies, archives, and makes no commit
 
 - **Goal:** On promotion in Linear mode, the reviewed plan reaches Linear, is verified by
   read-back, and both it and its design doc leave the working tree without being committed.
 - **Requirements covered:** none (requirements_pending)
-- **Dependencies:** U1, U2
+- **Dependencies:** U1, U2, U8
 - **Files:** `skills/en-plan/SKILL.md`, `skills/en-plan/references/linear-publish.md`,
   `.gitignore`, `tests/lint/en-plan-linear-publish.test.sh`
 - **Approach:** Add a step between promotion (17) and auto-commit (18). In `local` mode both
   are unchanged. In `linear` mode: publish per U1's format doc, in dependency order so each
   unit's blocking edges reference identifiers that already exist; read back; materialize; hash
-  with `ensemble-plan-hash` and compare against the plan's own `peer_review_plan_hash`. On
-  match, archive both sources. **The tracked-file contract comes first, because moving a tracked
+  with `ensemble-plan-hash` and compare against the plan's own `peer_review_plan_hash`.
+
+  **The hash is necessary but not sufficient, so it is not the whole gate.**
+  `ensemble-plan-hash` covers seven unit fields plus `depth` and `data_scale`; U1's format
+  contract maps considerably more, including Test scenarios, Verification, Requirements covered,
+  Reversibility, Ship scope, Execution note and Interfaces. A field Linear mangled outside the
+  hashed subset would verify clean here and then reach `/en-build` step 4, which validates
+  exactly those fields. So verification is **field-by-field over the full invertible mapping**,
+  with the hash comparison as one clause of it rather than a proxy for it. Archive only when
+  both hold.
+
+  On match, archive both sources.
+
+  **Three things U1 measured that this step has to handle, none of which were assumed when the
+  plan was first written.** First, **Linear rewrites `- ` list markers to `* `** in a stored
+  description, so the read-back never matches what was sent. The verify step normalizes `* **`
+  back to `- **` before canonicalizing, exactly as U4 does on the build side, and the two
+  normalizations are the same rule written once in U1's format doc rather than twice from
+  memory. Without it the read-back hashes seven empty fields and verification fails on every
+  plan. Second, **a sub-issue does not inherit its parent's state**: one created under an Agent
+  Ready parent lands in **Backlog**. Each sub-issue's state is therefore set explicitly at
+  creation, never left to the default, or U5 starts a build against units nobody marked ready.
+  Third, **`list_issues` truncates descriptions** (`"(truncated, use get_issue for full
+  description)"`), so read-back is one list call plus a `get_issue` per unit. That N+1 is a
+  deliberate accepted cost: a truncated description that silently verified would be worse than
+  a slow one that verified honestly. **The tracked-file contract comes first, because moving a tracked
   file into an ignored directory leaves a tracked deletion in the working tree and the promised
-  no-commit promotion would leave the repo dirty.** The plan is always safe: `/en-plan` wrote it
-  this run and it was never committed. The design doc usually is not: `/en-brainstorm` writes it
-  and it is often already committed. So: an **untracked** source moves to
+  no-commit promotion would leave the repo dirty.** **Both sources get the check, and for the
+  same reason.** An earlier draft of this unit assumed the plan was always untracked because
+  `/en-plan` wrote it that run, which is false on `--resume`: a `/en-sweep` draft, or any plan
+  committed before promotion, arrives tracked. EN18 itself is tracked, so the first plan this
+  feature would ever have published is the counterexample. So: an **untracked** source moves to
   `.ensemble/archive-plans/` or `.ensemble/archive-designs/`, stamped with `linear_issue:` and
   `archived:` so it reads as superseded and doubles as the plan-to-issue audit trail. A
-  **tracked** design doc is left exactly where it is and only closed out to `accepted` in the
-  normal way; it is already durable and in history, which is what archiving was for. Check
-  tracked status before the Linear write, not after, so the decision is never made with a
-  half-published plan on the other side. Then skip
+  **tracked** source, plan or design, is left exactly where it is: the design doc is closed out
+  to `accepted` in the normal way, and a tracked plan keeps its place in `docs/plans/active/`
+  with `linear_issue:` and `archived:` stamped into its frontmatter, so it reads as superseded
+  without a tracked deletion appearing in a tree the promotion promised not to dirty. Both are
+  already durable and in history, which is what archiving was for. Removing them is then a
+  normal committed change someone makes deliberately, not a side effect of promotion.
+  **Check tracked status for both sources before any Linear mutation**, not after, so the
+  decision is never made with a half-published plan on the other side.
+
+  **Confirm the design doc's amendments here too**, before deciding its fate: once the design is
+  archived or closed out, an un-amended one is the version that survives. U7 records the decision
+  in the foundation and runs last, so it cannot be the thing that checks this. Then skip
   step 18 entirely: a repo in Linear mode makes no plan-related commit. On mismatch or partial
   publish, move nothing and surface what landed; the plan stays in `active/` and the failure is
-  visible. **Idempotency protocol, in this order, because a retry must never create a second
+  visible. **Rollback is cancel, not delete**: U1 found the MCP server exposes no delete-issue
+  tool. A failed publish therefore cancels what it created and says so, and the idempotency
+  protocol below is what makes a retry safe, rather than the cleanup being. **Idempotency protocol, in this order, because a retry must never create a second
   parent:** (1) if the plan's frontmatter already carries `linear_issue:`, that parent is
-  authoritative and no new parent is created; (2) otherwise create the parent and **immediately
-  write `linear_issue:` into the plan's frontmatter, before any sub-issue is created**, so the
-  identity survives a crash; (3) fetch the parent's existing sub-issues and reconcile by the
-  `(U<N>)` suffix, creating only units that are absent; (4) refuse and surface if two sub-issues
-  claim the same U-ID, rather than guessing which is current. Add the two archive directories to `.gitignore` as individual entries, matching the
+  authoritative; (2) otherwise **search the team for an existing parent carrying this plan's
+  stable identity before creating one**. Writing `linear_issue:` immediately after the create
+  narrows the crash window but cannot close it: a process killed between the API returning and
+  the frontmatter write leaves an orphan parent that the next run cannot see, and the run after
+  that creates a second. Remote discovery is what closes it, so the plan's `plan_id` is carried
+  in the parent's title as the durable identity and searched for first. Then (3) create the
+  parent if discovery found none, writing `linear_issue:` into the frontmatter before any
+  sub-issue exists; (4) fetch the parent's existing sub-issues and reconcile by the `(U<N>)`
+  suffix, creating only units that are absent and **setting each one's state explicitly**;
+  (5) refuse and surface if two sub-issues claim the same U-ID, rather than guessing which is
+  current. **A cancelled parent is not reusable**: discovery ignores parents in a canceled state
+  and creates a replacement, because reusing one would resurrect the sub-issues a rollback
+  cancelled alongside it. Discovery that finds two live parents for one `plan_id` refuses and
+  names both; that is a human decision, not a coin flip. Add the two archive directories to `.gitignore` as individual entries, matching the
   existing precise style (`.ensemble/config.local.yaml`), never `.ensemble/` wholesale, because
-  `.ensemble/config.local.example.yaml` is tracked. Add a third entry,
-  `.ensemble/materialized-plans/`, which U4 writes to; without it a generated plan lands in a
-  tracked directory and can be committed. **Enforce the `/en-flow` boundary rather than
+  `.ensemble/config.local.example.yaml` is tracked. The third entry,
+  `.ensemble/materialized-plans/`, belongs to U4, which is the unit that writes there. **Enforce the `/en-flow` boundary rather than
   documenting it:** when `/en-plan` is invoked from `/en-flow` in a repo whose `plan_store` is
   `linear`, refuse before publishing, naming the reason, so the chain cannot reach the state
   where the plan is in Linear and `/en-flow` is holding a dead path. Not gated: implementing this edits prose and `.gitignore`, and it
@@ -359,21 +500,33 @@ Each unit has a stable U-ID. Never renumbered after assignment.
     rule.
   - *Edge case:* `local` mode prose is unchanged and step 18 still commits. The test asserts
     both modes, or a future edit could quietly make local mode stop committing.
-  - *Edge case:* a **tracked** design doc is closed out in place and never moved, so promotion
-    leaves no tracked deletion; an **untracked** one is archived. Both asserted, since this is
-    the difference between a clean tree and a dirty one after a no-commit promotion.
+  - *Edge case:* a **tracked** source, plan or design, is left in place and stamped rather than
+    moved, so promotion leaves no tracked deletion; an **untracked** one is archived. Asserted
+    for **both** sources, since the plan being tracked on a `--resume` run is the case the first
+    draft of this unit got wrong.
+  - *Edge case:* verification compares the full invertible mapping, not only the hashed fields.
+    Asserted, because a hash-only gate passes while `/en-build` step 4 later fails on a field
+    the hash never covered.
   - *Error / failure path:* `/en-flow` invoking `/en-plan` in a `linear` repo refuses before
     publishing, rather than stranding the chain with a path that no longer exists.
   - *Error / failure path:* the prose states that a hash mismatch or partial publish archives
-    nothing and leaves the plan in `active/`. Asserted, because it is the recovery contract.
-  - *Error / failure path:* the four-step idempotency protocol is present and ordered, with the
-    parent identifier written before any sub-issue. A retry after a crash mid-publish must reuse
-    the parent, and duplicate U-IDs under one parent must refuse rather than guess.
-  - *Integration:* `.gitignore` gains exactly the three directory entries (both archives and
-    `materialized-plans/`) and does not contain a bare `.ensemble/` line, which would contradict
-    the tracked example file.
+    nothing and leaves the plan in `active/`, and that cleanup cancels rather than deletes
+    because no delete tool exists. Asserted, because it is the recovery contract.
+  - *Error / failure path:* the verify step normalizes `* **` to `- **` before hashing.
+    Asserted, because without it every publish fails verification and the tempting "fix" is to
+    weaken the comparison.
+  - *Edge case:* each sub-issue's state is set explicitly at creation rather than inherited.
+    Asserted against the Backlog default U1 measured.
+  - *Error / failure path:* the five-step idempotency protocol is present and ordered, and
+    **remote discovery by `plan_id` precedes the create**. Asserted specifically, because
+    write-after-create alone leaves a crash window that produces a duplicate parent on the run
+    after next, which is the failure a retry protocol exists to prevent.
+  - *Error / failure path:* discovery skips canceled parents, and two live parents for one
+    `plan_id` refuse rather than pick. Duplicate U-IDs under one parent likewise refuse.
+  - *Integration:* `.gitignore` gains exactly the two archive directory entries and does not
+    contain a bare `.ensemble/` line, which would contradict the tracked example file.
 - **Verification:** drift test passes and fails when any of the prose invariants is removed;
-  `git check-ignore` confirms all three `.ensemble/` paths are ignored and
+  `git check-ignore` confirms both archive paths are ignored and
   `.ensemble/config.local.example.yaml` is not.
 
 ### U4. `/en-build` accepts a Linear identifier and materializes the plan
@@ -381,18 +534,51 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Goal:** `/en-build ENG-412` fetches the plan from Linear, writes it back as a plan file in
   the canonical format, and hands to the existing preflight unchanged.
 - **Requirements covered:** none (requirements_pending)
-- **Dependencies:** U1, U2
+- **Dependencies:** U1, U2, U8
 - **Files:** `skills/en-build/SKILL.md`, `skills/en-build/references/build-preflight.md`,
-  `tests/lint/en-build-linear-intake.test.sh`
+  `.gitignore`, `tests/lint/en-build-linear-intake.test.sh`
 - **Approach:** Step 4 currently opens with "Read `<plan-path>`". Put an argument resolver in
-  front of it: a path stays a path; an identifier matching Linear's `ABC-123` shape triggers a
-  fetch. Materialize per U1's format doc into `.ensemble/materialized-plans/<identifier>.md`,
+  front of it. **The mode comes from `plan_store`, and the argument's shape only has to agree
+  with it**; selecting on shape alone would let `/en-build ENG-412` reach Linear in a repo
+  configured `local`, which is the one thing the per-repo switch exists to prevent. Four
+  combinations, resolved before any fetch and before the branch is created:
+
+  | `plan_store` | argument | outcome |
+  |---|---|---|
+  | `local` | a path | unchanged, today's behaviour |
+  | `local` | an `ABC-123` identifier | refuse, naming `plan_store: local`; no fetch, no branch |
+  | `linear` | an `ABC-123` identifier | fetch and materialize |
+  | `linear` | a path | build it, and record provenance as `local` (see U6) |
+
+  That last row is deliberate rather than a refusal: a repo mid-migration still has plans on
+  disk, and refusing them would strand work the switch was never meant to touch. What matters is
+  that the **resolved mode is recorded as immutable build provenance**, so `/en-ship` and
+  `/en-learn` act on what this build did rather than on what the config says later.
+  `.gitignore` gains `.ensemble/materialized-plans/` **here, in the unit that writes to it**,
+  rather than inheriting it from U3; a unit that writes a file to a tracked path is not
+  independently safe just because a neighbour was supposed to have ignored it first. Materialize per U1's format doc into `.ensemble/materialized-plans/<identifier>.md`,
   the ignored directory U3 adds, then let the existing "Read `<plan-path>`" proceed against it.
+
+  **Materialization is not a copy, and U1 is why.** Linear rewrites `- ` list markers to `* `,
+  so a description read back from Linear carries `* **Goal:** …` where the plan carried
+  `- **Goal:** …`. `ensemble-plan-hash` anchors on `^- \*\*(Goal|Files|Approach|Risk|Category|Gated|Dependencies):\*\*`,
+  so a materialized-as-returned plan canonicalizes to seven empty fields per unit. Proven with
+  `--canon` during U1: as returned, `Goal:0: Files:0: Approach:0: Risk:0:`; after normalizing
+  the markers, `Goal:204:… Files:107:… Risk:3:low`. Every unit therefore hashes identically to
+  every other and the 9f plan-hash checkpoint compares two meaningless digests. **So
+  materialization normalizes `* **` back to `- **` at the start of every unit body**, per U1's
+  format doc, before anything reads the result. Field values themselves survive byte-for-byte,
+  backticks, `=>`, `+`, `--flags` and all, so the normalization is the whole of the repair, not
+  the first of several. Fetching is one `list_issues` for the children plus a **`get_issue` per
+  unit**, because `list_issues` truncates descriptions; a build that read the truncated form
+  would silently implement a plan with its Approach cut off.
   A materialized file is always overwritten, never merged, and its path can never collide with an
   authoring plan in `docs/plans/active/` because the directories are disjoint. Everything after that point, the sub-state
   matrix, `ensemble-plan-hash` at 4a, the status flip at 4b, the 9f checkpoint, is untouched,
   which is the whole point of materializing rather than teaching the preflight about Linear.
-  Order units by the `(U<N>)` suffix, never by Linear's sub-issue ordering. **Name the branch
+  Order units by the `(U<N>)` suffix, never by Linear's sub-issue ordering: U1's capture came
+  back `updatedAt` descending, U2 before U1, so the default order is not merely unspecified, it
+  is actively wrong for a build. **Name the branch
   from the Linear identifier**, `ENG-412-<slug>`, at step 5 where the feature branch is created.
   This is what lets Linear's GitHub integration associate the PR with the plan and move it to
   Done on merge; U5 hands the parent over on that assumption and nothing else establishes the
@@ -410,8 +596,19 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Test scenarios:**
   - *Happy path:* drift test asserts the resolver distinguishes a path from an identifier, that
     materialization precedes the existing read, and that ordering comes from the U-ID suffix.
+  - *Happy path:* a round-trip fixture proves it end to end. Materialize
+    `tests/fixtures/linear/EN18-readback.json` (U1's real capture, markers and all) and assert
+    `ensemble-plan-hash --canon` on the result matches `--canon` on
+    `tests/fixtures/linear/EN18-sample-plan.md`. This is the assertion the whole unit exists
+    for, and it is a real comparison rather than a prose check.
+  - *Error / failure path:* the negative control for that fixture test: skip the marker
+    normalization and it must go red. A canonical form of seven empty fields is a *valid*
+    canonical form, so a test that only checks "hashing succeeded" passes against the bug.
   - *Edge case:* a plan whose units were created out of order in Linear still materializes in
-    U-ID order. This is the failure the ordering rule exists to prevent.
+    U-ID order. Asserted with `updatedAt`-descending input, which is what Linear actually
+    returns.
+  - *Edge case:* materialization refuses a description carrying the `(truncated, use get_issue
+    for full description)` marker rather than treating it as the unit's Approach.
   - *Error / failure path:* the identifier does not resolve, or a sub-issue is missing a `(U<N>)`
     suffix. Expected: refuse before any build work, and say which unit is unparseable.
   - *Error / failure path:* two sub-issues carry the same `(U<N>)` suffix. Expected: refuse,
@@ -419,6 +616,12 @@ Each unit has a stable U-ID. Never renumbered after assignment.
     U4 must reject them on read, or hand-edited Linear data makes unit contents ambiguous.
   - *Integration:* the preflight sub-state matrix is unchanged in local mode, and the
     materialized-plan row states `git tracked: no` without offering the auto-commit path.
+  - *Error / failure path:* all four `plan_store` x argument combinations are asserted, in
+    particular that an identifier under `plan_store: local` refuses **before** any fetch and
+    before the branch is created. Mode selection on argument shape alone passes a happy-path
+    test and defeats the per-repo switch.
+  - *Integration:* `.gitignore` carries `.ensemble/materialized-plans/` as part of this unit, so
+    U4 is safe to build whether or not U3 landed first.
   - *Integration:* in Linear mode the branch is named `<identifier>-<slug>`, which is the only
     thing that makes the later GitHub-to-Linear association work. Asserted here rather than
     assumed in U5.
@@ -433,15 +636,27 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Dependencies:** U4
 - **Files:** `skills/en-build/SKILL.md`, `skills/en-plan/SKILL.md`,
   `tests/lint/en-build-linear-state.test.sh`
-- **Approach:** The flow assumes four states exist on the team: Agent Ready, In Progress,
-  Review and Done. Only Agent Ready is something the operator is told to create, so **resolve all
-  four before the first mutation, local or remote** — in `/en-plan` before publishing and in
-  `/en-build` before the branch is created. A missing or ambiguous state is a blocking error
+- **Approach:** The flow needs four states on the team: Agent Ready, In Progress,
+  **In Review** and Done. That third name is what the team actually calls it (U1 listed the
+  states on team Emble: `Agent Ready` type `unstarted`, `In Progress` and `In Review` both type
+  `started`, `Done` type `completed`); an earlier draft of this unit said "Review" and would have
+  failed its own preflight on a correctly configured team.
+
+  **All of this is scoped to `plan_store: linear` and nothing else.** A local-mode run makes no
+  state lookup, no MCP call and no preflight of any of it: the check fires after mode resolution
+  and only on the Linear branch. Worth stating because the sentence below says "before the first
+  mutation, local or remote", which reads as unconditional, and a workspace-wide state preflight
+  running on every local build would be both a latency cost and a failure mode for repos that
+  have no Linear workspace at all. Only Agent Ready is something the operator is told to create, so **resolve all
+  four before the first mutation of this run, local or remote**: in `/en-plan` before publishing
+  and in `/en-build` before the branch is created. A missing or ambiguous state is a blocking error
   naming which one, raised before any commit exists, not discovered halfway through a build.
   Then, in Linear mode, move the parent to In Progress once at step 4b beside the existing status
   flip. Per unit, move its sub-issue to In Progress when the unit starts and to
   Done when it commits, at the same points the unit loop already records progress. Move the
-  parent to Review after the last unit commits. On a **graceful** failure or abort, return the
+  parent to In Review after the last unit commits. **Match states by name, not by type**: two
+  states share type `started`, so resolving "the started one" picks arbitrarily between In
+  Progress and In Review. On a **graceful** failure or abort, return the
   parent to Agent Ready and leave every sub-issue at whatever state it reached, so a resumed
   build can see which units are already Done. A killed process cannot run that transition, so the
   guarantee is explicitly narrowed to graceful exits and the gap is closed at the other end:
@@ -459,10 +674,16 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Execution note:** test-first
 - **Test scenarios:**
   - *Happy path:* drift test asserts all four transitions and the point at which `/en-build`
-    stops touching the parent.
-  - *Error / failure path:* a team missing the Review state fails the preflight in both skills
-    with a message naming Review, before any local commit or remote write.
+    stops touching the parent, and that the third state is named In Review.
+  - *Error / failure path:* a team missing the In Review state fails the preflight in both
+    skills with a message naming it, before any local commit or remote write.
+  - *Edge case:* state resolution matches on name. Asserted, because In Progress and In Review
+    share a type and a type-based lookup would pass on a team that happens to list them in the
+    convenient order.
   - *Edge case:* a resumed build does not reset sub-issues already at Done.
+  - *Edge case:* in `plan_store: local`, neither `/en-plan` nor `/en-build` performs a state
+    lookup. Asserted in both skills, because the state preflight is described as running before
+    any mutation and a repo with no Linear workspace must not pay for or fail on it.
   - *Error / failure path:* a graceful abort returns the parent to Agent Ready. A killed
     process cannot, so the prose says so rather than promising it.
   - *Error / failure path:* starting a build against a parent already In Progress triggers
@@ -486,11 +707,18 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   `plan_completion_checkpoint: linear_mode` instead of `completed_and_moved`. Both skills read
   the build's **provenance**, not the repo's current configuration. `plan_store` is mutable, so
   flipping it between build and ship would make a Linear build run local completion logic, or a
-  local build skip the move to `completed/`. Instead `/en-build` records the store and the
-  `linear_issue:` identifier in the materialized plan's frontmatter at intake, and `/en-ship` and
-  `/en-learn` read provenance from the plan they were handed. When the current `plan_store`
+  local build skip the move to `completed/`. Instead `/en-build` records the resolved mode
+  as provenance at intake, and `/en-ship` and `/en-learn` read it from the plan they were handed.
+  **Both directions of drift have to be catchable, so provenance is written on both paths**, not
+  only the Linear one: `plan_store: linear` into the materialized plan's frontmatter alongside
+  `linear_issue:`, and `plan_store: local` into the plan file on a local build. A Linear-only
+  field catches a Linear build shipped under a config since flipped to local, and misses the
+  inverse, a local build shipped under a config since flipped to linear, which is the one that
+  would skip the `git mv` and lose the plan's move to `completed/`. When the current `plan_store`
   disagrees with the plan's recorded provenance, that is configuration drift: stop with a
-  blocking error naming both values rather than guessing which is right. `/en-ship` gets its
+  blocking error naming both values rather than guessing which is right. **A plan carrying no
+  provenance field at all is a legacy plan**, predating this feature: treat it as `local`, which
+  is what every plan written before U3 actually was, and say so once rather than refusing. `/en-ship` gets its
   `ensemble-config-get` carrier from U2; `/en-learn` already has one at
   `skills/en-learn/scripts/ensemble-config-get`, so it needs no new file and U2 does not add
   one. This unit exists because these two are the only remaining skills that
@@ -517,6 +745,11 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   - *Error / failure path:* the repo's `plan_store` was changed to `local` after a Linear build.
     Expected: both skills stop with a drift error naming the recorded provenance and the current
     setting, rather than silently running the wrong completion path.
+  - *Error / failure path:* the inverse, a **local** build shipped after `plan_store` was flipped
+    to `linear`. Expected: the same drift error. Asserted separately, because provenance written
+    only on the Linear path passes the first scenario and silently skips the `git mv` on this one.
+  - *Edge case:* a plan with no provenance field, written before this feature existed, is read as
+    `local` with a one-line note and is not refused.
 - **Verification:** drift tests pass; existing en-ship completion tests still pass unchanged.
 
 ### U7. Record the decision in the foundation
@@ -524,28 +757,33 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Goal:** The foundation carries the Linear plan store as a numbered decision, so the next
   reader finds the rationale and the vocabulary rule without excavating this plan.
 - **Requirements covered:** none (requirements_pending)
-- **Dependencies:** U1, U2, U3, U4, U5, U6
+- **Dependencies:** U1, U2, U3, U4, U5, U6, U8
 - **Files:** `docs/foundation.md`
 - **Approach:** Add a D-ID taking the next free number, recording: the per-repo switch and its
   default; that authoring and peer review are unchanged and only promotion differs; that
   materializing from Linear is what leaves `/en-build`'s preflight, hash check and unit loop
   untouched, with the changed surface being `/en-plan`, `/en-build`, `/en-ship`, `/en-learn` and
-  the `/en-setup` config template; that a workflow state
-  carries approval because sub-issues do not inherit labels; that `/en-build` owns state until
+  the `/en-setup` config template; that a description read back from Linear has its `- ` list
+  markers rewritten to `* ` and must be normalized before it is hashed, which is the single
+  non-obvious fact in the whole design; that a workflow state
+  carries approval, and that U1 measured sub-issues inheriting neither their parent's labels nor
+  its state, so each unit's state is set explicitly; that `/en-build` owns state until
   the PR exists; and that all Linear I/O goes through MCP rather than a script, with the
   testability cost that follows. Restate the vocabulary rule: plan and unit, never ticket.
   `docs/CONTEXT.md` needs no change, which is the point. Written last so it records what was
-  built rather than what was proposed. Also verify, before U3 archives it, that
+  built rather than what was proposed. Also verify that
   `docs/designs/2026-09-18-linear-plan-store-design.md` carries its 2026-09-19 amendment
-  recording the MCP decision and its testability cost; an archived design that still argues for a
-  script would contradict what shipped.
+  recording the MCP decision and its testability cost; a design that still argues for a
+  script would contradict what shipped. **U3 is where that check gates anything**, since U3
+  decides the design's fate and runs long before this unit; here it is a final read of whichever
+  copy U3 left behind, archived or in place.
 - **Risk:** low
 - **Category:** other
 - **Reversibility:** trivial
 - **Gated:** false
 - **Ship scope:** in
 - **Execution note:** pragmatic
-- **Test expectation:** none — documentation; `ensemble-lint --scope docs/` covers its shape.
+- **Test expectation:** none, documentation; `ensemble-lint --scope docs/` covers its shape.
 - **Verification:** `bin/ensemble-lint --scope docs/` clean; the D-ID is the next free number and
   collides with nothing on main; the named skills match what the plan actually changed; the design
   doc's amendment is present.
@@ -569,14 +807,26 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Decision: materialize from Linear into a plan file rather than teach the preflight about
   Linear.** One seam, and six of the nine skills that reference a plan path need no change at
   all. The cost is a file written to a gitignored path on every Linear-mode build.
-- **Assumption: Linear preserves the labelled-field bullet markup and the `(U<N>)` title
-  suffix.** Unverified; U1 exists to verify it and is ordered first for that reason. If it does
-  not hold, U1's format doc specifies a different carrier and U3 and U4 follow it. This is why
-  U1 is a live round-trip rather than a paper exercise.
+- **Resolved, and refuted: Linear does NOT preserve the labelled-field bullet markup.** U1 ran
+  the live round-trip on 2026-09-22 against team Emble and found Linear rewrites `- ` list
+  markers to `* `. Everything else held: field values survive byte-for-byte, and titles survive
+  exactly with the `(U<N>)` suffix intact. So the carrier is unchanged and the repair is one
+  normalization, `* **` to `- **`, applied on both sides, in U3's verify step and in U4's
+  materialization. This is why U1 was a live round-trip rather than a paper exercise: the
+  failure mode was silent. A plan materialized as returned still hashes, it just hashes seven
+  empty fields per unit, so the 9f checkpoint would have compared two meaningless digests and
+  reported green.
+- **Resolved: three further facts U1 measured, each of which changed a later unit.** A sub-issue
+  does **not** inherit its parent's state and lands in Backlog, so U3 sets each one explicitly.
+  `list_issues` truncates descriptions, so materialization is one list call plus a `get_issue`
+  per unit. The team's third state is named **In Review**, not Review, and it shares type
+  `started` with In Progress, so U5 matches states by name.
 - **Assumption: a partial publish is recoverable by re-running.** Re-publish must not duplicate
   sub-issues, which means matching on the `(U<N>)` suffix under the parent before creating. U3
-  carries this; if it proves unreliable the operator deletes the parent and re-runs, which is
-  acceptable because nothing was archived.
+  carries this; if it proves unreliable the operator cancels the parent and re-runs, which is
+  acceptable because nothing was archived. **Cancels, not deletes**: U1 found the MCP server
+  exposes no delete-issue tool, so a cancelled parent is the strongest cleanup available and
+  the idempotency protocol has to carry the weight instead.
 - **Risk: identifier drift.** Moving an issue between teams changes `ENG-412` and orphans a
   branch name already created from it. `previousIdentifiers` makes it recoverable by hand. Not
   mitigated in this plan.
@@ -585,18 +835,20 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 
 ## Tracked debt
 
-None opened by this plan.
+None opened by this plan. **TD14** (both `en-build/SKILL.md` and `en-plan/SKILL.md` sitting
+within a few bytes of the 24576-byte budget) is resolved by U8, which exists because five units
+of this plan add prose to those two files.
 
 ## Iteration log
 
-- 2026-09-19 — Plan drafted from `docs/designs/2026-09-18-linear-plan-store-design.md`.
-- 2026-09-19 — Peer review iteration 1 (codex, cross-agent, effort high): `revise`, 10 findings
+- 2026-09-19: Plan drafted from `docs/designs/2026-09-18-linear-plan-store-design.md`.
+- 2026-09-19: Peer review iteration 1 (codex, cross-agent, effort high): `revise`, 10 findings
   (8 P1, 2 P2). Nine applied, one deferred. The P1s were substantive: the format contract mapped
   only the seven hashed unit fields and so could not reproduce a plan that hashes equal; invalid
   config silently selected local mode; partial-publish recovery was asserted but never designed;
   and the materialized plan was written to a tracked directory described as ignored. Each would
   have surfaced as a build failure rather than a review comment.
-- 2026-09-19 — Peer review iteration 2: `revise`, 5 findings (4 P1, 1 P2), **all new** — none of
+- 2026-09-19: Peer review iteration 2, `revise`, 5 findings (4 P1, 1 P2), **all new**. None of
   iteration 1's were re-raised, so those applications held. All five applied. The strongest were
   structural rather than cosmetic: `/en-flow` was only documented as unsupported rather than
   prevented, so the chain could publish a plan and then hand `/en-build` a dead path; archiving a
@@ -604,3 +856,33 @@ None opened by this plan.
   tree the promotion promises not to touch; nothing guaranteed the branch carried the Linear
   identifier that the GitHub handoff in U5 depends on; and `/en-ship` inferred its mode from
   mutable config rather than from the build's provenance.
+- 2026-09-22: U1 and U2 built and committed (`ee14ac9`, `aadaf67`). U1 was the live round-trip
+  spike, and it refuted the plan's central assumption: **Linear rewrites `- ` list markers to
+  `* `**, which silently reduces a materialized plan to seven empty hashed fields per unit.
+  It also found that sub-issues do not inherit parent state (they land in Backlog), that
+  `list_issues` truncates descriptions so materialization needs a `get_issue` per unit, that the
+  default sort is `updatedAt` descending, that the MCP server has no delete-issue tool, and that
+  the team's third state is named In Review, not Review.
+- 2026-09-22: `/en-plan --resume`. U3, U4 and U5 rewritten against those measurements; the
+  assumption in Decisions marked resolved-and-refuted. **U8 added and listed first**: en-build
+  had 2 bytes of headroom under the 24576-byte skill budget and en-plan 23, and five remaining
+  units all add prose to those two files, so the plan could not physically be built as written.
+  U8 moves en-build's autonomy contract and en-plan's finalize-loop policy into references,
+  taking their drift assertions with them, and resolves TD14.
+- 2026-09-22: Peer review iteration 3 (codex, cross-agent, effort high, 443s): `revise`, 8
+  findings (7 P1, 1 P2), **all new**. All eight applied. The sharpest was that U3 assumed the
+  plan file is always untracked because `/en-plan` wrote it that run, which is false on a
+  `--resume`: EN18 itself is tracked, so the first plan this feature would ever publish was the
+  counterexample, and promotion would have left a tracked deletion in a tree it promised not to
+  dirty. Two more were structural: read-back verified only the nine hashed fields while
+  `/en-build` step 4 validates seven the hash excludes, so a field Linear mangled outside the
+  subset would verify clean and fail at build; and the idempotency protocol's write-after-create
+  narrowed the duplicate-parent window without closing it, so discovery by `plan_id` now precedes
+  the create. The rest tightened mode selection (resolved from `plan_store`, not the argument's
+  shape), scoped the workflow-state preflight to Linear mode, made build provenance symmetric so
+  the local-to-linear drift direction is caught too, moved the `materialized-plans/` ignore rule
+  into the unit that writes there, and removed U7's claim to check the design doc before U3
+  archives it, which U7 runs too late to do.
+- 2026-09-22: Iteration cap reached (`--max-iterations` not raised), so no confirmation pass ran.
+  Plan stays `in_progress`; U8 is next in build order.
+
