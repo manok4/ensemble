@@ -13,3 +13,41 @@ Read at the plan-completion checkpoint. `ensemble-plan-checkpoint` returns one
 | `incomplete_unexpected` | a U-ID has neither coverage nor an implementing commit | record `plan_completion_checkpoint: incomplete_unexpected` and name the units; the plan stays active. Something is genuinely unbuilt. |
 
 **The flip.** Hands-off (default): auto-select `y` on `complete` / `partial_expected`. `--interactive`: prompt with `y` (recommended) / `skip` / `details`, where `details` shows per-unit state (U-ID, commit, coverage) and re-prompts, loop until terminal. `y`: set `status: completed` and `shipped: <today>` in the frontmatter, `git mv` the file to `docs/plans/completed/`, stage it, and record `plan_completion_checkpoint: completed_and_moved`. The flip commits atomically with the ship commit at step 10; if push or PR creation later fails, the local record is still right (the work is done) and a re-run sees `completed` → `up_to_date`. `skip` records `plan_completion_checkpoint: skipped_by_user`. `--no-plan-completion-checkpoint` skips the step and records `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)`.
+
+## Linear mode
+
+**The input is the build's recorded provenance, never the repo's current `plan_store`.**
+`plan_store` is mutable: flipping it between build and ship would make a Linear build run local
+completion logic, or a local build skip its move to `completed/`. `/en-build` records the
+resolved mode at intake and it is immutable thereafter, so ship acts on what the build did.
+
+| provenance | outcome |
+|---|---|
+| `local` | unchanged: flip the frontmatter and `git mv` the plan to `docs/plans/completed/` |
+| `linear` | record `plan_completion_checkpoint: linear_mode`; **no `git mv`, no frontmatter flip** |
+| absent | legacy plan, predating this feature: treat it as `local` and say so once |
+
+In `linear` mode the PR merge moves the parent to Done through Linear's GitHub integration, so
+there is nothing on disk to flip and nothing to move. The `linear_mode` outcome records that
+the checkpoint ran and deliberately did nothing, which is not the same as `not_applicable`.
+
+A plan with **no provenance field at all** is a legacy plan. Every plan written before this
+feature is one, so refusing them would break every in-flight branch the day it ships. Read them
+as `local`, which is what they actually were.
+
+**Configuration drift, in both directions.** When the current `plan_store` disagrees with the
+recorded provenance, stop with a blocking error naming both values rather than guessing which
+is right. Both directions matter, and provenance is written on **both paths** for that reason:
+
+- a **linear** build shipped under `plan_store: local`, and
+- a **local** build shipped under `plan_store: linear`, which is the more expensive of the two,
+  because it is the one that skips the `git mv` and leaves the plan out of `completed/`
+  entirely. A provenance field written only on the Linear path catches the first and misses
+  this one.
+
+**A generated plan is not a failed archive.** A materialized plan lives under
+`.ensemble/materialized-plans/` and an authoring plan under `docs/plans/active/`. They share a
+shape, so the directory is what tells them apart; an authoring plan still sitting in `active/`
+after a Linear publish means the archive did not complete, and it is never `git mv`d on that
+basis.
+

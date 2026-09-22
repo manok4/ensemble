@@ -58,6 +58,13 @@ and refusing them would strand work the switch was never meant to touch. What ma
 the **resolved mode is recorded as immutable build provenance**, so `/en-ship` and `/en-learn`
 act on what this build did rather than on what the config says later.
 
+**Provenance is written on both paths**, `plan_store: linear` into the materialized plan's
+frontmatter alongside `linear_issue:`, and `plan_store: local` into the plan file on a local
+build. Once written it is never re-resolved. A field written only on the Linear path catches a
+Linear build shipped under a config since flipped to `local`, and misses the inverse, a local
+build shipped under a config since flipped to `linear`, which is the one that skips the
+`git mv` and leaves the plan out of `docs/plans/completed/`.
+
 ## Materializing a plan from Linear
 
 Write the fetched plan to `.ensemble/materialized-plans/<identifier>.md`, then let the normal
