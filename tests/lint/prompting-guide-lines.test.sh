@@ -27,7 +27,9 @@ has skills/en-plan/references/research-dispatch.md 'carries on with whatever doe
 
 # targeted edits where a long existing file is edited
 has skills/en-simplify/SKILL.md 'Never rewrite a file to apply a finding'                "en-simplify: findings are surgical edits"
-has skills/en-plan/SKILL.md     'never a rewrite of it'                                  "en-plan: finalize-loop applications are surgical"
+# EN18 U8 moved the finalize loop's policy out of SKILL.md for headroom; the
+# clause follows the prose to references/finalize-loop.md.
+has skills/en-plan/references/finalize-loop.md 'never a rewrite of it'                   "en-plan: finalize-loop applications are surgical"
 has skills/en-learn/SKILL.md    'Surgical edits only, never regenerate.'                 "en-learn: the foundation sync is surgical"
 has skills/en-sweep/SKILL.md    '`Edit` on existing files, `Write` only for new ones'    "en-sweep: Edit on existing docs"
 
