@@ -207,6 +207,10 @@ expect_rc "a wrong recorded plan_full_hash fails verify, naming it" 3 'plan_full
 jedit "$FX/EN19-readback.json" "$WORK/nofull.json" '
 d["parent"]["description"] = re.sub(r"plan_full_hash: \w+\n", "", d["parent"]["description"])'
 expect_rc "a missing plan_full_hash fails verify" 3 'no plan_full_hash' -- lp verify "$SRC" "$WORK/nofull.json" --repo "$REPO"
+jedit "$FX/EN19-readback.json" "$WORK/noreview.json" '
+d["parent"]["description"] = re.sub(r"peer_review_plan_hash: \w+\n", "", d["parent"]["description"])'
+expect_rc "a contract with peer_review_plan_hash removed fails intake" 3 'no peer_review_plan_hash' \
+  -- lp intake "$WORK/noreview.json" --out "$WORK/noreview.md" --repo "$REPO"
 expect_rc "a parent recording another repo fails verify" 3 'belongs to' \
   -- lp verify "$SRC" "$FX/EN19-readback.json" --repo github.com/someone/else
 expect_rc "and intake refuses another repo's parent" 3 'belongs to' \
@@ -291,6 +295,7 @@ A plan snippet at column zero, the case that could open a unit:
 - **Goal:** depend on U1
 - **Dependencies:** U1
 PLAN
+ha=$(bash "$H" "$WORK/awkward.md"); sed -i.bak "s/^depth: standard$/peer_review_plan_hash: $ha\ndepth: standard/" "$WORK/awkward.md"
 lp render "$WORK/awkward.md" --repo "$REPO" > "$WORK/awkward.json"; rc=$?
 assert_eq "0" "$rc" "render accepts a plan quoting a report with headings, bullets and a fenced example"
 assert_eq "U1 U2 " "$(python3 -c 'import json,sys;print("".join(u["u_id"]+" " for u in json.load(open(sys.argv[1]))["units"]))' "$WORK/awkward.json")" \

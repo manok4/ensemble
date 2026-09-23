@@ -21,8 +21,9 @@
 #       {"parent": {...}, "sub_issues": [{...}, ...]}. A pure transform: it
 #       checks structure, not the contract. Prints to stdout unless --out.
 #   ensemble-linear-plan intake <readback.json> --out <path> [--repo <id>]
-#       materialize, then refuse unless the contract carries plan_full_hash and
-#       repo, repo is this repository, and both digests match the rebuilt plan.
+#       materialize, then refuse unless the contract carries plan_full_hash,
+#       peer_review_plan_hash and repo, repo is this repository, and both
+#       digests match the rebuilt plan.
 #       Writes --out only when every check passes. This is /en-build's intake.
 #   ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]
 #       Exit 0 when the read-back materializes to the same plan: both digests,
@@ -394,8 +395,12 @@ def contract_problems(rebuilt, repo):
         problems.append("the Verification Contract has no repo")
     elif recorded_repo != repo:
         problems.append(f"the parent belongs to {recorded_repo}, not {repo}")
+    # Every promotion path writes peer_review_plan_hash, so its absence is a
+    # removed field, not a legacy plan: without it the default digest is unchecked.
     reviewed = fm_value(fm, "peer_review_plan_hash")
-    if reviewed and reviewed != text_hash(rebuilt):
+    if not reviewed:
+        problems.append("the Verification Contract has no peer_review_plan_hash")
+    elif reviewed != text_hash(rebuilt):
         problems.append("peer_review_plan_hash does not match the plan Linear returned")
     return problems
 
