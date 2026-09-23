@@ -29,7 +29,8 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 TEST_NAME="en-qa autonomy contract"
 
 SKILL="$REPO_ROOT/skills/en-qa/SKILL.md"
-BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
+# en-build's contract moved out of SKILL.md in EN18 U8; the cross-check reads it there.
+BUILD="$REPO_ROOT/skills/en-build/references/autonomy-contract.md"
 
 # The contract block only, so a phrase elsewhere in the skill cannot satisfy it.
 CONTRACT=$(awk '/^## Agent autonomy contract/{f=1; next} f&&/^## /{exit} f' "$SKILL")
@@ -74,8 +75,15 @@ has 'The cases are not|different cases' \
 
 # And the claim is checked against the other skill, so a later edit that makes
 # them genuinely identical is not punished for it.
-build_cases=$(awk '/^### Legitimate pause cases/{f=1; next} f&&/^### /{exit} f' "$BUILD" \
+# Heading level is not pinned (it is ## in the reference), and the list must be
+# non-empty: an extraction that finds nothing makes the overlap trivially 0, and
+# this clause passed that way for a whole branch after the contract moved.
+build_cases=$(awk '/^##+ Legitimate pause cases/{f=1; next} f&&/^##+ /{exit} f' "$BUILD" \
               | grep -oE '^[0-9]+\. \*\*[^*]+\*\*' | sed 's/^[0-9]*\. //')
+n_build=$(printf '%s' "$build_cases" | grep -c . || true)
+[ "${n_build:-0}" -eq 5 ] \
+  && pass "en-build's five pause cases are read, so the overlap check compares something" \
+  || fail "en-build's pause cases were not found" "extracted ${n_build:-0} from $(basename "$BUILD"), expected 5"
 qa_cases=$(printf '%s' "$CONTRACT" | awk '/^### Legitimate pause cases/{f=1; next} f&&/^### /{exit} f' \
            | grep -oE '^[0-9]+\. \*\*[^*]+\*\*' | sed 's/^[0-9]*\. //')
 overlap=$(comm -12 <(printf '%s\n' "$build_cases" | sort) <(printf '%s\n' "$qa_cases" | sort) | grep -c . || true)
