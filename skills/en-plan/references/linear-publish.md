@@ -1,8 +1,10 @@
 # Publishing a reviewed plan to Linear
 
 > Read at the publish step, after promotion and before auto-commit, and only when
-> `plan_store` resolves to `linear`. On `local` the whole step is a no-op and the flow is unchanged:
-> nothing here runs and the auto-commit step commits the plan as it always has.
+> `plan_store` resolves to `linear`. One section runs earlier: the tracked-source check,
+> which `/en-plan` runs at its write-the-plan step, before the plan file, the finalize
+> loop or promotion writes anything.
+> On `local` none of this runs and the flow is unchanged: the auto-commit step commits the plan as it always has.
 >
 > `references/linear-plan-format.md` owns the mapping between a plan file and a Linear
 > parent plus sub-issues, including the marker normalization both this step and
@@ -36,9 +38,11 @@ has no team to search without it.
 
 The sequence is not arbitrary. Each step exists because doing it later loses something.
 
-1. **Resolve tracked status for both sources**, the plan and its design doc, *before any Linear mutation*
-   and before the finalize loop writes anything. **A tracked source refuses Linear promotion.**
-   Deciding after the publish means deciding with a half-published plan on the other side.
+1. **Resolve tracked status for both sources**, the plan and its design doc, at the
+   write-the-plan step: before the plan is written, before the finalize loop writes,
+   and so before any Linear mutation. **A tracked source refuses Linear promotion.** Deciding after the
+   publish means deciding with a half-published plan on the other side, and deciding at
+   publish means deciding over a file three earlier steps already rewrote.
 2. **Confirm the design doc's amendments.** Once the design is archived or closed out, an
    un-amended copy is the version that survives. `/en-plan` is the only skill holding both
    the design and the plan that consumed it, so this cannot be deferred to a later unit.
@@ -100,8 +104,8 @@ Two measured behaviours shape how the read-back is fetched and compared:
 
 ## Archiving, and the tracked-source refusal
 
-**A tracked plan or design refuses `linear`-mode promotion.** Check both before the finalize
-loop writes anything, name which source is tracked, and stop with an actionable message: remove
+**A tracked plan or design refuses `linear`-mode promotion.** Check both at the write-the-plan
+step, before anything is written, name which source is tracked, and stop with an actionable message: remove
 it from git (`git rm --cached <path>`, commit that), then re-run. Nothing is published, nothing
 is moved, and the tree is exactly as it was.
 

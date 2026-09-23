@@ -114,8 +114,16 @@ has "$PUB" 'tracked \*?modification' \
 has_near "$PUB" 'tracked (plan|source)[^#]{0,80}refuse|refuse[^#]{0,80}tracked' \
   "a tracked source refuses linear-mode promotion"
 has "$PUB" 'git rm --cached' "and the refusal names the remedy"
-has "$PUB" 'before the finalize loop writes' \
-  "the check runs before the finalize loop writes, not just before the Linear call"
+has "$PUB" 'before the plan is written, before the finalize loop writes' \
+  "the check runs before the plan is written, not just before the Linear call"
+# And SKILL.md runs it there. The reference is otherwise read at the publish
+# step, after the plan write, the finalize loop and promotion have all written.
+write_step=$(awk '/^[0-9]+\. \*\*Write the plan/{f=1} f&&/^[0-9]+\. \*\*Outside Voice/{exit} f' "$SKILL")
+assert_contains "$write_step" 'Tracked sources, under `plan_store: linear`' \
+  "en-plan runs the tracked-source check inside the write-the-plan step"
+has "$SKILL" 'the tracked-source refusal' "step 18 names the refusal, not the retired keep-in-place rule"
+hasnt "$SKILL" 'keeps a tracked plan or design in place' \
+  "and the retired keep-in-place wording is gone from SKILL.md"
 has "$PUB" 'git status --porcelain' \
   "the clean-tree contract is stated as something someone can run"
 has "$PUB" '\.ensemble/archive-plans' "untracked plans archive to .ensemble/archive-plans/"
