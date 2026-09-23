@@ -46,3 +46,39 @@ review. The remedy is to re-run `/en-plan <IDENT>` against the issue as it now s
 `linear_issue:` is already set, so that issue is the parent. Update it with `save_issue` by id
 (title and description from `render`, state Agent Ready) instead of creating a parent, then
 create the sub-issues under it. Read-back, `verify` and archiving are exactly as for any publish.
+
+## Amend in place: `/en-plan --resume ENG-412`
+
+A published plan can be revised, re-reviewed and updated in Linear from any machine, **before a
+build starts**. Work in `/tmp/ensemble/en-plan/<IDENT>/`.
+
+**Admit the parent, or refuse before anything is written.** `get_issue <IDENT>`. Refuse, naming
+the state, unless it is Agent Ready or earlier (an unstarted, backlog or triage state): In
+Progress, In Review and Done mean a build is running on, or shipped, the reviewed version, and
+amending under it would make the two diverge.
+
+**Materialize the published plan.** `list_issues` with `parentId: <IDENT>`, `get_issue` each
+sub-issue, and save the results unedited as `intake-readback.json`. Refuse **before any write**
+if any file for that `plan_id` already exists under `docs/plans/active/` or
+`docs/plans/completed/`, tracked or not: an unfinished earlier revision is never overwritten.
+Then `$SKILL_DIR/scripts/ensemble-linear-plan materialize intake-readback.json --out
+docs/plans/active/<plan_id>-<plan_type>_<slug>.md`, and keep a copy as `intake.md` beside the
+read-back; the pre-update check compares against it.
+
+**Revise and review as normal**, from the resume-or-create step onward: the finalize loop and
+promotion run over the materialized file and write fresh hashes. `linear_issue: <IDENT>` stays
+in its frontmatter. **U-IDs are never renumbered or reused**: a unit the revision adds takes one
+above the highest U-ID among **all** sub-issues in `intake-readback.json`, canceled ones included.
+
+**Re-check immediately before updating Linear.** Fetch a fresh read-back the same way and refuse,
+writing nothing, if the parent's state has left the amendable set, or if
+`ensemble-linear-plan verify intake.md fresh-readback.json` exits non-zero: a build started, or
+someone edited the plan in Linear, while it was under review.
+
+**Update in place.** `render` the revised plan. Update the parent with `save_issue` by id, and
+each surviving unit's sub-issue by id (the U-ID to identifier map comes from the fresh read-back).
+Create the units the revision added, with `parentId` and state Agent Ready. **Cancel** the
+sub-issue of each unit the revision removed; the MCP server has no delete tool, and a canceled
+sub-issue is not a unit, so `materialize` and `verify` skip it. Then read back, `verify` and
+archive exactly as for a first publish.
+

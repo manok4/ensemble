@@ -58,4 +58,29 @@ else
 fi
 has "$PUB" 'authored from an issue' "the idempotency protocol names the issue-as-parent case"
 
+# --- 3. amend in place (U6) ------------------------------------------------------
+resume_step=$(awk '/^3\. \*\*Resume or create/{f=1} f&&/^4\. \*\*/{exit} f' "$SKILL")
+assert_contains "$resume_step" 'references/linear-intake.md' \
+  "en-plan's resume step routes an identifier to the intake reference"
+AMEND=$(section "$INTAKE" '## Amend in place')
+[ -n "$AMEND" ] && pass "the amend section exists" || fail "the amend section exists"
+assert_contains "$AMEND" 'unless it is Agent Ready or earlier' "only a parent at Agent Ready or earlier is amendable"
+printf '%s' "$AMEND" | tr '\n' ' ' | grep -q 'In Progress, In Review and Done' \
+  && pass "In Progress, In Review and Done refuse" || fail "In Progress, In Review and Done refuse"
+assert_contains "$AMEND" 'tracked or not' "any existing local file for the plan_id refuses, tracked or not"
+assert_contains "$AMEND" 'ensemble-linear-plan materialize intake-readback.json' "the published plan is materialized through the script"
+assert_contains "$AMEND" 'never renumbered or reused' "U-IDs are never renumbered or reused"
+assert_contains "$AMEND" 'canceled ones included' "a new U-ID goes above every sub-issue's, canceled included"
+assert_contains "$AMEND" 'Re-check immediately before updating Linear' "a fresh read-back is taken immediately before the update"
+assert_contains "$AMEND" 'verify intake.md fresh-readback.json' "and compared with the intake copy through verify"
+assert_contains "$AMEND" '**Cancel**' "removed units are canceled, not deleted"
+amend_line() { printf '%s\n' "$AMEND" | grep -n -- "$1" | head -1 | cut -d: -f1; }
+m=$(amend_line 'Materialize the published plan'); r=$(amend_line 'Revise and review'); c=$(amend_line 'Re-check immediately'); u=$(amend_line 'Update in place')
+if [ -n "$m" ] && [ -n "$r" ] && [ -n "$c" ] && [ -n "$u" ] && [ "$m" -lt "$r" ] && [ "$r" -lt "$c" ] && [ "$c" -lt "$u" ]; then
+  pass "the amend steps read materialize, review, re-check, update, in that order"
+else
+  fail "the amend steps read materialize, review, re-check, update, in that order" "m=${m:-} r=${r:-} c=${c:-} u=${u:-}"
+fi
+has "$PUB" 'cancels removed ones' "the idempotency protocol names the amend case"
+
 report

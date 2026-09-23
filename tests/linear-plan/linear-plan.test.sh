@@ -222,6 +222,18 @@ assert_eq "$(body "$WORK/awkward.md")" "$(body "$WORK/awkward-rt.md")" \
 lp verify "$WORK/awkward.md" "$WORK/awkward-rb.json" 2>"$WORK/err"; rc=$?
 assert_eq "0" "$rc" "and verify accepts it"
 
+# --- 7b. idempotent round trip (EN19 U6) -----------------------------------------
+# An amend materializes the published plan and later re-renders it. If render
+# of a materialized plan differed from render of the source, every amend would
+# rewrite unchanged units in Linear.
+lp render "$SRC" --repo github.com/example/ensemble > "$WORK/r1.json"
+lp render "$WORK/golden.md" --repo github.com/example/ensemble > "$WORK/r2.json"
+if cmp -s "$WORK/r1.json" "$WORK/r2.json"; then
+  pass "rendering a materialized plan reproduces the original payload"
+else
+  fail "rendering a materialized plan reproduces the original payload" "$(diff "$WORK/r1.json" "$WORK/r2.json" | head -6)"
+fi
+
 # --- 8. repo identity ------------------------------------------------------------
 R="$WORK/repo"; mkdir -p "$R"; cp "$SRC" "$R/plan.md"
 ( cd "$R" && git init -q . ) >/dev/null 2>&1

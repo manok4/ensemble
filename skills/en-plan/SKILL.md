@@ -27,7 +27,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
-   - **`--resume <plan-path>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step.
+   - **`--resume <plan-path>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. An identifier (`ENG-412`) amends a published plan: read `references/linear-intake.md`. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step.
    - **`--from-legacy <path>`** (explicit) — mint a *new* plan from an archived legacy plan, which is never modified or moved. **Read `references/plan-from-legacy.md` when this flag is passed**; it owns the confirmation, the `migrated_from:` frontmatter and the legacy README back-reference.
    - **Auto-resume** (heuristic) — a plan in `docs/plans/active/` matching the request by title or `related_design` is offered as a resume rather than a new plan.
    - **Create** — no match; mint a new plan.

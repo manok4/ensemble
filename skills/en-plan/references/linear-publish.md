@@ -194,7 +194,8 @@ In this order, because a retry must never create a second parent.
 3. Create the parent if discovery found none, writing `linear_issue:` into the plan's
    frontmatter **before any sub-issue exists**.
 4. Fetch the parent's existing sub-issues and reconcile by the `(U<N>)` title suffix,
-   creating only the units that are absent and setting each one's state explicitly.
+   creating only the units that are absent and setting each one's state explicitly. An amend
+   (`references/linear-intake.md`) also updates surviving units in place and cancels removed ones.
 5. Refuse and surface if two sub-issues claim the same U-ID, rather than guessing which is
    current.
 
