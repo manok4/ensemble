@@ -110,4 +110,20 @@ has "$SHIP" 'plan_completion_checkpoint' "the ship summary still records the che
 has "$COMP" 'materialized-plans|generated' \
   "a materialized plan is told from an authoring plan by its directory"
 
+# --- 6. both skills say HOW they read the live plan_store (U6) --------------
+# The drift rule compares against "the repo's current plan_store", and without
+# the invocation named each reader picks its own. A fail-soft read resolves an
+# invalid value to local and reports drift, or no drift, for the wrong reason.
+for f in "$COMP" "$LEARN"; do
+  n=$(basename "$(dirname "$f")")
+  has "$f" 'ensemble-config-get plan_store --allowed local,linear --default local --strict' \
+    "$n names the --strict plan_store read the drift check uses"
+done
+# And a Linear branch is resolved to its materialized plan in both, or the
+# provenance rules above never run for the builds they exist for.
+has "$SHIP" 'materialized-plans/ENG-412' "en-ship's checkpoint resolves a Linear branch to the materialized plan"
+has "$LEARN" 'IDENT>-<slug>` resolving to `\.ensemble/materialized-plans' \
+  "en-learn resolves a Linear branch to the materialized plan"
+has "$COMP" 'config_drift' "the drift outcome is a named checkpoint outcome"
+
 report

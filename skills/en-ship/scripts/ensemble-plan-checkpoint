@@ -19,6 +19,12 @@
 #   up_to_date                 the plan is already completed
 #   not_applicable             no plan for this branch, or it is draft/abandoned
 #
+# And two from the build's recorded provenance (EN18), checked before the rest:
+#   config_drift               configured_store disagrees with the repo's current
+#                              plan_store; the ONE blocking outcome
+#   linear_mode                plan_source: linear; the PR merge completes the plan
+#                              in Linear, so there is nothing on disk to flip
+#
 # READ-ONLY. It never edits the plan, moves it, or commits. /en-ship owns the
 # lifecycle flip; this only answers what the state is.
 #
@@ -70,6 +76,16 @@ if [ -z "$plan" ]; then
     done
   fi
 fi
+# A Linear build's branch is <IDENT>-<slug> (ENG-412-...), which the pattern
+# above cannot parse, and its plan is the materialized copy, not a file under
+# docs/plans/. Without this every Linear build resolved not_applicable, and the
+# provenance checks below never ran for the builds they exist for.
+if [ -z "$plan" ]; then
+  ident=$(printf '%s' "$branch" | sed -n 's/^\([A-Za-z][A-Za-z0-9]*-[0-9][0-9]*\)-.*/\1/p' \
+        | tr '[:lower:]' '[:upper:]')
+  [ -n "$ident" ] && [ -f ".ensemble/materialized-plans/$ident.md" ] \
+    && plan=".ensemble/materialized-plans/$ident.md"
+fi
 
 emit() {  # $1=json
   if [ "$as_json" -eq 1 ]; then
@@ -82,6 +98,7 @@ print("outcome     {}".format(d["outcome"]))
 print("plan        {}".format(d.get("plan_path") or "(none)"))
 if d.get("missing_units"):  print("missing     {}".format(", ".join(d["missing_units"])))
 if d.get("deferred_units"): print("deferred    {}".format(", ".join(d["deferred_units"])))
+if d.get("configured_store"): print("drift       built under {}, repo now {}".format(d["configured_store"], d["current_store"]))
 '
   fi
   exit 0
@@ -95,6 +112,27 @@ print(json.dumps({"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"] 
 }
 
 [ -n "$plan" ] || emit "$(none_json not_applicable)"
+
+# --- provenance: what the build recorded, never the live config alone --------
+fm_get() {  # <key>: the first frontmatter value, or empty
+  awk -v k="$1" '/^---[[:space:]]*$/{d++; next} d==1 && index($0, k ":") == 1 {
+    v = substr($0, length(k) + 2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); print v; exit }' "$plan"
+}
+plan_source=$(fm_get plan_source)
+configured=$(fm_get configured_store)
+if [ -n "$configured" ]; then
+  # --strict: an unreadable plan_store is drift too, not a silent `local`.
+  current=$(bash "$SELF_DIR/ensemble-config-get" plan_store --allowed local,linear \
+            --default local --strict 2>/dev/null) || current="invalid"
+  if [ "$current" != "$configured" ]; then
+    emit "$(OUT=config_drift PLAN="$plan" CONF="$configured" CUR="$current" python3 -c '
+import json, os
+print(json.dumps({"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"],
+                  "configured_store": os.environ["CONF"], "current_store": os.environ["CUR"],
+                  "covered_units": [], "missing_units": [], "deferred_units": []}, sort_keys=True))')"
+  fi
+fi
+[ "$plan_source" = "linear" ] && emit "$(none_json linear_mode)"
 
 status=$(grep -m1 '^status:' "$plan" | cut -d: -f2- | tr -d ' ')
 case "$status" in

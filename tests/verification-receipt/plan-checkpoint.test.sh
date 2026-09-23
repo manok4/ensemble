@@ -103,4 +103,48 @@ J=$(fixture lower open "U1:in" "U1" "U1")
 ( cd "$J" && git checkout -q -b en99-lowercase ) >/dev/null 2>&1
 assert_eq "complete" "$(outcome_of "$J")" "a lowercase branch name still resolves its plan"
 
+# --- provenance (EN18): Linear builds and configuration drift ----------------
+# A Linear build's branch is <IDENT>-<slug> and its plan is the materialized
+# copy. Before these, every Linear build resolved not_applicable, so neither
+# linear_mode nor the drift error was reachable.
+# $1=name $2=branch $3=plan path $4=plan_source $5=configured_store $6=repo plan_store ("" = unset)
+prov_fixture() {
+  d="$WORK/$1"; mkdir -p "$d/$(dirname "$3")" "$d/.ensemble" "$WORK/home-$1"
+  ( cd "$d" && git init -q . && git config user.email t@e.com && git config user.name t ) >/dev/null 2>&1
+  printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\nplan_source: %s\nconfigured_store: %s\n---\n\n### U1. goal\n\n- **Ship scope:** in\n' \
+    "$4" "$5" > "$d/$3"
+  [ -n "$6" ] && printf 'plan_store: %s\n' "$6" > "$d/.ensemble/config.local.yaml"
+  ( cd "$d" && git commit -q --allow-empty -m init && git checkout -q -b "$2" ) >/dev/null 2>&1
+  printf '%s\n' "$d"
+}
+prov_run() { ( cd "$1" && HOME="$WORK/home-$2" "$C" --json 2>/dev/null ); }
+prov_outcome() { prov_run "$1" "$2" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["outcome"])
+except Exception: print("UNPARSEABLE")'; }
+
+L=$(prov_fixture lin ENG-412-thing .ensemble/materialized-plans/ENG-412.md linear linear linear)
+assert_eq "linear_mode" "$(prov_outcome "$L" lin)" \
+  "a Linear branch resolves its materialized plan and returns linear_mode"
+assert_eq ".ensemble/materialized-plans/ENG-412.md" \
+  "$(prov_run "$L" lin | python3 -c 'import json,sys;print(json.load(sys.stdin)["plan_path"])')" \
+  "and names the materialized plan it read"
+
+Ll=$(prov_fixture linlower eng-412-thing .ensemble/materialized-plans/ENG-412.md linear linear linear)
+assert_eq "linear_mode" "$(prov_outcome "$Ll" linlower)" "a lowercased Linear branch resolves the same plan"
+
+F=$(prov_fixture flipped ENG-413-thing .ensemble/materialized-plans/ENG-413.md linear linear local)
+assert_eq "config_drift" "$(prov_outcome "$F" flipped)" \
+  "a Linear build shipped after plan_store flipped to local is drift"
+assert_eq "linear/local" \
+  "$(prov_run "$F" flipped | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["configured_store"]+"/"+d["current_store"])')" \
+  "the drift outcome names both values"
+
+G=$(prov_fixture localdrift EN99-thing docs/plans/active/EN99-feature_fixture.md local local linear)
+assert_eq "config_drift" "$(prov_outcome "$G" localdrift)" \
+  "a local build shipped under plan_store: linear is drift too, the direction that skips the git mv"
+
+M=$(prov_fixture migrating EN99-thing docs/plans/active/EN99-feature_fixture.md local linear linear)
+assert_eq "incomplete_unexpected" "$(prov_outcome "$M" migrating)" \
+  "a mid-migration local build (configured_store: linear) is not drift and runs the local outcomes"
+
 report
