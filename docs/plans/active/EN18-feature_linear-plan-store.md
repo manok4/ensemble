@@ -14,7 +14,7 @@ related_design: docs/designs/2026-09-18-linear-plan-store-design.md
 peer_review_verdict: revise
 peer_review_iterations: 3
 peer_review_last_run: 2026-09-22
-peer_review_plan_hash: d60bd1a2f2d91322d6da0c2903fc9f66b9b4aa968e8e6d56f1de76e244fc396a
+peer_review_plan_hash: 03fc30878291209794a7520133d031e5b17a0c48144f36826105b6032bc735d8
 peer_review_resolutions:
   - finding_id: "1-1"
     iteration: 1
@@ -316,7 +316,10 @@ Each unit has a stable U-ID. Never renumbered after assignment.
     is what gives later units their ordering key.
 - **Verification:** both carriers byte-identical (parity test); fixtures present and readable;
   the format doc states a decision for every item (a) through (g) above, with no gaps; and the
-  round-trip produces a matching `ensemble-plan-hash`.
+  round-trip produces a matching `ensemble-plan-hash`. *(Amended at the branch review: the
+  live capture has two of four units and no parent description, so unit-level hash equality is
+  measured and the parent encoding (items (b) and (c)) is specified but unmeasured. The format
+  doc says so, and the first live publish's read-back is the measurement.)*
 
 ### U2. Per-repo config for the plan store, and the carriers to read it
 
@@ -449,14 +452,13 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   feature would ever have published is the counterexample. So: an **untracked** source moves to
   `.ensemble/archive-plans/` or `.ensemble/archive-designs/`, stamped with `linear_issue:` and
   `archived:` so it reads as superseded and doubles as the plan-to-issue audit trail. A
-  **tracked** source, plan or design, is left exactly where it is: the design doc is closed out
-  to `accepted` in the normal way, and a tracked plan keeps its place in `docs/plans/active/`
-  with `linear_issue:` and `archived:` stamped into its frontmatter, so it reads as superseded
-  without a tracked deletion appearing in a tree the promotion promised not to dirty. Both are
-  already durable and in history, which is what archiving was for. Removing them is then a
-  normal committed change someone makes deliberately, not a side effect of promotion.
-  **Check tracked status for both sources before any Linear mutation**, not after, so the
-  decision is never made with a half-published plan on the other side.
+  **tracked** source, plan or design, **refuses `linear`-mode promotion** and names the
+  `git rm --cached` remedy. (Amended at the branch review: leaving a tracked source in place and
+  stamping it leaves a tracked *modification*, and by promotion the plan write, the finalize
+  loop and the status flip have already modified it, so no archive rule can keep a tracked
+  source clean. The operator chose refusal.) **Check tracked status for both sources at
+  `/en-plan`'s write-the-plan step**, before the plan, the finalize loop or any Linear mutation
+  writes anything, so the refusal leaves the tree exactly as it was.
 
   **Confirm the design doc's amendments here too**, before deciding its fate: once the design is
   archived or closed out, an un-amended one is the version that survives. U7 records the decision
@@ -500,10 +502,10 @@ Each unit has a stable U-ID. Never renumbered after assignment.
     rule.
   - *Edge case:* `local` mode prose is unchanged and step 18 still commits. The test asserts
     both modes, or a future edit could quietly make local mode stop committing.
-  - *Edge case:* a **tracked** source, plan or design, is left in place and stamped rather than
-    moved, so promotion leaves no tracked deletion; an **untracked** one is archived. Asserted
-    for **both** sources, since the plan being tracked on a `--resume` run is the case the first
-    draft of this unit got wrong.
+  - *Edge case:* a **tracked** source, plan or design, refuses promotion before anything is
+    written; an **untracked** one is archived. Asserted for **both** sources, since the plan
+    being tracked on a `--resume` run is the case the first draft of this unit got wrong, and
+    asserted at the write-the-plan step, since a check at publish runs after three writes.
   - *Edge case:* verification compares the full invertible mapping, not only the hashed fields.
     Asserted, because a hash-only gate passes while `/en-build` step 4 later fails on a field
     the hash never covered.
@@ -654,7 +656,8 @@ Each unit has a stable U-ID. Never renumbered after assignment.
   Then, in Linear mode, move the parent to In Progress once at step 4b beside the existing status
   flip. Per unit, move its sub-issue to In Progress when the unit starts and to
   Done when it commits, at the same points the unit loop already records progress. Move the
-  parent to In Review after the last unit commits. **Match states by name, not by type**: two
+  parent to In Review after the post-build gates pass (amended at build: the gates run after the
+  last commit and can fail, and a parent already In Review could not honour the abort reset). **Match states by name, not by type**: two
   states share type `started`, so resolving "the started one" picks arbitrarily between In
   Progress and In Review. On a **graceful** failure or abort, return the
   parent to Agent Ready and leave every sub-issue at whatever state it reached, so a resumed
@@ -885,4 +888,12 @@ of this plan add prose to those two files.
   archives it, which U7 runs too late to do.
 - 2026-09-22: Iteration cap reached (`--max-iterations` not raised), so no confirmation pass ran.
   Plan stays `in_progress`; U8 is next in build order.
+- 2026-09-22: Branch review (`/en-review`, codex peer at effort high plus a plan-coverage pass):
+  3 P1, 6 P2, 4 P3, all applied at the operator's direction. U3's tracked-source rule amended to
+  the refusal the build shipped, and the check moved to the write-the-plan step. U1 records the
+  parent encoding as unmeasured. U5's In Review timing amended to match the build. Beyond the
+  plan's text: `ensemble-plan-hash --full` and a `repo` identity in the parent's Verification
+  Contract, so intake sees Linear edits outside the seven hashed fields and discovery cannot
+  adopt another repo's parent; en-ship's checkpoint resolves a Linear branch to its materialized
+  plan and returns `config_drift`; `--strict` rejects duplicate keys.
 
