@@ -12,6 +12,11 @@ never been read back from a live workspace. It fails closed rather than silently
 publish-side read-back verifies every field of it before anything is archived, so the
 first live publish is the measurement, and a mismatch stops there.
 
+**`$SKILL_DIR/scripts/ensemble-linear-plan` is the one implementation of this format**: `render`
+turns a plan into the publish payload, `materialize` turns saved `get_issue` results back into a
+plan, and `verify` compares a read-back with its source. The rules below are its spec; do not
+apply them by hand.
+
 The contract is invertible or it is nothing. `/en-build` materializes a plan
 file from Linear and re-hashes it with `ensemble-plan-hash`; if the round trip
 loses a byte the hash moves and the build refuses a plan nobody edited.

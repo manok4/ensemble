@@ -9,7 +9,8 @@
 # Covered:   per-unit Goal, Files, Approach, Risk, Category, Gated, Dependencies
 #            plus plan-level depth and data_scale.
 # Excluded:  iteration log, per-unit status, peer_review_resolutions.
-# --full:    every `- **Label:**` bullet per unit, in order (Linear mode).
+# --full:    every `- **Label:**` bullet per unit, in order, plus every plan-level
+#            `## ` section except the iteration log (Linear mode).
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -197,6 +198,16 @@ assert_ne "$FULL_BASE" "$(hf "$V")" "a continuation line under Verification move
 V="$WORK/full-status.md"; write_plan "$V"
 perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Status:** complete\n- **Verification:** tests pass/' "$V"
 assert_eq "$FULL_BASE" "$(hf "$V")" "per-unit Status stays excluded under --full"
+
+# Plan-level sections count under --full (EN19): an edit in Linear to Out of
+# scope changes what gets built. The iteration log does not: /en-plan appends it.
+V="$WORK/full-scope.md"; write_plan "$V"; printf '\n## Out of scope\n\n- nothing else\n' >> "$V"
+V2="$WORK/full-scope2.md"; write_plan "$V2"; printf '\n## Out of scope\n\n- nothing else, and a dashboard\n' >> "$V2"
+assert_ne "$(hf "$V")" "$(hf "$V2")" "an edit to a plan-level section moves --full"
+assert_eq "$(h "$V")" "$(h "$V2")" "and leaves the default hash alone"
+V="$WORK/full-log.md"; write_plan "$V"; printf '\n## Iteration log\n\n- first\n' >> "$V"
+V2="$WORK/full-log2.md"; write_plan "$V2"; printf '\n## Iteration log\n\n- first\n- second\n' >> "$V2"
+assert_eq "$(hf "$V")" "$(hf "$V2")" "an iteration-log edit does not move --full"
 
 V="$WORK/full-reflow.md"; write_plan "$V"
 perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Verification:**   tests\n  pass/' "$V"
