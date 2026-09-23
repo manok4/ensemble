@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env bash
+# Runs under bash, as every bundled script is invoked (`bash "$SKILL_DIR/scripts/x"`),
+# and re-execs itself under python3. Python reads the next line as a no-op string.
+"exec" "python3" "$0" "$@"
 # ensemble-linear-plan — the one implementation of the Linear plan transforms.
 #
 # EN18 left every transform to the model: turning a plan into issue payloads,

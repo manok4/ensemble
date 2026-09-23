@@ -61,7 +61,7 @@ amending under it would make the two diverge.
 sub-issue, and save the results unedited as `intake-readback.json`. Refuse **before any write**
 if any file for that `plan_id` already exists under `docs/plans/active/` or
 `docs/plans/completed/`, tracked or not: an unfinished earlier revision is never overwritten.
-Then `$SKILL_DIR/scripts/ensemble-linear-plan materialize intake-readback.json --out
+Then `bash "$SKILL_DIR/scripts/ensemble-linear-plan" materialize intake-readback.json --out
 docs/plans/active/<plan_id>-<plan_type>_<slug>.md`, and keep a copy as `intake.md` beside the
 read-back; the pre-update check compares against it.
 

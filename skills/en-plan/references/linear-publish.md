@@ -75,7 +75,7 @@ states are matched by name rather than type, since `In Progress` and `In Review`
 ## Publishing
 
 Work in `/tmp/ensemble/en-plan/<plan_id>/`. **Render first**:
-`$SKILL_DIR/scripts/ensemble-linear-plan render <plan-path> > payload.json`. It prints the
+`bash "$SKILL_DIR/scripts/ensemble-linear-plan" render <plan-path> > payload.json`. It prints the
 parent's title and description (the plan with its unit blocks removed, then the Verification
 Contract carrying `plan_full_hash` and `repo`) and one entry per unit with its title,
 description and `blocked_by`. A non-zero exit stops the publish before any Linear call, with
@@ -108,7 +108,7 @@ clause of it rather than a proxy for it. `ensemble-linear-plan verify` does all 
 **Fetch, then verify.** `get_issue` the parent; `list_issues` with its `parentId` for the
 sub-issue ids; `get_issue` each sub-issue. Write the results as
 `{"parent": <get_issue result>, "sub_issues": [<get_issue result>, …]}` to `readback.json`,
-unedited, then run `$SKILL_DIR/scripts/ensemble-linear-plan verify <plan-path> readback.json`.
+unedited, then run `bash "$SKILL_DIR/scripts/ensemble-linear-plan" verify <plan-path> readback.json`.
 **Archive only on exit 0.** Exit 3 prints what differs, a unified diff of the first differing
 section or unit; surface it and follow Recovery.
 

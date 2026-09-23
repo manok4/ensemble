@@ -110,7 +110,7 @@ implements it (D119). **Fetch, then materialize; never rebuild the plan by hand:
 1. `get_issue` the parent; `list_issues` with its `parentId` for the sub-issue ids; `get_issue`
    each sub-issue. `list_issues` truncates descriptions, so its bodies are never used.
 2. Write the results unedited as `{"parent": …, "sub_issues": […]}` to a read-back file.
-3. `$SKILL_DIR/scripts/ensemble-linear-plan materialize <read-back> --out
+3. `bash "$SKILL_DIR/scripts/ensemble-linear-plan" materialize <read-back> --out
    .ensemble/materialized-plans/<identifier>.md`. **Refuse on a non-zero exit, before any
    build work**, surfacing its stderr; the script writes no file when it refuses.
 

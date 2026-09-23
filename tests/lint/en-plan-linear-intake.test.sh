@@ -68,7 +68,7 @@ assert_contains "$AMEND" 'unless it is Agent Ready or earlier' "only a parent at
 printf '%s' "$AMEND" | tr '\n' ' ' | grep -q 'In Progress, In Review and Done' \
   && pass "In Progress, In Review and Done refuse" || fail "In Progress, In Review and Done refuse"
 assert_contains "$AMEND" 'tracked or not' "any existing local file for the plan_id refuses, tracked or not"
-assert_contains "$AMEND" 'ensemble-linear-plan materialize intake-readback.json' "the published plan is materialized through the script"
+assert_contains "$AMEND" 'ensemble-linear-plan" materialize intake-readback.json' "the published plan is materialized through the script"
 assert_contains "$AMEND" 'never renumbered or reused' "U-IDs are never renumbered or reused"
 assert_contains "$AMEND" 'canceled ones included' "a new U-ID goes above every sub-issue's, canceled included"
 assert_contains "$AMEND" 'Re-check immediately before updating Linear' "a fresh read-back is taken immediately before the update"

@@ -70,13 +70,13 @@ has "$PUB" 'necessary but not sufficient|not the whole gate|one clause of it' \
 # --- 2b. the transforms run through the script (EN19 U2, D119) -------------
 # The MCP calls stay with the model; every transform goes through
 # ensemble-linear-plan, so the order is render, write, fetch, verify, archive.
-has "$PUB" 'ensemble-linear-plan render' "publish renders the payload with the script"
-has "$PUB" 'ensemble-linear-plan verify' "and verifies the read-back with it"
+has "$PUB" 'ensemble-linear-plan" render' "publish renders the payload with the script"
+has "$PUB" 'ensemble-linear-plan" verify' "and verifies the read-back with it"
 has "$PUB" 'Archive only on exit 0' "archiving waits for verify to exit 0"
 has "$PUB" 'D119' "the publish reference cites D119"
 pub_line() { grep -n -- "$1" "$PUB" | head -1 | cut -d: -f1; }
-r=$(pub_line 'ensemble-linear-plan render'); w=$(pub_line 'Then write with `save_issue`')
-g=$(pub_line '`get_issue` the parent; `list_issues`'); v=$(pub_line 'ensemble-linear-plan verify <plan-path>')
+r=$(pub_line 'ensemble-linear-plan" render'); w=$(pub_line 'Then write with `save_issue`')
+g=$(pub_line '`get_issue` the parent; `list_issues`'); v=$(pub_line 'ensemble-linear-plan" verify <plan-path>')
 if [ -n "$r" ] && [ -n "$w" ] && [ -n "$g" ] && [ -n "$v" ] && [ "$r" -lt "$w" ] && [ "$w" -lt "$g" ] && [ "$g" -lt "$v" ]; then
   pass "the steps read render, save_issue, get_issue, verify, in that order"
 else

@@ -30,12 +30,12 @@ has()   { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basen
 has_near() { tr '\n' ' ' < "$1" | grep -qiE -- "$2" && pass "$3" || fail "$3" "not found together in $(basename "$1"): $2"; }
 
 # --- 1. intake runs the script, never a hand-built plan (EN19 U2, D119) ----
-has "$PRE" 'ensemble-linear-plan materialize' "intake materializes through the script"
+has "$PRE" 'ensemble-linear-plan" materialize' "intake materializes through the script"
 has "$PRE" 'Refuse on a non-zero exit, before any' "and refuses on its non-zero exit before any build work"
 has "$PRE" 'D119' "the preflight doc cites D119"
 has "$FMT" 'ensemble-linear-plan` is the one implementation' "the format doc names the script as its one implementation"
 pre_line() { grep -n -- "$1" "$PRE" | head -1 | cut -d: -f1; }
-f=$(pre_line 'list_issues` with its `parentId`'); m=$(pre_line 'ensemble-linear-plan materialize')
+f=$(pre_line 'list_issues` with its `parentId`'); m=$(pre_line 'ensemble-linear-plan" materialize')
 if [ -n "$f" ] && [ -n "$m" ] && [ "$f" -lt "$m" ]; then pass "the fetch is described before the materialize call"
 else fail "the fetch is described before the materialize call" "fetch=${f:-none} materialize=${m:-none}"; fi
 hasnt() { grep -qiE -- "$2" "$1" && fail "$3" "present in $(basename "$1"): $2" || pass "$3"; }
