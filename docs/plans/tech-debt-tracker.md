@@ -129,6 +129,44 @@ rather than an implicit refusal, and the agent has to infer an answer.
   so the next gap fails a test instead of a build.
 - **Logged:** 2026-09-21
 
+### TD17. Two EN18 U2 config scenarios are correct but unasserted
+
+Filed by /en-review (confidence 6), sub-threshold; surfaced for later review.
+
+EN18 U2 lists two scenarios `tests/lint/plan-store-config.test.sh` does not
+assert. `linear_team: ""` and a bare `linear_team:` both exit 3 under
+`--required`, but the test covers only an unset key. And the malformed
+`config.json` case runs against `peer_model_claude` without `--strict`, never
+against `plan_store --strict`. Both behave correctly when probed by hand.
+
+- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
+- **Severity:** P3
+- **Confidence:** 6/10
+- **Location:** `tests/lint/plan-store-config.test.sh`
+- **Why it matters:** a regression in either path would pass the suite.
+- **Suggested fix:** add both cases; each is a few lines in the existing style.
+- **Logged:** 2026-09-22
+
+### TD18. `/en-plan` cannot tell it was invoked by `/en-flow`
+
+Filed by /en-review (confidence 5), sub-threshold; surfaced for later review.
+
+`linear-publish.md` says the `/en-flow` boundary is "enforced, not merely
+documented": under `plan_store: linear`, `/en-plan` refuses before publishing
+when `/en-flow` invoked it. But `/en-flow` passes no marker, and `/en-plan`'s
+SKILL.md never mentions `/en-flow`, so the refusal depends on the model
+inferring its caller from context.
+
+- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
+- **Severity:** P3
+- **Confidence:** 5/10
+- **Location:** `skills/en-plan/references/linear-publish.md`, *The `/en-flow` boundary*; `skills/en-flow/SKILL.md`
+- **Why it matters:** the chain can publish a plan to Linear and then hand
+  `/en-build` a path that no longer exists, the state the rule exists to prevent.
+- **Suggested fix:** have `/en-flow` read `plan_store` itself and refuse before
+  invoking `/en-plan`, or pass an explicit flag the refusal keys on.
+- **Logged:** 2026-09-22
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
