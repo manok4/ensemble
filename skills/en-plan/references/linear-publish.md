@@ -29,6 +29,13 @@ plan_store:  ensemble-config-get plan_store --allowed local,linear --default loc
 linear_team: ensemble-config-get linear_team --required          # linear mode only
 ```
 
+**One more read, a warning rather than a gate.**
+`ensemble-config-get linear_github_confirmed --allowed true,false`: when it is not `true`, warn
+once before publishing that the team's GitHub integration mapping is unconfirmed (PR open must
+map to In Review or nothing, merge to Done; `/en-setup`'s Linear check records it) and continue.
+It cannot be checked over MCP, so it is the operator's word, and a publish is not the moment to
+block on it.
+
 `--strict` turns a present-but-invalid value into exit 3 instead of a fall-through; an absent
 key still falls through, so a repo that never opted in is unaffected. `linear_team` has no
 sensible default and is resolved **before any Linear call**: failing here beats failing once a

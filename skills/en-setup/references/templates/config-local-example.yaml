@@ -198,3 +198,9 @@ default_branch_fallback: main
 # The Linear team plans are filed under. Required when plan_store is `linear`,
 # and checked before any Linear call rather than after a parent issue exists.
 # linear_team: ENG
+
+# Set by /en-setup's Linear check once you confirm the team's GitHub
+# integration maps PR open to In Review (or nothing) and merge to Done. No MCP
+# tool can read that mapping, so it is recorded here; /en-plan warns at publish
+# while it is unset. Without it, opening the PR can move the parent backwards.
+# linear_github_confirmed: true
