@@ -77,7 +77,10 @@ act on what this build did rather than on what the config says later.
 **Provenance is written on both paths, and it is TWO fields, not one.** Collapsing them makes
 the `linear` + path row above unshippable: it resolves a source of `local` under a configured
 store of `linear`, so a single field forces ship to read one of the two as drift and stop on
-every mid-migration build. So record both, and never re-resolve either:
+every mid-migration build. So record both, and never re-resolve either. They go in the plan's
+frontmatter **and** in the `plan-provenance:` trailer on every unit commit
+(`references/unit-loop.md`); `/en-ship` reads the trailer first, because the materialized file is
+gitignored and can be gone by ship time:
 
 | field | value | what reads it |
 |---|---|---|

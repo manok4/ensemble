@@ -126,4 +126,17 @@ has "$LEARN" 'IDENT>-<slug>` resolving to `\.ensemble/materialized-plans' \
   "en-learn resolves a Linear branch to the materialized plan"
 has "$COMP" 'config_drift' "the drift outcome is a named checkpoint outcome"
 
+# --- 7. provenance travels in git history (EN19 U3) --------------------------
+# The materialized plan is gitignored. Provenance that lived only there made the
+# drift check go quiet on a fresh clone; the trailer is what survives.
+BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
+LOOP="$REPO_ROOT/skills/en-build/references/unit-loop.md"
+step9e=$(awk '/9e\. Commit/{f=1} f&&/9f\./{exit} f' "$BUILD")
+assert_contains "$step9e" 'plan-provenance:' "en-build's 9e commit carries the plan-provenance trailer"
+has "$LOOP" '^plan-provenance: \{"plan_source":' "unit-loop.md pins the trailer's format"
+has "$LOOP" 'Every unit commit carries one' "and says every unit commit carries it, not only the post-build commit"
+has "$COMP" "trailers:key=plan-provenance" "plan-completion reads the trailer from git history"
+has "$COMP" 'provenance_conflict' "disagreeing trailers are a named, blocking outcome"
+has "$LEARN" "trailers:key=plan-provenance" "en-learn 11a reads the same trailer first"
+
 report

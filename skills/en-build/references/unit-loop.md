@@ -22,6 +22,27 @@ exit codes it acts on; this file is read when the build enters step 8.
 
 A "yes" that the unit's tests do not cover is a gap to close here, not a finding to leave for step 10.
 
+
+## The `plan-provenance:` trailer (9e)
+
+**Every unit commit carries one**, on both the local and the Linear path, with the values the
+pre-flight resolved at intake:
+
+```
+plan-provenance: {"plan_source":"linear","configured_store":"linear","plan_ref":"ENG-412"}
+```
+
+`plan_source` and `configured_store` are the two provenance fields `references/build-preflight.md`
+defines; `plan_ref` is the Linear identifier, or the plan path on a local build. Write the same
+values on every unit commit of the build: `/en-ship`'s checkpoint reads them from
+`git log <base>..HEAD`, and trailers that disagree stop the ship as `provenance_conflict`.
+
+**Why every unit, not only the post-build commit.** A build that stopped before step 10 still
+records where its plan came from, and that is the build most likely to be shipped later from
+another machine. **Why a trailer at all.** The materialized plan is gitignored, so a fresh clone
+or `git clean` loses it, and provenance that lived only there turned the drift check off without
+a word.
+
 ## The checkpoint (9f)
 
 - **Before the first `risk: destructive` or `gated: true` unit, and once after the last unit commits**, run `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit checkpoint --range <first-unit-commit>^..HEAD --prefer-full-when-cheap`: lint, typecheck, and the tests covering everything built so far. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** enter the unit the checkpoint was guarding.

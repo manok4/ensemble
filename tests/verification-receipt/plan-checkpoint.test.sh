@@ -147,4 +147,62 @@ M=$(prov_fixture migrating EN99-thing docs/plans/active/EN99-feature_fixture.md 
 assert_eq "incomplete_unexpected" "$(prov_outcome "$M" migrating)" \
   "a mid-migration local build (configured_store: linear) is not drift and runs the local outcomes"
 
+# --- provenance from git history (EN19 U3) -----------------------------------
+# Every unit commit carries a plan-provenance trailer, so ship reads provenance
+# from history on any machine. Before this, provenance lived only in the
+# gitignored materialized file: a fresh clone or `git clean` silently turned
+# the drift check off and returned not_applicable.
+# $1=name $2=branch $3=repo plan_store ("" = unset) $4.. = trailer JSON per unit commit
+trailer_fixture() {
+  local name="$1" br="$2" store="$3"; shift 3
+  d="$WORK/$name"; mkdir -p "$d/.ensemble" "$WORK/home-$name"
+  ( cd "$d" && git init -q . && git config user.email t@e.com && git config user.name t \
+      && git commit -q --allow-empty -m init && git checkout -q -b "$br" ) >/dev/null 2>&1
+  [ -n "$store" ] && printf 'plan_store: %s\n' "$store" > "$d/.ensemble/config.local.yaml"
+  local n=1
+  for t in "$@"; do
+    ( cd "$d" && git commit -q --allow-empty -m "feat(x): unit $n (U$n)
+
+plan-provenance: $t" ) >/dev/null 2>&1
+    n=$((n + 1))
+  done
+  printf '%s\n' "$d"
+}
+tr_run() { ( cd "$1" && HOME="$WORK/home-$2" "$C" --base "$(base_branch "$1")" --json 2>/dev/null ); }
+tr_outcome() { tr_run "$1" "$2" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["outcome"])
+except Exception: print("UNPARSEABLE")'; }
+LIN='{"plan_source":"linear","configured_store":"linear","plan_ref":"ENG-500"}'
+
+T1=$(trailer_fixture trl ENG-500-thing linear "$LIN" "$LIN")
+[ ! -e "$T1/.ensemble/materialized-plans" ] && pass "the fixture has no materialized plan on disk" \
+  || fail "the fixture has no materialized plan on disk"
+assert_eq "linear_mode" "$(tr_outcome "$T1" trl)" \
+  "a Linear build with provenance trailers and no materialized file returns linear_mode"
+
+T2=$(trailer_fixture trldrift ENG-501-thing local "$LIN")
+assert_eq "config_drift" "$(tr_outcome "$T2" trldrift)" \
+  "trailers recording configured_store: linear, repo now local: config_drift with no file on disk"
+assert_eq "linear/local" \
+  "$(tr_run "$T2" trldrift | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["configured_store"]+"/"+d["current_store"])')" \
+  "the drift names both values, read from the trailer"
+
+T3=$(trailer_fixture trlconflict ENG-502-thing linear "$LIN" \
+  '{"plan_source":"local","configured_store":"linear","plan_ref":"docs/plans/active/EN99-x.md"}')
+assert_eq "provenance_conflict" "$(tr_outcome "$T3" trlconflict)" \
+  "two unit commits whose provenance trailers disagree return provenance_conflict"
+
+# Key order is not provenance: the same values written in another order agree.
+T4=$(trailer_fixture trlorder ENG-503-thing linear "$LIN" \
+  '{"plan_ref":"ENG-500","configured_store":"linear","plan_source":"linear"}')
+assert_eq "linear_mode" "$(tr_outcome "$T4" trlorder)" "trailers with the same values in another key order agree"
+
+# The trailer wins over the materialized file: history is the record, the file
+# is a local cache that can be stale.
+T5=$(trailer_fixture trlwins ENG-504-thing linear "$LIN")
+mkdir -p "$T5/.ensemble/materialized-plans"
+printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\nplan_source: local\nconfigured_store: local\n---\n\n### U1. g\n\n- **Ship scope:** in\n' \
+  > "$T5/.ensemble/materialized-plans/ENG-504.md"
+assert_eq "linear_mode" "$(tr_outcome "$T5" trlwins)" "the trailer takes precedence over the materialized file's frontmatter"
+
 report
