@@ -90,4 +90,3 @@ Create the units the revision added, with `parentId` and state Agent Ready. **Ca
 sub-issue of each unit the revision removed; the MCP server has no delete tool, and a canceled
 sub-issue is not a unit, so `materialize` and `verify` skip it. Then read back, `verify` and
 archive exactly as for a first publish.
-

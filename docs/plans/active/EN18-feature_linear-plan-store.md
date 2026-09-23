@@ -896,4 +896,3 @@ of this plan add prose to those two files.
   Contract, so intake sees Linear edits outside the seven hashed fields and discovery cannot
   adopt another repo's parent; en-ship's checkpoint resolves a Linear branch to its materialized
   plan and returns `config_drift`; `--strict` rejects duplicate keys.
-

@@ -76,4 +76,3 @@ that reason:
 shape, so the directory is what tells them apart; an authoring plan still sitting in `active/`
 after a Linear publish means the archive did not complete, and it is never `git mv`d on that
 basis.
-
