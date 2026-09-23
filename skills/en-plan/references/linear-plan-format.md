@@ -93,15 +93,21 @@ fields step 4 validates but the hash excludes: Test scenarios, Verification,
 Requirements covered, Reversibility, Ship scope, Execution note and Interfaces. A
 plan missing them materializes into a file the pre-flight refuses.
 
-**The parent's description ends with a `## Verification Contract` heading** followed
-by one fenced `yaml` block: the plan's frontmatter verbatim (`plan_id`, `title`,
-`status`, `depth`, `data_scale`, `related_design`, `peer_review_verdict`,
-`peer_review_resolutions`, `peer_review_plan_hash` and the rest), plus two keys the
-publish step adds:
+**The parent's description is the whole plan except its unit blocks**: the title, every
+plan-level section (Context, Out of scope, Approach, Technical design, Decisions, the iteration
+log and the rest) and the `## Implementation units` heading with any preamble, verbatim and in
+order. A build therefore sees the same Out of scope and Technical design the reviewer did, and
+the plan no longer survives only in an archive on the publishing machine.
+
+**It ends with a `## Verification Contract` heading** followed by one fenced `yaml` block: the
+plan's frontmatter verbatim (`plan_id`, `title`, `status`, `depth`, `data_scale`,
+`related_design`, `peer_review_verdict`, `peer_review_resolutions`, `peer_review_plan_hash` and
+the rest), plus two keys `render` adds:
 
 - `plan_full_hash`: `ensemble-plan-hash --full` over the plan as published. The
   default hash covers seven fields, so an edit in Linear to Test scenarios or
-  Verification would pass it; `--full` covers every labelled field of every unit.
+  Verification would pass it; `--full` covers every labelled field of every unit and
+  every plan-level section except the iteration log, which `/en-plan` appends to.
 - `repo`: this repository's identity, the `origin` remote URL with scheme, userinfo
   and a trailing `.git` stripped, lowercased (`github.com/owner/name`). Plan IDs are
   repo-local and several repos can publish to one team, so discovery matches on
@@ -113,15 +119,23 @@ inferred from the local tree.
 
 ## Materialization, in order
 
-1. `get_issue` the parent. Recover the frontmatter, `plan_full_hash` and `repo`
-   from the Verification Contract block. Refuse when `repo` is not this repo.
+Steps 1 to 3 are MCP calls the skill makes; steps 4 to 7 are what `ensemble-linear-plan
+materialize` does with their saved results.
+
+1. `get_issue` the parent.
 2. `list_issues --parentId` for the sub-issue set. Descriptions here are
    truncated; you want the ids.
 3. `get_issue` each sub-issue for its full description.
-4. Parse `(U<N>)` from each title. Refuse on a missing or duplicate U-ID.
-5. Sort by that integer.
-6. **Normalize `* **` to `- **`** in every description.
-7. Emit the plan file, then compare **both** digests before anything else reads it:
-   `ensemble-plan-hash` against `peer_review_plan_hash`, and
-   `ensemble-plan-hash --full` against `plan_full_hash`. Either mismatch refuses: the
-   plan in Linear is no longer the plan that was reviewed.
+4. Recover the frontmatter, `plan_full_hash` and `repo` from the Verification Contract
+   block. Skip canceled sub-issues: a canceled unit is not a unit.
+5. Parse `(U<N>)` from each title. Refuse on a missing suffix, or two live sub-issues
+   with the same U-ID. Sort by that integer.
+6. **Normalize `* ` to `- `** at the start of every list line, outside code fences and
+   inside blockquotes; refuse any description still carrying the truncation marker.
+7. Emit the plan file: the parent's skeleton with the units placed under
+   `## Implementation units`.
+
+The skill then compares **both** digests before anything else reads the file:
+`ensemble-plan-hash` against `peer_review_plan_hash`, and `ensemble-plan-hash --full`
+against `plan_full_hash`, and refuses when `repo` is not this repo. Either mismatch
+refuses: the plan in Linear is no longer the plan that was reviewed.

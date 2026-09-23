@@ -7,8 +7,9 @@
 > On `local` none of this runs and the flow is unchanged: the auto-commit step commits the plan as it always has.
 >
 > `references/linear-plan-format.md` owns the mapping between a plan file and a Linear
-> parent plus sub-issues, including the marker normalization both this step and
-> `/en-build` apply. Read it alongside this one; do not restate its rules from memory.
+> parent plus sub-issues, and `$SKILL_DIR/scripts/ensemble-linear-plan` implements it (D119).
+> This file owns the MCP calls around the script and their order. Never transform a plan or a
+> read-back by hand: the script is the only implementation `/en-build` also runs.
 
 In `linear` mode the reviewed plan becomes the parent issue and its units become
 sub-issues, and **the auto-commit step is skipped entirely**: a repo in Linear mode makes no
@@ -66,8 +67,18 @@ states are matched by name rather than type, since `In Progress` and `In Review`
 
 ## Publishing
 
-Follow the idempotency protocol below rather than creating anything directly. Units are
-created in dependency order. **Each sub-issue's state is set explicitly at creation.**
+Work in `/tmp/ensemble/en-plan/<plan_id>/`. **Render first**:
+`$SKILL_DIR/scripts/ensemble-linear-plan render <plan-path> > payload.json`. It prints the
+parent's title and description (the plan with its unit blocks removed, then the Verification
+Contract carrying `plan_full_hash` and `repo`) and one entry per unit with its title,
+description and `blocked_by`. A non-zero exit stops the publish before any Linear call, with
+the reason on stderr (no `origin` remote, a unit without a title).
+
+Then write with `save_issue`, following the idempotency protocol below rather than creating
+anything directly: the parent from `payload.parent`, each unit from `payload.units` with
+`parentId` set, in dependency order so each `blocked_by` names an issue that already exists.
+Send each title and description exactly as rendered. **Each sub-issue's state is set
+explicitly at creation.**
 
 U1 measured this against a live workspace: **a sub-issue does not inherit its parent's
 state.** One created under an `Agent Ready` parent lands in **Backlog**. Leaving the state
@@ -85,28 +96,26 @@ validates exactly those fields.
 
 So verification is **field-by-field over the full invertible mapping**, with the
 `ensemble-plan-hash` comparison against the plan's own `peer_review_plan_hash` as one
-clause of it rather than a proxy for it. Archive only when both hold.
+clause of it rather than a proxy for it. `ensemble-linear-plan verify` does all of it.
 
-Before publishing, compute `ensemble-plan-hash --full <plan>` and `repo` and write both
-into the parent's Verification Contract, per the format doc. `/en-build` has no local
-source to compare against, so `plan_full_hash` is what lets it refuse a plan someone
-edited in Linear outside the seven hashed fields. The read-back verifies both keys like
-any other field.
+**Fetch, then verify.** `get_issue` the parent; `list_issues` with its `parentId` for the
+sub-issue ids; `get_issue` each sub-issue. Write the results as
+`{"parent": <get_issue result>, "sub_issues": [<get_issue result>, …]}` to `readback.json`,
+unedited, then run `$SKILL_DIR/scripts/ensemble-linear-plan verify <plan-path> readback.json`.
+**Archive only on exit 0.** Exit 3 prints what differs, a unified diff of the first differing
+section or unit; surface it and follow Recovery.
 
-Two measured behaviours shape how the read-back is fetched and compared:
+Two measured behaviours shape the fetch, and the script handles both:
 
-- **Linear rewrites `- ` list markers to `* `.** Sent `- **Goal:** …`, stored and
-  returned `* **Goal:** …`. `ensemble-plan-hash` anchors on
-  `^- \*\*(Goal|Files|Approach|Risk|Category|Gated|Dependencies):\*\*`, so a read-back
-  compared as returned canonicalizes to seven *empty* fields per unit. It still hashes.
-  **Normalize `* **` back to `- **` before canonicalizing**, per the format doc, which is
-  the same rule `/en-build` applies on the materialization side. Without it verification
-  fails on every plan, and the tempting repair is to weaken the comparison instead.
+- **Linear rewrites `- ` list markers to `* `** (`- **Goal:**` comes back as `* **Goal:**`). A read-back compared as returned
+  canonicalizes to seven *empty* fields per unit, and still hashes. The script normalizes
+  the markers, the same code `/en-build`'s materialization runs; when verification fails,
+  the fix is never to weaken the comparison.
 - **`list_issues` truncates descriptions**, returning
-  `(truncated, use get_issue for full description)` in place of the tail. Read-back is
-  therefore one list call plus a **`get_issue` per unit**. The N+1 is deliberate: a
-  truncated description that silently verified is worse than a slow read-back that
-  verified honestly.
+  `(truncated, use get_issue for full description)` in place of the tail. That is why each
+  unit is fetched with **`get_issue`**, and why the script refuses a description still
+  carrying the marker. The N+1 is deliberate: a truncated description that silently
+  verified is worse than a slow read-back that verified honestly.
 
 ## Archiving, and the tracked-source refusal
 

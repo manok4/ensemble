@@ -67,13 +67,31 @@ has "$PUB" 'ensemble-plan-hash' "the hash comparison is one clause of that verif
 has "$PUB" 'necessary but not sufficient|not the whole gate|one clause of it' \
   "the prose states why the hash alone is not the gate"
 
+# --- 2b. the transforms run through the script (EN19 U2, D119) -------------
+# The MCP calls stay with the model; every transform goes through
+# ensemble-linear-plan, so the order is render, write, fetch, verify, archive.
+has "$PUB" 'ensemble-linear-plan render' "publish renders the payload with the script"
+has "$PUB" 'ensemble-linear-plan verify' "and verifies the read-back with it"
+has "$PUB" 'Archive only on exit 0' "archiving waits for verify to exit 0"
+has "$PUB" 'D119' "the publish reference cites D119"
+pub_line() { grep -n -- "$1" "$PUB" | head -1 | cut -d: -f1; }
+r=$(pub_line 'ensemble-linear-plan render'); w=$(pub_line 'Then write with `save_issue`')
+g=$(pub_line '`get_issue` the parent; `list_issues`'); v=$(pub_line 'ensemble-linear-plan verify <plan-path>')
+if [ -n "$r" ] && [ -n "$w" ] && [ -n "$g" ] && [ -n "$v" ] && [ "$r" -lt "$w" ] && [ "$w" -lt "$g" ] && [ "$g" -lt "$v" ]; then
+  pass "the steps read render, save_issue, get_issue, verify, in that order"
+else
+  fail "the steps read render, save_issue, get_issue, verify, in that order" "render=${r:-none} save=${w:-none} get=${g:-none} verify=${v:-none}"
+fi
+hasnt "$PUB" 'Normalize `\* \*\*` back to `- \*\*` before canonicalizing' \
+  "publish no longer tells the model to normalize markers itself"
+
 # --- 3. the marker rewrite, the single non-obvious fact in the design --------
 # U1 measured it: Linear stores `- ` list markers as `* `, and ensemble-plan-hash
 # anchors on `^- \*\*(Goal|Files|...)`. Without the normalization a read-back
 # canonicalizes to seven EMPTY fields per unit, which still hashes. The tempting
 # "fix" when verification fails on every plan is to weaken the comparison, so
 # the normalization is asserted by name.
-has "$PUB" 'normali[sz]' "the verify step normalizes the list markers before canonicalizing"
+has "$PUB" 'normali[sz]' "the prose says the markers are normalized (by the script) before comparing"
 has "$PUB" '\* \*\*' "the prose names the rewritten marker Linear actually returns"
 has "$FMT" 'normali[sz]' "the format doc owns the normalization rule both sides share"
 
@@ -184,7 +202,7 @@ has "$PUB" 'plan_id`$|this repo.s `repo`' \
   "discovery matches plan_id AND repo, since plan IDs are repo-local"
 has "$PUB" 'different `repo` belongs to another repo' "another repo's parent is ignored, not adopted"
 has "$PUB" '\*\*no\*\* `repo` cannot be attributed' "a parent with no repo refuses rather than guess"
-has "$PUB" 'ensemble-plan-hash --full' "publish records the --full digest"
+has "$PUB" 'Contract carrying `plan_full_hash` and `repo`' "the rendered parent records the --full digest and the repo"
 
 # --- 10. the /en-flow boundary is enforced, not documented -------------------
 has "$PUB" 'en-flow' "the /en-flow boundary is named"

@@ -5,16 +5,11 @@
 # as a plan file, so everything downstream (the sub-state matrix, the hash
 # baseline, the 9f checkpoint) stays untouched.
 #
-# The centre of this file is not a prose clause, it is the round-trip in
-# section 1: U1's real capture, materialized per the documented rules, must
-# canonicalize identically to the plan it was published from. That assertion
-# is why the fixtures exist. Everything else guards the prose around it.
-#
-# Why it needs a negative control of its own: a plan materialized WITHOUT the
-# marker normalization still hashes. It hashes seven EMPTY fields per unit, so
-# every unit's digest is identical and the 9f checkpoint compares two
-# meaningless values. A test that only asserted "hashing succeeded" would be
-# green against exactly that bug.
+# The round-trip that used to sit here moved with the transform itself: EN19
+# U1 put materialization in ensemble-linear-plan, and tests/linear-plan/
+# exercises it against U1's real capture with its negative controls. This file
+# now guards the routing: that intake fetches, hands the result to the script,
+# and refuses on its exit code, rather than rebuilding the plan by hand.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -34,73 +29,22 @@ has()   { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basen
 # 255; flattening with tr avoids both.
 has_near() { tr '\n' ' ' < "$1" | grep -qiE -- "$2" && pass "$3" || fail "$3" "not found together in $(basename "$1"): $2"; }
 
-# --- 1. the round-trip, against U1's real capture ----------------------------
-# Materializes tests/fixtures/linear/EN18-readback.json per the format doc's
-# rules and compares `ensemble-plan-hash --canon` against the plan it came
-# from. Run twice: once normalized (must match) and once as-returned (must
-# not), so the clause cannot pass for the wrong reason.
-if ! command -v python3 >/dev/null 2>&1; then
-  pass "SKIPPED: python3 not installed; the round-trip is unchecked on this machine"
-else
-  rt=$(python3 - "$REPO_ROOT" <<'PY'
-import json, re, subprocess, sys, tempfile, os
-root = sys.argv[1]
-src = open(f"{root}/tests/fixtures/linear/EN18-sample-plan.md").read()
-fm  = src.split('---', 2)[1]
-cap = json.load(open(f"{root}/tests/fixtures/linear/EN18-readback.json"))
-
-# U1 is the full-equality case. U2's captured description carries no Approach
-# field, so it exercises ordering below but cannot prove field equality; the
-# README records that only two of the source's four units were published.
-expected = [s.rstrip() for s in re.split(r'(?m)^(?=### U)', src) if re.match(r'### U1\.', s)][0]
-unit = [s for s in cap['sub_issues'] if s['u_id'] == 'U1'][0]
-
-def wrap(body):
-    return '---' + fm + '---\n\n# X\n\n## Implementation units\n\n' + body + '\n'
-
-def canon(text):
-    f = tempfile.NamedTemporaryFile('w', suffix='.md', delete=False)
-    f.write(text); f.close()
-    out = subprocess.run(['bash', f"{root}/skills/en-build/scripts/ensemble-plan-hash",
-                          '--canon', f.name], capture_output=True, text=True).stdout
-    os.unlink(f.name)
-    return out
-
-def materialize(normalize):
-    body = re.sub(r'(?m)^\* \*\*', '- **', unit['description']) if normalize else unit['description']
-    title = re.sub(r' \(U\d+\)$', '', unit['title'])
-    return wrap('### ' + unit['u_id'] + '. ' + title + '\n\n' + body.rstrip())
-
-want = canon(wrap(expected))
-got_norm = canon(materialize(True))
-got_raw  = canon(materialize(False))
-
-# Ordering: list_issues returned updatedAt-descending, U2 before U1. A build
-# that trusted that order would run the units backwards.
-by_uid = [s['u_id'] for s in sorted(cap['sub_issues'], key=lambda s: int(s['u_id'][1:]))]
-returned = cap['list_issues_order']
-
-print('normalized_matches=' + ('yes' if got_norm == want else 'no'))
-print('raw_matches=' + ('yes' if got_raw == want else 'no'))
-print('raw_is_empty_fields=' + ('yes' if 'Goal:0:' in got_raw else 'no'))
-print('uid_order=' + ','.join(by_uid))
-print('returned_order=' + ','.join(returned))
-PY
-)
-  assert_eq "yes" "$(printf '%s\n' "$rt" | sed -n 's/^normalized_matches=//p')" \
-    "a materialized plan canonicalizes identically to the plan it was published from"
-  # The control, asserted rather than assumed: without the normalization the
-  # canonical form must NOT match. This is the clause that makes the one above
-  # mean something.
-  assert_eq "no" "$(printf '%s\n' "$rt" | sed -n 's/^raw_matches=//p')" \
-    "skipping the marker normalization breaks the round-trip"
-  assert_eq "yes" "$(printf '%s\n' "$rt" | sed -n 's/^raw_is_empty_fields=//p')" \
-    "and it breaks it silently: the un-normalized form hashes seven empty fields"
-  assert_eq "U1,U2" "$(printf '%s\n' "$rt" | sed -n 's/^uid_order=//p')" \
-    "units order by their U-ID suffix"
-  assert_eq "EMB-3,EMB-2" "$(printf '%s\n' "$rt" | sed -n 's/^returned_order=//p')" \
-    "which is not the order Linear returned them in (updatedAt descending)"
-fi
+# --- 1. intake runs the script, never a hand-built plan (EN19 U2, D119) ----
+has "$PRE" 'ensemble-linear-plan materialize' "intake materializes through the script"
+has "$PRE" 'Refuse on a non-zero exit, before any' "and refuses on its non-zero exit before any build work"
+has "$PRE" 'D119' "the preflight doc cites D119"
+has "$FMT" 'ensemble-linear-plan` is the one implementation' "the format doc names the script as its one implementation"
+pre_line() { grep -n -- "$1" "$PRE" | head -1 | cut -d: -f1; }
+f=$(pre_line 'list_issues` with its `parentId`'); m=$(pre_line 'ensemble-linear-plan materialize')
+if [ -n "$f" ] && [ -n "$m" ] && [ "$f" -lt "$m" ]; then pass "the fetch is described before the materialize call"
+else fail "the fetch is described before the materialize call" "fetch=${f:-none} materialize=${m:-none}"; fi
+hasnt() { grep -qiE -- "$2" "$1" && fail "$3" "present in $(basename "$1"): $2" || pass "$3"; }
+hasnt "$PRE" 'Normalize `\* \*\*` back to `- \*\*` at the start' \
+  "the preflight no longer tells the model to normalize markers itself"
+[ -x "$REPO_ROOT/skills/en-build/scripts/ensemble-linear-plan" ] && pass "en-build carries the script" \
+  || fail "en-build carries the script"
+[ -f "$REPO_ROOT/tests/linear-plan/linear-plan.test.sh" ] && pass "the round-trip lives in tests/linear-plan/" \
+  || fail "the round-trip lives in tests/linear-plan/"
 
 # The fixtures the round-trip stands on must stay present and real.
 for f in EN18-readback.json EN18-sample-plan.md README.md; do
@@ -128,7 +72,7 @@ has "$PRE" 'normali[sz]' "materialization normalizes the markers"
 has "$FMT" 'normali[sz]' "the format doc owns the normalization rule both sides share"
 has "$PRE" 'get_issue' "fetching is one list call plus a get_issue per unit"
 has "$PRE" 'truncat' "because list_issues truncates descriptions"
-has_near "$PRE" 'Refuse[^#]{0,40}description still carrying that marker' \
+has_near "$PRE" 'refuses a description still carrying Linear.s truncation marker' \
   "a description still carrying the truncation marker refuses"
 has "$PRE" 'ensemble-plan-hash --full` against `plan_full_hash' \
   "intake compares the --full digest, not only the seven-field hash"
