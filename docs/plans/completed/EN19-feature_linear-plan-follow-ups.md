@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN19
 title: Linear plan store follow-ups: deterministic transforms, issue intake, amend, portable provenance, setup check
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-09-22
-shipped:
+shipped: 2026-09-23
 deepened:
 covers_requirements: []
 requirements_pending: true
