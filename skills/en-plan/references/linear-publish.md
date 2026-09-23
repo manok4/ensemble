@@ -39,18 +39,18 @@ has no team to search without it.
 
 The sequence is not arbitrary. Each step exists because doing it later loses something.
 
-1. **Resolve tracked status for both sources**, the plan and its design doc, at the
+1. **Resolve the plan's tracked status** at the
    write-the-plan step: before the plan is written, before the finalize loop writes,
-   and so before any Linear mutation. **A tracked source refuses Linear promotion.** Deciding after the
+   and so before any Linear mutation. **A tracked plan refuses Linear promotion.** Deciding after the
    publish means deciding with a half-published plan on the other side, and deciding at
    publish means deciding over a file three earlier steps already rewrote.
-2. **Confirm the design doc's amendments.** Once the design is archived or closed out, an
-   un-amended copy is the version that survives. `/en-plan` is the only skill holding both
-   the design and the plan that consumed it, so this cannot be deferred to a later unit.
+2. **Confirm the design doc's amendments.** The design is left untouched in `linear` mode
+   (below), so an un-amended copy is the version the team keeps reading. `/en-plan` is the only
+   skill holding both the design and the plan that consumed it, so this cannot be deferred.
 3. **Publish**, in dependency order, so each unit's blocking edges reference identifiers
    that already exist.
 4. **Read back and verify.**
-5. **Archive, or leave in place**, per the tracked-file rule.
+5. **Archive the plan**, per the rule below. The design doc is never touched.
 
 ## Workflow states
 
@@ -119,8 +119,8 @@ Two measured behaviours shape the fetch, and the script handles both:
 
 ## Archiving, and the tracked-source refusal
 
-**A tracked plan or design refuses `linear`-mode promotion.** Check both at the write-the-plan
-step, before anything is written, name which source is tracked, and stop with an actionable message: remove
+**A tracked plan refuses `linear`-mode promotion.** Check it at the write-the-plan
+step, before anything is written, name the path, and stop with an actionable message: remove
 it from git (`git rm --cached <path>`, commit that), then re-run. Nothing is published, nothing
 is moved, and the tree is exactly as it was.
 
@@ -144,14 +144,25 @@ untracked, so the common path is unaffected. It fires on `--resume` of a plan co
 including an `/en-sweep` draft, which is exactly the case an earlier draft of this rule assumed
 away.
 
-| Source | Tracked | What happens |
-|---|---|---|
-| plan | no | moves to `.ensemble/archive-plans/`, stamped `linear_issue:` and `archived:` |
-| plan | yes | **refuse before any write**; name the path and the `git rm --cached` remedy |
-| design | no | moves to `.ensemble/archive-designs/`, stamped the same way |
-| design | yes | **refuse before any write**, same message |
+| Plan tracked | What happens |
+|---|---|
+| no | moves to `.ensemble/archive-plans/`, stamped `linear_issue:` and `archived:` |
+| yes | **refuse before any write**; name the path and the `git rm --cached` remedy |
 
-An untracked source is stamped and moved, because nothing git tracks is changed by either.
+An untracked plan is stamped and moved, because nothing git tracks is changed by either.
+
+## Design docs are left alone
+
+**In `linear` mode a design doc is never stamped, moved or status-flipped, tracked or not.**
+`/en-plan`'s design close-out is skipped; the parent's Verification Contract carries
+`related_design`, which is the link. The run report says the design stays open and names it, so
+the operator can close it (`status: accepted`, `related_plan:`) in their next commit.
+
+Designs used to follow the plan's rule, and in a repo that commits its designs, as this one does,
+that made the tracked-source refusal fire on nearly every promotion that consumed one. A design is
+a durable record rather than an execution artifact, which is the split D118's Problem statement
+draws: plans are transient, the record stays in the repo. Leaving it untouched keeps
+`git status --porcelain` empty without asking anyone to untrack their design history.
 
 **The contract is auditable, not aspirational:** after a `linear`-mode promotion,
 `git status --porcelain` is empty. That is the check, not "no deletion appeared".

@@ -109,15 +109,22 @@ has "$PUB" 'does not inherit|never inherits?' \
 has "$PUB" 'get_issue' "read-back fetches each unit with get_issue"
 has "$PUB" 'truncat' "the prose records why: list_issues truncates descriptions"
 
-# --- 6. tracked sources are never moved, for BOTH plan and design ------------
+# --- 6. a tracked plan refuses; a design is never touched (EN19 U4) ---------
 # The first draft assumed the plan is always untracked because /en-plan wrote
 # it that run. False on --resume. Moving a tracked file into a gitignored
 # directory leaves a tracked deletion, dirtying the tree a no-commit promotion
 # promises not to touch. Asserted for both sources: a clause naming only the
 # design would pass against exactly the bug the peer found.
 has "$PUB" 'tracked' "the publish step checks tracked status"
-has "$PUB" 'both sources|plan or design|plan and design' \
-  "the tracked check covers both the plan and the design doc"
+has "$PUB" 'Resolve the plan.s tracked status' "the tracked check covers the plan"
+# Designs are left alone in linear mode (EN19 U4): a repo that commits its
+# designs would otherwise refuse nearly every promotion that consumed one.
+has "$PUB" 'never stamped, moved or status-flipped, tracked or not' \
+  "a design doc is never stamped, moved or flipped in linear mode, tracked or not"
+has "$PUB" 'stays open' "and the run report says the design stays open"
+hasnt "$PUB" '^\| design \|' "the tracked-source table no longer has design rows"
+has "$SKILL" 'Close out the design doc.{0,5} \(skipped under `plan_store: linear`' \
+  "en-plan's design close-out is skipped under plan_store: linear"
 has "$PUB" 'before any Linear mutation|before the Linear write|before any linear write' \
   "tracked status is resolved before any Linear mutation, not after"
 has_near "$PUB" 'tracked *\*?deletion' "the prose names the first failure the check prevents"
@@ -145,7 +152,7 @@ hasnt "$SKILL" 'keeps a tracked plan or design in place' \
 has "$PUB" 'git status --porcelain' \
   "the clean-tree contract is stated as something someone can run"
 has "$PUB" '\.ensemble/archive-plans' "untracked plans archive to .ensemble/archive-plans/"
-has "$PUB" '\.ensemble/archive-designs' "untracked designs archive to .ensemble/archive-designs/"
+hasnt "$PUB" '\.ensemble/archive-designs' "no design is archived, so the reference names no archive-designs/"
 has "$PUB" 'linear_issue:' "archived sources are stamped with linear_issue:"
 has "$PUB" 'archived:' "archived sources are stamped with archived:"
 
@@ -216,16 +223,19 @@ printf '%s' "$flow" | grep -qiE 'refuse' \
 
 # --- 11. .gitignore carries the two archive entries, precisely ---------------
 has "$IGNORE" '^\.ensemble/archive-plans/' ".gitignore ignores .ensemble/archive-plans/"
-has "$IGNORE" '^\.ensemble/archive-designs/' ".gitignore ignores .ensemble/archive-designs/"
+hasnt "$IGNORE" '^\.ensemble/archive-designs/' ".gitignore no longer carries archive-designs/"
+if grep -rq 'archive-designs' "$REPO_ROOT/skills"; then fail "no skill names archive-designs/" "$(grep -rl 'archive-designs' "$REPO_ROOT/skills")"
+else pass "no skill names archive-designs/"; fi
 # A bare `.ensemble/` would swallow the tracked example file, which is the
 # reason the entries are written out individually.
 hasnt "$IGNORE" '^\.ensemble/$' ".gitignore has no bare .ensemble/ line"
-if git -C "$REPO_ROOT" check-ignore -q .ensemble/archive-plans/x.md \
-   && git -C "$REPO_ROOT" check-ignore -q .ensemble/archive-designs/x.md; then
-  pass "git check-ignore confirms both archive paths are ignored"
+if git -C "$REPO_ROOT" check-ignore -q .ensemble/archive-plans/x.md; then
+  pass "git check-ignore confirms the plan archive path is ignored"
 else
-  fail "git check-ignore must ignore both archive paths"
+  fail "git check-ignore must ignore the plan archive path"
 fi
+git -C "$REPO_ROOT" check-ignore -q .ensemble/archive-designs/x.md \
+  && fail "archive-designs/ must no longer be ignored" || pass "archive-designs/ is no longer ignored"
 if git -C "$REPO_ROOT" check-ignore -q .ensemble/config.local.example.yaml; then
   fail "the tracked example config must NOT be ignored" \
        "a bare .ensemble/ entry would swallow it"

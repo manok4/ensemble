@@ -31,11 +31,11 @@ bun.lockb
 # Per-developer Ensemble config (committed example lives at .ensemble/config.local.example.yaml)
 .ensemble/config.local.yaml
 
-# Plans and designs superseded by a Linear publish (EN18). Entries are written
-# out individually, never as a bare .ensemble/, because
-# .ensemble/config.local.example.yaml is tracked.
+# Plans superseded by a Linear publish (EN18). Entries are written out
+# individually, never as a bare .ensemble/, because
+# .ensemble/config.local.example.yaml is tracked. Designs are never archived
+# (EN19 U4), so there is no archive-designs/ entry.
 .ensemble/archive-plans/
-.ensemble/archive-designs/
 
 # Plans materialized from Linear for a build (EN18); generated, never authored.
 .ensemble/materialized-plans/
