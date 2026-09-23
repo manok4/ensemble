@@ -101,8 +101,8 @@ disjoint. Everything downstream, the state matrix above, the plan-hash baseline,
 flip and the checkpoint, is untouched: that is the point of materializing rather than teaching
 the pre-flight about Linear.
 
-`references/linear-plan-format.md` owns the mapping. Three of its rules decide whether the
-result is usable at all, and each was measured rather than assumed:
+`references/linear-plan-format.md` owns the mapping. Its rules decide whether the result is
+usable at all; the first three were measured rather than assumed:
 
 - **Normalize `* **` back to `- **` at the start of every unit body**, before anything reads
   the result. Linear rewrites `- ` list markers to `* `, and `ensemble-plan-hash` anchors on
@@ -116,8 +116,14 @@ result is usable at all, and each was measured rather than assumed:
   on a description still carrying that marker rather than treating it as the unit's content.
 - **Order units by the `(U<N>)` title suffix**, never by Linear's own ordering. The default is
   `updatedAt` descending, so it is not merely unspecified, it is actively wrong for a build.
+- **Compare both digests the parent records.** `ensemble-plan-hash` against
+  `peer_review_plan_hash`, and `ensemble-plan-hash --full` against `plan_full_hash`. The first
+  covers seven fields per unit; an edit made in Linear to Test scenarios, Verification or
+  Interfaces passes it and changes what gets built. `--full` covers every labelled field, and
+  there is no local source to fall back on, so this is the only check that sees such an edit.
 - **Refuse before any build work, naming what is wrong, and write no file** when: the identifier
-  does not resolve to an issue; a sub-issue title is missing its `(U<N>)` suffix, so its unit is
+  does not resolve to an issue; the parent's `repo` is not this repo, or `plan_full_hash` is
+  absent or does not match; a sub-issue title is missing its `(U<N>)` suffix, so its unit is
   unparseable; or two sub-issues claim the same U-ID, a duplicate. Name the offending unit in
   each case. A
   parent edited by hand in Linear is the ordinary way to reach all three, and guessing which

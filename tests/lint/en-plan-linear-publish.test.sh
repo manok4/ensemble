@@ -170,6 +170,22 @@ has "$PUB" 'same U-ID|duplicate U-ID|two sub-issues claim' \
 steps=$(awk '/^## Idempotency protocol/{f=1; next} f&&/^## /{exit} f' "$PUB" | grep -cE '^[1-9]\. ')
 assert_eq "5" "$steps" "the idempotency protocol keeps all five ordered steps"
 
+# Counting proves five steps exist, not that discovery comes first. Swapping
+# discovery and create kept the count at five.
+idem=$(awk '/^## Idempotency protocol/{f=1; next} f&&/^## /{exit} f' "$PUB")
+disc_n=$(printf '%s\n' "$idem" | grep -nE '^[1-9]\. .*search the team' | head -1 | cut -d: -f1)
+create_n=$(printf '%s\n' "$idem" | grep -nE '^[1-9]\. Create the parent' | head -1 | cut -d: -f1)
+if [ -n "$disc_n" ] && [ -n "$create_n" ] && [ "$disc_n" -lt "$create_n" ]; then
+  pass "discovery precedes the create"
+else
+  fail "discovery precedes the create" "search step at line '${disc_n:-none}', create at '${create_n:-none}'"
+fi
+has "$PUB" 'plan_id`$|this repo.s `repo`' \
+  "discovery matches plan_id AND repo, since plan IDs are repo-local"
+has "$PUB" 'different `repo` belongs to another repo' "another repo's parent is ignored, not adopted"
+has "$PUB" '\*\*no\*\* `repo` cannot be attributed' "a parent with no repo refuses rather than guess"
+has "$PUB" 'ensemble-plan-hash --full' "publish records the --full digest"
+
 # --- 10. the /en-flow boundary is enforced, not documented -------------------
 has "$PUB" 'en-flow' "the /en-flow boundary is named"
 # Scoped to the boundary's own section. A bare `refuse` matched the two

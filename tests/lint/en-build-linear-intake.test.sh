@@ -128,6 +128,13 @@ has "$PRE" 'normali[sz]' "materialization normalizes the markers"
 has "$FMT" 'normali[sz]' "the format doc owns the normalization rule both sides share"
 has "$PRE" 'get_issue' "fetching is one list call plus a get_issue per unit"
 has "$PRE" 'truncat' "because list_issues truncates descriptions"
+has_near "$PRE" 'Refuse[^#]{0,40}description still carrying that marker' \
+  "a description still carrying the truncation marker refuses"
+has "$PRE" 'ensemble-plan-hash --full` against `plan_full_hash' \
+  "intake compares the --full digest, not only the seven-field hash"
+has "$PRE" '`repo` is not this repo' "intake refuses another repo's parent"
+has "$FMT" 'plan_full_hash' "the format doc carries plan_full_hash in the Verification Contract"
+has "$FMT" 'specified, not measured' "the format doc says the parent encoding is unmeasured"
 has "$PRE" 'U-ID|U<N>' "units order by their U-ID suffix, not Linear's ordering"
 has "$PRE" 'git tracked.*no|not git-tracked|never git-tracked' \
   "a materialized plan reads as untracked and must not trigger the auto-commit offer"

@@ -17,6 +17,7 @@
 # Usage:
 #   ensemble-plan-hash <plan-path>          # print the hash
 #   ensemble-plan-hash --canon <plan-path>  # print the canonical form (debugging)
+#   ensemble-plan-hash --full <plan-path>   # the full-mapping digest (Linear mode)
 #
 # Covered (immutable plan inputs): per unit, in U-ID order as written —
 #   Goal, Files, Approach, Risk, Category, Gated, Dependencies
@@ -24,14 +25,25 @@
 #
 # Excluded (mutable, managed by /en-build): the iteration log, per-unit status,
 # and peer_review_resolutions. Editing any of those must NOT change the hash.
+#
+# --full widens the per-unit set to EVERY `- **Label:**` bullet in the unit,
+# in the order written, label included: Test scenarios, Verification,
+# Interfaces and the rest. Per-unit Status stays excluded, as above. It is a second value, never a replacement. The
+# default hash is the phase-boundary baseline every open plan already records,
+# so widening it would refuse those plans at their next boundary. Linear mode
+# records the --full digest at publish and compares it at materialization,
+# because a Linear description can be edited by anyone with team access and
+# the default hash would let an edit to Test scenarios through.
 
 set -u
 
 CANON_ONLY="false"
+FULL="false"
 PLAN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --canon) CANON_ONLY="true"; shift ;;
+    --full)  FULL="true"; shift ;;
     -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "ensemble-plan-hash: unknown flag: $1" >&2; exit 2 ;;
     *) PLAN="$1"; shift ;;
@@ -56,7 +68,7 @@ fi
 # Whitespace collapsing is what lets a reflow of a hashed field not read as a
 # semantic edit; anything beyond that is a real change and must move the hash.
 _canon() {
-  awk '
+  awk -v full="$FULL" '
     # A field value is its label line PLUS every continuation line up to the
     # next field, unit, or section. Capturing only the label line let a
     # multi-paragraph Approach be rewritten without moving the hash, which is
@@ -70,15 +82,23 @@ _canon() {
       printf "%s:%d:%s\n", k, length(v), v
     }
     function close_field() {
-      if (cur != "") { if (!(cur in f)) f[cur] = buf; cur = ""; buf = "" }
+      if (cur != "") {
+        if (full == "true") { if (cur != "Status") { nf++; fl[nf] = cur; fv[nf] = buf } }
+        else if (!(cur in f)) f[cur] = buf
+        cur = ""; buf = ""
+      }
     }
     function flush(   i, order, n) {
       close_field()
       if (uid == "") return
       printf "U:%s\n", uid
-      n = split("Goal,Files,Approach,Risk,Category,Gated,Dependencies", order, ",")
-      for (i = 1; i <= n; i++) put(order[i], (order[i] in f) ? f[order[i]] : "")
-      uid = ""
+      if (full == "true") {
+        for (i = 1; i <= nf; i++) put(fl[i], fv[i])
+      } else {
+        n = split("Goal,Files,Approach,Risk,Category,Gated,Dependencies", order, ",")
+        for (i = 1; i <= n; i++) put(order[i], (order[i] in f) ? f[order[i]] : "")
+      }
+      uid = ""; nf = 0
       for (i in f) delete f[i]
     }
     /^---[[:space:]]*$/ { dashes++; next }
@@ -93,9 +113,9 @@ _canon() {
     # bullet labels (the template prescribes "- **Risk:**" under "## Decisions,
     # assumptions & risks") cannot bleed into the last unit.
     /^## / { flush(); next }
-    uid != "" && /^- \*\*(Goal|Files|Approach|Risk|Category|Gated|Dependencies):\*\*/ {
+    uid != "" && (full == "true" ? /^- \*\*[A-Za-z ]+:\*\*/ : /^- \*\*(Goal|Files|Approach|Risk|Category|Gated|Dependencies):\*\*/) {
       close_field()
-      match($0, /\*\*[A-Za-z]+:/)
+      match($0, /\*\*[A-Za-z ]+:/)
       cur = substr($0, RSTART + 2, RLENGTH - 3)
       line = $0
       sub(/^- \*\*[A-Za-z ]+:\*\*[[:space:]]*/, "", line)

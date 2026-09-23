@@ -87,6 +87,12 @@ So verification is **field-by-field over the full invertible mapping**, with the
 `ensemble-plan-hash` comparison against the plan's own `peer_review_plan_hash` as one
 clause of it rather than a proxy for it. Archive only when both hold.
 
+Before publishing, compute `ensemble-plan-hash --full <plan>` and `repo` and write both
+into the parent's Verification Contract, per the format doc. `/en-build` has no local
+source to compare against, so `plan_full_hash` is what lets it refuse a plan someone
+edited in Linear outside the seven hashed fields. The read-back verifies both keys like
+any other field.
+
 Two measured behaviours shape how the read-back is fetched and compared:
 
 - **Linear rewrites `- ` list markers to `* `.** Sent `- **Goal:** …`, stored and
@@ -156,11 +162,13 @@ In this order, because a retry must never create a second parent.
 
 1. If the plan's frontmatter already carries `linear_issue:`, that parent is authoritative.
 2. Otherwise **search the team for an existing parent carrying this plan's `plan_id`
-   before creating one.** Writing `linear_issue:` immediately after the create narrows the
-   crash window but cannot close it: a process killed between the API returning and the
-   frontmatter write leaves an orphan parent the next run cannot see, and the run after
-   that creates a second. Remote discovery is what closes it, so the `plan_id` is carried
-   in the parent's title as the durable identity and searched for first.
+   and this repo's `repo` before creating one.** Writing `linear_issue:` immediately after
+   the create narrows the crash window but cannot close it: a process killed between the
+   API returning and the frontmatter write leaves an orphan parent the next run cannot
+   see, and the run after that creates a second. Remote discovery is what closes it, so
+   the `plan_id` is carried in the parent's title and `repo` in its Verification
+   Contract, and the pair is the durable identity. `plan_id` alone is not: it is
+   repo-local, and another repo publishing to the same team can hold the same one.
 3. Create the parent if discovery found none, writing `linear_issue:` into the plan's
    frontmatter **before any sub-issue exists**.
 4. Fetch the parent's existing sub-issues and reconcile by the `(U<N>)` title suffix,
@@ -170,8 +178,11 @@ In this order, because a retry must never create a second parent.
 
 **A cancelled parent is not reusable.** Discovery ignores parents in a canceled state and
 creates a replacement, because reusing one would resurrect the sub-issues a rollback
-cancelled alongside it. Discovery that finds **two live parents** for one `plan_id`
-refuses and names both; that is a human decision, not a coin flip.
+cancelled alongside it. Discovery that finds **two live parents** for one `plan_id` and
+`repo` refuses and names both; that is a human decision, not a coin flip. A parent with
+this `plan_id` and a different `repo` belongs to another repo and is ignored. One with
+this `plan_id` and **no** `repo` cannot be attributed, so discovery refuses and names it
+rather than adopting or duplicating it.
 
 ## The `/en-flow` boundary
 

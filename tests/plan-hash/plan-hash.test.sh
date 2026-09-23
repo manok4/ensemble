@@ -9,6 +9,7 @@
 # Covered:   per-unit Goal, Files, Approach, Risk, Category, Gated, Dependencies
 #            plus plan-level depth and data_scale.
 # Excluded:  iteration log, per-unit status, peer_review_resolutions.
+# --full:    every `- **Label:**` bullet per unit, in order (Linear mode).
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -175,5 +176,30 @@ p1="$(h "$V")"
 V="$WORK/pipes2.md"; write_plan "$V"
 perl -0pi -e 's{- \*\*Files:\*\* src/a\.ts}{- **Files:** src/a.ts}; s{- \*\*Approach:\*\* straightforward}{- **Approach:** X|Y|straightforward}' "$V"
 assert_ne "$p1" "$(h "$V")" "moving a pipe across a field boundary changes the hash"
+
+# --- --full: the Linear-mode digest over every labelled field ---------------
+# A second value, never the default: the default is the phase-boundary baseline
+# open plans already record, so it must not move when --full exists.
+hf() { bash "$HASH" --full "$1"; }
+V="$WORK/full-base.md"; write_plan "$V"
+FULL_BASE="$(hf "$V")"
+assert_ne "$BASELINE" "$FULL_BASE" "--full is a different value from the default hash"
+
+V="$WORK/full-verif.md"; write_plan "$V"
+perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Verification:** tests pass and nothing else/' "$V"
+assert_eq "$BASELINE" "$(h "$V")" "an edit to Verification leaves the default hash alone"
+assert_ne "$FULL_BASE" "$(hf "$V")" "the same edit moves --full"
+
+V="$WORK/full-cont.md"; write_plan "$V"
+perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Verification:** tests pass\n  with extra detail here/' "$V"
+assert_ne "$FULL_BASE" "$(hf "$V")" "a continuation line under Verification moves --full"
+
+V="$WORK/full-status.md"; write_plan "$V"
+perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Status:** complete\n- **Verification:** tests pass/' "$V"
+assert_eq "$FULL_BASE" "$(hf "$V")" "per-unit Status stays excluded under --full"
+
+V="$WORK/full-reflow.md"; write_plan "$V"
+perl -0pi -e 's/- \*\*Verification:\*\* tests pass/- **Verification:**   tests\n  pass/' "$V"
+assert_eq "$FULL_BASE" "$(hf "$V")" "reflowing whitespace inside a field does not move --full"
 
 report

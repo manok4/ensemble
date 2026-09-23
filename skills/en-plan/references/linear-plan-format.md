@@ -1,9 +1,16 @@
 # The Linear plan format
 
 How a plan is published to Linear and read back, so `/en-plan` and `/en-build`
-cannot drift. **Every rule here was derived from a live round-trip**, not from
+cannot drift. **The unit-level rules were derived from a live round-trip**, not from
 Linear's documentation: the capture is `tests/fixtures/linear/EN18-readback.json`
 and the source it came from is `tests/fixtures/linear/EN18-sample-plan.md`.
+
+**The parent description is specified, not measured.** The capture carries two of
+the source's four units and no parent description, so the encoding under *What must
+round-trip* (frontmatter, `depth`, `data_scale`, the two hashes, the repo identity) has
+never been read back from a live workspace. It fails closed rather than silently: the
+publish-side read-back verifies every field of it before anything is archived, so the
+first live publish is the measurement, and a mismatch stops there.
 
 The contract is invertible or it is nothing. `/en-build` materializes a plan
 file from Linear and re-hashes it with `ensemble-plan-hash`; if the round trip
@@ -74,25 +81,42 @@ Any cleanup path that says "delete" means "cancel, then delete by hand".
 ## What must round-trip, beyond the seven fields
 
 `ensemble-plan-hash` covers the seven unit fields **plus plan-level `depth` and
-`data_scale`**, so those two must survive or the hash cannot match. They live in
-the parent issue's description under a `## Verification Contract` heading.
+`data_scale`**, so those two must survive or the hash cannot match.
 
-`/en-build`'s pre-flight reads more than the hash does. The parent description
-also carries `status`, `peer_review_verdict`, `peer_review_resolutions`,
-`peer_review_plan_hash`, `plan_id`, `title` and `related_design`, and each
-sub-issue carries the fields step 4 validates but the hash excludes: Test
-scenarios, Verification, Requirements covered, Reversibility, Ship scope,
-Execution note and Interfaces. A plan missing them materializes into a file the
-pre-flight refuses.
+`/en-build`'s pre-flight reads more than the hash does. Each sub-issue carries the
+fields step 4 validates but the hash excludes: Test scenarios, Verification,
+Requirements covered, Reversibility, Ship scope, Execution note and Interfaces. A
+plan missing them materializes into a file the pre-flight refuses.
+
+**The parent's description ends with a `## Verification Contract` heading** followed
+by one fenced `yaml` block: the plan's frontmatter verbatim (`plan_id`, `title`,
+`status`, `depth`, `data_scale`, `related_design`, `peer_review_verdict`,
+`peer_review_resolutions`, `peer_review_plan_hash` and the rest), plus two keys the
+publish step adds:
+
+- `plan_full_hash`: `ensemble-plan-hash --full` over the plan as published. The
+  default hash covers seven fields, so an edit in Linear to Test scenarios or
+  Verification would pass it; `--full` covers every labelled field of every unit.
+- `repo`: this repository's identity, the `origin` remote URL with scheme, userinfo
+  and a trailing `.git` stripped, lowercased (`github.com/owner/name`). Plan IDs are
+  repo-local and several repos can publish to one team, so discovery matches on
+  `plan_id` **and** `repo`. A repo with no `origin` remote refuses `linear` mode: it
+  has no identity another repo cannot also claim.
+
+Materialization rebuilds the frontmatter from that block, so nothing in it is
+inferred from the local tree.
 
 ## Materialization, in order
 
-1. `get_issue` the parent. Recover the frontmatter and `depth` / `data_scale`.
+1. `get_issue` the parent. Recover the frontmatter, `plan_full_hash` and `repo`
+   from the Verification Contract block. Refuse when `repo` is not this repo.
 2. `list_issues --parentId` for the sub-issue set. Descriptions here are
    truncated; you want the ids.
 3. `get_issue` each sub-issue for its full description.
 4. Parse `(U<N>)` from each title. Refuse on a missing or duplicate U-ID.
 5. Sort by that integer.
 6. **Normalize `* **` to `- **`** in every description.
-7. Emit the plan file, then hash it and compare against the parent's recorded
-   `peer_review_plan_hash`.
+7. Emit the plan file, then compare **both** digests before anything else reads it:
+   `ensemble-plan-hash` against `peer_review_plan_hash`, and
+   `ensemble-plan-hash --full` against `plan_full_hash`. Either mismatch refuses: the
+   plan in Linear is no longer the plan that was reviewed.
