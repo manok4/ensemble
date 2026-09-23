@@ -19,13 +19,13 @@
 #   up_to_date                 the plan is already completed
 #   not_applicable             no plan for this branch, or it is draft/abandoned
 #
-# And two from the build's recorded provenance (EN18), checked before the rest:
+# And three from the build's recorded provenance (EN18, EN19), checked first:
 #   config_drift               configured_store disagrees with the repo's current
-#                              plan_store; the ONE blocking outcome
+#                              plan_store; blocking
 #   linear_mode                plan_source: linear; the PR merge completes the plan
 #                              in Linear, so there is nothing on disk to flip
-#   provenance_conflict        the branch's plan-provenance trailers disagree;
-#                              blocking, like config_drift
+#   provenance_conflict        the branch's plan-provenance trailers disagree, or
+#                              one is malformed; blocking, like config_drift
 #
 # Provenance is read from the plan-provenance trailer every unit commit carries
 # (EN19 U3), then from the plan file's frontmatter, then treated as legacy
@@ -112,10 +112,13 @@ if d.get("configured_store"): print("drift       built under {}, repo now {}".fo
 }
 
 none_json() {  # $1=outcome
-  OUT="$1" PLAN="$plan" python3 -c '
+  OUT="$1" PLAN="$plan" REF="${plan_ref:-}" python3 -c '
 import json, os
-print(json.dumps({"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"] or None,
-                  "covered_units": [], "missing_units": [], "deferred_units": []}, sort_keys=True))'
+d = {"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"] or None,
+     "covered_units": [], "missing_units": [], "deferred_units": []}
+if os.environ["REF"]:
+    d["plan_ref"] = os.environ["REF"]
+print(json.dumps(d, sort_keys=True))'
 }
 
 range=""
@@ -126,7 +129,7 @@ fi
 
 # --- provenance: what the build recorded, never the live config alone --------
 # 1. The plan-provenance trailers on the branch's unit commits.
-tr_source=""; tr_configured=""; tr_ref=""
+tr_source=""; tr_configured=""; tr_ref=""; plan_ref=""; US=$(printf '\037')
 if [ -n "$range" ]; then
   tr=$(git log "$range" --format='%(trailers:key=plan-provenance,valueonly,unfold)' 2>/dev/null \
     | python3 -c '
@@ -139,23 +142,34 @@ for line in sys.stdin:
     try:
         d = json.loads(line)
     except ValueError:
-        d = {"unparseable": line}
-    seen[json.dumps(d, sort_keys=True)] = d
-if len(seen) > 1:
-    print("conflict\t" + json.dumps(sorted(seen), ensure_ascii=False))
+        d = None
+    # A trailer that does not parse, or lacks a field, is not provenance
+    # anyone can act on: it blocks rather than falling through to not_applicable.
+    ok = (isinstance(d, dict) and d.get("plan_source") in ("linear", "local")
+          and d.get("configured_store") in ("linear", "local")
+          and isinstance(d.get("plan_ref"), str) and d["plan_ref"].strip())
+    if not ok:
+        seen["malformed: " + line] = None
+        continue
+    d = dict(d, plan_ref=d["plan_ref"].strip()[2:] if d["plan_ref"].strip().startswith("./") else d["plan_ref"].strip())
+    seen[json.dumps({k: d[k] for k in ("plan_source", "configured_store", "plan_ref")}, sort_keys=True)] = d
+if len(seen) > 1 or any(v is None for v in seen.values()):
+    print("conflict\x1f" + json.dumps(sorted(seen), ensure_ascii=False))
 elif seen:
     d = next(iter(seen.values()))
-    print("one\t%s\t%s\t%s" % (d.get("plan_source", ""), d.get("configured_store", ""), d.get("plan_ref", "")))
-' 2>/dev/null || true)
+    print("one\x1f%s\x1f%s\x1f%s" % (d["plan_source"], d["configured_store"], d["plan_ref"]))
+' || echo "conflict${US}[\"the trailer parser failed\"]")
   case "$tr" in
     conflict*)
-      emit "$(OUT=provenance_conflict PLAN="$plan" VALS="${tr#conflict	}" python3 -c '
+      emit "$(OUT=provenance_conflict PLAN="$plan" VALS="${tr#conflict"$US"}" python3 -c '
 import json, os
 print(json.dumps({"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"] or None,
                   "trailers": json.loads(os.environ["VALS"]),
                   "covered_units": [], "missing_units": [], "deferred_units": []}, sort_keys=True))')" ;;
     one*)
-      IFS='	' read -r _ tr_source tr_configured tr_ref <<EOF
+      # \x1f, not a tab: tab is IFS whitespace, so an empty field would
+      # collapse and shift the rest.
+      IFS="$US" read -r _ tr_source tr_configured tr_ref <<EOF
 $tr
 EOF
       ;;
@@ -178,7 +192,8 @@ fm_get() {  # <key>: the first frontmatter value, or empty
 }
 if [ -n "$tr_source" ]; then
   plan_source="$tr_source"; configured="$tr_configured"
-  [ -z "$plan" ] && plan="$tr_ref"
+  # A Linear build's plan_ref is an identifier, not a path: report it as one.
+  [ -z "$plan" ] && plan_ref="$tr_ref"
 else
   plan_source=$(fm_get plan_source)
   configured=$(fm_get configured_store)
@@ -188,11 +203,14 @@ if [ -n "$configured" ]; then
   current=$(bash "$SELF_DIR/ensemble-config-get" plan_store --allowed local,linear \
             --default local --strict 2>/dev/null) || current="invalid"
   if [ "$current" != "$configured" ]; then
-    emit "$(OUT=config_drift PLAN="$plan" CONF="$configured" CUR="$current" python3 -c '
+    emit "$(OUT=config_drift PLAN="$plan" REF="$plan_ref" CONF="$configured" CUR="$current" python3 -c '
 import json, os
-print(json.dumps({"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"],
-                  "configured_store": os.environ["CONF"], "current_store": os.environ["CUR"],
-                  "covered_units": [], "missing_units": [], "deferred_units": []}, sort_keys=True))')"
+d = {"outcome": os.environ["OUT"], "plan_path": os.environ["PLAN"] or None,
+     "configured_store": os.environ["CONF"], "current_store": os.environ["CUR"],
+     "covered_units": [], "missing_units": [], "deferred_units": []}
+if os.environ["REF"]:
+    d["plan_ref"] = os.environ["REF"]
+print(json.dumps(d, sort_keys=True))')"
   fi
 fi
 [ "$plan_source" = "linear" ] && emit "$(none_json linear_mode)"

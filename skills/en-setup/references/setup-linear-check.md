@@ -1,17 +1,25 @@
 # The Linear check
 
 Read in State 3's diagnostic and at State 2's final verification, **only when this repo is in
-`linear` mode**: `plan_store: linear` as a top-level key in `.ensemble/config.local.yaml`. Absent or
-`local`, skip the whole check: no MCP call, no line in the report. Any other value is 🔴, because
-`/en-plan` and `/en-build` read it fail-closed and will refuse: name the value and the two accepted
-ones.
+`linear` mode**. Resolve it the way `/en-plan` and `/en-build` do, through both config layers
+(the repo's `.ensemble/config.local.yaml`, then `~/.ensemble/config.json`):
+
+```
+SKILL_DIR="<this skill's directory>";
+bash "$SKILL_DIR/scripts/ensemble-config-get" plan_store --allowed local,linear --default local --strict
+bash "$SKILL_DIR/scripts/ensemble-config-get" linear_team --required
+```
+
+Absent or `local`, skip the whole check: no MCP call, no line in the report. A non-zero exit on
+`plan_store` is 🔴, because `/en-plan` and `/en-build` read it the same fail-closed way and will
+refuse: show the reader's message, which names the value and the accepted ones.
 
 It answers one question before the first publish: will a Linear plan survive the round trip and
 the hand-off? Each line uses the diagnostic's 🟢/🟡/🔴 and its opt-in repair prompt.
 
 | Check | How | Result |
 |---|---|---|
-| **Team** | `linear_team` from the same file; then `list_teams` on the Linear MCP server and match the key | 🟢 found · 🔴 unset, or no team with that key |
+| **Team** | `linear_team` from the reader above; then `list_teams` on the Linear MCP server and match the key | 🟢 found · 🔴 unset, or no team with that key |
 | **Workflow states** | `list_issue_statuses` for that team; match **by name**, never by type | 🟢 all four · 🔴 naming each one missing or duplicated |
 | **python3** | `command -v python3` | 🟢 present · 🔴 missing: `ensemble-linear-plan` needs it |
 | **GitHub integration** | cannot be read over MCP; see below | 🟢 `linear_github_confirmed: true` · 🟡 unset |

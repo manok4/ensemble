@@ -46,16 +46,17 @@ review-verdict: {\"verdict\":\"approve\",\"reviewer\":\"cross-agent\",\"mode\":\
   printf '%s\n' "$d"
 }
 
-outcome() { ( cd "$1" && "$C" --base master --json 2>/dev/null || cd "$1" && "$C" --base main --json 2>/dev/null ) \
-  | python3 -c 'import json,sys
+# The outcome field of a checkpoint result, or UNPARSEABLE.
+read_outcome() { python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["outcome"])
 except Exception: print("UNPARSEABLE")'; }
 
+outcome() { ( cd "$1" && "$C" --base master --json 2>/dev/null || cd "$1" && "$C" --base main --json 2>/dev/null ) \
+  | read_outcome; }
+
 base_branch() { ( cd "$1" && git rev-parse --verify --quiet main >/dev/null 2>&1 && echo main || echo master ); }
 run() { d="$1"; ( cd "$d" && "$C" --base "$(base_branch "$d")" --json 2>/dev/null ); }
-outcome_of() { run "$1" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)["outcome"])
-except Exception: print("UNPARSEABLE")'; }
+outcome_of() { run "$1" | read_outcome; }
 
 # --- complete ----------------------------------------------------------------
 A=$(fixture complete open "U1:in U2:in" "U1 U2" "U1 U2")
@@ -118,9 +119,7 @@ prov_fixture() {
   printf '%s\n' "$d"
 }
 prov_run() { ( cd "$1" && HOME="$WORK/home-$2" "$C" --json 2>/dev/null ); }
-prov_outcome() { prov_run "$1" "$2" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)["outcome"])
-except Exception: print("UNPARSEABLE")'; }
+prov_outcome() { prov_run "$1" "$2" | read_outcome; }
 
 L=$(prov_fixture lin ENG-412-thing .ensemble/materialized-plans/ENG-412.md linear linear linear)
 assert_eq "linear_mode" "$(prov_outcome "$L" lin)" \
@@ -169,9 +168,7 @@ plan-provenance: $t" ) >/dev/null 2>&1
   printf '%s\n' "$d"
 }
 tr_run() { ( cd "$1" && HOME="$WORK/home-$2" "$C" --base "$(base_branch "$1")" --json 2>/dev/null ); }
-tr_outcome() { tr_run "$1" "$2" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)["outcome"])
-except Exception: print("UNPARSEABLE")'; }
+tr_outcome() { tr_run "$1" "$2" | read_outcome; }
 LIN='{"plan_source":"linear","configured_store":"linear","plan_ref":"ENG-500"}'
 
 T1=$(trailer_fixture trl ENG-500-thing linear "$LIN" "$LIN")
@@ -204,5 +201,33 @@ mkdir -p "$T5/.ensemble/materialized-plans"
 printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\nplan_source: local\nconfigured_store: local\n---\n\n### U1. g\n\n- **Ship scope:** in\n' \
   > "$T5/.ensemble/materialized-plans/ENG-504.md"
 assert_eq "linear_mode" "$(tr_outcome "$T5" trlwins)" "the trailer takes precedence over the materialized file's frontmatter"
+
+# A Linear build's plan_ref is an identifier, not a path: plan_path stays null.
+assert_eq "None ENG-500" "$(tr_run "$T1" trl | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["plan_path"], d.get("plan_ref"))')" \
+  "linear_mode reports the identifier as plan_ref, never as plan_path"
+
+# A malformed trailer fails closed. Before, it parsed to empty fields and the
+# checkpoint fell through to not_applicable with no file on disk.
+T6=$(trailer_fixture trlbad ENG-505-thing linear 'not json at all')
+assert_eq "provenance_conflict" "$(tr_outcome "$T6" trlbad)" "an unparseable provenance trailer blocks"
+T7=$(trailer_fixture trlmissing ENG-506-thing linear '{"plan_source":"linear","plan_ref":"ENG-506"}')
+assert_eq "provenance_conflict" "$(tr_outcome "$T7" trlmissing)" "a trailer missing configured_store blocks, rather than shifting fields"
+
+# The same local path written with and without ./ is the same provenance.
+T8=$(trailer_fixture trldot EN99-dot local \
+  '{"plan_source":"local","configured_store":"local","plan_ref":"docs/plans/active/EN99-feature_fixture.md"}' \
+  '{"plan_source":"local","configured_store":"local","plan_ref":"./docs/plans/active/EN99-feature_fixture.md"}')
+assert_ne "provenance_conflict" "$(tr_outcome "$T8" trldot)" "a plan_ref with and without ./ does not conflict"
+
+# A local trailer's plan_ref finds the plan when the branch name does not.
+T9=$(trailer_fixture trllocal feature-x local \
+  '{"plan_source":"local","configured_store":"local","plan_ref":"docs/plans/active/EN99-feature_fixture.md"}')
+mkdir -p "$T9/docs/plans/active"
+printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\n---\n\n### U1. goal\n\n- **Ship scope:** in\n' \
+  > "$T9/docs/plans/active/EN99-feature_fixture.md"
+out=$(tr_outcome "$T9" trllocal)
+[ "$out" != "not_applicable" ] && [ "$out" != "UNPARSEABLE" ] \
+  && pass "a local trailer's plan_ref locates the plan on a branch without the plan_id ($out)" \
+  || fail "a local trailer's plan_ref locates the plan" "outcome=$out"
 
 report

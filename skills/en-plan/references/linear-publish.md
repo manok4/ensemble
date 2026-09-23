@@ -29,18 +29,18 @@ plan_store:  ensemble-config-get plan_store --allowed local,linear --default loc
 linear_team: ensemble-config-get linear_team --required          # linear mode only
 ```
 
-**One more read, a warning rather than a gate.**
-`ensemble-config-get linear_github_confirmed --allowed true,false`: when it is not `true`, warn
-once before publishing that the team's GitHub integration mapping is unconfirmed (PR open must
-map to In Review or nothing, merge to Done; `/en-setup`'s Linear check records it) and continue.
-It cannot be checked over MCP, so it is the operator's word, and a publish is not the moment to
-block on it.
-
 `--strict` turns a present-but-invalid value into exit 3 instead of a fall-through; an absent
 key still falls through, so a repo that never opted in is unaffected. `linear_team` has no
 sensible default and is resolved **before any Linear call**: failing here beats failing once a
 parent issue exists, and the idempotency protocol's "search the team for an existing parent"
 has no team to search without it.
+
+**One more read, a warning rather than a gate, and deliberately without `--strict`.**
+`ensemble-config-get linear_github_confirmed --allowed true,false`: when it is not `true`, warn
+once before publishing that the team's GitHub integration mapping is unconfirmed (PR open must
+map to In Review or nothing, merge to Done; `/en-setup`'s Linear check records it) and continue.
+It cannot be checked over MCP, so it is the operator's word, and a publish is not the moment to
+block on it.
 
 ## Order of operations
 
@@ -63,8 +63,9 @@ The sequence is not arbitrary. Each step exists because doing it later loses som
 
 **Only in `linear` mode.** On `local` none of this runs: no state lookup, no MCP call.
 
-`/en-plan` needs the same four states `/en-build` does, and checks them here because a missing
-one should surface **before publishing** rather than once a parent issue already exists:
+`/en-plan` needs the same four states `/en-build` does, and checks them here with
+`list_issue_statuses` for the team, because a missing one should surface **before publishing**
+rather than once a parent issue already exists:
 `Agent Ready`, `In Progress`, `In Review` and `Done`. The third is spelled **In Review**, and
 states are matched by name rather than type, since `In Progress` and `In Review` share the type
 `started`. A missing or ambiguous state is a blocking error naming which one.
@@ -103,7 +104,15 @@ validates exactly those fields.
 
 So verification is **field-by-field over the full invertible mapping**, with the
 `ensemble-plan-hash` comparison against the plan's own `peer_review_plan_hash` as one
-clause of it rather than a proxy for it. `ensemble-linear-plan verify` does all of it.
+clause of it rather than a proxy for it. `ensemble-linear-plan verify` does all of it: both
+digests, the recorded `plan_full_hash` and `repo` (both required), a stale
+`peer_review_plan_hash`, the frontmatter line for line, and every section and unit. It ignores
+`linear_issue:` and `archived:`, which this flow writes into the plan after `render` ran.
+
+**What passing proves.** The digests catch drift between the reviewed plan and what Linear
+stored. They do not stop a colleague: they live in the parent they protect, so anyone with write
+access to the team can edit a unit and recompute them. Linear write access is authority to
+instruct the build (D119).
 
 **Fetch, then verify.** `get_issue` the parent; `list_issues` with its `parentId` for the
 sub-issue ids; `get_issue` each sub-issue. Write the results as

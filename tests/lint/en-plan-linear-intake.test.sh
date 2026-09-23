@@ -47,6 +47,11 @@ assert_contains "$ISSUE" '## Implementation units' "and the prose says why: the 
 assert_contains "$ISSUE" 'linear_issue: <IDENT>' "the plan carries linear_issue from the start"
 assert_contains "$ISSUE" 'Re-check immediately before publish' "the issue is re-fetched immediately before publish"
 assert_contains "$ISSUE" 'now has sub-issues' "the re-check refuses when sub-issues appeared during review"
+assert_contains "$(printf '%s' "$ISSUE" | tr '\n' ' ')" 'title, description, team or state differ from what was fetched' \
+  "the re-check compares the title, description, team and state"
+assert_contains "$ISSUE" 'issue-snapshot.json' "the fetched snapshot is saved, so the check survives a session"
+assert_contains "$ISSUE" 'The re-check guards the first write only' \
+  "a retry after this plan's own partial publish follows the idempotency protocol, not the re-check"
 assert_contains "$ISSUE" 'writing nothing' "and refuses before any write"
 assert_contains "$ISSUE" 'instead of creating a parent' "publish updates the issue in place, no second parent"
 re_check=$(printf '%s\n' "$ISSUE" | grep -n 'Re-check immediately' | head -1 | cut -d: -f1)
@@ -68,7 +73,10 @@ assert_contains "$AMEND" 'unless it is Agent Ready or earlier' "only a parent at
 printf '%s' "$AMEND" | tr '\n' ' ' | grep -q 'In Progress, In Review and Done' \
   && pass "In Progress, In Review and Done refuse" || fail "In Progress, In Review and Done refuse"
 assert_contains "$AMEND" 'tracked or not' "any existing local file for the plan_id refuses, tracked or not"
-assert_contains "$AMEND" 'ensemble-linear-plan" materialize intake-readback.json' "the published plan is materialized through the script"
+assert_contains "$AMEND" 'ensemble-linear-plan" intake intake-readback.json' "the published plan comes in through the script's intake"
+assert_contains "$(printf '%s' "$AMEND" | tr '\n' ' ')" "the parent's state has left the amendable set" \
+  "the pre-update re-check refuses when the parent's state left the amendable set"
+assert_contains "$AMEND" 'Set `linear_issue: <IDENT>`' "amend sets linear_issue itself, since a fresh publish's contract never carried it"
 assert_contains "$AMEND" 'never renumbered or reused' "U-IDs are never renumbered or reused"
 assert_contains "$AMEND" 'canceled ones included' "a new U-ID goes above every sub-issue's, canceled included"
 assert_contains "$AMEND" 'Re-check immediately before updating Linear' "a fresh read-back is taken immediately before the update"

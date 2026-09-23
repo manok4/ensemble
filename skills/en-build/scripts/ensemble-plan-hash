@@ -29,11 +29,12 @@
 # --full widens the per-unit set to EVERY `- **Label:**` bullet in the unit,
 # in the order written, label included: Test scenarios, Verification,
 # Interfaces and the rest. Per-unit Status stays excluded, as above. It also
-# covers every plan-level `## ` section (Context, Out of scope, Technical
-# design, Decisions and the rest, whitespace-collapsed) except `## Iteration
-# log`, which /en-plan appends to: an edit in Linear to Out of scope changes
-# what gets built as surely as an edit to a unit. It is a second value, never a replacement. The
-# default hash is the phase-boundary baseline every open plan already records,
+# covers the text before the first `## ` heading (the title and any preamble)
+# and every plan-level `## ` section, the iteration log included,
+# whitespace-collapsed: an edit in Linear to Out of scope changes what gets
+# built as surely as an edit to a unit, and a section the digest skipped was
+# a channel into the build nothing checked. It is a second value, never a
+# replacement. The default hash is the phase-boundary baseline every open plan already records,
 # so widening it would refuse those plans at their next boundary. Linear mode
 # records the --full digest at publish and compares it at materialization,
 # because a Linear description can be edited by anyone with team access and
@@ -64,11 +65,15 @@ if [ ! -f "$PLAN" ]; then
 fi
 
 # Canonicalization, kept deliberately dull so it is reproducible by inspection:
-#   - one line per unit: <U-ID>|goal|files|approach|risk|category|gated|deps
+#   - a `U:<U-ID>` line per unit, then one `<label>:<length>:<value>` line per
+#     field: the seven hashed fields in fixed order, or under --full every
+#     labelled field in the order written
 #   - field values have runs of whitespace collapsed to one space and are trimmed
 #   - a field absent from a unit contributes an empty string, never a skipped field
 #   - units appear in the order they occur in the file
-#   - a final line: <depth>|<data_scale>
+#   - under --full, one `S:<heading>:<length>:<text>` line for the preamble
+#     (`S:(preamble)`) and for each plan-level `## ` section
+#   - final `depth:` and `data_scale:` lines
 # Whitespace collapsing is what lets a reflow of a hashed field not read as a
 # semantic edit; anything beyond that is a real change and must move the hash.
 _canon() {
@@ -106,15 +111,19 @@ _canon() {
       for (i in f) delete f[i]
     }
     function close_sec() {
-      if (sec != "" && sec != "Iteration log") { ns++; sl[ns] = sec; sv[ns] = sbuf }
+      if (sec != "") { ns++; sl[ns] = sec; sv[ns] = sbuf }
       sec = ""; sbuf = ""
+    }
+    # The title and any preamble: body text before the first `## ` heading.
+    full == "true" && dashes >= 2 && !seen_h2 && uid == "" && sec == "" && !/^---[[:space:]]*$/ && !/^## / && !/^### U[0-9]+\./ {
+      pbuf = pbuf " " $0; next
     }
     /^---[[:space:]]*$/ { dashes++; next }
     dashes == 1 && /^depth:/      { depth = $2; next }
     dashes == 1 && /^data_scale:/ { scale = $2; next }
     /^### U[0-9]+\./ {
       flush()
-      if (full == "true") { close_sec(); sec = "" }
+      if (full == "true") close_sec()
       match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH)
       next
     }
@@ -122,10 +131,11 @@ _canon() {
     # bullet labels (the template prescribes "- **Risk:**" under "## Decisions,
     # assumptions & risks") cannot bleed into the last unit.
     /^## / {
+      seen_h2 = 1
       flush()
       if (full == "true") {
         close_sec()
-        sec = substr($0, 4); sub(/[[:space:]]+$/, "", sec); sbuf = ""
+        sec = substr($0, 4); sub(/[[:space:]]+$/, "", sec)
       }
       next
     }
@@ -145,7 +155,10 @@ _canon() {
     uid != "" && cur != "" { buf = buf " " $0; next }
     END {
       flush()
-      if (full == "true") { close_sec(); for (i = 1; i <= ns; i++) put("S:" sl[i], sv[i]) }
+      if (full == "true") {
+        close_sec(); put("S:(preamble)", pbuf)
+        for (i = 1; i <= ns; i++) put("S:" sl[i], sv[i])
+      }
       put("depth", depth); put("data_scale", scale)
     }
   ' "$PLAN"

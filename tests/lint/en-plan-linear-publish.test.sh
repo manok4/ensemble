@@ -74,6 +74,14 @@ has "$PUB" 'ensemble-linear-plan" render' "publish renders the payload with the 
 has "$PUB" 'ensemble-linear-plan" verify' "and verifies the read-back with it"
 has "$PUB" 'Archive only on exit 0' "archiving waits for verify to exit 0"
 has "$PUB" 'D119' "the publish reference cites D119"
+grep -qE '^- \*\*D119\.' "$REPO_ROOT/docs/foundation.md" && pass "D119 is recorded in the foundation" \
+  || fail "D119 is recorded in the foundation"
+has "$PUB" 'The script normalizes' "the prose attributes marker normalization to the script"
+hasnt "$PUB" '(you|the model) (must )?(normali[sz]e|sort)|sort (the )?units by' \
+  "and never tells the model to normalize or sort by hand"
+has "$PUB" 'list_issue_statuses' "the workflow states are resolved with list_issue_statuses"
+has "$PUB" 'required' "verify requires the recorded plan_full_hash and repo"
+has_near "$PUB" 'Linear write access is authority to\s+instruct the build' "the trust boundary is stated"
 pub_line() { grep -n -- "$1" "$PUB" | head -1 | cut -d: -f1; }
 r=$(pub_line 'ensemble-linear-plan" render'); w=$(pub_line 'Then write with `save_issue`')
 g=$(pub_line '`get_issue` the parent; `list_issues`'); v=$(pub_line 'ensemble-linear-plan" verify <plan-path>')

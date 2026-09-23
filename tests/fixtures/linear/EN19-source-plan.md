@@ -18,8 +18,6 @@ peer_review_plan_hash: 40a510c01c931be6a3f6c67996f42dbabedee4c334f5ba0103ca76ed6
 peer_review_resolutions: []
 depth: standard
 data_scale: small
-plan_full_hash: d377c5ceea7e305dfc8cfce2e386f4ed66d43207f8b5003167967050722eaa36
-repo: github.com/example/ensemble
 ---
 
 # EN07 - en-build post-build simplify+review gate (auditable, not prose)

@@ -137,6 +137,8 @@ has "$LOOP" '^plan-provenance: \{"plan_source":' "unit-loop.md pins the trailer'
 has "$LOOP" 'Every unit commit carries one' "and says every unit commit carries it, not only the post-build commit"
 has "$COMP" "trailers:key=plan-provenance" "plan-completion reads the trailer from git history"
 has "$COMP" 'provenance_conflict' "disagreeing trailers are a named, blocking outcome"
+has "$REPO_ROOT/skills/en-ship/SKILL.md" 'except `config_drift` and `provenance_conflict`' \
+  "en-ship's checkpoint step names both blocking outcomes"
 has "$LEARN" "trailers:key=plan-provenance" "en-learn 11a reads the same trailer first"
 
 report

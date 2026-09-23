@@ -167,6 +167,60 @@ inferring its caller from context.
   invoking `/en-plan`, or pass an explicit flag the refusal keys on.
 - **Logged:** 2026-09-22
 
+### TD19. The Linear plan digests are not a tamper seal
+
+Both `peer_review_plan_hash` and `plan_full_hash` live in the Linear parent they
+protect, and `ensemble-plan-hash` is public, so anyone with write access to the
+team can edit a unit and recompute both. EN19's branch review reproduced it. The
+operator chose to state the trust boundary (D119: Linear write access is
+authority to instruct the build) rather than build an anchor now.
+
+- **Source:** EN19 branch review, security persona, 2026-09-23
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** `skills/en-build/scripts/ensemble-linear-plan` (intake), `skills/en-build/references/build-preflight.md`
+- **Why it matters:** a plan edited deliberately in Linear passes intake and
+  instructs the build, now including Context, Out of scope and Technical design.
+- **Suggested fix:** sign `plan_full_hash` with a key only builders hold (an
+  HMAC from local config, with a key-distribution story), or refuse when
+  `get_issue` shows edits after publish by anyone but the publisher, if the MCP
+  exposes edit history.
+- **Logged:** 2026-09-23
+
+### TD20. The Linear MCP flows have prose tests only
+
+Issue intake, amend in place and the en-setup Linear check are model-followed
+MCP flows. Their tests grep the references for the required steps and ordering;
+they pass whether or not a model follows them. The transforms are tested for
+real in `tests/linear-plan/`; the calls around them are not.
+
+- **Source:** EN19 branch review, Codex peer (finding 1-7), 2026-09-23
+- **Severity:** P2
+- **Confidence:** 10/10
+- **Location:** `tests/lint/en-plan-linear-intake.test.sh`, `tests/lint/en-setup-linear-check.test.sh`
+- **Why it matters:** the re-check-before-write and refusal rules are the
+  safety of these flows, and nothing observes them executing.
+- **Suggested fix:** a harness that runs the flow against a fake Linear MCP
+  server with scripted responses, asserting the calls made, the resulting issue
+  state, and refusal when the issue changes between intake and publish.
+- **Logged:** 2026-09-23
+
+### TD21. EN19 U1's "canceled first" U-ID rule is not implemented
+
+EN19 U1's Approach says a canceled unit and a live one may share a U-ID only if
+the canceled one came first. `materialize` skips every canceled sub-issue before
+its duplicate check, and the read-back carries no creation order, so the rule
+cannot be enforced as written. Amend never reuses a U-ID, so the case arises
+only from a hand edit in Linear.
+
+- **Source:** EN19 branch review, plan-coverage pass, 2026-09-23
+- **Severity:** P3
+- **Confidence:** 6/10
+- **Location:** `skills/en-build/scripts/ensemble-linear-plan` (materialize)
+- **Suggested fix:** enforce it with identifier numbers as a proxy for creation
+  order, or drop the clause from the plan when it is next amended.
+- **Logged:** 2026-09-23
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29

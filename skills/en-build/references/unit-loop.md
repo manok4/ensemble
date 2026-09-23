@@ -33,9 +33,11 @@ plan-provenance: {"plan_source":"linear","configured_store":"linear","plan_ref":
 ```
 
 `plan_source` and `configured_store` are the two provenance fields `references/build-preflight.md`
-defines; `plan_ref` is the Linear identifier, or the plan path on a local build. Write the same
+defines; `plan_ref` is the Linear identifier, or on a local build the plan's repo-relative path with no
+leading `./` (`docs/plans/active/EN19-feature_x.md`). Write the same
 values on every unit commit of the build: `/en-ship`'s checkpoint reads them from
-`git log <base>..HEAD`, and trailers that disagree stop the ship as `provenance_conflict`.
+`git log <base>..HEAD`, and trailers that disagree, or one that is malformed, stop the ship as
+`provenance_conflict`.
 
 **Why every unit, not only the post-build commit.** A build that stopped before step 10 still
 records where its plan came from, and that is the build most likely to be shipped later from

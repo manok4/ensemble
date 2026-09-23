@@ -105,32 +105,38 @@ flip and the checkpoint, is untouched: that is the point of materializing rather
 the pre-flight about Linear.
 
 `references/linear-plan-format.md` owns the mapping and `$SKILL_DIR/scripts/ensemble-linear-plan`
-implements it (D119). **Fetch, then materialize; never rebuild the plan by hand:**
+implements it (D119). **Fetch, then run `intake`; never rebuild or compare the plan by hand:**
 
-1. `get_issue` the parent; `list_issues` with its `parentId` for the sub-issue ids; `get_issue`
-   each sub-issue. `list_issues` truncates descriptions, so its bodies are never used.
+1. `get_issue` the parent, and refuse if the identifier does not resolve to an issue;
+   `list_issues` with its `parentId` for the sub-issue ids; `get_issue` each sub-issue.
+   `list_issues` truncates descriptions, so its bodies are never used.
 2. Write the results unedited as `{"parent": …, "sub_issues": […]}` to a read-back file.
-3. `bash "$SKILL_DIR/scripts/ensemble-linear-plan" materialize <read-back> --out
+3. `bash "$SKILL_DIR/scripts/ensemble-linear-plan" intake <read-back> --out
    .ensemble/materialized-plans/<identifier>.md`. **Refuse on a non-zero exit, before any
    build work**, surfacing its stderr; the script writes no file when it refuses.
 
-The script applies the rules that decide whether the result is usable at all: it normalizes
-Linear's `* ` markers back to `- ` (a plan materialized as returned hashes **seven empty fields
-per unit**), refuses a description still carrying Linear's truncation marker (a build that read
-it would implement a unit with its Approach cut off), orders units by the `(U<N>)` suffix rather
-than Linear's `updatedAt`-descending order, and skips canceled sub-issues.
-- **Compare both digests the parent records.** `ensemble-plan-hash` against
-  `peer_review_plan_hash`, and `ensemble-plan-hash --full` against `plan_full_hash`. The first
-  covers seven fields per unit; an edit made in Linear to Test scenarios, Verification or
-  Interfaces passes it and changes what gets built. `--full` covers every labelled field, and
-  there is no local source to fall back on, so this is the only check that sees such an edit.
-- **Refuse before any build work, naming what is wrong** when: the identifier does not resolve
-  to an issue; `materialize` exits non-zero (a missing `(U<N>)` suffix, a duplicate U-ID, a
-  truncated description, no Verification Contract); the parent's `repo` is not this repo; or
-  `plan_full_hash` is absent or does not match. Name the offending unit in
-  each case. A
-  parent edited by hand in Linear is the ordinary way to reach all three, and guessing which
-  sub-issue was meant is worse than stopping.
+`intake` materializes, then checks the contract, and its exit code is the whole gate:
+
+- **Structure.** It normalizes Linear's `* ` markers back to `- ` (a plan materialized as
+  returned hashes **seven empty fields per unit**), refuses a description still carrying
+  Linear's truncation marker (a build that read it would implement a unit with its Approach cut
+  off), orders units by the `(U<N>)` suffix rather than Linear's `updatedAt`-descending order,
+  skips canceled sub-issues, and refuses a missing suffix, a duplicate U-ID, or a `plan_id` or
+  `plan_type` that could not safely name a file.
+- **Identity.** The contract must carry `repo`, and it must be this repository's, computed by
+  the script from `origin` rather than compared by eye.
+- **Both digests.** `ensemble-plan-hash` against `peer_review_plan_hash`, and
+  `ensemble-plan-hash --full` against `plan_full_hash`, which must be present. The first covers
+  seven fields per unit; `--full` covers every labelled field, the title and every plan-level
+  section, so an edit made in Linear to Test scenarios, Out of scope or Technical design is seen.
+
+**What the digests prove.** They catch drift between the reviewed plan and what Linear returns.
+They live in the parent they protect and `ensemble-plan-hash` is public, so someone with write
+access to the team can edit a unit and recompute both. **Linear write access is authority to
+instruct the build** (D119); the digests are a guard against accident, not against a colleague.
+
+Name the offending unit where there is one. A parent edited by hand in Linear is the ordinary way
+to reach any of these, and guessing which sub-issue was meant is worse than stopping.
 
 | status | verdict | unresolved findings | git tracked | Pre-flight action |
 |---|---|---|---|---|
@@ -155,7 +161,8 @@ workspace-wide state preflight on every local build would be both a latency cost
 failure for a repo with no Linear workspace at all.
 
 **Resolve all four states before the first mutation of this run, local or remote**, which means
-before the branch is created. The four are `Agent Ready`, `In Progress`, `In Review` and `Done`.
+before the branch is created, with `list_issue_statuses` for the team. The four are `Agent Ready`,
+`In Progress`, `In Review` and `Done`.
 Only `Agent Ready` is one the operator is told to create, so the other three are assumptions
 until checked. A missing or ambiguous state is a **blocking error** naming which one, raised
 **before any commit exists**, not discovered halfway through a build.
@@ -164,6 +171,8 @@ until checked. A missing or ambiguous state is a **blocking error** naming which
 so resolving "the started one" picks arbitrarily between them and passes on whichever team
 happens to list them in the convenient order. The third state is spelled **In Review**; a bare
 "Review" does not exist on a correctly configured team.
+
+Each transition is a `save_issue` on that issue with the state resolved above.
 
 | When | Transition |
 |---|---|

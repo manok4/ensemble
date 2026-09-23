@@ -23,8 +23,9 @@ agent work. Without it the triaged issue and the plan for it are two unrelated i
   the plan's units;
 - its state is started, completed or canceled: someone is already working on it, or it is done.
 
-**Keep what you fetched.** Record the issue's title, description, team and state as fetched; the
-pre-publish check compares against them.
+**Keep what you fetched.** Save the issue's title, description, team and state as fetched to
+`/tmp/ensemble/en-plan/<plan_id>/issue-snapshot.json`; the pre-publish check compares against it,
+and a file survives a session where a remembered value does not.
 
 **Quote the request into Context.** Under `### Original request (<IDENT>)` in the plan's
 `## Context`, the issue's title and description as a markdown blockquote, **every line prefixed
@@ -41,6 +42,12 @@ promotion.
 description, team or state differ from what was fetched, or it now has sub-issues: the report was
 edited, the issue moved team, someone started it, or someone split it while the plan was under
 review. The remedy is to re-run `/en-plan <IDENT>` against the issue as it now stands.
+
+**The re-check guards the first write only.** Once the issue's description carries this plan's
+Verification Contract (its `plan_id` and `repo`), this plan has already written to it, and a
+retry after a partial publish or a failed `verify` follows the idempotency protocol and Recovery
+in `references/linear-publish.md` instead: the changed description and new sub-issues are this
+plan's own, not someone else's edit.
 
 **Publish onto the issue, not beside it.** The idempotency protocol's first rule applies:
 `linear_issue:` is already set, so that issue is the parent. Update it with `save_issue` by id
@@ -61,13 +68,15 @@ amending under it would make the two diverge.
 sub-issue, and save the results unedited as `intake-readback.json`. Refuse **before any write**
 if any file for that `plan_id` already exists under `docs/plans/active/` or
 `docs/plans/completed/`, tracked or not: an unfinished earlier revision is never overwritten.
-Then `bash "$SKILL_DIR/scripts/ensemble-linear-plan" materialize intake-readback.json --out
-docs/plans/active/<plan_id>-<plan_type>_<slug>.md`, and keep a copy as `intake.md` beside the
-read-back; the pre-update check compares against it.
+Then `bash "$SKILL_DIR/scripts/ensemble-linear-plan" intake intake-readback.json --out
+docs/plans/active/<plan_id>-<plan_type>_<slug>.md`, which refuses a contract for another repo or
+one whose digests do not match, and validates `plan_id` and `plan_type` before they name a file.
+Keep a copy as `intake.md` beside the read-back; the pre-update check compares against it.
 
 **Revise and review as normal**, from the resume-or-create step onward: the finalize loop and
-promotion run over the materialized file and write fresh hashes. `linear_issue: <IDENT>` stays
-in its frontmatter. **U-IDs are never renumbered or reused**: a unit the revision adds takes one
+promotion run over the materialized file and write fresh hashes. Set `linear_issue: <IDENT>` in
+its frontmatter: a plan first published fresh wrote that key after `render`, so its contract never
+carried it. **U-IDs are never renumbered or reused**: a unit the revision adds takes one
 above the highest U-ID among **all** sub-issues in `intake-readback.json`, canceled ones included.
 
 **Re-check immediately before updating Linear.** Fetch a fresh read-back the same way and refuse,

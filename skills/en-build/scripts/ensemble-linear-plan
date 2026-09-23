@@ -18,24 +18,35 @@
 #       Contract), and one entry per unit with title, description, blocked_by.
 #   ensemble-linear-plan materialize <readback.json> [--out <path>]
 #       Rebuild the plan file from saved get_issue results:
-#       {"parent": {...}, "sub_issues": [{...}, ...]}. Prints to stdout unless
-#       --out is given.
-#   ensemble-linear-plan verify <plan> <readback.json>
+#       {"parent": {...}, "sub_issues": [{...}, ...]}. A pure transform: it
+#       checks structure, not the contract. Prints to stdout unless --out.
+#   ensemble-linear-plan intake <readback.json> --out <path> [--repo <id>]
+#       materialize, then refuse unless the contract carries plan_full_hash and
+#       repo, repo is this repository, and both digests match the rebuilt plan.
+#       Writes --out only when every check passes. This is /en-build's intake.
+#   ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]
 #       Exit 0 when the read-back materializes to the same plan: both digests,
-#       the frontmatter, every plan-level section and every unit, with
-#       `## Iteration log` excepted everywhere. Else exit 3 with a unified diff
-#       of the first difference.
+#       the recorded plan_full_hash and repo, the frontmatter line for line, and
+#       every section and unit. Else exit 3 with a diff of the first difference.
 #
+# --repo defaults to this repository's identity, from `git remote get-url origin`.
 # Exit codes: 0 ok, 2 usage, 3 refused or mismatched (the reason on stderr).
 #
 # Rules, each measured against a live workspace or stated as unmeasured in
 # references/linear-plan-format.md:
-#   - Linear rewrites list markers `- ` to `* `. materialize puts them back,
-#     outside code fences, including inside blockquotes.
+#   - Linear rewrites list markers `- ` to `* `. Both sides are canonicalized to
+#     `- ` outside code fences, blockquotes included, so a plan quoting a report
+#     with `* ` bullets still round-trips.
 #   - list_issues truncates descriptions. A description still carrying the
 #     truncation marker is refused, never taken as content.
 #   - Units are ordered by the (U<N>) title suffix, never by Linear's order.
 #   - A canceled sub-issue is not a unit. That is how an amend removes one.
+#
+# What the digests prove, and what they do not: they catch accidental drift
+# between the reviewed plan and what Linear returns. They live in the parent
+# they protect and ensemble-plan-hash is public, so anyone who can edit the plan
+# in Linear can also recompute them. Linear write access is authority to
+# instruct the build (D119).
 
 import difflib
 import json
@@ -44,17 +55,24 @@ import re
 import subprocess
 import sys
 import tempfile
+from urllib.parse import urlsplit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLAN_HASH = os.path.join(HERE, "ensemble-plan-hash")
 TRUNCATION = "(truncated, use get_issue for full description)"
 CONTRACT = "## Verification Contract"
 UNITS_HEADING = "## Implementation units"
-EXCLUDED_SECTION = "Iteration log"
-ADDED_KEYS = ("plan_full_hash", "repo")
+PREAMBLE = "(preamble)"
+# Keys render adds to the contract, and keys the publish flow writes into the
+# plan after render ran. Neither is part of what was reviewed.
+CONTRACT_KEYS = frozenset({"plan_full_hash", "repo"})
+POST_RENDER_KEYS = frozenset({"linear_issue", "archived"})
+PLAN_ID_RE = re.compile(r"^[A-Z]+[0-9]+$")
+PLAN_TYPES = frozenset({"feature", "improvement", "bug"})
 UNIT_RE = re.compile(r"^### (U\d+)\.\s*(.*)$")
 SUFFIX_RE = re.compile(r"\((U\d+)\)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
+MARKER_RE = re.compile(r"^(\s*(?:>\s*)*)\* ")
 
 
 class Refusal(Exception):
@@ -73,42 +91,64 @@ def split_frontmatter(text):
     raise Refusal("plan frontmatter is not closed")
 
 
+def fm_key(line):
+    """The key of a top-level `key: value` frontmatter line, else None."""
+    m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):", line)
+    return m.group(1) if m else None
+
+
 def fm_value(fm_lines, key):
     for line in fm_lines:
-        if line.startswith(key + ":"):
+        if fm_key(line) == key:
             return line[len(key) + 1:].strip()
     return ""
 
 
-def outside_fences(lines):
-    """Yield (index, line, in_fence) so headings inside code blocks are ignored."""
+def drop_keys(fm_lines, keys):
+    return [l for l in fm_lines if fm_key(l) not in keys]
+
+
+def with_fence_state(lines):
+    """Yield (line, in_fence); a fence delimiter line counts as fenced."""
     fence = False
-    for i, line in enumerate(lines):
+    for line in lines:
         if FENCE_RE.match(line):
-            yield i, line, True
+            yield line, True
             fence = not fence
             continue
-        yield i, line, fence
+        yield line, fence
+
+
+def canonical(text, include_fenced=False):
+    """Rewrite `* ` list markers to `- `, outside fences unless include_fenced."""
+    out = []
+    for line, fenced in with_fence_state(text.split("\n")):
+        if (include_fenced or not fenced) and not FENCE_RE.match(line):
+            line = MARKER_RE.sub(r"\1- ", line)
+        out.append(line)
+    return "\n".join(out)
 
 
 def parse_body(body):
     """Split a plan body into (skeleton_lines, units).
 
-    skeleton is the body with every unit block removed and the position of the
-    units recorded as the end of the `## Implementation units` preamble. units
-    is a list of (u_id, title, block_lines) in file order.
+    skeleton is the body with every unit block removed and "<<UNITS>>" where
+    they stood. units is a list of (u_id, title, block_lines) in file order.
+    Headings inside code fences are content, never structure.
     """
     lines = body.split("\n")
+    fenced = [f for _, f in with_fence_state(lines)]
     units_start = None
     units_end = len(lines)
-    for i, line, fence in outside_fences(lines):
-        if fence:
+    for i, line in enumerate(lines):
+        if fenced[i]:
             continue
-        if units_start is None and line.strip() == UNITS_HEADING:
+        if line.strip() == UNITS_HEADING:
+            if units_start is not None:
+                raise Refusal("plan has two `## Implementation units` headings outside a code fence")
             units_start = i
-        elif units_start is not None and line.startswith("## "):
+        elif units_start is not None and units_end == len(lines) and line.startswith("## "):
             units_end = i
-            break
     if units_start is None:
         raise Refusal("plan has no `## Implementation units` section")
 
@@ -116,21 +156,23 @@ def parse_body(body):
     units = []
     cur = None
     for i in range(units_start + 1, units_end):
-        m = UNIT_RE.match(lines[i])
+        line = lines[i]
+        m = UNIT_RE.match(line) if not fenced[i] else None
         if m:
             if first_unit is None:
                 first_unit = i
             cur = [m.group(1), m.group(2).strip(), []]
             units.append(cur)
+        elif not fenced[i] and line.startswith("### "):
+            raise Refusal(f"a heading in the units section is not a unit: {line.strip()!r}")
         elif cur is not None:
-            cur[2].append(lines[i])
+            cur[2].append(line)
     if not units:
         raise Refusal("plan has no units")
+    seen = set()
     for uid, title, _ in units:
         if not title:
             raise Refusal(f"{uid} has no title")
-    seen = set()
-    for uid, _, _ in units:
         if uid in seen:
             raise Refusal(f"two units claim {uid}")
         seen.add(uid)
@@ -147,25 +189,33 @@ def trim(block):
     return block
 
 
-def sections(body):
-    """Return [(heading, text)] for every `## ` section, units removed."""
-    skeleton, _ = parse_body(body)
+def sections(skeleton):
+    """[(heading, text)] for the preamble and every `## ` section of a skeleton."""
     out = []
-    cur_head, cur = None, []
-    for _, line, fence in outside_fences(skeleton):
-        if not fence and line.startswith("## "):
-            if cur_head is not None:
-                out.append((cur_head, cur))
+    cur_head, cur = PREAMBLE, []
+    for line, fenced in with_fence_state(skeleton):
+        if not fenced and line.startswith("## "):
+            out.append((cur_head, cur))
             cur_head, cur = line[3:].strip(), []
-        elif cur_head is not None and line != "<<UNITS>>":
+        elif line != "<<UNITS>>":
             cur.append(line)
-    if cur_head is not None:
-        out.append((cur_head, cur))
-    return [(h, "\n".join(trim(t))) for h, t in out if h != EXCLUDED_SECTION]
+    out.append((cur_head, cur))
+    return [(h, "\n".join(trim(t))) for h, t in out]
 
 
 def collapse(text):
     return " ".join(text.split())
+
+
+def check_identity(fm_lines):
+    """plan_id and plan_type become a file path on the amend path: refuse odd values."""
+    plan_id = fm_value(fm_lines, "plan_id")
+    if not PLAN_ID_RE.match(plan_id):
+        raise Refusal(f"plan_id {plan_id!r} is not <PREFIX><NN>")
+    plan_type = fm_value(fm_lines, "plan_type")
+    if plan_type and plan_type not in PLAN_TYPES:
+        raise Refusal(f"plan_type {plan_type!r} is not one of {', '.join(sorted(PLAN_TYPES))}")
+    return plan_id
 
 
 # --- repo identity --------------------------------------------------------
@@ -180,12 +230,20 @@ def repo_identity(start_dir):
 
 
 def normalize_repo(url):
+    """host[:port]/path, lowercased, with scheme, credentials, query and .git gone."""
     u = url.strip()
-    u = re.sub(r"^[a-z][a-z0-9+.-]*://", "", u)   # scheme
-    u = re.sub(r"^[^@/]+@", "", u)                 # userinfo
-    u = re.sub(r"^([^/:]+):(?!\d+/)", r"\1/", u)   # scp-style host:path
-    u = re.sub(r"\.git/?$", "", u).rstrip("/")
-    return u.lower()
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", u):
+        parts = urlsplit(u)
+        host = (parts.hostname or "")
+        ident = host + (f":{parts.port}" if parts.port else "") + parts.path
+    else:
+        m = re.match(r"^(?:[^@/]+@)?([^:/]+):(.+)$", u)   # scp-style [user@]host:path
+        ident = f"{m.group(1)}/{m.group(2)}" if m else u
+    ident = re.sub(r"\.git/?$", "", ident.rstrip("/")).rstrip("/").lower()
+    if not ident or any(c in ident for c in "@?#"):
+        # Never echo the URL: it may carry a credential.
+        raise Refusal("the origin remote does not reduce to a host/path identity")
+    return ident
 
 
 # --- hashing --------------------------------------------------------------
@@ -198,21 +256,29 @@ def plan_hash(path, full=False):
     return r.stdout.strip()
 
 
+def text_hash(text, full=False):
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
+        f.write(text)
+        tmp = f.name
+    try:
+        return plan_hash(tmp, full)
+    finally:
+        os.unlink(tmp)
+
+
 # --- render ---------------------------------------------------------------
 
 def render(plan_path, repo):
-    text = open(plan_path, encoding="utf-8").read()
+    text = canonical(open(plan_path, encoding="utf-8").read())
     fm, body = split_frontmatter(text)
     skeleton, units = parse_body(body)
-    plan_id = fm_value(fm, "plan_id")
+    plan_id = check_identity(fm)
     title = fm_value(fm, "title")
-    if not plan_id:
-        raise Refusal("frontmatter has no plan_id")
     if repo is None:
         repo = repo_identity(os.path.dirname(os.path.abspath(plan_path)) or ".")
 
-    contract = [l for l in fm if not l.startswith(ADDED_KEYS)]
-    contract += [f"plan_full_hash: {plan_hash(plan_path, full=True)}", f"repo: {repo}"]
+    contract = drop_keys(fm, CONTRACT_KEYS)
+    contract += [f"plan_full_hash: {text_hash(text, full=True)}", f"repo: {repo}"]
     skeleton_text = "\n".join(l for l in skeleton if l != "<<UNITS>>").rstrip()
     description = f"{skeleton_text}\n\n{CONTRACT}\n\n```yaml\n" + "\n".join(contract) + "\n```\n"
 
@@ -232,18 +298,6 @@ def render(plan_path, repo):
 
 
 # --- materialize ----------------------------------------------------------
-
-MARKER_RE = re.compile(r"^(\s*(?:>\s*)*)\* ")
-
-
-def normalize_markers(text, inside_fences=False):
-    out = []
-    for _, line, fence in outside_fences(text.split("\n")):
-        if (not fence or inside_fences) and not FENCE_RE.match(line):
-            line = MARKER_RE.sub(r"\1- ", line)
-        out.append(line)
-    return "\n".join(out)
-
 
 def is_canceled(issue):
     for key in ("status", "statusType", "state", "stateType"):
@@ -267,25 +321,24 @@ def materialize(readback):
     if TRUNCATION in desc:
         raise Refusal(f"parent {ident(parent)} description is truncated; fetch it with get_issue")
 
-    idx = desc.rfind("\n" + CONTRACT)
-    if idx < 0 and desc.startswith(CONTRACT):
-        idx = -1
-    elif idx < 0:
+    idx = ("\n" + desc).rfind("\n" + CONTRACT)
+    if idx < 0:
         raise Refusal(f"parent {ident(parent)} has no `{CONTRACT}` block")
-    skeleton_text, contract_text = desc[:idx + 1], desc[idx + 1:]
+    skeleton_text, contract_text = desc[:idx], desc[idx:]
     m = re.search(r"```ya?ml\n(.*?)\n```", contract_text, re.S)
     if not m:
         raise Refusal(f"parent {ident(parent)}'s `{CONTRACT}` has no fenced yaml block")
-    fm_text = normalize_markers(m.group(1), inside_fences=True)
+    fm_text = canonical(m.group(1), include_fenced=True)
+    check_identity(fm_text.split("\n"))
 
     live = {}
     for issue in readback.get("sub_issues") or []:
+        if is_canceled(issue):
+            continue
         title = issue.get("title") or ""
         sm = SUFFIX_RE.search(title)
         if not sm:
             raise Refusal(f"sub-issue {ident(issue)} title has no (U<N>) suffix: {title!r}")
-        if is_canceled(issue):
-            continue
         uid = sm.group(1)
         if uid in live:
             raise Refusal(f"two live sub-issues claim {uid}: {ident(live[uid])} and {ident(issue)}")
@@ -302,22 +355,22 @@ def materialize(readback):
     for uid in sorted(live, key=lambda u: int(u[1:])):
         issue = live[uid]
         utitle = SUFFIX_RE.sub("", issue["title"]).rstrip()
-        body = trim(normalize_markers(issue["description"]).split("\n"))
+        body = trim(canonical(issue["description"]).split("\n"))
         blocks.append(f"### {uid}. {utitle}\n\n" + "\n".join(body))
 
-    skeleton = normalize_markers(skeleton_text.rstrip()).split("\n")
+    skeleton = canonical(skeleton_text.rstrip()).split("\n")
     out, placed, in_units = [], False, False
-    for _, line, fence in outside_fences(skeleton):
-        if not fence and line.startswith("## "):
+    for line, fenced in with_fence_state(skeleton):
+        if not fenced and line.startswith("## "):
             if in_units and not placed:
-                out = trim_tail(out) + [""] + ["\n\n".join(blocks), ""]
+                out = trim_tail(out) + ["", "\n\n".join(blocks), ""]
                 placed = True
             in_units = line.strip() == UNITS_HEADING
         out.append(line)
     if not placed:
         if not in_units:
             raise Refusal(f"parent description has no `{UNITS_HEADING}` section")
-        out = trim_tail(out) + [""] + ["\n\n".join(blocks)]
+        out = trim_tail(out) + ["", "\n\n".join(blocks)]
     return "---\n" + fm_text + "\n---\n" + "\n".join(out).rstrip() + "\n"
 
 
@@ -327,37 +380,67 @@ def trim_tail(lines):
     return lines
 
 
+def contract_problems(rebuilt, repo):
+    """What is wrong with a rebuilt plan's contract against this repo, if anything."""
+    fm, _ = split_frontmatter(rebuilt)
+    problems = []
+    recorded_full = fm_value(fm, "plan_full_hash")
+    recorded_repo = fm_value(fm, "repo")
+    if not recorded_full:
+        problems.append("the Verification Contract has no plan_full_hash")
+    elif recorded_full != text_hash(rebuilt, full=True):
+        problems.append("plan_full_hash does not match the plan Linear returned")
+    if not recorded_repo:
+        problems.append("the Verification Contract has no repo")
+    elif recorded_repo != repo:
+        problems.append(f"the parent belongs to {recorded_repo}, not {repo}")
+    reviewed = fm_value(fm, "peer_review_plan_hash")
+    if reviewed and reviewed != text_hash(rebuilt):
+        problems.append("peer_review_plan_hash does not match the plan Linear returned")
+    return problems
+
+
+def intake(readback, out, repo):
+    rebuilt = materialize(readback)
+    problems = contract_problems(rebuilt, repo if repo is not None else repo_identity("."))
+    if problems:
+        raise Refusal("intake: " + "; ".join(problems))
+    if ".." in os.path.normpath(out).split(os.sep):
+        raise Refusal(f"--out must not climb out of the tree: {out}")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(rebuilt)
+
+
 # --- verify ---------------------------------------------------------------
 
 def comparable(text):
     fm, body = split_frontmatter(text)
-    fm = [l for l in fm if not l.startswith(ADDED_KEYS)]
-    _, units = parse_body(body)
+    fm = [l.rstrip() for l in drop_keys(fm, CONTRACT_KEYS | POST_RENDER_KEYS)]
+    skeleton, units = parse_body(body)
     parts = [("frontmatter", "\n".join(fm))]
-    parts += [(f"## {h}", t) for h, t in sections(body)]
+    parts += [(f"## {h}", t) for h, t in sections(skeleton)]
     parts += [(f"### {u}. {t}", "\n".join(b)) for u, t, b in units]
     return parts
 
 
-def verify(plan_path, readback):
-    source = open(plan_path, encoding="utf-8").read()
+def verify(plan_path, readback, repo):
+    source = canonical(open(plan_path, encoding="utf-8").read())
     rebuilt = materialize(readback)
-    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
-        f.write(rebuilt)
-        tmp = f.name
-    try:
-        problems = []
-        if plan_hash(plan_path) != plan_hash(tmp):
-            problems.append("the default plan hash differs")
-        src_full = plan_hash(plan_path, full=True)
-        if src_full != plan_hash(tmp, full=True):
-            problems.append("the --full plan hash differs")
-        fm, _ = split_frontmatter(rebuilt)
-        recorded = fm_value(fm, "plan_full_hash")
-        if recorded and recorded != src_full:
-            problems.append(f"plan_full_hash in the read-back ({recorded[:12]}…) is not the source's ({src_full[:12]}…)")
-    finally:
-        os.unlink(tmp)
+    if repo is None:
+        repo = repo_identity(os.path.dirname(os.path.abspath(plan_path)) or ".")
+
+    problems = []
+    if text_hash(source) != text_hash(rebuilt):
+        problems.append("the default plan hash differs")
+    src_full = text_hash(source, full=True)
+    if src_full != text_hash(rebuilt, full=True):
+        problems.append("the --full plan hash differs")
+    problems += contract_problems(rebuilt, repo)
+    src_fm, _ = split_frontmatter(source)
+    reviewed = fm_value(src_fm, "peer_review_plan_hash")
+    if reviewed and reviewed != text_hash(source):
+        problems.append("the source plan changed after review: its peer_review_plan_hash is stale")
 
     a, b = comparable(source), comparable(rebuilt)
     ah, bh = [h for h, _ in a], [h for h, _ in b]
@@ -367,7 +450,10 @@ def verify(plan_path, readback):
         problems.append("the section or unit list differs")
     else:
         for (h, x), (_, y) in zip(a, b):
-            if collapse(x) != collapse(y):
+            # Frontmatter compares line for line: collapsing it would let two
+            # keys merged onto one line compare equal.
+            same = x == y if h == "frontmatter" else collapse(x) == collapse(y)
+            if not same:
                 diff = difflib.unified_diff(x.split("\n"), y.split("\n"), f"source: {h}",
                                             f"read-back: {h}", lineterm="")
                 problems.append(f"`{h}` differs")
@@ -384,7 +470,8 @@ def verify(plan_path, readback):
 def usage():
     sys.stderr.write("usage: ensemble-linear-plan render <plan> [--repo <id>]\n"
                      "       ensemble-linear-plan materialize <readback.json> [--out <path>]\n"
-                     "       ensemble-linear-plan verify <plan> <readback.json>\n")
+                     "       ensemble-linear-plan intake <readback.json> --out <path> [--repo <id>]\n"
+                     "       ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]\n")
     return 2
 
 
@@ -424,8 +511,10 @@ def main(argv):
                     f.write(text)
             else:
                 sys.stdout.write(text)
+        elif cmd == "intake" and len(pos) == 1 and "--out" in opts:
+            intake(load_json(pos[0]), opts["--out"], opts.get("--repo"))
         elif cmd == "verify" and len(pos) == 2:
-            verify(pos[0], load_json(pos[1]))
+            verify(pos[0], load_json(pos[1]), opts.get("--repo"))
         else:
             return usage()
     except Refusal as e:

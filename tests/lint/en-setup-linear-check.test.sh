@@ -42,7 +42,11 @@ has "$CHECK" 'list_issue_statuses' "the workflow states are read over MCP"
 for st in 'Agent Ready' 'In Progress' 'In Review' 'Done'; do
   has "$CHECK" "\`$st\`" "the check names the state: $st"
 done
+has_near "$CHECK" 'four states\*\* are `Agent Ready`, `In Progress`, `In Review` and `Done`' \
+  "the check names all four states together, in its own definition"
 has "$CHECK" '\*\*by name\*\*, never by type' "states are matched by name, never by type"
+has "$CHECK" 'ensemble-config-get" plan_store --allowed local,linear --default local --strict' \
+  "plan_store resolves through both config layers, as publish reads it"
 has "$CHECK" 'share the type `started`' "and the prose says why"
 has "$CHECK" 'missing or duplicated' "a missing or duplicated state is red, naming it"
 has "$CHECK" 'command -v python3' "python3 is checked, since ensemble-linear-plan needs it"

@@ -30,12 +30,16 @@ has()   { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basen
 has_near() { tr '\n' ' ' < "$1" | grep -qiE -- "$2" && pass "$3" || fail "$3" "not found together in $(basename "$1"): $2"; }
 
 # --- 1. intake runs the script, never a hand-built plan (EN19 U2, D119) ----
-has "$PRE" 'ensemble-linear-plan" materialize' "intake materializes through the script"
+has "$PRE" 'ensemble-linear-plan" intake' "intake runs the script's intake subcommand"
+has "$PRE" 'its exit code is the whole gate' "and acts on its exit code, not on a hand comparison"
+has "$PRE" 'computed by\s*$|computed by the script from `origin`' "this repo's identity is computed by the script, never by eye"
+has_near "$PRE" 'Linear write access is\s+authority to\s+instruct the build|Linear write\s+access is authority' \
+  "the preflight states the trust boundary: the digests are not a tamper seal"
 has "$PRE" 'Refuse on a non-zero exit, before any' "and refuses on its non-zero exit before any build work"
 has "$PRE" 'D119' "the preflight doc cites D119"
 has "$FMT" 'ensemble-linear-plan` is the one implementation' "the format doc names the script as its one implementation"
 pre_line() { grep -n -- "$1" "$PRE" | head -1 | cut -d: -f1; }
-f=$(pre_line 'list_issues` with its `parentId`'); m=$(pre_line 'ensemble-linear-plan" materialize')
+f=$(pre_line 'list_issues` with its `parentId`'); m=$(pre_line 'ensemble-linear-plan" intake')
 if [ -n "$f" ] && [ -n "$m" ] && [ "$f" -lt "$m" ]; then pass "the fetch is described before the materialize call"
 else fail "the fetch is described before the materialize call" "fetch=${f:-none} materialize=${m:-none}"; fi
 hasnt() { grep -qiE -- "$2" "$1" && fail "$3" "present in $(basename "$1"): $2" || pass "$3"; }
@@ -72,11 +76,11 @@ has "$PRE" 'normali[sz]' "materialization normalizes the markers"
 has "$FMT" 'normali[sz]' "the format doc owns the normalization rule both sides share"
 has "$PRE" 'get_issue' "fetching is one list call plus a get_issue per unit"
 has "$PRE" 'truncat' "because list_issues truncates descriptions"
-has_near "$PRE" 'refuses a description still carrying Linear.s truncation marker' \
+has_near "$PRE" 'refuses a description still carrying\s+Linear.s truncation marker' \
   "a description still carrying the truncation marker refuses"
 has "$PRE" 'ensemble-plan-hash --full` against `plan_full_hash' \
   "intake compares the --full digest, not only the seven-field hash"
-has "$PRE" '`repo` is not this repo' "intake refuses another repo's parent"
+has_near "$PRE" 'must carry `repo`, and it must be this\s+repository.s' "intake refuses another repo's parent"
 has "$FMT" 'plan_full_hash' "the format doc carries plan_full_hash in the Verification Contract"
 has "$FMT" 'specified, not measured' "the format doc says the parent encoding is unmeasured"
 has "$PRE" 'U-ID|U<N>' "units order by their U-ID suffix, not Linear's ordering"

@@ -106,8 +106,8 @@ the rest), plus two keys `render` adds:
 
 - `plan_full_hash`: `ensemble-plan-hash --full` over the plan as published. The
   default hash covers seven fields, so an edit in Linear to Test scenarios or
-  Verification would pass it; `--full` covers every labelled field of every unit and
-  every plan-level section except the iteration log, which `/en-plan` appends to.
+  Verification would pass it; `--full` covers every labelled field of every unit, the title
+  and preamble, and every plan-level section, the iteration log included.
 - `repo`: this repository's identity, the `origin` remote URL with scheme, userinfo
   and a trailing `.git` stripped, lowercased (`github.com/owner/name`). Plan IDs are
   repo-local and several repos can publish to one team, so discovery matches on
@@ -120,22 +120,29 @@ inferred from the local tree.
 ## Materialization, in order
 
 Steps 1 to 3 are MCP calls the skill makes; steps 4 to 7 are what `ensemble-linear-plan
-materialize` does with their saved results.
+materialize` does with their saved results, and `intake` adds step 8.
 
 1. `get_issue` the parent.
 2. `list_issues --parentId` for the sub-issue set. Descriptions here are
    truncated; you want the ids.
 3. `get_issue` each sub-issue for its full description.
 4. Recover the frontmatter, `plan_full_hash` and `repo` from the Verification Contract
-   block. Skip canceled sub-issues: a canceled unit is not a unit.
-5. Parse `(U<N>)` from each title. Refuse on a missing suffix, or two live sub-issues
+   block, refusing a `plan_id` that is not `<PREFIX><NN>` or a `plan_type` outside the
+   template's enum: the amend path builds a file name from them. Skip canceled sub-issues
+   before reading their titles: a canceled unit is not a unit.
+5. Parse `(U<N>)` from each live title. Refuse on a missing suffix, or two live sub-issues
    with the same U-ID. Sort by that integer.
 6. **Normalize `* ` to `- `** at the start of every list line, outside code fences and
    inside blockquotes; refuse any description still carrying the truncation marker.
 7. Emit the plan file: the parent's skeleton with the units placed under
    `## Implementation units`.
 
-The skill then compares **both** digests before anything else reads the file:
-`ensemble-plan-hash` against `peer_review_plan_hash`, and `ensemble-plan-hash --full`
-against `plan_full_hash`, and refuses when `repo` is not this repo. Either mismatch
-refuses: the plan in Linear is no longer the plan that was reviewed.
+8. **`intake` only:** refuse unless the contract carries `plan_full_hash` and `repo`, `repo` is
+   this repository's identity, `ensemble-plan-hash --full` of the rebuilt plan equals
+   `plan_full_hash`, and `ensemble-plan-hash` equals `peer_review_plan_hash`. Only then write
+   the file. A mismatch means the plan in Linear drifted from the plan that was published.
+
+**The trust boundary.** Both digests live in the parent they protect, and `ensemble-plan-hash`
+is public, so anyone with write access to the team can change a unit and recompute them. The
+checks catch accidental drift, not a colleague. Write access to the Linear team is authority to
+instruct the build (D119).
