@@ -87,7 +87,6 @@ has "$PRE" 'share (a |the )?type|both type `?started|same type' \
 has "$PRE" 'parent.*In Progress|In Progress.*parent' "the parent moves to In Progress at build start"
 has "$PRE" 'sub-issue.*In Progress|when the unit starts' "each sub-issue moves to In Progress when its unit starts"
 has "$PRE" 'Done when it commits|commits.*Done' "each sub-issue moves to Done when its unit commits"
-has "$PRE" 'In Review after the last|after the last unit' "the parent moves to In Review after the last unit commits"
 
 # --- 4. where /en-build stops ------------------------------------------------
 has "$PRE" 'GitHub integration' "the PR is the hand-off point; Linear's integration owns it after"
@@ -162,6 +161,17 @@ has "$PRE" '^\| after the post-build gates pass \| the parent moves to \*\*In Re
   "the In Review row fires only after the post-build gates pass"
 has_near "$PRE" 'evidence audit[^#]{0,200}|In Review comes after' \
   "and the prose says why the last-unit-commit placement was wrong"
+
+# --- 6b. the parent transitions are wired where they fire -------------------
+# build-preflight.md is read at pre-flight, long before the post-build phase
+# and any abort. Without a pointer at each moment, the transitions live only
+# in a file read an hour earlier.
+has "$BUILD" '4b\. Status flip.*linear.*parent to In Progress' \
+  "en-build's status flip moves the Linear parent to In Progress"
+has "$BUILD" '4b\. Status flip.*reconcil' "and reconciles a parent already In Progress"
+has "$BUILD" 'Linear mode:\*\* move the parent to In Review[^\n]*after the audit' \
+  "the post-build phase moves the parent to In Review after the audit"
+has "$BUILD" 'abort before this returns it to Agent Ready' "a graceful abort returns the parent to Agent Ready"
 
 # --- 7. a missing state is a blocking error, raised early -------------------
 has "$PRE" 'blocking error|refuse' "a missing or ambiguous state is a blocking error"
