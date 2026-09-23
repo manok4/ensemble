@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Drift guards for the /en-build agent autonomy contract.
-# The contract lives in skills/en-build/SKILL.md ("Agent autonomy contract").
+# The contract lived in skills/en-build/SKILL.md until EN18 U8 moved it to
+# references/autonomy-contract.md to buy headroom under the 24576-byte skill
+# budget. The prose did not change; only its address did. So $EN_BUILD points
+# at the reference, and one added clause asserts the skill still points there,
+# because a contract nothing routes to is a contract nothing reads.
 # Shipped via PR #20 + #21; the design spec has been retired.
 
 set -u
@@ -12,15 +16,32 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # is driver-neutral. The rule is unchanged: a bootstrap offer is pre-flow.
 TEST_NAME="en-build autonomy contract"
 
-EN_BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
+EN_BUILD="$REPO_ROOT/skills/en-build/references/autonomy-contract.md"
+EN_BUILD_SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
 EN_QA="$REPO_ROOT/skills/en-qa/SKILL.md"
 FOUNDATION="$REPO_ROOT/docs/foundation.md"
 
 # --- en-build has Agent autonomy contract section ---
-if grep -qF "Agent autonomy contract" "$EN_BUILD"; then
+if grep -qF "agent autonomy contract" "$EN_BUILD"; then
   pass "en-build has Agent autonomy contract section"
 else
   fail "en-build missing Agent autonomy contract section"
+fi
+
+# --- and the skill routes to it (EN18 U8) ---
+# Asserted separately from the prose: after the move, every clause below would
+# still pass on an orphaned reference no step tells the agent to read.
+if grep -qF "references/autonomy-contract.md" "$EN_BUILD_SKILL"; then
+  pass "en-build SKILL.md points at references/autonomy-contract.md"
+else
+  fail "en-build SKILL.md must name references/autonomy-contract.md" \
+       "the contract only binds if the flow routes to it"
+fi
+if grep -qF "advance, not ask" "$EN_BUILD_SKILL"; then
+  pass "en-build SKILL.md keeps the one-line framing at the pointer"
+else
+  fail "en-build SKILL.md should keep 'advance, not ask' inline" \
+       "the pointer has to carry the rule, not just the address"
 fi
 
 # --- en-qa has the mirror ---

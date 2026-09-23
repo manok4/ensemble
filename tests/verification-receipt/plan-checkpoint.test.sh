@@ -46,16 +46,17 @@ review-verdict: {\"verdict\":\"approve\",\"reviewer\":\"cross-agent\",\"mode\":\
   printf '%s\n' "$d"
 }
 
-outcome() { ( cd "$1" && "$C" --base master --json 2>/dev/null || cd "$1" && "$C" --base main --json 2>/dev/null ) \
-  | python3 -c 'import json,sys
+# The outcome field of a checkpoint result, or UNPARSEABLE.
+read_outcome() { python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["outcome"])
 except Exception: print("UNPARSEABLE")'; }
 
+outcome() { ( cd "$1" && "$C" --base master --json 2>/dev/null || cd "$1" && "$C" --base main --json 2>/dev/null ) \
+  | read_outcome; }
+
 base_branch() { ( cd "$1" && git rev-parse --verify --quiet main >/dev/null 2>&1 && echo main || echo master ); }
 run() { d="$1"; ( cd "$d" && "$C" --base "$(base_branch "$d")" --json 2>/dev/null ); }
-outcome_of() { run "$1" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)["outcome"])
-except Exception: print("UNPARSEABLE")'; }
+outcome_of() { run "$1" | read_outcome; }
 
 # --- complete ----------------------------------------------------------------
 A=$(fixture complete open "U1:in U2:in" "U1 U2" "U1 U2")
@@ -102,5 +103,131 @@ assert_eq "not_applicable" "$( cd "$I" && "$C" --json 2>/dev/null | python3 -c '
 J=$(fixture lower open "U1:in" "U1" "U1")
 ( cd "$J" && git checkout -q -b en99-lowercase ) >/dev/null 2>&1
 assert_eq "complete" "$(outcome_of "$J")" "a lowercase branch name still resolves its plan"
+
+# --- provenance (EN18): Linear builds and configuration drift ----------------
+# A Linear build's branch is <IDENT>-<slug> and its plan is the materialized
+# copy. Before these, every Linear build resolved not_applicable, so neither
+# linear_mode nor the drift error was reachable.
+# $1=name $2=branch $3=plan path $4=plan_source $5=configured_store $6=repo plan_store ("" = unset)
+prov_fixture() {
+  d="$WORK/$1"; mkdir -p "$d/$(dirname "$3")" "$d/.ensemble" "$WORK/home-$1"
+  ( cd "$d" && git init -q . && git config user.email t@e.com && git config user.name t ) >/dev/null 2>&1
+  printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\nplan_source: %s\nconfigured_store: %s\n---\n\n### U1. goal\n\n- **Ship scope:** in\n' \
+    "$4" "$5" > "$d/$3"
+  [ -n "$6" ] && printf 'plan_store: %s\n' "$6" > "$d/.ensemble/config.local.yaml"
+  ( cd "$d" && git commit -q --allow-empty -m init && git checkout -q -b "$2" ) >/dev/null 2>&1
+  printf '%s\n' "$d"
+}
+prov_run() { ( cd "$1" && HOME="$WORK/home-$2" "$C" --json 2>/dev/null ); }
+prov_outcome() { prov_run "$1" "$2" | read_outcome; }
+
+L=$(prov_fixture lin ENG-412-thing .ensemble/materialized-plans/ENG-412.md linear linear linear)
+assert_eq "linear_mode" "$(prov_outcome "$L" lin)" \
+  "a Linear branch resolves its materialized plan and returns linear_mode"
+assert_eq ".ensemble/materialized-plans/ENG-412.md" \
+  "$(prov_run "$L" lin | python3 -c 'import json,sys;print(json.load(sys.stdin)["plan_path"])')" \
+  "and names the materialized plan it read"
+
+Ll=$(prov_fixture linlower eng-412-thing .ensemble/materialized-plans/ENG-412.md linear linear linear)
+assert_eq "linear_mode" "$(prov_outcome "$Ll" linlower)" "a lowercased Linear branch resolves the same plan"
+
+F=$(prov_fixture flipped ENG-413-thing .ensemble/materialized-plans/ENG-413.md linear linear local)
+assert_eq "config_drift" "$(prov_outcome "$F" flipped)" \
+  "a Linear build shipped after plan_store flipped to local is drift"
+assert_eq "linear/local" \
+  "$(prov_run "$F" flipped | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["configured_store"]+"/"+d["current_store"])')" \
+  "the drift outcome names both values"
+
+G=$(prov_fixture localdrift EN99-thing docs/plans/active/EN99-feature_fixture.md local local linear)
+assert_eq "config_drift" "$(prov_outcome "$G" localdrift)" \
+  "a local build shipped under plan_store: linear is drift too, the direction that skips the git mv"
+
+M=$(prov_fixture migrating EN99-thing docs/plans/active/EN99-feature_fixture.md local linear linear)
+assert_eq "incomplete_unexpected" "$(prov_outcome "$M" migrating)" \
+  "a mid-migration local build (configured_store: linear) is not drift and runs the local outcomes"
+
+# --- provenance from git history (EN19 U3) -----------------------------------
+# Every unit commit carries a plan-provenance trailer, so ship reads provenance
+# from history on any machine. Before this, provenance lived only in the
+# gitignored materialized file: a fresh clone or `git clean` silently turned
+# the drift check off and returned not_applicable.
+# $1=name $2=branch $3=repo plan_store ("" = unset) $4.. = trailer JSON per unit commit
+trailer_fixture() {
+  local name="$1" br="$2" store="$3"; shift 3
+  d="$WORK/$name"; mkdir -p "$d/.ensemble" "$WORK/home-$name"
+  ( cd "$d" && git init -q . && git config user.email t@e.com && git config user.name t \
+      && git commit -q --allow-empty -m init && git checkout -q -b "$br" ) >/dev/null 2>&1
+  [ -n "$store" ] && printf 'plan_store: %s\n' "$store" > "$d/.ensemble/config.local.yaml"
+  local n=1
+  for t in "$@"; do
+    ( cd "$d" && git commit -q --allow-empty -m "feat(x): unit $n (U$n)
+
+plan-provenance: $t" ) >/dev/null 2>&1
+    n=$((n + 1))
+  done
+  printf '%s\n' "$d"
+}
+tr_run() { ( cd "$1" && HOME="$WORK/home-$2" "$C" --base "$(base_branch "$1")" --json 2>/dev/null ); }
+tr_outcome() { tr_run "$1" "$2" | read_outcome; }
+LIN='{"plan_source":"linear","configured_store":"linear","plan_ref":"ENG-500"}'
+
+T1=$(trailer_fixture trl ENG-500-thing linear "$LIN" "$LIN")
+[ ! -e "$T1/.ensemble/materialized-plans" ] && pass "the fixture has no materialized plan on disk" \
+  || fail "the fixture has no materialized plan on disk"
+assert_eq "linear_mode" "$(tr_outcome "$T1" trl)" \
+  "a Linear build with provenance trailers and no materialized file returns linear_mode"
+
+T2=$(trailer_fixture trldrift ENG-501-thing local "$LIN")
+assert_eq "config_drift" "$(tr_outcome "$T2" trldrift)" \
+  "trailers recording configured_store: linear, repo now local: config_drift with no file on disk"
+assert_eq "linear/local" \
+  "$(tr_run "$T2" trldrift | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["configured_store"]+"/"+d["current_store"])')" \
+  "the drift names both values, read from the trailer"
+
+T3=$(trailer_fixture trlconflict ENG-502-thing linear "$LIN" \
+  '{"plan_source":"local","configured_store":"linear","plan_ref":"docs/plans/active/EN99-x.md"}')
+assert_eq "provenance_conflict" "$(tr_outcome "$T3" trlconflict)" \
+  "two unit commits whose provenance trailers disagree return provenance_conflict"
+
+# Key order is not provenance: the same values written in another order agree.
+T4=$(trailer_fixture trlorder ENG-503-thing linear "$LIN" \
+  '{"plan_ref":"ENG-500","configured_store":"linear","plan_source":"linear"}')
+assert_eq "linear_mode" "$(tr_outcome "$T4" trlorder)" "trailers with the same values in another key order agree"
+
+# The trailer wins over the materialized file: history is the record, the file
+# is a local cache that can be stale.
+T5=$(trailer_fixture trlwins ENG-504-thing linear "$LIN")
+mkdir -p "$T5/.ensemble/materialized-plans"
+printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\nplan_source: local\nconfigured_store: local\n---\n\n### U1. g\n\n- **Ship scope:** in\n' \
+  > "$T5/.ensemble/materialized-plans/ENG-504.md"
+assert_eq "linear_mode" "$(tr_outcome "$T5" trlwins)" "the trailer takes precedence over the materialized file's frontmatter"
+
+# A Linear build's plan_ref is an identifier, not a path: plan_path stays null.
+assert_eq "None ENG-500" "$(tr_run "$T1" trl | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["plan_path"], d.get("plan_ref"))')" \
+  "linear_mode reports the identifier as plan_ref, never as plan_path"
+
+# A malformed trailer fails closed. Before, it parsed to empty fields and the
+# checkpoint fell through to not_applicable with no file on disk.
+T6=$(trailer_fixture trlbad ENG-505-thing linear 'not json at all')
+assert_eq "provenance_conflict" "$(tr_outcome "$T6" trlbad)" "an unparseable provenance trailer blocks"
+T7=$(trailer_fixture trlmissing ENG-506-thing linear '{"plan_source":"linear","plan_ref":"ENG-506"}')
+assert_eq "provenance_conflict" "$(tr_outcome "$T7" trlmissing)" "a trailer missing configured_store blocks, rather than shifting fields"
+
+# The same local path written with and without ./ is the same provenance.
+T8=$(trailer_fixture trldot EN99-dot local \
+  '{"plan_source":"local","configured_store":"local","plan_ref":"docs/plans/active/EN99-feature_fixture.md"}' \
+  '{"plan_source":"local","configured_store":"local","plan_ref":"./docs/plans/active/EN99-feature_fixture.md"}')
+assert_ne "provenance_conflict" "$(tr_outcome "$T8" trldot)" "a plan_ref with and without ./ does not conflict"
+
+# A local trailer's plan_ref finds the plan when the branch name does not.
+T9=$(trailer_fixture trllocal feature-x local \
+  '{"plan_source":"local","configured_store":"local","plan_ref":"docs/plans/active/EN99-feature_fixture.md"}')
+mkdir -p "$T9/docs/plans/active"
+printf -- '---\ntype: plan\nplan_id: EN99\nstatus: in_progress\n---\n\n### U1. goal\n\n- **Ship scope:** in\n' \
+  > "$T9/docs/plans/active/EN99-feature_fixture.md"
+out=$(tr_outcome "$T9" trllocal)
+[ "$out" != "not_applicable" ] && [ "$out" != "UNPARSEABLE" ] \
+  && pass "a local trailer's plan_ref locates the plan on a branch without the plan_id ($out)" \
+  || fail "a local trailer's plan_ref locates the plan" "outcome=$out"
 
 report

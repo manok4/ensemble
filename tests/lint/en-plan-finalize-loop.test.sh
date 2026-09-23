@@ -7,10 +7,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="en-plan finalize loop"
 
-PLAN="$REPO_ROOT/skills/en-plan/SKILL.md"
+# EN18 U8 moved the loop's policy to references/finalize-loop.md for headroom
+# under the 24576-byte skill budget. The prose did not change, so the clauses
+# follow it rather than loosening to match wherever it ended up. SKILL.md is
+# asserted separately, for the pointer: policy nothing routes to is policy
+# nothing reads.
+PLAN="$REPO_ROOT/skills/en-plan/references/finalize-loop.md"
+PLAN_SKILL="$REPO_ROOT/skills/en-plan/SKILL.md"
+
+# --- 0. step 16 routes to the loop's file (EN18 U8) ---
+if grep -qF "references/finalize-loop.md" "$PLAN_SKILL"; then
+  pass "en-plan SKILL.md points at references/finalize-loop.md"
+else
+  fail "en-plan SKILL.md must name references/finalize-loop.md" \
+       "every clause below passes against an orphaned reference"
+fi
 
 # --- 1. cap is 1 at every depth (two passes max); no depth-scaled cap survives ---
-if grep -qiE "Iteration cap: 1 at every depth" "$PLAN" \
+if grep -qiE "Iteration cap" "$PLAN" && grep -qiE "\*\*1 at every depth\*\*|Iteration cap: 1 at every depth" "$PLAN" \
    && grep -qiE "at most \*\*two\*\* peer passes" "$PLAN" \
    && ! grep -qE "Lightweight = 1, Standard = 2, Deep = 2" "$PLAN"; then
   pass "finalize loop caps at one re-review (two peer passes max) at every depth"

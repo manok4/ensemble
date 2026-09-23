@@ -10,3 +10,4 @@ updated: 2026-09-11
 > Append-only. One line per `en-learn` operation. Grep with: `grep "^## \[" docs/learnings/log.md | tail -10`
 
 ## [2026-09-11] capture | A second round of findings inside the first round's fixes is a design signal | 12a8928
+## [2026-09-23] capture | EN19 build: gate wrote nothing, both candidates recoverable from D119 and ensemble-plan-hash | 9e53ca1

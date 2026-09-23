@@ -20,6 +20,17 @@ else
 fi
 
 # --- 2. flat, gap-free, correctly-ordered step numbering (no 11a-style wedges) ---
+# The wedge check is separate from the sequence check, because a wedge does not
+# break the sequence: EN18 added a "17a." step and this clause stayed green,
+# since the sequence pattern below only matches a bare "^N. **" and skipped it.
+wedges=$(grep -cE "^[0-9]+[a-z]\. \*\*" "$SKILL")
+if [ "$wedges" -eq 0 ]; then
+  pass "no lettered step wedges (17a-style), which renumbering is meant to avoid"
+else
+  fail "found $wedges lettered step wedge(s); renumber flat instead" \
+       "$(grep -nE '^[0-9]+[a-z]\. \*\*' "$SKILL" | head -3)"
+fi
+
 nums=$(grep -oE "^[0-9]+\. \*\*" "$SKILL" | grep -oE "^[0-9]+")
 expected=1; seq_ok=1
 for n in $nums; do

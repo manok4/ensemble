@@ -20,12 +20,14 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 > **Peer contract.** Severity, confidence, autofix class and the `peer_decision` object are defined once in `references/peer-contract.md`, byte-identical across every skill that exchanges findings. What this skill does with a finding is its own policy.
 
+> **Linear plan store.** Under `plan_store: linear`, `references/linear-publish.md` owns the publish flow and `references/linear-plan-format.md` owns the data mapping.
+
 ## Process
 
 1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
-   - **`--resume <plan-path>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step.
+   - **`--resume <plan-path|IDENT>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step. An identifier (`ENG-412`) amends a published plan: read `references/linear-intake.md`.
    - **`--from-legacy <path>`** (explicit) — mint a *new* plan from an archived legacy plan, which is never modified or moved. **Read `references/plan-from-legacy.md` when this flag is passed**; it owns the confirmation, the `migrated_from:` frontmatter and the legacy README back-reference.
    - **Auto-resume** (heuristic) — a plan in `docs/plans/active/` matching the request by title or `related_design` is offered as a resume rather than a new plan.
    - **Create** — no match; mint a new plan.
@@ -36,6 +38,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - `docs/foundation.md` — pulling a requirement (R-ID) for the next slice of work.
    - Direct rough description from the user.
    - Bug report or tracked debt item (`Resolves: TD<N>`).
+   - A Linear issue identifier (`ENG-123`): read `references/linear-intake.md`.
 
    **Read `references/plan-intake.md` here.** It owns the bounded foundation read (`docs/foundation.md` runs past 2,000 lines and is never read whole: section index first, then the sections you need), the rule that a matching design doc's decisions are already settled and must not be re-asked, the context-sufficiency check that offers `/en-brainstorm`, and the brainstorm soft-nudge. Proceeding is always allowed; neither is a hard gate.
 
@@ -90,13 +93,15 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     Record the outcome as `default_branch_checkpoint: <auto_branched | no_commit_requested | committed_to_default_branch>` in the report.
 
-15. **Write the plan.** One precondition first, and it can end the step.
+15. **Write the plan.** Two preconditions first, and either can end the step.
 
     **Is a plan file warranted?** Offer the no-file path only when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, **no design doc was consumed**, and the user did not ask for a plan file. `references/plan-prewrite.md` owns the offer's wording and why the design-doc condition is not about size.
 
     If they take the no-file path, state the change concretely and stop: **no file, no U-IDs, no peer review, and `/en-build` is not available** for it, since `/en-build` consumes a plan file and there will not be one. Say that plainly rather than implying a handoff that cannot happen.
 
     **Never offer the skip** when the work touches a risk surface, authentication, payments, migrations or external contracts, however small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.
+
+    **Tracked sources, under `plan_store: linear`.** Before anything is written, resolve `plan_store` as the Linear publish step does and, on `linear`, run `references/linear-publish.md`'s tracked-source check on the plan. A tracked source refuses here, while the tree is still clean.
 
     Then write to `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md` (e.g. `EN03-improvement_dashboard-overview.md`) using `references/templates/plan-template.md`. Settle the unit boundaries and the hard calls in reasoning; write the file once. Substitute `plan_id` (`<PREFIX><NN>`), `plan_type` and `data_scale` (default `small`), and initialize `peer_review_iterations: 0` and `peer_review_resolutions: []`. Status starts `draft`; the finalize loop may flip it to `open`.
 16. **Outside Voice review with finalize loop.**
@@ -109,12 +114,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
     - **Resolve the peer's model and effort, then invoke via `$SKILL_DIR/scripts/ensemble-peer-invoke`** with `ENSEMBLE_PEER_REVIEW=true`. Read `peer_model_<peer>` and `peer_effort_<peer>` for the peer's host through `$SKILL_DIR/scripts/ensemble-config-get` (effort `--allowed low,medium,high,xhigh`, `--legacy` the old names, D104); `eval "$($SKILL_DIR/scripts/ensemble-peer-flags --effort "${override:-inherit}" --peer-cmd "$PEER_CMD" --model-alias "$alias" --codex-model "$codex")"`; pass `$PEER_CMD`, `$PEER_FORMAT`, `$PEER_TURNS`, `$PEER_MODEL`, `$PEER_EFFORT`, the prompt file and `--peer-mode "$PEER_MODE"`. The helper owns timeout, failure classification, retry and fallback (D41); do not restate them. Surface the returned `peer_decision`'s `peer`/`reason` (`references/peer-contract.md`) in the run report, so a skipped or degraded peer never reads as normal.
     - Parse JSON per `references/finding-schema.md`. Mint `finding_id` as `<iteration>-<index>` for any finding the peer didn't supply one for.
     - Update frontmatter: `peer_review_verdict`, `peer_review_iterations` (+1), `peer_review_last_run` (ISO 8601 date).
-    - **Re-review loop** (the finalize loop):
-      `references/outside-voice.md` owns verdict handling and the previous-review-context section; below is en-plan's policy on top of it.
-      - On `approve` → exit; go to the status flip. On `reject` → pause, surface, leave `status: draft`, no re-loop. A timeout or malformed JSON after one retry behaves the same way.
-      - On `revise` → walk findings, apply / defer / disagree per `references/peer-brief.md`, each application a surgical edit to the plan file, never a rewrite of it. Record each in `peer_review_resolutions:` (entry schema in `references/templates/plan-template.md`) and keep the narrative iteration log in sync. Run `bin/ensemble-lint --scope <plan-path>` so a broken citation surfaces now, not at promotion. Then re-invoke with a `## Previous review context` section assembled into a tempfile **from `peer_review_resolutions:`, never from the iteration-log prose**, passed as `--iteration-context-file <path>`.
-        - **Severity gate on the re-loop.** Re-invoke **only if at least one finding this pass was `P0` or `P1`**. A pass returning only `P2`/`P3` applies what is cheap, records the rest, and exits with `reloop_skipped: advisory-only`; a second full pass to confirm a typo fix is not worth its latency.
-        - **Iteration cap: 1 at every depth**, so at most **two** peer passes. `--max-iterations <N>` raises it; `--no-reloop` runs the initial pass only. At the cap, ask "accept as-is and flip to `open`, or stay in `draft`?" and let the user decide. A finding the user disagreed with goes on a "do not re-flag" list in the next prompt; a third appearance counts as the cap hit.
+    - **Re-review loop** (the finalize loop). **Read `references/finalize-loop.md`**: it owns verdict handling on top of `references/outside-voice.md`, the severity gate that re-invokes only for a `P0`/`P1` pass, and the iteration cap of 1 at every depth.
 17. **Promote to `open` (status flip).** Every path that produces a buildable plan flips it, not just peer-approve. Flip when any of these is true:
     - The loop exited with `verdict: approve`.
     - `--no-peer` was passed.
@@ -127,10 +127,12 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     On promotion: compute `peer_review_plan_hash` with `$SKILL_DIR/scripts/ensemble-plan-hash <plan-path>`, write its output to frontmatter alongside `peer_review_verdict`, and flip `status: draft → open`. **Do not canonicalize the fields yourself** (D41): no model computes sha256, and each ad-hoc shell attempt canonicalizes differently, so `/en-build` re-checking with the same helper would refuse a plan nobody edited. The file stays in `active/`, the directory; there is no `status: active` value.
 
-    **Close out the design doc.** If this plan consumed a `docs/designs/*.md` (the path in `related_design:`), that exploration is settled. In the same promotion, write this plan's `plan_id` into the design's `related_plan:` and set its `status:` to **`accepted`** when the plan carries the design's recommendation, or **`superseded`** when planning committed to a different approach, noting the plan in `replaced_by:`. Only `/en-plan` holds both, so only it can tell these apart. Leave an already-closed design alone; the first plan to open owns the flip. This sits here rather than on the peer-approve path because a Lightweight plan commonly reaches `open` with no peer pass, and without it every design ever written stays in `/en-brainstorm`'s resume pool.
+    **Close out the design doc** (skipped under `plan_store: linear`, which leaves designs untouched). If this plan consumed a `docs/designs/*.md` (the path in `related_design:`), that exploration is settled. In the same promotion, write this plan's `plan_id` into the design's `related_plan:` and set its `status:` to **`accepted`** when the plan carries the design's recommendation, or **`superseded`** when planning committed to a different approach, noting the plan in `replaced_by:`. Only `/en-plan` holds both, so only it can tell these apart. Leave an already-closed design alone; the first plan to open owns the flip. This sits here rather than on the peer-approve path because a Lightweight plan commonly reaches `open` with no peer pass, and without it every design ever written stays in `/en-brainstorm`'s resume pool.
 
     The plan stays `draft` ONLY on an unoverridden `reject`, or a peer timeout or malformed JSON the user has not yet decided on. Then do not advance to the auto-commit step or the hand-off: surface state and stop. `/en-build`'s pre-flight offers recovery next time.
-18. **Auto-commit the plan file.**
+18. **Publish to Linear (`plan_store: linear` only).** Read `plan_store` through `$SKILL_DIR/scripts/ensemble-config-get` with `--allowed local,linear --default local --strict`. On `local`, skip this step; the auto-commit step runs unchanged. On `linear`, **read `references/linear-publish.md`** and follow it: the fail-closed config reads, the order of operations, the render and verify calls around the MCP writes, the tracked-source refusal, recovery and idempotency. Then **skip the auto-commit step**: a repo in Linear mode makes no plan-related commit.
+
+19. **Auto-commit the plan file.**
     - Commit on the current branch, whatever it is. Skip on detached HEAD or any unusual state; surface and ask.
     - Refuse if `git diff --cached` holds unrelated staged changes; surface and ask the user to commit the plan by hand. Untracked or unstaged changes to *other* files are fine: `git add` takes the plan file path only, never `git add -A`.
     - Commit message (HEREDOC):
@@ -141,8 +143,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       Verdict: approve. Generated by /en-plan.
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
-19. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning.
-20. **Hand off to `/en-build`.** Close the run first: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.
+20. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning.
+21. **Hand off to `/en-build`.** Close the run first: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build <that path>`?"
 
 ## Flags
@@ -154,7 +156,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 | `--max-iterations <N>` | Raise the re-loop cap above 1. |
 | `--branch-on-default <y\|current\|no-commit>` | Pre-answer the default-branch checkpoint for non-interactive runs (CI, automation). No effect off the detected default branch. |
 | `--research <path>` | Prior research replaces the two research dispatches (Phase 1 research). |
-| `--resume <plan-path>` | See the resume-or-create step. |
+| `--resume <plan-path\|IDENT>` | See the resume-or-create step. |
 | `--from-legacy <path>` | See the resume-or-create step. |
 
 ## State-2 retrofit fallback

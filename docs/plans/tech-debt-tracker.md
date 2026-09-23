@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-09-08
+updated: 2026-09-21
 ---
 
 # Tech debt tracker
@@ -64,10 +64,17 @@ tests pass. Eighteen to a hundred and forty bytes is not headroom, it is a
 rounding error, and the next flow-step added to any of the three turns a lint
 with no escape hatch into a blocker on an unrelated branch.
 
+**Updated 2026-09-22 (EN18 U8).** Two of the three are resolved: moving
+`en-build`'s autonomy contract and `en-plan`'s finalize-loop policy into
+references took them to **23,848** (728 spare) and **23,936** (640 spare). This
+entry now covers **`en-setup` alone, at 24,524 with 52 bytes spare**, which is
+tighter than any figure in the paragraph above and is the one file where the
+next added line is a blocker. Scope and severity are unchanged otherwise.
+
 - **Source:** branch review on EN17 (standards persona), STD-5
 - **Severity:** P3
 - **Confidence:** 7/10
-- **Location:** `skills/en-build/SKILL.md`, `skills/en-setup/SKILL.md`, `skills/en-plan/SKILL.md`
+- **Location:** `skills/en-setup/SKILL.md` (the remaining one; `en-build` and `en-plan` resolved by EN18 U8)
 - **Why it matters:** the cost lands on whoever next edits one of these for an
   unrelated reason, and it lands as a failure they did not cause.
 - **Suggested fix:** a prose trim pass on the three, in their own commit, taking
@@ -94,6 +101,125 @@ all hold; only the length clause is dead.
   which is git's own wrapping convention, or delete the length clause. Do not
   rewrite history to satisfy it.
 - **Logged:** 2026-09-11
+
+### TD16. `/en-build`'s pre-flight matrix has no row for a plan accepted at the peer-review cap
+
+Filed 2026-09-21 from the EN18 build, which stopped on it.
+
+`/en-plan` step 17 promotes a plan to `status: open` while leaving
+`peer_review_verdict: revise` when the iteration cap is hit and the user chooses
+"accept as-is". That is a documented, supported path. `/en-build`'s pre-flight
+sub-state matrix in `references/build-preflight.md` has rows for `open`+`approve`,
+`open`+`null`, `draft`+`revise`, `draft`+`null`, `draft`+`reject` and
+`completed`/`abandoned`, but none for `open`+`revise`. The matrix states that it
+owns every buildable and refused combination, so the absence reads as a gap
+rather than an implicit refusal, and the agent has to infer an answer.
+
+- **Source:** EN18 build pre-flight, 2026-09-21
+- **Severity:** P2
+- **Confidence:** 9/10
+- **Location:** `skills/en-build/references/build-preflight.md`, the sub-state matrix
+- **Why it matters:** every plan accepted at the cap lands in this state, and each
+  build re-derives whether it is allowed to proceed. Two agents can reasonably
+  reach opposite answers, and neither is contradicted by the contract.
+- **Suggested fix:** add an `open` + `revise` + 0 unresolved + tracked row
+  resolving to Proceed, matching `open`+`approve`, since promotion already
+  required every finding to be resolved and a human to accept. Add a drift test
+  asserting the matrix covers every `status` x `verdict` pair `/en-plan` can emit,
+  so the next gap fails a test instead of a build.
+- **Logged:** 2026-09-21
+
+### TD17. Two EN18 U2 config scenarios are correct but unasserted
+
+Filed by /en-review (confidence 6), sub-threshold; surfaced for later review.
+
+EN18 U2 lists two scenarios `tests/lint/plan-store-config.test.sh` does not
+assert. `linear_team: ""` and a bare `linear_team:` both exit 3 under
+`--required`, but the test covers only an unset key. And the malformed
+`config.json` case runs against `peer_model_claude` without `--strict`, never
+against `plan_store --strict`. Both behave correctly when probed by hand.
+
+- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
+- **Severity:** P3
+- **Confidence:** 6/10
+- **Location:** `tests/lint/plan-store-config.test.sh`
+- **Why it matters:** a regression in either path would pass the suite.
+- **Suggested fix:** add both cases; each is a few lines in the existing style.
+- **Logged:** 2026-09-22
+
+### TD18. `/en-plan` cannot tell it was invoked by `/en-flow`
+
+Filed by /en-review (confidence 5), sub-threshold; surfaced for later review.
+
+`linear-publish.md` says the `/en-flow` boundary is "enforced, not merely
+documented": under `plan_store: linear`, `/en-plan` refuses before publishing
+when `/en-flow` invoked it. But `/en-flow` passes no marker, and `/en-plan`'s
+SKILL.md never mentions `/en-flow`, so the refusal depends on the model
+inferring its caller from context.
+
+- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
+- **Severity:** P3
+- **Confidence:** 5/10
+- **Location:** `skills/en-plan/references/linear-publish.md`, *The `/en-flow` boundary*; `skills/en-flow/SKILL.md`
+- **Why it matters:** the chain can publish a plan to Linear and then hand
+  `/en-build` a path that no longer exists, the state the rule exists to prevent.
+- **Suggested fix:** have `/en-flow` read `plan_store` itself and refuse before
+  invoking `/en-plan`, or pass an explicit flag the refusal keys on.
+- **Logged:** 2026-09-22
+
+### TD19. The Linear plan digests are not a tamper seal
+
+Both `peer_review_plan_hash` and `plan_full_hash` live in the Linear parent they
+protect, and `ensemble-plan-hash` is public, so anyone with write access to the
+team can edit a unit and recompute both. EN19's branch review reproduced it. The
+operator chose to state the trust boundary (D119: Linear write access is
+authority to instruct the build) rather than build an anchor now.
+
+- **Source:** EN19 branch review, security persona, 2026-09-23
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** `skills/en-build/scripts/ensemble-linear-plan` (intake), `skills/en-build/references/build-preflight.md`
+- **Why it matters:** a plan edited deliberately in Linear passes intake and
+  instructs the build, now including Context, Out of scope and Technical design.
+- **Suggested fix:** sign `plan_full_hash` with a key only builders hold (an
+  HMAC from local config, with a key-distribution story), or refuse when
+  `get_issue` shows edits after publish by anyone but the publisher, if the MCP
+  exposes edit history.
+- **Logged:** 2026-09-23
+
+### TD20. The Linear MCP flows have prose tests only
+
+Issue intake, amend in place and the en-setup Linear check are model-followed
+MCP flows. Their tests grep the references for the required steps and ordering;
+they pass whether or not a model follows them. The transforms are tested for
+real in `tests/linear-plan/`; the calls around them are not.
+
+- **Source:** EN19 branch review, Codex peer (finding 1-7), 2026-09-23
+- **Severity:** P2
+- **Confidence:** 10/10
+- **Location:** `tests/lint/en-plan-linear-intake.test.sh`, `tests/lint/en-setup-linear-check.test.sh`
+- **Why it matters:** the re-check-before-write and refusal rules are the
+  safety of these flows, and nothing observes them executing.
+- **Suggested fix:** a harness that runs the flow against a fake Linear MCP
+  server with scripted responses, asserting the calls made, the resulting issue
+  state, and refusal when the issue changes between intake and publish.
+- **Logged:** 2026-09-23
+
+### TD21. EN19 U1's "canceled first" U-ID rule is not implemented
+
+EN19 U1's Approach says a canceled unit and a live one may share a U-ID only if
+the canceled one came first. `materialize` skips every canceled sub-issue before
+its duplicate check, and the read-back carries no creation order, so the rule
+cannot be enforced as written. Amend never reuses a U-ID, so the case arises
+only from a hand edit in Linear.
+
+- **Source:** EN19 branch review, plan-coverage pass, 2026-09-23
+- **Severity:** P3
+- **Confidence:** 6/10
+- **Location:** `skills/en-build/scripts/ensemble-linear-plan` (materialize)
+- **Suggested fix:** enforce it with identifier numbers as a proxy for creation
+  order, or drop the clause from the plan when it is next amended.
+- **Logged:** 2026-09-23
 
 ## Resolved
 

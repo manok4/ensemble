@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# tests/lint/plan-completion-linear.test.sh
+#
+# EN18 U6. /en-ship's plan-completion checkpoint `git mv`s the plan to
+# docs/plans/completed/ and /en-learn flips its `status:` at ship. Both assume
+# a file on disk. In Linear mode there is none, and the PR merge moves the
+# parent to Done through the GitHub integration instead.
+#
+# The clause this file exists for is the SYMMETRY one. Both skills act on the
+# build's recorded provenance rather than the repo's current `plan_store`,
+# because `plan_store` is mutable between build and ship. Writing provenance
+# only on the Linear path catches one drift direction and misses the other:
+#
+#   linear build, config later flipped to local  -> caught by a linear-only field
+#   local  build, config later flipped to linear -> NOT caught; the git mv is
+#                                                   skipped and the plan never
+#                                                   reaches completed/
+#
+# So the provenance field is written on BOTH paths, and both drift directions
+# are asserted separately. A test with only the first scenario passes against
+# exactly the bug the peer found.
+
+set -u
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
+. "$REPO_ROOT/tests/lib/assert.sh"
+TEST_NAME="plan completion in linear mode"
+
+SHIP="$REPO_ROOT/skills/en-ship/SKILL.md"
+COMP="$REPO_ROOT/skills/en-ship/references/plan-completion.md"
+LEARN="$REPO_ROOT/skills/en-learn/SKILL.md"
+PRE="$REPO_ROOT/skills/en-build/references/build-preflight.md"
+
+has() { grep -qiE -- "$2" "$1" && pass "$3" || fail "$3" "missing from $(basename "$1"): $2"; }
+
+# Labels a path by its SKILL. basename(dirname(f)) gives "references" for
+# en-ship's reference and "en-learn" for en-learn's SKILL.md, so the two sides
+# of every loop below were labelled inconsistently; walking a fixed number of
+# levels cannot fix it, because the two files sit at different depths.
+skill_of() { printf '%s' "$1" | sed -n 's|.*/skills/\([^/]*\)/.*|\1|p'; }
+
+# --- 1. the producer: /en-build writes provenance on BOTH paths -------------
+has "$PRE" 'provenance' "en-build records the resolved mode as build provenance"
+# Anchored on the both-paths claim itself. A looser alternation also matched
+# the mode table's "record provenance as `local`" row and stayed green when
+# the claim was flipped to "written on the Linear path", which is the only
+# thing this clause guards.
+has "$PRE" 'written on both paths' \
+  "provenance is written on the local path too, not only the Linear one"
+has "$PRE" 'immutable|not re-read|never re-resolved' \
+  "and it is immutable: ship acts on what the build did, not on the config now"
+
+# --- 2. the consumers read provenance, never the live config ----------------
+for f in "$COMP" "$LEARN"; do
+  n=$(skill_of "$f")
+  has "$f" 'provenance' "$n reads the build's provenance"
+  # en-learn/SKILL.md is a large multi-topic file: `mutable` matched its
+  # unrelated "leaving `date:` immutable" line, so the loose alternation was
+  # decorative on that side of the loop.
+  has "$f" 'plan_store` is mutable|mutable: flipping' \
+    "$n records why the live plan_store is not the input"
+done
+
+# --- 3. both drift directions, asserted separately --------------------------
+# The linear->local direction is the obvious one. The local->linear direction
+# is the one a linear-only provenance field misses, and it is the more
+# expensive of the two: the git mv is skipped and the plan never reaches
+# docs/plans/completed/.
+for f in "$COMP" "$LEARN"; do
+  n=$(skill_of "$f")
+  if grep -qiE 'both direction|either direction' "$f"; then
+    pass "$n: drift is caught in both directions"
+  else
+    fail "$n: drift must be caught in both directions" \
+         "a linear-only provenance field misses a local build shipped under plan_store: linear"
+  fi
+  # `stop|refuse` matched en-learn's unrelated sync-conflict table ("Stop
+  # sync...", "Refuse the move..."), so gutting the drift enforcement to a
+  # warning would have left this green.
+  has "$f" 'blocking error naming both' "$n: drift stops rather than guessing"
+  has "$f" 'naming both|both values' "$n: the error names the recorded mode and the current one"
+done
+
+# --- 4. the Linear-mode outcome is recorded, not silent ---------------------
+has "$COMP" 'linear_mode' "the checkpoint records plan_completion_checkpoint: linear_mode"
+has "$COMP" 'git mv' "and states what it is recording instead of: the git mv"
+has "$COMP" 'GitHub integration|PR merge|merge moves' \
+  "the prose says what does move the parent to Done"
+has "$LEARN" 'linear' "en-learn branches on the mode too"
+
+# --- 5. a plan with no provenance field is legacy, and is not refused -------
+# Every plan written before this feature is one. Refusing them would break
+# every in-flight branch on the day this ships.
+for f in "$COMP" "$LEARN"; do
+  n=$(skill_of "$f")
+  # `legacy|predat` matched en-learn's unrelated legacy-layout migration
+  # section in four places.
+  has "$f" 'legacy plan' "$n: a plan with no provenance field is legacy"
+  has "$f" 'treat.*local|read as `?local|assume.*local' "$n: and is read as local"
+done
+
+# --- 6. local mode is untouched ---------------------------------------------
+# The whole feature is opt-in; a future edit that quietly stopped local mode
+# moving the plan to completed/ would pass every clause above.
+has "$COMP" 'completed/' "local mode still moves the plan to docs/plans/completed/"
+has "$SHIP" 'plan_completion_checkpoint' "the ship summary still records the checkpoint outcome"
+
+# --- 7. a failed archive is not mistaken for a generated file ---------------
+# Both live under a plan-shaped name; only the directory tells them apart.
+has "$COMP" 'materialized-plans|generated' \
+  "a materialized plan is told from an authoring plan by its directory"
+
+# --- 6. both skills say HOW they read the live plan_store (U6) --------------
+# The drift rule compares against "the repo's current plan_store", and without
+# the invocation named each reader picks its own. A fail-soft read resolves an
+# invalid value to local and reports drift, or no drift, for the wrong reason.
+for f in "$COMP" "$LEARN"; do
+  n=$(basename "$(dirname "$f")")
+  has "$f" 'ensemble-config-get plan_store --allowed local,linear --default local --strict' \
+    "$n names the --strict plan_store read the drift check uses"
+done
+# And a Linear branch is resolved to its materialized plan in both, or the
+# provenance rules above never run for the builds they exist for.
+has "$SHIP" 'materialized-plans/ENG-412' "en-ship's checkpoint resolves a Linear branch to the materialized plan"
+has "$LEARN" 'IDENT>-<slug>` resolving to `\.ensemble/materialized-plans' \
+  "en-learn resolves a Linear branch to the materialized plan"
+has "$COMP" 'config_drift' "the drift outcome is a named checkpoint outcome"
+
+# --- 7. provenance travels in git history (EN19 U3) --------------------------
+# The materialized plan is gitignored. Provenance that lived only there made the
+# drift check go quiet on a fresh clone; the trailer is what survives.
+BUILD="$REPO_ROOT/skills/en-build/SKILL.md"
+LOOP="$REPO_ROOT/skills/en-build/references/unit-loop.md"
+step9e=$(awk '/9e\. Commit/{f=1} f&&/9f\./{exit} f' "$BUILD")
+assert_contains "$step9e" 'plan-provenance:' "en-build's 9e commit carries the plan-provenance trailer"
+has "$LOOP" '^plan-provenance: \{"plan_source":' "unit-loop.md pins the trailer's format"
+has "$LOOP" 'Every unit commit carries one' "and says every unit commit carries it, not only the post-build commit"
+has "$COMP" "trailers:key=plan-provenance" "plan-completion reads the trailer from git history"
+has "$COMP" 'provenance_conflict' "disagreeing trailers are a named, blocking outcome"
+has "$REPO_ROOT/skills/en-ship/SKILL.md" 'except `config_drift` and `provenance_conflict`' \
+  "en-ship's checkpoint step names both blocking outcomes"
+has "$LEARN" "trailers:key=plan-provenance" "en-learn 11a reads the same trailer first"
+
+report

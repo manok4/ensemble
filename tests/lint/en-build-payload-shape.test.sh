@@ -36,13 +36,28 @@ for f in references/outside-voice.md references/peer-brief.md references/peer-mo
          references/single-agent-fallback.md references/cli-wrappers.md \
          references/diff-signal-detection.md scripts/ensemble-peer-invoke \
          scripts/ensemble-build-peer-prompt scripts/ensemble-peer-flags \
-         scripts/ensemble-cli-smoke scripts/ensemble-config-get scripts/ensemble-extract-json \
+         scripts/ensemble-cli-smoke scripts/ensemble-extract-json \
          scripts/ensemble-sweep-runner; do
   [ -e "$D/$f" ] && back="$back $(basename "$f")"
 done
 [ -z "$back" ] \
   && pass "en-build carries no peer-dispatch machinery" \
   || fail "peer-dispatch machinery is back in en-build" "$back — it dispatches no peer (D52)"
+
+# ensemble-config-get left this list in EN18 U4 (operator-approved). D52 stripped
+# it out with the peer-dispatch stack, and the stated reason was that pulling it
+# back would add a script to a skill to read one boolean. U4 gives en-build a
+# boolean worth reading: `plan_store` decides whether an argument is a path or a
+# Linear identifier, and resolving that from the argument's shape instead would
+# let `/en-build ENG-412` reach Linear in a repo configured `local`, which is
+# the one thing the per-repo switch exists to prevent. The D52 boundary it does
+# NOT relax is the one above: en-build still dispatches no peer.
+if [ -x "$D/scripts/ensemble-config-get" ]; then
+  pass "en-build carries ensemble-config-get, for plan_store only (EN18 U4)"
+else
+  fail "en-build must carry ensemble-config-get" \
+       "step 4 resolves plan_store through it; without it the mode falls back to argument shape"
+fi
 
 # --- 2. no simplifier machinery: /en-simplify owns it ---
 sback=""

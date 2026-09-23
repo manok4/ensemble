@@ -61,8 +61,11 @@ fi
 # phase-level ones). These rows are legitimate only because the last case routes
 # to the failure protocol; without it they become the agent-initiated pauses the
 # contract forbids.
-if grep -qiE 'Failure protocol fires' "$SKILL" \
-   && grep -qiE 'five (enumerated |legitimate )?(pause )?cases|five cases' "$SKILL"; then
+# EN18 U8 moved the contract to references/autonomy-contract.md; the clause
+# follows the prose rather than loosening to match wherever it ended up.
+CONTRACT="$REPO_ROOT/skills/en-build/references/autonomy-contract.md"
+if grep -qiE 'Failure protocol fires' "$CONTRACT" \
+   && grep -qiE 'five (enumerated |legitimate )?(pause )?cases|five cases' "$CONTRACT"; then
   pass "the failure-protocol pause case still exists for these rows to route through"
 else
   fail "the autonomy contract must keep its failure-protocol case" \

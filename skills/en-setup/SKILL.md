@@ -150,7 +150,7 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
       > "Auto-merge is disabled at the repo level; `/en-ship --auto-merge` and `/en-resolve-pr --enable-auto-merge` need Settings → General → 'Allow auto-merge' switched on."
 
     Idempotent. Don't try to flip it via API — that requires admin scope and is the kind of repo-policy change a human should make explicitly.
-13. **`REVIEW.md` offer.** If `REVIEW.md` is absent at the repo root, the round offered to seed it from the Ensemble-flavored template. It tunes PR review here: severity calibration, nit caps, skip rules, repo checks, convergence on multi-round reviews. Anthropic's managed Code Review service reads it automatically; the self-hosted action's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action').
+13. **`REVIEW.md` offer.** If `REVIEW.md` is absent at the repo root, the round offered to seed it from the Ensemble-flavored template. It tunes PR review: severity, nit caps, skip rules, repo checks. Anthropic's managed Code Review service reads it automatically; the self-hosted action's `prompt:` step has to include the file content (see template § 'Wiring `REVIEW.md` into the self-hosted action').
 
     On `y` → `{{PROJECT_TYPE}}` came with the answer (one of: `backend service` / `frontend app` / `library` / `cli tool` / `docs site` / `mobile app` / `infrastructure` / `mixed`); write `REVIEW.md` from `references/templates/review-md-template.md` with `{{PROJECT_NAME}}` (from `docs/foundation.md` `project:`), `{{PROJECT_TYPE}}`, and `{{PLAN_ID_PREFIX}}` substituted.
     On `n` → record in the report; skip.
@@ -158,9 +158,9 @@ Run all of these in order. Each step is idempotent — running `/en-setup` twice
     Idempotent — if `REVIEW.md` already exists, note its presence and skip.
 14. **Verification-receipt notice (informational).** Print the notice in `references/setup-optional-installs.md` and write nothing. **This step never creates or edits a hook.** A hook is where a project encodes its own policy; rewriting one on a user's behalf is help nobody asked for, and `/en-ship` never bypasses hooks either.
 
-15. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. Long mechanical sequences drop steps under context pressure; this is the net that catches it.
+15. **Final verification phase (mandatory, idempotent).** After all install steps complete, **walk every required artifact and confirm it's present**. It catches steps dropped under context pressure.
 
-    **`references/setup-verification.md` owns the walk**: the required-artifact table, the opt-in list, the advisory environment checks and the failure report. Read it here. Two rules bind this step: a **missing required artifact re-runs its install step exactly once**, then fails loudly; and an **advisory dependency never blocks the install**, because a user offline or in a container without coreutils has a legitimate reason to defer.
+    **`references/setup-verification.md` owns the walk**: the required-artifact table, the opt-in list, the advisory environment checks and the failure report. Read it here, and `references/setup-linear-check.md` under `plan_store: linear`. Two rules bind this step: a **missing required artifact re-runs its install step exactly once**, then fails loudly; and an **advisory dependency never blocks the install**, because a user offline or in a container without coreutils has a legitimate reason to defer.
 
     **Idempotency check:** running `/en-setup` again on the same repo must produce zero new changes once verification has passed. Encode this expectation in the report ("Final verification: 14 / 14 required artifacts present").
 
@@ -190,8 +190,9 @@ In addition to file-shape and lint checks, the diagnostic includes:
 - **Sweep schedule** — read `sweep.enabled` / `sweep.schedule` from `.ensemble/config.local.yaml`: 🟢 recorded, 🟡 absent (print the step 8 machine-side commands). A leftover `.github/workflows/en-sweep.yml` is 🟡 *retired; delete it*. Whether that machine's launchd job is loaded is its own `install-sweep-schedule status`.
 - **Guardrail status** — run the resolved `install-guardrail` with `status` (see the guardrail check for how it resolves; 🟡 and skip when `/en-guardrail` is not installed). 🟢 if either scope is installed; 🟡 if neither (offer the same `p`/`g`/`s` prompt as in State 2 step 10).
 - **Claude Code Review action status** — check for `.github/workflows/claude-code-review.yml`. 🟢 if present; 🟡 if absent (offer the same `y`/`n` prompt as in State 2 step 11).
-- **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (a manual repo setting: Settings → General → "Allow auto-merge").
-- **Advisory binaries** — `command -v timeout || command -v gtimeout` (`brew install coreutils`; the peer helper's timeout wrapper, which says on stderr when it runs unbounded) and `gnhf` (`npm i -g gnhf`; only `/en-loop` wraps it). Both 🟡 at worst, never 🔴.
+- **Auto-merge repo-setting** — `gh api repos/<owner>/<repo> --jq .allow_auto_merge`. 🟢 if `true`; 🟡 advisory if `false` (Settings → General → "Allow auto-merge").
+- **Linear.** Under `plan_store: linear`, `references/setup-linear-check.md`.
+- **Advisory binaries** — `command -v timeout || command -v gtimeout` (`brew install coreutils`; the peer helper's timeout wrapper) and `gnhf` (`npm i -g gnhf`; only `/en-loop` wraps it). Both 🟡 at worst, never 🔴.
 
 For each 🟡 / 🔴 check, the user can opt-in to repair:
 
