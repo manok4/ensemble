@@ -181,6 +181,8 @@ looks, and the idempotency protocol is what actually makes a retry safe.
 In this order, because a retry must never create a second parent.
 
 1. If the plan's frontmatter already carries `linear_issue:`, that parent is authoritative.
+   A plan authored from an issue (`references/linear-intake.md`) carries it from the start, so
+   publish updates that issue with `save_issue` by id rather than creating a parent.
 2. Otherwise **search the team for an existing parent carrying this plan's `plan_id`
    and this repo's `repo` before creating one.** Writing `linear_issue:` immediately after
    the create narrows the crash window but cannot close it: a process killed between the

@@ -38,6 +38,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - `docs/foundation.md` — pulling a requirement (R-ID) for the next slice of work.
    - Direct rough description from the user.
    - Bug report or tracked debt item (`Resolves: TD<N>`).
+   - A Linear issue identifier (`ENG-123`): read `references/linear-intake.md`.
 
    **Read `references/plan-intake.md` here.** It owns the bounded foundation read (`docs/foundation.md` runs past 2,000 lines and is never read whole: section index first, then the sections you need), the rule that a matching design doc's decisions are already settled and must not be re-asked, the context-sufficiency check that offers `/en-brainstorm`, and the brainstorm soft-nudge. Proceeding is always allowed; neither is a hard gate.
 
