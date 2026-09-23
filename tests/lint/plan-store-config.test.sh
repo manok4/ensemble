@@ -86,6 +86,31 @@ for bad in Linear tracker LOCAL; do
   fi
 done
 
+# A duplicated key is ambiguous, not absent. The narrow grammar reads it as
+# absent, which without this clause resolved `plan_store: linear` written twice
+# to `local` under --strict, exit 0: the silent mode switch the flag exists for.
+set_repo "$(printf 'plan_store: linear\nplan_store: linear')"
+out=$(cg plan_store --allowed local,linear --default local --strict); rc=$?
+err=$(cat "$T/err")
+[ "$rc" -eq 3 ] && printf '%s' "$err" | grep -q 'more than once' \
+  && pass "--strict rejects a duplicated plan_store key" \
+  || fail "--strict rejects a duplicated plan_store key" "rc=$rc out=[$out] err=[$err]"
+out=$(cg plan_store --allowed local,linear --default local); rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "local" ] \
+  && pass "without --strict a duplicated key still reads as absent" \
+  || fail "without --strict a duplicated key still reads as absent" "rc=$rc out=[$out]"
+
+# Text after a closing quote is not part of a scalar the grammar supports.
+# Taking the quoted prefix read `"linear" junk` as `linear`.
+set_repo 'plan_store: "linear" junk'
+out=$(cg plan_store --allowed local,linear --default local --strict); rc=$?
+[ "$rc" -eq 3 ] && [ -z "$out" ] \
+  && pass "--strict rejects a quoted value with trailing text" \
+  || fail "--strict rejects a quoted value with trailing text" "rc=$rc out=[$out]"
+set_repo 'plan_store: "linear"   # the team uses Linear'
+assert_eq "linear" "$(cg plan_store --allowed local,linear --default local --strict)" \
+  "a quoted value followed by a comment is still valid"
+
 # An ABSENT key is not an invalid one: --strict must not turn a repo that never
 # opted in into a failure.
 set_repo 'other_key: value'
