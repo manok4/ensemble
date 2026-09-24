@@ -19,6 +19,7 @@ created: {{TODAY}}
 topic: {{TITLE}}
 status: open
 related_plan:
+# linear_issue: EMB-123   # only when brainstormed from a Linear issue (see references/brainstorm-from-linear.md)
 ---
 
 # {{TITLE}}
