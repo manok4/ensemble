@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN20
 title: Brainstorm from a Linear issue, and hand the design to /en-plan
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-09-24
-shipped:
+shipped: 2026-09-24
 deepened:
 covers_requirements: []
 requirements_pending: true
