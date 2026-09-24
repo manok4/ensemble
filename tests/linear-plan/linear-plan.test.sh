@@ -350,6 +350,28 @@ assert_eq "github.com/owner/name" "$(repo_of 'https://github.com/Owner/Name.git?
 assert_eq "git.example.com:2222/owner/name" "$(repo_of ssh://git@git.example.com:2222/owner/name.git)" \
   "an ssh URL keeps its port and loses its user"
 
+# --- 8b. find-design: the exact link from a design to its issue (EN20) ------------
+# /en-plan <IDENT> consumes the design /en-brainstorm <IDENT> wrote, found by its
+# frontmatter link. A loose match is the quiet failure: EMB-70 or emb-7 would
+# hand planning somebody else's design.
+DD="$WORK/designs"; mkdir -p "$DD"
+mkdesign() { printf -- '---\ntype: design\ntopic: t\nstatus: open\n%b---\n\n# t\n\n%s\n' "$2" "${3:-}" > "$DD/$1"; }
+mkdesign a.md 'linear_issue: EMB-7\n'
+mkdesign b.md 'linear_issue: EMB-70\n'
+mkdesign c.md 'linear_issue: emb-7\n'
+mkdesign d.md '' 'The body says linear_issue: EMB-7 but the frontmatter does not.'
+mkdesign e.md '# linear_issue: EMB-7   # a commented template line\n'
+out=$(lp find-design EMB-7 --dir "$DD"); rc=$?
+assert_eq "0" "$rc" "find-design exits 0 when a design is linked"
+assert_eq "$DD/a.md" "$out" "only the exact frontmatter link matches: not EMB-70, emb-7, a body line or a comment"
+mkdesign f.md 'linear_issue: EMB-7\n'
+assert_eq "$(printf '%s\n%s' "$DD/a.md" "$DD/f.md")" "$(lp find-design EMB-7 --dir "$DD")" \
+  "two linked designs print both, sorted, so the caller lists them and asks"
+expect_rc "no linked design exits 1" 1 "" -- lp find-design EMB-8 --dir "$DD"
+expect_rc "a lower-case identifier is refused" 3 'not a Linear identifier' -- lp find-design emb-7 --dir "$DD"
+expect_rc "an identifier with no number is refused" 3 'not a Linear identifier' -- lp find-design EMB --dir "$DD"
+expect_rc "a missing designs directory is no match, not an error" 1 "" -- lp find-design EMB-7 --dir "$WORK/nowhere"
+
 # --- 9. carriers --------------------------------------------------------------------
 cmp -s "$L" "$REPO_ROOT/skills/en-plan/scripts/ensemble-linear-plan" \
   && pass "en-plan and en-build carry the same script" \

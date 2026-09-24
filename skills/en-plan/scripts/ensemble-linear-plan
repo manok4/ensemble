@@ -25,6 +25,11 @@
 #       peer_review_plan_hash and repo, repo is this repository, and both
 #       digests match the rebuilt plan.
 #       Writes --out only when every check passes. This is /en-build's intake.
+#   ensemble-linear-plan find-design <IDENT> [--dir docs/designs]
+#       Print every design whose frontmatter `linear_issue:` equals <IDENT>
+#       exactly, one path per line, sorted. Exit 0 with one or more, 1 with
+#       none, 3 when <IDENT> is not an identifier. /en-plan <IDENT> uses it to
+#       consume the design /en-brainstorm <IDENT> wrote (D120).
 #   ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]
 #       Exit 0 when the read-back materializes to the same plan: both digests,
 #       the recorded plan_full_hash and repo, the frontmatter line for line, and
@@ -470,12 +475,48 @@ def verify(plan_path, readback, repo):
         raise Refusal(msg)
 
 
+# --- find-design ----------------------------------------------------------
+
+IDENT_RE = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]+$")
+
+
+class NoMatch(Exception):
+    pass
+
+
+def find_design(ident, directory):
+    """Designs whose frontmatter links them to <ident>, exactly.
+
+    Only the frontmatter is read, so a body line quoting `linear_issue:` never
+    matches, and the comparison is the whole value: EMB-7 is not EMB-70 or emb-7.
+    """
+    if not IDENT_RE.match(ident):
+        raise Refusal(f"{ident!r} is not a Linear identifier")
+    if not os.path.isdir(directory):
+        raise NoMatch()
+    found = []
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            fm, _ = split_frontmatter(open(path, encoding="utf-8").read())
+        except (OSError, UnicodeDecodeError, Refusal):
+            continue
+        if fm_value(fm, "linear_issue") == ident:
+            found.append(path)
+    if not found:
+        raise NoMatch()
+    return found
+
+
 # --- entry point ----------------------------------------------------------
 
 def usage():
     sys.stderr.write("usage: ensemble-linear-plan render <plan> [--repo <id>]\n"
                      "       ensemble-linear-plan materialize <readback.json> [--out <path>]\n"
                      "       ensemble-linear-plan intake <readback.json> --out <path> [--repo <id>]\n"
+                     "       ensemble-linear-plan find-design <IDENT> [--dir <designs dir>]\n"
                      "       ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]\n")
     return 2
 
@@ -495,7 +536,7 @@ def main(argv):
     opts, pos = {}, []
     i = 0
     while i < len(rest):
-        if rest[i] in ("--repo", "--out"):
+        if rest[i] in ("--repo", "--out", "--dir"):
             if i + 1 >= len(rest):
                 return usage()
             opts[rest[i]] = rest[i + 1]
@@ -520,6 +561,12 @@ def main(argv):
             intake(load_json(pos[0]), opts["--out"], opts.get("--repo"))
         elif cmd == "verify" and len(pos) == 2:
             verify(pos[0], load_json(pos[1]), opts.get("--repo"))
+        elif cmd == "find-design" and len(pos) == 1:
+            try:
+                for path in find_design(pos[0], opts.get("--dir", "docs/designs")):
+                    print(path)
+            except NoMatch:
+                return 1
         else:
             return usage()
     except Refusal as e:

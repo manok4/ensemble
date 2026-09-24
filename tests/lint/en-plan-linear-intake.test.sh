@@ -63,6 +63,24 @@ else
 fi
 has "$PUB" 'authored from an issue' "the idempotency protocol names the issue-as-parent case"
 
+# --- 2b. a brainstormed design is consumed, found by its exact link (EN20 U2) ----
+assert_contains "$ISSUE" 'ensemble-linear-plan" find-design <IDENT>' "the design is found by find-design, not by eye"
+assert_contains "$ISSUE" 'related_design:' "a single match is consumed as related_design"
+assert_contains "$(printf '%s' "$ISSUE" | tr '\n' ' ')" 'The report is still quoted into Context' \
+  "and the issue's report is still quoted: the design does not replace it"
+assert_contains "$ISSUE" 'list them and ask which' "several matches are listed and asked about, never guessed"
+assert_contains "$ISSUE" 'list_comments' "with no match, the issue's comments are read"
+assert_contains "$(printf '%s' "$ISSUE" | tr '\n' ' ')" 'is not in this checkout' \
+  "a design named in a comment but missing locally is warned about"
+assert_contains "$ISSUE" '/en-brainstorm <IDENT>' "the insufficiency offer names /en-brainstorm <IDENT>"
+issue_line() { printf '%s\n' "$ISSUE" | grep -n -- "$1" | head -1 | cut -d: -f1; }
+ad=$(issue_line 'Admit the issue, or refuse'); fd=$(issue_line 'Consume the brainstormed design'); qc=$(issue_line 'Quote the request into Context')
+if [ -n "$ad" ] && [ -n "$fd" ] && [ -n "$qc" ] && [ "$ad" -lt "$fd" ] && [ "$fd" -lt "$qc" ]; then
+  pass "the design lookup sits after admission and before the Context quote"
+else
+  fail "the design lookup sits after admission and before the Context quote" "admit=${ad:-} find=${fd:-} quote=${qc:-}"
+fi
+
 # --- 3. amend in place (U6) ------------------------------------------------------
 resume_step=$(awk '/^3\. \*\*Resume or create/{f=1} f&&/^4\. \*\*/{exit} f' "$SKILL")
 assert_contains "$resume_step" 'references/linear-intake.md' \
