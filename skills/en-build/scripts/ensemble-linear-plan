@@ -25,13 +25,20 @@
 #       peer_review_plan_hash and repo, repo is this repository, and both
 #       digests match the rebuilt plan.
 #       Writes --out only when every check passes. This is /en-build's intake.
+#   ensemble-linear-plan find-design <IDENT> [--dir <designs dir>]
+#       Print every design whose frontmatter `linear_issue:` equals <IDENT>
+#       exactly, one path per line, sorted. The default directory is
+#       docs/designs at the repo root, and its paths print repo-relative. Exit 0 with one or more, 1 with
+#       none, 3 when <IDENT> is not an identifier. /en-plan <IDENT> uses it to
+#       consume the design /en-brainstorm <IDENT> wrote (D120).
 #   ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]
 #       Exit 0 when the read-back materializes to the same plan: both digests,
 #       the recorded plan_full_hash and repo, the frontmatter line for line, and
 #       every section and unit. Else exit 3 with a diff of the first difference.
 #
 # --repo defaults to this repository's identity, from `git remote get-url origin`.
-# Exit codes: 0 ok, 2 usage, 3 refused or mismatched (the reason on stderr).
+# Exit codes: 0 ok, 1 no match (find-design only), 2 usage, 3 refused or mismatched (the
+# reason on stderr).
 #
 # Rules, each measured against a live workspace or stated as unmeasured in
 # references/linear-plan-format.md:
@@ -470,12 +477,59 @@ def verify(plan_path, readback, repo):
         raise Refusal(msg)
 
 
+# --- find-design ----------------------------------------------------------
+
+IDENT_RE = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]+$")
+
+
+def yaml_scalar(value):
+    """A frontmatter scalar as YAML reads it: an unquoted ` #` comment dropped, one pair of
+    quotes removed. `linear_issue: EMB-7  # note` and `linear_issue: "EMB-7"` both mean EMB-7."""
+    v = value.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        return v[1:-1]
+    return re.split(r"\s+#", v, maxsplit=1)[0].strip()
+
+
+def repo_root():
+    try:
+        return subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return os.getcwd()
+
+
+def find_design(ident, directory):
+    """Designs whose frontmatter links them to <ident>, exactly.
+
+    Only the frontmatter is read, so a body line quoting `linear_issue:` never
+    matches, and the comparison is the whole value: EMB-7 is not EMB-70 or emb-7.
+    """
+    if not IDENT_RE.match(ident):
+        raise Refusal(f"{ident!r} is not a Linear identifier")
+    if not os.path.isdir(directory):
+        return []
+    found = []
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            fm, _ = split_frontmatter(open(path, encoding="utf-8").read())
+        except (OSError, UnicodeDecodeError, Refusal):
+            continue
+        if yaml_scalar(fm_value(fm, "linear_issue")) == ident:
+            found.append(path)
+    return found
+
+
 # --- entry point ----------------------------------------------------------
 
 def usage():
     sys.stderr.write("usage: ensemble-linear-plan render <plan> [--repo <id>]\n"
                      "       ensemble-linear-plan materialize <readback.json> [--out <path>]\n"
                      "       ensemble-linear-plan intake <readback.json> --out <path> [--repo <id>]\n"
+                     "       ensemble-linear-plan find-design <IDENT> [--dir <designs dir>]\n"
                      "       ensemble-linear-plan verify <plan> <readback.json> [--repo <id>]\n")
     return 2
 
@@ -495,7 +549,7 @@ def main(argv):
     opts, pos = {}, []
     i = 0
     while i < len(rest):
-        if rest[i] in ("--repo", "--out"):
+        if rest[i] in ("--repo", "--out", "--dir"):
             if i + 1 >= len(rest):
                 return usage()
             opts[rest[i]] = rest[i + 1]
@@ -520,6 +574,17 @@ def main(argv):
             intake(load_json(pos[0]), opts["--out"], opts.get("--repo"))
         elif cmd == "verify" and len(pos) == 2:
             verify(pos[0], load_json(pos[1]), opts.get("--repo"))
+        elif cmd == "find-design" and len(pos) == 1:
+            if "--dir" in opts:
+                paths = find_design(pos[0], opts["--dir"])
+            else:
+                root = repo_root()
+                paths = [os.path.relpath(p, root)
+                         for p in find_design(pos[0], os.path.join(root, "docs", "designs"))]
+            for path in paths:
+                print(path)
+            if not paths:
+                return 1
         else:
             return usage()
     except Refusal as e:

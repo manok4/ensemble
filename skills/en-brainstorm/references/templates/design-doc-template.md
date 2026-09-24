@@ -19,6 +19,9 @@ created: {{TODAY}}
 topic: {{TITLE}}
 status: open
 related_plan:
+# Only when brainstormed from a Linear issue (references/brainstorm-from-linear.md);
+# uncommented, the line is exactly `linear_issue: <IDENT>`, nothing after the value:
+# linear_issue: EMB-123
 ---
 
 # {{TITLE}}

@@ -19,11 +19,11 @@ Lightweight idea-exploration skill. The point is to leave with clarity, not arti
 
 ## Process
 
-1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex. That is all this skill needs from the host: it has no peer, dispatches no CLI subprocess, and runs no host-detection script.
+1. **Resolve the question tool.** `$QUESTION_TOOL` is `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`) and `request_user_input` on Codex. It has no peer, dispatches no CLI subprocess, and runs no host-detection script. A Linear identifier request also needs the Linear MCP tools, loaded as `references/brainstorm-from-linear.md` says.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, this is a peer subprocess; exit with a one-line note.
-3. **Resume or start fresh.** Glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
+3. **Resume or start fresh.** A Linear issue identifier (`EMB-123`) is a request too: read `references/brainstorm-from-linear.md` **first**, which owns its admission, the link-first resume and the comment on the issue. Otherwise, glob `docs/designs/*.md` for a doc with `status: open` whose topic matches this request (title, slug, or `topic:` frontmatter). If one matches, **confirm before resuming** — never auto-resume silently:
    > "Found an open design doc for [topic] (`<path>`, last touched <date>). Continue from it, or start fresh?"
-   On resume: read it, summarize its settled decisions and still-open questions, treat those decisions as **already answered** (they never re-enter the frontier), and **update that file** rather than minting a duplicate. Preserve its `created:` and `topic:`. On start-fresh, leave the old doc untouched — the user may want both.
+   On resume: read it, summarize its settled decisions and still-open questions, treat those decisions as **already answered** (they never re-enter the frontier), and **update that file** rather than minting a duplicate. Preserve its `created:`, `topic:` and any `linear_issue:`. On start-fresh, leave the old doc untouched — the user may want both.
 
    **The candidate pool is self-pruning; don't work around it.** `/en-plan` closes a design out to `accepted` or `superseded` when a plan built from it opens, so what stays `open` is what no plan was built from. If this scan starts returning a large ambiguous set, the close-out has stopped running upstream; say so rather than narrowing the glob here.
 4. **Right-size depth.** Per the depth table below. Default **Standard**; when the framing is genuinely ambiguous, ask one question rather than guessing.
@@ -106,7 +106,7 @@ Lightweight idea-exploration skill. The point is to leave with clarity, not arti
 
     **Consume the verification verdicts.** Every absence-claim in the doc must be **verified against the repo** or **explicitly labeled an unverified assumption**. Correct refuted claims before writing; label unverifiable ones as assumptions. A claim that never reached the verifier is unverified, not true. This applies to any checkable infrastructure claim. It is not a full research pass; just don't assert absence you haven't checked.
 
-    Then write to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. On Deep, settle the structure in reasoning and write the file once. Status: `open`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
+    Then write to `docs/designs/YYYY-MM-DD-<topic>-design.md` using `references/templates/design-doc-template.md`. On Deep, settle the structure in reasoning and write the file once. Status: `open`. From a Linear issue, add `linear_issue: <IDENT>` and comment on the issue per `references/brainstorm-from-linear.md`. Absence-claims that couldn't be verified go under the doc's assumptions, labeled as such (per the template).
 16. **Validate before handing off.** Run `bin/ensemble-lint --scope docs/designs` and fix anything it flags on the new file, re-running until clean. `/en-plan` consumes this doc; a malformed one propagates.
 17. **Capture-from-synthesis reflex (D21).** If the conversation produced a non-obvious connection, an extracted lesson, or a comparison worth keeping, soft-prompt:
     > "This conversation produced [X]. Capture as a learning?"

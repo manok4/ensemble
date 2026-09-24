@@ -221,6 +221,41 @@ only from a hand edit in Linear.
   order, or drop the clause from the plan when it is next amended.
 - **Logged:** 2026-09-23
 
+### TD22. A brainstorm's issue comment is as public as the issue
+
+Filed by /en-review (confidence 4), sub-threshold; surfaced for later review.
+
+`/en-brainstorm <IDENT>` posts the design's recommendation as an issue comment
+on every write, with no confirmation. For an issue that came in from an app or a
+Slack intake, comments can sync back to the reporter's thread, so internal
+design direction (a vulnerability, unreleased work) can leave the team unseen.
+
+- **Source:** EN20 branch review, security persona, 2026-09-24
+- **Severity:** P3
+- **Confidence:** 4/10
+- **Location:** `skills/en-brainstorm/references/brainstorm-from-linear.md` (Link the design)
+- **Suggested fix:** post only the `Design:` and `Next:` lines by default and add
+  the recommendation after a one-line confirmation, or state in the reference that
+  the comment is visible to everyone who can see the issue.
+- **Logged:** 2026-09-24
+
+### TD23. The empty-porcelain promotion check cannot hold with an untracked brainstormed design
+
+Filed by /en-review (confidence 4), sub-threshold; surfaced for later review.
+
+`linear-publish.md` makes an empty `git status --porcelain` the auditable check
+after a `linear`-mode promotion. The EN20 path has `/en-brainstorm` write an
+uncommitted design that `/en-plan <IDENT>` then consumes, so `?? docs/designs/...`
+is present at promotion by design, and the check reports a false violation.
+
+- **Source:** EN20 branch review, correctness persona, 2026-09-24
+- **Severity:** P3
+- **Confidence:** 4/10
+- **Location:** `skills/en-plan/references/linear-publish.md` (the clean-tree contract)
+- **Suggested fix:** scope the contract to what the promotion itself wrote (no new
+  porcelain entries), or exclude the consumed `related_design` path.
+- **Logged:** 2026-09-24
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
