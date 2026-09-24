@@ -361,13 +361,33 @@ mkdesign b.md 'linear_issue: EMB-70\n'
 mkdesign c.md 'linear_issue: emb-7\n'
 mkdesign d.md '' 'The body says linear_issue: EMB-7 but the frontmatter does not.'
 mkdesign e.md '# linear_issue: EMB-7   # a commented template line\n'
+# Files find-design must skip rather than trip on: no frontmatter, an unclosed
+# one, a non-markdown file. One malformed design must not block every lookup.
+printf 'A README, no frontmatter.\nlinear_issue: EMB-7\n' > "$DD/README.md"
+printf -- '---\nlinear_issue: EMB-7\nnever closed\n' > "$DD/half.md"
+printf 'linear_issue: EMB-7\n' > "$DD/notes.txt"
 out=$(lp find-design EMB-7 --dir "$DD"); rc=$?
 assert_eq "0" "$rc" "find-design exits 0 when a design is linked"
-assert_eq "$DD/a.md" "$out" "only the exact frontmatter link matches: not EMB-70, emb-7, a body line or a comment"
+assert_eq "$DD/a.md" "$out" "only the exact frontmatter link matches: not EMB-70, emb-7, a body line, a comment, or a malformed file"
 mkdesign f.md 'linear_issue: EMB-7\n'
 assert_eq "$(printf '%s\n%s' "$DD/a.md" "$DD/f.md")" "$(lp find-design EMB-7 --dir "$DD")" \
   "two linked designs print both, sorted, so the caller lists them and asks"
 expect_rc "no linked design exits 1" 1 "" -- lp find-design EMB-8 --dir "$DD"
+# The value is read as YAML reads it: a trailing comment and quotes are not part of it.
+QD="$WORK/quoted"; mkdir -p "$QD"; DD_SAVE="$DD"; DD="$QD"
+mkdesign g.md 'linear_issue: EMB-7   # uncommented from the template, comment kept\n'
+mkdesign h.md 'linear_issue: "EMB-7"\n'
+mkdesign i.md "linear_issue: 'EMB-7'\n"
+mkdesign j.md 'linear_issue: "EMB-7 # inside quotes is part of the value"\n'
+DD="$DD_SAVE"
+assert_eq "$(printf '%s\n%s\n%s' "$QD/g.md" "$QD/h.md" "$QD/i.md")" "$(lp find-design EMB-7 --dir "$QD")" \
+  "a trailing comment or quotes do not hide the link; a # inside quotes stays part of the value"
+# Production calls find-design with no --dir: docs/designs at the repo root,
+# printed repo-relative, whatever directory it runs from.
+RR="$WORK/rootrepo"; mkdir -p "$RR/docs/designs" "$RR/sub/dir"; ( cd "$RR" && git init -q . ) >/dev/null 2>&1
+printf -- '---\ntype: design\nlinear_issue: EMB-7\n---\n\n# t\n' > "$RR/docs/designs/2026-09-24-x-design.md"
+assert_eq "docs/designs/2026-09-24-x-design.md" "$( cd "$RR/sub/dir" && lp find-design EMB-7 )" \
+  "the default directory is the repo root's docs/designs, and paths print repo-relative from any cwd"
 expect_rc "a lower-case identifier is refused" 3 'not a Linear identifier' -- lp find-design emb-7 --dir "$DD"
 expect_rc "an identifier with no number is refused" 3 'not a Linear identifier' -- lp find-design EMB --dir "$DD"
 expect_rc "a missing designs directory is no match, not an error" 1 "" -- lp find-design EMB-7 --dir "$WORK/nowhere"
