@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN20
 title: Brainstorm from a Linear issue, and hand the design to /en-plan
-status: open
+status: in_progress
 location: active
 created: 2026-09-24
 shipped:
