@@ -10,7 +10,24 @@ should not. It reads like a specification: "user can check out with a valid
 cart" names a capability, and it survives a refactor because it never looked
 inside.
 
-One logical assertion per test. The name says WHAT, not HOW.
+One logical assertion per test. The name says WHAT, not HOW, and promises no
+more than the assertions check: a test named for retiring a window that only
+asserts the window was not cleared is misnamed.
+
+## Before adding one
+
+Answer three questions. A missing answer means the test is not ready.
+
+1. **What regression makes it fail?** Name the plausible bug, not the line it
+   covers. For a bug fix, the test has to fail on the old code before the fix
+   and pass after it. One that never went red proves the mock, not the fix.
+2. **Why does existing coverage not already catch that?** Each behaviour has
+   one owning test at the strongest boundary that can reach it. A second layer
+   earns a test only for a failure the owner cannot see. Prefer a new row in
+   an existing table test over a near-copy.
+3. **Does it need a seam production does not use?** An export, flag or hook
+   added only so the test can reach in means the test belongs at the real
+   boundary instead.
 
 ## Anti-patterns, each with its tell
 
@@ -48,6 +65,26 @@ One logical assertion per test. The name says WHAT, not HOW.
   an internal collaborator. *The tell: the mock has to change when you rename an
   internal function.*
 
+- **Tests the mock.** The mock or fixture supplies the very behaviour the test
+  asserts: a stub returns the value that is then checked, or a fixture hands
+  over the ordering the code was supposed to produce. *The tell: replace the
+  code under test with a pass-through and the test still passes.*
+
+- **Cannot fail.** No assertion, only "did not throw", or a negative case that
+  passes for an unrelated reason: a rejection from a different guard, or an
+  input the code never reaches. *The tell: break the behaviour the test names
+  and it stays green.*
+
+- **Duplicated contract.** The same behaviour asserted again at every layer it
+  passes through, or a near-copy of a sibling test with one value changed.
+  Each copy is maintenance with no new failure it can catch. *The tell: one bug
+  turns several tests red for the same reason.*
+
+- **Test-only seam.** Production code carries an export, flag, reset hook or
+  injection parameter whose only callers are tests. The seam is dead code the
+  test keeps alive, and it lets the test skip the path users take. *The tell:
+  every caller of the seam is a test.*
+
 ## Two worked pairs
 
 Expected values come from outside the implementation:
@@ -82,4 +119,7 @@ anti-pattern the other does not.
 
 Prior art: the implementation-coupled, tautological and horizontal-slicing
 framing, and the "tell" device, are adapted from Matt Pocock's `tdd` skill
-(MIT). The source-reading anti-pattern and its carve-outs are Ensemble's own.
+(MIT). The tests-the-mock, cannot-fail, duplicated-contract and test-only-seam
+anti-patterns and the three questions before adding a test are adapted from
+OpenClaw's `test-audit` skill (MIT). The source-reading anti-pattern and its
+carve-outs are Ensemble's own.
