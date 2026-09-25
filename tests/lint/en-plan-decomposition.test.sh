@@ -54,7 +54,9 @@ for ph in 'Expand:' 'Migrate:' 'Contract:'; do
   grep -qF "**$ph**" "$WIDE" || missing="$missing $ph"
 done
 grep -qiE 'blast radius' "$WIDE" || missing="$missing blast-radius"
-grep -qiE 'expand . migrate . contract' "$SKILL" || missing="$missing skill-names-the-sequence"
+# The separator is an arrow, three bytes in UTF-8. A bare `.` matched it only
+# under a UTF-8 locale, so the assertion failed wherever LC_CTYPE was C.
+grep -qiE 'expand[^[:alnum:]]+migrate[^[:alnum:]]+contract' "$SKILL" || missing="$missing skill-names-the-sequence"
 [ -z "$missing" ] \
   && pass "wide refactors sequence expand/migrate/contract, batched by blast radius" \
   || fail "the expand-migrate-contract sequence is incomplete" "missing:$missing"
