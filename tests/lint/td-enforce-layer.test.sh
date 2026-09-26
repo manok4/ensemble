@@ -73,6 +73,14 @@ out=$(lint)
 fires "$out" P2 TD27 && pass "an unknown layer is P2" \
   || fail "an unknown layer is P2" "$out"
 
+tracker '### TD30. Malformed layer suffix
+
+- **Enforce at:** L1unknown
+- **Logged:** 2026-09-26'
+out=$(lint)
+fires "$out" P2 TD30 && pass "a layer value with a malformed suffix is P2, not accepted as L1" \
+  || fail "a layer value with a malformed suffix is P2, not accepted as L1" "$out"
+
 tracker '### TD28. Unrouted entry
 
 - **Severity:** P3

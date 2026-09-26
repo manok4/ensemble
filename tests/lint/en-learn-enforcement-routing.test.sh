@@ -38,7 +38,7 @@ else
   fail "enforcement is decided before artifact routing" "enforcement=$enf_ln routing=$route_ln"
 fi
 enforcement=$(sed -n '/^## Enforcement comes first/,/^## Routing/p' "$TYPES")
-printf '%s' "$enforcement" | grep -qF '`scripts/ensemble-td-append`' \
+printf '%s' "$enforcement" | grep -qF '`$SKILL_DIR/scripts/ensemble-td-append`' \
   && pass "L1 to L4 file through the appender" || fail "L1 to L4 file through the appender"
 printf '%s' "$enforcement" | grep -qiF 'writes no learning file' \
   && pass "an enforcement outcome writes no learning file" || fail "an enforcement outcome writes no learning file"
@@ -50,11 +50,20 @@ printf '%s' "$enforcement" | grep -qiE '(edit|update|append to|write to) `?(AGEN
   && fail "routing never instructs an edit to a map file" \
   || pass "routing never instructs an edit to a map file"
 
-# The four worked examples, one per outcome the rubric can produce here.
-for ex in 'useAuthFetch' 'skill-size.test.sh' 'simplify pass' 'append-only'; do
-  printf '%s' "$enforcement" | grep -qF "$ex" \
-    && pass "worked example present: $ex" || fail "worked example present: $ex"
-done
+# Worked examples pair an input with its outcome on one table row; assert the
+# pairing, not just the input, so a changed outcome fails.
+printf '%s' "$enforcement" | grep -qE 'useAuthFetch.*\| L2:' \
+  && pass "worked example: useAuthFetch routes to L2" || fail "worked example: useAuthFetch routes to L2"
+printf '%s' "$enforcement" | grep -qE 'simplify pass.*\| L4:' \
+  && pass "worked example: a skipped simplify pass routes to L4" || fail "worked example: a skipped simplify pass routes to L4"
+printf '%s' "$enforcement" | grep -qiF 'invoked capture directly' \
+  && pass "only a person-invoked capture is asked the add-now question" \
+  || fail "only a person-invoked capture is asked the add-now question"
+RUBRIC="$REPO_ROOT/skills/en-learn/references/enforcement-layers.md"
+grep -qE 'skill-size\.test\.sh.*' "$RUBRIC" && grep -qF 'no entry' "$RUBRIC" \
+  && pass "the rubric carries the already-enforced example" || fail "the rubric carries the already-enforced example"
+grep -qF '**L5**, a decision learning' "$RUBRIC" \
+  && pass "the rubric carries the L5 example" || fail "the rubric carries the L5 example"
 
 # --- the capture flow names the appender and the L5 fall-through ---
 capture_flow=$(sed -n '/^## Process — Mode A/,/^## Process — Mode B/p' "$SKILL")

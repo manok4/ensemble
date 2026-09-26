@@ -21,12 +21,11 @@ again after a map file grows.
 4. **Classify each remaining rule** with `enforcement-layers.md`. Only L1 and L2
    file an entry. A rule that already sits at its strongest layer (L3 project
    knowledge, say) needs nothing.
-5. **File** each L1 or L2 rule through `scripts/ensemble-td-append`:
-   `--source "en-learn --enforce-audit"`, `--location <file>:<line>` of the prose
-   rule, the proposed check, and a rule key. Run `--list-keys` first and reuse
-   the key of an open entry that describes the same rule; exit 4 means it is
-   already tracked. That reuse is what makes a rerun file nothing new. Exit 1
-   means the tracker is not in the canonical layout: file nothing and report
+5. **File** each L1 or L2 rule per the rubric's Outcomes, through
+   `$SKILL_DIR/scripts/ensemble-td-append` with
+   `--source "en-learn --enforce-audit"` and `--location <file>:<line>` of the
+   prose rule. Reusing an open entry's key is what makes a rerun file nothing
+   new. If the tracker is not in the canonical layout, file nothing and report
    every proposal in the table instead.
 6. **Report** one table: rule, layer, proposed check, and the TD-ID or
    `exists TD<N>`.

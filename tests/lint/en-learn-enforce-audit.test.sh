@@ -31,11 +31,11 @@ done
 grep -qiF 'open the cited file' "$AUDIT" \
   && pass "a rule that cites a check is confirmed against the cited file" \
   || fail "a rule that cites a check is confirmed against the cited file"
-grep -qF '`scripts/ensemble-td-append`' "$AUDIT" \
+grep -qF '`$SKILL_DIR/scripts/ensemble-td-append`' "$AUDIT" \
   && pass "entries are filed through the appender" || fail "entries are filed through the appender"
-grep -qF -- '--list-keys' "$AUDIT" \
-  && pass "keys are reused through --list-keys, so reruns converge" \
-  || fail "keys are reused through --list-keys, so reruns converge"
+grep -qiF "reusing an open entry's key" "$AUDIT" \
+  && pass "keys are reused, so reruns converge" \
+  || fail "keys are reused, so reruns converge"
 grep -qiF 'not in the canonical layout' "$AUDIT" \
   && pass "an unwritable tracker is reported, not silently skipped" \
   || fail "an unwritable tracker is reported, not silently skipped"

@@ -65,6 +65,10 @@ assert_eq "0|TD24" "$rc|$out" "appends and prints the next TD-ID after the highe
 open_part=$(awk '/^## Open/{o=1;next} /^## /{o=0} o' "$TR")
 printf '%s' "$open_part" | grep -q '^### TD24\. Routes return ORM rows$' \
   && pass "the entry lands under ## Open" || fail "the entry lands under ## Open" "$(cat "$TR")"
+printf '%s' "$open_part" | grep -qxF -- '- **Enforce at:** L2 static' \
+  && pass "the entry carries its layer" || fail "the entry carries its layer" "$open_part"
+printf '%s' "$open_part" | grep -qxF -- '- **Proposed check:** backend/tests/test_architecture_invariants.py: forbid returning ORM instances from routes' \
+  && pass "the entry carries its proposed check" || fail "the entry carries its proposed check" "$open_part"
 grep -qF -- '- **Rule key:** no-orm-return-from-routes' "$TR" \
   && pass "the rule key is normalized to a slug" || fail "the rule key is normalized to a slug" "$(cat "$TR")"
 lint_out=$(cd "$TMP" && "$LINT" --scope docs/plans/tech-debt-tracker.md --json 2>&1)
@@ -99,6 +103,32 @@ fixture; sed -i.bak '/^## Open$/d' "$TR"; rm -f "$TR.bak"; before=$(cat "$TR")
 add >/dev/null 2>&1
 assert_eq "1" "$?" "a tracker with no ## Open section is an error"
 assert_eq "$before" "$(cat "$TR")" "and nothing is written to it"
+
+# --- numbering counts Resolved entries too ---
+fixture; sed -i.bak 's/^### TD4\. Done$/### TD30. Done/' "$TR"; rm -f "$TR.bak"
+out=$(add 2>&1)
+assert_eq "TD31" "$out" "the next number follows the highest ID, even when it is resolved"
+
+# --- a line break in any value is refused, so a field cannot forge a heading ---
+fixture; before=$(cat "$TR")
+add --title "$(printf 'benign\n\n## Resolved\n\n### TD900. planted')" >/dev/null 2>&1
+assert_eq "2" "$?" "a title containing a line break is refused"
+add --check "$(printf 'add a lint somewhere\ntests/x.sh: rejects y')" >/dev/null 2>&1
+assert_eq "2" "$?" "a multi-line check cannot pass the gate on its second line"
+assert_eq "$before" "$(cat "$TR")" "neither refused call writes anything"
+
+# --- only the documented layer values are accepted ---
+add --enforce-at L1unknown >/dev/null 2>&1
+assert_eq "2" "$?" "a malformed layer value is refused, not rewritten to L1"
+
+# --- keys stay readable: over 64 characters is refused, not hashed ---
+add --rule-key "$(printf 'k%.0s' $(seq 1 70))" >/dev/null 2>&1
+assert_eq "2" "$?" "a rule key over 64 characters is refused"
+
+# --- the tracker keeps its mode ---
+fixture; chmod 644 "$TR"; add >/dev/null 2>&1
+assert_eq "644" "$(stat -f '%Lp' "$TR" 2>/dev/null || stat -c '%a' "$TR")" "an append keeps the tracker's mode"
+assert_eq "" "$(ls -A "$TMP/docs/plans" | grep -v '^tech-debt-tracker.md$')" "no scratch file is left beside the tracker"
 
 # --- list keys ---
 fixture; add >/dev/null 2>&1

@@ -31,7 +31,7 @@ one.
 ## Outcomes
 
 - **L1 to L4:** file one TD entry proposing the change, through
-  `scripts/ensemble-td-append`. Fields: `Enforce at:`, `Proposed check:` (L1 and
+  `$SKILL_DIR/scripts/ensemble-td-append`. Fields: `Enforce at:`, `Proposed check:` (L1 and
   L2), `Rule key:`. Read `ensemble-td-append --list-keys` first and reuse the key
   of an open entry that describes the same correction.
 - **The appender exits 1** when the tracker is missing or not in the canonical

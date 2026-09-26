@@ -113,7 +113,7 @@ Skills exist to produce a solid product, and every step they add costs the model
 
 Two process rules follow:
 
-- **Every plan sets a byte budget for each SKILL.md it touches, and its tests assert it.** The skill-size lint caps a file's total size; the budget caps what one plan adds.
+- **Every plan sets a byte budget for each SKILL.md it touches, and the build checks it and records the growth in the commit body.** The skill-size lint caps a file's total size; the budget caps what one plan adds. It is checked at build time rather than pinned by a test, because a permanent size assertion would fail every later, unrelated edit to the file (EN22 learned this in review).
 - **In peer review, a fix that adds machinery needs a reason.** When a second round's findings land inside the first round's fixes, simplify rather than patch. The repo already records this lesson (`docs/learnings/repeated-review-rejects-are-a-design-signal-2026-09-11.md`). EN22's first version broke this rule and was cut from six units to five, with one carrier set halved and one script removed.
 
 Verification steps are the exception that proves the rule. Launching the app and driving a feature are real added steps, but they are the product check itself, not overhead. The test is whether a step replaces weaker work, not whether a step was added.

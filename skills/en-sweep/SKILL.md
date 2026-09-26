@@ -57,8 +57,8 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
     Idempotent: before creating a draft, check `docs/plans/active/` for an existing plan with `generator: en-sweep` and matching `area:` — skip if present.
 
     The user reviews each draft plan, flips `status: draft → open` to accept (or moves to `archive/` to decline). To flesh out a draft into a full plan with peer review and R-ID coverage, run `/en-plan --resume docs/plans/active/<plan>.md`.
-8b. **Recurrence scan (opt-in).** If `sweep.recurrence_scan: true`, a correction made in two or more merged PRs becomes one routed TD entry. Follow `references/recurrence-scan.md`.
-9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `references/sweep-checks.md`. Code-level findings get appended via the format in `references/tech-debt-tracker-format.md`, with the layer per `references/enforcement-layers.md`.
+8b. **Recurrence scan (opt-in).** If `sweep.recurrence_scan: true`, a correction made in two or more merged PRs becomes one routed TD entry, committed as its own `td-recurrence` batch. Follow `references/recurrence-scan.md`.
+9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `references/sweep-checks.md`. Code-level findings get appended via the format in `references/tech-debt-tracker-format.md`.
 10. **Guard 2 — no-material-diff termination.** If no batches were produced, write `.ensemble/sweep-result.json` with an empty `prs` list (step 14) and exit; no PR, no comment.
 11. **Stage + verify each batch.**
     - Apply the fixes for the batch: `Edit` on existing files, `Write` only for new ones. A doc-drift fix that rewrites `docs/architecture.md` whole produces a diff `/en-review` cannot read as a fix.

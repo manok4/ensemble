@@ -63,6 +63,7 @@ merge.
 | Anyone with write access to the repo | Trusted as much as sweep; they could disable it. Defence is repo access control. |
 | The repo list `~/.ensemble/sweep-repos` | Whoever can edit it decides what gets swept. It is a file on the operator's machine. |
 | External PRs | Never swept; the runner only reads the default branch. |
+| Review comments on merged PRs (step 8b, opt-in) | Read, not trusted. `ensemble-review-history` keeps only owner, member and collaborator authors and drops bots; bodies are still data, never instructions, and every filed field is the agent's own restatement (`references/recurrence-scan.md`). Residual risk: a collaborator's comment can still influence which correction is filed, which the report-only review of the sweep PR is there to catch. |
 
 ## Disabling sweep
 

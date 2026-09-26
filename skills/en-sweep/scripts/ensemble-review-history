@@ -1,23 +1,29 @@
 #!/bin/sh
-# ensemble-review-history — review comments from merged PRs, one JSON line each
+# ensemble-review-history: review comments from merged PRs, one JSON line each
 # (EN22). Feeds /en-sweep's recurrence scan, which looks for the same correction
 # made in two or more PRs.
 #
 # Usage:
-#   ensemble-review-history --since <YYYY-MM-DD> [--repo <owner/name>] [--limit <n>]
+#   ensemble-review-history --since <YYYY-MM-DD> [--repo <owner/name>] [--limit <1-100>]
 #
 # Output, one line per review-thread comment:
-#   {"pr":118,"path":"...","author":"...","bot":false,"body":"...","resolved":true}
+#   {"pr":118,"path":"...","author":"...","body":"...","resolved":true}
 #
-# Bounds: the newest <limit> merged PRs (default 50), 50 threads per PR and 20
-# comments per thread. A sweep window is weeks, not years; the bounds keep one
-# call to one GraphQL request.
+# Trust: only comments whose author is the repo's OWNER, a MEMBER or a
+# COLLABORATOR are printed, and bots never are. Bodies are still untrusted text;
+# the sweep treats them as data (references/recurrence-scan.md).
+#
+# Bounds: up to <limit> merged PRs (default 50), 50 threads per PR and 20
+# comments per thread, in one GraphQL request. When more PRs merged in the
+# window than <limit>, the scan is incomplete and this exits 1 rather than
+# report a partial window as the whole one.
 #
 # Exit codes:
-#   0  printed at least one PR's comments
+#   0  printed the window's comments (possibly none after the trust filter)
 #   3  no PR merged since the date; stdout is empty
 #   2  usage error
-#   1  gh or jq missing, or gh failed; stderr names the cause. Never a quiet 0.
+#   1  gh or jq missing, gh failed, or the window holds more PRs than <limit>;
+#      stderr names the cause. Never a quiet 0.
 
 set -eu
 
@@ -30,13 +36,14 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in --since) SINCE="$2" ;; --repo) REPO="$2" ;; --limit) LIMIT="$2" ;; esac
       shift 2 ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die 2 "unknown argument: $1" ;;
   esac
 done
 
 printf '%s' "$SINCE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || die 2 "--since must be YYYY-MM-DD"
-case "$LIMIT" in ''|*[!0-9]*) die 2 "--limit must be a number" ;; esac
+case "$LIMIT" in ''|*[!0-9]*) die 2 "--limit must be a number from 1 to 100" ;; esac
+[ "$LIMIT" -ge 1 ] && [ "$LIMIT" -le 100 ] || die 2 "--limit must be a number from 1 to 100"
 
 command -v gh >/dev/null 2>&1 || die 1 "gh not found"
 command -v jq >/dev/null 2>&1 || die 1 "jq not found"
@@ -48,11 +55,12 @@ fi
 
 QUERY='query($q: String!, $n: Int!) {
   search(query: $q, type: ISSUE, first: $n) {
+    issueCount
     nodes { ... on PullRequest {
       number
       reviewThreads(first: 50) { nodes {
         isResolved
-        comments(first: 20) { nodes { path body author { login __typename } } }
+        comments(first: 20) { nodes { path body authorAssociation author { login __typename } } }
       } }
     } }
   }
@@ -62,9 +70,12 @@ RAW=$(gh api graphql -f query="$QUERY" -F n="$LIMIT" \
         -f q="repo:$REPO is:pr is:merged merged:>=$SINCE" 2>&1) \
   || die 1 "gh api graphql failed: $RAW"
 
-COUNT=$(printf '%s' "$RAW" | jq '.data.search.nodes | length' 2>/dev/null) \
+COUNTS=$(printf '%s' "$RAW" | jq -r '"\(.data.search.issueCount) \(.data.search.nodes | length)"' 2>/dev/null) \
   || die 1 "gh returned output jq could not parse"
-[ "$COUNT" -gt 0 ] || exit 3
+TOTAL=${COUNTS% *}; GOT=${COUNTS#* }
+[ "$TOTAL" -gt 0 ] || exit 3
+[ "$TOTAL" -le "$GOT" ] \
+  || die 1 "window truncated: $TOTAL PRs merged since $SINCE, only $GOT fetched; shorten the window"
 
 printf '%s' "$RAW" | jq -c '
   .data.search.nodes[]
@@ -72,7 +83,6 @@ printf '%s' "$RAW" | jq -c '
   | .reviewThreads.nodes[]
   | .isResolved as $resolved
   | .comments.nodes[]
-  | (.author.login // "ghost") as $who
-  | {pr: $pr, path: .path, author: $who,
-     bot: ((.author.__typename // "") == "Bot" or ($who | endswith("[bot]"))),
-     body: .body, resolved: $resolved}'
+  | select((.author.__typename // "") != "Bot")
+  | select(.authorAssociation == "OWNER" or .authorAssociation == "MEMBER" or .authorAssociation == "COLLABORATOR")
+  | {pr: $pr, path: .path, author: (.author.login // "ghost"), body: .body, resolved: $resolved}'

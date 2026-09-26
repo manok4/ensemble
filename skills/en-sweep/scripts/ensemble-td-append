@@ -1,16 +1,18 @@
 #!/bin/sh
-# ensemble-td-append — the one writer of routed tech-debt entries (EN22).
+# ensemble-td-append: the one writer of routed tech-debt entries (EN22).
 #
 # Appends one entry under `## Open` in docs/plans/tech-debt-tracker.md, taking
 # the next TD number after the highest in the file, with the routing fields from
 # references/enforcement-layers.md. Refuses an L1 or L2 entry without a concrete
-# check, refuses L5 (a learning, not debt), and refuses a second open entry with
-# the same rule key, so a correction seen twice is filed once.
+# check, refuses L5 (a learning, not debt), refuses any value containing a line
+# break (it could forge headings and escape `## Open`), and refuses a second open
+# entry with the same rule key, so a correction seen twice is filed once.
 #
 # Usage:
 #   ensemble-td-append --tracker <path> --title <t> --source <s> --severity P0-P3
-#       --confidence 1-10 --location <l> --why <w> --fix <f> --enforce-at L1-L4
-#       [--check "<path>: <rule>"] --rule-key <k>
+#       --confidence 1-10 --location <l> --why <w> --fix <f>
+#       --enforce-at "L1 structure|L2 static|L3 rules|L4 skill" (or L1-L4)
+#       [--check "<path>: <rule>"] --rule-key <kebab-slug, 64 chars max>
 #   ensemble-td-append --list-keys --tracker <path>
 #
 # Exit codes:
@@ -31,6 +33,8 @@ while [ $# -gt 0 ]; do
     --list-keys) LIST="true"; shift ;;
     --tracker|--title|--source|--severity|--confidence|--location|--why|--fix|--enforce-at|--check|--rule-key)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
+      case "$2" in *"
+"*|*"$(printf '\r')"*) die 2 "$1 must be a single line" ;; esac
       case "$1" in
         --tracker) TRACKER="$2" ;; --title) TITLE="$2" ;; --source) SOURCE="$2" ;;
         --severity) SEVERITY="$2" ;; --confidence) CONFIDENCE="$2" ;;
@@ -38,7 +42,7 @@ while [ $# -gt 0 ]; do
         --enforce-at) LAYER="$2" ;; --check) CHECK="$2" ;; --rule-key) KEY="$2" ;;
       esac
       shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die 2 "unknown argument: $1" ;;
   esac
 done
@@ -72,26 +76,25 @@ case "$SEVERITY" in P0|P1|P2|P3) ;; *) die 2 "--severity must be P0-P3" ;; esac
 case "$CONFIDENCE" in [1-9]|10) ;; *) die 2 "--confidence must be 1-10" ;; esac
 
 case "$LAYER" in
-  L1*) LAYER_LABEL="L1 structure" ;;
-  L2*) LAYER_LABEL="L2 static" ;;
-  L3*) LAYER_LABEL="L3 rules" ;;
-  L4*) LAYER_LABEL="L4 skill" ;;
-  L5*) die 2 "L5 routes to a learning, not the tracker" ;;
-  *) die 2 "--enforce-at must be L1-L4" ;;
+  L1|"L1 structure") LAYER_LABEL="L1 structure" ;;
+  L2|"L2 static") LAYER_LABEL="L2 static" ;;
+  L3|"L3 rules") LAYER_LABEL="L3 rules" ;;
+  L4|"L4 skill") LAYER_LABEL="L4 skill" ;;
+  L5|"L5 prose") die 2 "L5 routes to a learning, not the tracker" ;;
+  *) die 2 "--enforce-at must be one of: L1 structure, L2 static, L3 rules, L4 skill" ;;
 esac
 
+# The same concrete-check rule bin/ensemble-lint's td.enforce-layer applies.
+CHECK="${CHECK#\`}"; CHECK="${CHECK%\`}"
 case "$LAYER_LABEL" in
   L1*|L2*)
     printf '%s' "$CHECK" | grep -qE '^[A-Za-z0-9_./-]+:[[:space:]]+[^[:space:]]' \
       || die 2 "${LAYER_LABEL%% *} needs --check \"<path>: <rule or assertion>\" with both parts" ;;
 esac
 
-# Rule key: a kebab slug; a digest when a slug would be unreadably long.
 KEY=$(printf '%s' "$KEY" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]\{1,\}/-/g' -e 's/^-//' -e 's/-$//')
 [ -n "$KEY" ] || die 2 "--rule-key has no letters or digits"
-if [ "${#KEY}" -gt 64 ]; then
-  KEY=$(printf '%s' "$KEY" | shasum -a 256 | cut -c1-12)
-fi
+[ "${#KEY}" -le 64 ] || die 2 "--rule-key is longer than 64 characters; name the correction in a shorter slug"
 
 existing=$(open_entries | awk -F '\t' -v k="$KEY" '$2 == k { print $1; exit }')
 if [ -n "$existing" ]; then
@@ -103,8 +106,12 @@ last=$(grep -oE '^### TD[0-9]+\.' "$TRACKER" | grep -oE '[0-9]+' | sort -n | tai
 NEXT="TD$(( ${last:-0} + 1 ))"
 TODAY=$(date +%Y-%m-%d)
 
-ENTRY_FILE=$(mktemp "${TMPDIR:-/tmp}/td-append.XXXXXX")
-trap 'rm -f "$ENTRY_FILE" "$ENTRY_FILE.out"' EXIT
+# Scratch files live beside the tracker under unpredictable names, and the
+# result is copied into the tracker so its owner and mode are kept.
+DIR=$(dirname "$TRACKER")
+ENTRY_FILE=$(mktemp "$DIR/.td-append-entry.XXXXXX")
+OUT_FILE=$(mktemp "$DIR/.td-append-out.XXXXXX")
+trap 'rm -f "$ENTRY_FILE" "$OUT_FILE"' EXIT
 {
   printf '### %s. %s\n\n' "$NEXT" "$TITLE"
   printf -- '- **Source:** %s\n' "$SOURCE"
@@ -126,7 +133,7 @@ awk -v entry="$ENTRY_FILE" '
   /^## / { open = ($0 ~ /^## Open[[:space:]]*$/) }
   { print }
   END { if (open && !done) { print ""; put() } }
-' "$TRACKER" > "$ENTRY_FILE.out"
-mv "$ENTRY_FILE.out" "$TRACKER"
+' "$TRACKER" > "$OUT_FILE"
+cat "$OUT_FILE" > "$TRACKER"
 
 echo "$NEXT"
