@@ -41,6 +41,10 @@ for n in $names; do
   else
     fail "$n: copies differ across carriers" "$(echo "$copies" | tr '\n' ' ') — sync them, or list the name with a reason"
   fi
+  # A copied script must keep its exec bit. Data files that live beside the
+  # scripts (peer-findings.schema.json, read by ensemble-peer-invoke) are
+  # carried the same way but are never run, so the bit would be wrong on them.
+  case "$n" in *.json|*.yaml|*.yml|*.md) continue ;; esac
   for f in $copies; do [ -x "$f" ] || fail "$n: copy is executable" "$f"; done
 done
 
