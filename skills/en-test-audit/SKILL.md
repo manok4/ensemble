@@ -31,8 +31,9 @@ Finds tests that cost more than they protect and removes them, one owner-boundar
 5. **Write the ledger first.** `docs/test-audits/<YYYY-MM-DD>-<slug>.md`, per `references/ledger-format.md`: a row for every declaration judged, retained ones included, marked R, F, C or D. A D or C row is not ready until it carries every candidate-evidence field below.
 6. **Edit one owner-boundary batch.** Delete the D rows, move each C row's assertion into its keeper first, repair each F row. Delete the test-only exports, flags, wrappers and reset hooks the batch unlocks, and list them under `## Seams removed`; do not keep aliases. Prefer a net-negative production line count. Never add a replacement test that restates the one removed. Never edit source or tests while the project's test runner is running.
 7. **Run the owner and sibling tests** for everything the batch touched. A retained test that now fails is a product bug to reproduce, not a row to flip to D.
-8. **Commit** the batch and the ledger together, staged by path, never `git add -A`.
-9. **Hand off**:
+8. **Verify the ledger.** `bash "$SKILL_DIR/scripts/ensemble-test-ledger-verify" <ledger> --tree`. It checks every row against its mark, and every named declaration against `baseline_sha` and the working tree. Exit 1 prints one line per violation: fix the ledger or the batch, never the verifier's input to dodge it, and re-run. Exit 2 means the file is malformed. **Nothing is committed until it exits 0.**
+9. **Commit** the batch and the ledger together, staged by path, never `git add -A`, with a `Test-Audit-Ledger: <ledger path>` trailer so the justification is findable from the commit.
+10. **Hand off**:
    - the anti-pattern categories removed, with counts;
    - production seams simplified;
    - retained false positives, and why each stays;

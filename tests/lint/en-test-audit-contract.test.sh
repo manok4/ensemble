@@ -11,12 +11,14 @@
 #                          and it needs no CONTRACT.md (D122).
 #   PREFLIGHT FIRST        the refusals run before discovery reads anything.
 #   LEDGER BEFORE EDIT     evidence is written before the batch is touched.
+#   VERIFY BEFORE COMMIT   the ledger verifier gates the commit (U2).
 #   RED BASELINE KEPT      a failing test is a product bug, never a deletion.
 #   NO PUSH, NO MERGE      /en-ship owns those.
 #
 # Negative controls at authoring: removing disable-model-invocation, moving the
-# preflight below discovery, moving the ledger step below the edit step, and
-# deleting the red-baseline clause each turned its assertion red.
+# preflight below discovery, moving the ledger step below the edit step, moving
+# the verifier below the commit, and deleting the red-baseline clause each
+# turned its assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -52,6 +54,19 @@ if [ -n "$led" ] && [ -n "$edit" ] && [ "$led" -lt "$edit" ]; then
 else
   fail "the ledger must be written before the edit" "ledger=${led:-none} edit=${edit:-none}"
 fi
+
+ver=$(step_of 'ensemble-test-ledger-verify'); com=$(step_of '^[0-9]+\\. \\*\\*Commit\\*\\*')
+if [ -n "$ver" ] && [ -n "$com" ] && [ "$ver" -lt "$com" ] && [ "$edit" -lt "$ver" ]; then
+  pass "the ledger is verified (step $ver) after the edit and before the commit (step $com)"
+else
+  fail "the verifier must run between the edit and the commit" "edit=${edit:-none} verify=${ver:-none} commit=${com:-none}"
+fi
+awk '/^## Process/{on=1} /^## Retention/{on=0} on' "$SK" | grep -qE 'Nothing is committed until it exits 0' \
+  && pass "the commit is conditional on the verifier's exit 0" \
+  || fail "the flow must commit only on the verifier's exit 0"
+grep -qF 'Test-Audit-Ledger:' "$SK" \
+  && pass "the commit carries a Test-Audit-Ledger: trailer" \
+  || fail "the commit must carry a Test-Audit-Ledger: trailer"
 
 grep -qiF 'never deleted to make the suite pass' "$SK" \
   && pass "a red baseline is reported, never deleted" \

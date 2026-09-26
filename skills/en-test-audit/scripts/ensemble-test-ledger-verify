@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# Runs under bash, as every bundled script is invoked (`bash "$SKILL_DIR/scripts/x"`),
+# and re-execs itself under python3. Python reads the next line as a no-op string.
+"exec" "python3" "$0" "$@"
+# ensemble-test-ledger-verify — refuse a test-audit ledger that does not justify itself.
+#
+# /en-test-audit deletes tests. The ledger (references/ledger-format.md) is where
+# each deletion is justified, and this is the only thing that reads it before the
+# commit: the skill commits on exit 0 and on nothing else. It does not trust an
+# agent's "I recorded the evidence"; it reads the file, and with --tree the repo.
+#
+# Usage:
+#   ensemble-test-ledger-verify <ledger.md> [--tree]
+#
+# Without --tree: frontmatter, the ledger table, the rules each mark carries,
+# mutation files on disk, and in campaign mode the Product defects table.
+# With --tree, against `baseline_sha` and the working tree as well:
+#   - every named declaration existed at baseline in a supported form, and every
+#     whole-file row's file did;
+#   - a D or C row's declaration (or file) is gone now, and its keeper is present;
+#   - campaign: every test file under scope is in exactly one lane, every
+#     declaration in it has a row unless the file has a whole-file row, and after
+#     a rebaseline every file main changed has a `reconciled:` row.
+#
+# Exit codes:
+#   0  valid, silent
+#   1  violations, one line each on stdout: `ledger: <test cell>: <rule>`
+#   2  unreadable or malformed ledger, or bad arguments (reason on stderr)
+
+import fnmatch, os, re, subprocess, sys
+
+COLUMNS = ["Test", "Mark", "Keeper or contract", "Evidence", "Mutation"]
+PRESERVATION = {"cross-agent", "single-agent-fallback", "skipped-by-flag"}
+DECL_CALLS = r"(?:it|test|describe|context|specify|t\.Run|pass|fail)"
+COMMENT = re.compile(r"^\s*(#|//|\*|/\*|--|;)")
+
+
+def die(msg):
+    print(f"ensemble-test-ledger-verify: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def parse(path):
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError as e:
+        die(f"cannot read {path}: {e.strerror}")
+    lines = text.splitlines()
+    fm = {}
+    if lines and lines[0].strip() == "---":
+        for i, ln in enumerate(lines[1:], 1):
+            if ln.strip() == "---":
+                lines = lines[i + 1:]
+                break
+            m = re.match(r"^([A-Za-z_]+):\s*(.*?)\s*(#.*)?$", ln)
+            if m:
+                fm[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+    sections, cur = {}, None
+    for ln in lines:
+        if ln.startswith("## "):
+            cur = ln[3:].strip()
+            sections.setdefault(cur, [])
+        elif cur is not None and ln.lstrip().startswith("|"):
+            sections[cur].append(ln.strip())
+    return fm, sections
+
+
+def cells(row):
+    parts = row.strip().strip("|").split("|")
+    return [c.strip().strip("`").strip() for c in parts]
+
+
+def table(rows, name, width, header=None):
+    """Header, separator, then data rows of exactly `width` cells."""
+    if not rows:
+        return []
+    head = cells(rows[0])
+    if header and head != header:
+        die(f"## {name}: header must be | {' | '.join(header)} |, found | {' | '.join(head)} |")
+    out = []
+    for r in rows[1:]:
+        c = cells(r)
+        if all(re.fullmatch(r":?-+:?", x or "-") for x in c):
+            continue
+        if len(c) != width:
+            die(f"## {name}: row has {len(c)} cells, expected {width} (a '|' inside a cell?): {c[0]}")
+        out.append(c)
+    return out
+
+
+def git(top, *args):
+    r = subprocess.run(["git", "-C", top, *args], capture_output=True, text=True)
+    return r.returncode, r.stdout
+
+
+def at_sha(top, sha, path):
+    rc, out = git(top, "show", f"{sha}:{path}")
+    return out if rc == 0 else None
+
+
+def in_tree(top, path):
+    p = os.path.join(top, path)
+    return open(p, encoding="utf-8", errors="replace").read() if os.path.isfile(p) else None
+
+
+def declarations(text):
+    """Every declaration name in a supported form, comment lines excluded."""
+    names = []
+    call = re.compile(DECL_CALLS + r"""\s*\(?\s*(["'`])(.+?)\1""")
+    defn = re.compile(r"\b(?:def|func|function)\s+([A-Za-z_][A-Za-z0-9_]*)")
+    for ln in (text or "").splitlines():
+        if COMMENT.match(ln):
+            continue
+        names += [m.group(2) for m in call.finditer(ln)]
+        names += [m.group(1) for m in defn.finditer(ln)]
+    return names
+
+
+def split_test(cell):
+    return cell.split("::", 1) if "::" in cell else (cell, None)
+
+
+def main(argv):
+    args = [a for a in argv if a != "--tree"]
+    tree = "--tree" in argv
+    if len(args) != 1 or args[0].startswith("-"):
+        die("usage: ensemble-test-ledger-verify <ledger.md> [--tree]")
+    ledger = args[0]
+    fm, sec = parse(ledger)
+    if "Ledger" not in sec:
+        die("no '## Ledger' table")
+    rows = table(sec["Ledger"], "Ledger", 5, COLUMNS)
+    ldir = os.path.dirname(os.path.abspath(ledger))
+
+    v = []
+    def bad(test, rule):
+        v.append(f"ledger: {test}: {rule}")
+
+    for key in ("type", "mode", "scope", "baseline_sha"):
+        if not fm.get(key):
+            bad("frontmatter", f"{key} is required")
+    if fm.get("type") and fm["type"] != "test-audit":
+        bad("frontmatter", "type must be test-audit")
+    mode = fm.get("mode", "")
+    if mode and mode not in ("batch", "campaign"):
+        bad("frontmatter", "mode must be batch or campaign")
+    if fm.get("preservation_review") not in PRESERVATION:
+        bad("frontmatter", "preservation_review must be one of " + ", ".join(sorted(PRESERVATION)))
+    if mode == "campaign" and not fm.get("test_glob"):
+        bad("frontmatter", "test_glob is required in campaign mode")
+
+    keeper_re = re.compile(r"^[^:\s][^:]*::.+$")
+    for test, mark, keeper, evidence, mutation in rows:
+        if not test:
+            bad("(empty)", "Test cell is empty")
+            continue
+        if mark not in ("R", "F", "C", "D"):
+            bad(test, f"mark '{mark}' is not one of R, F, C, D")
+            continue
+        blank = lambda s: s in ("", "-")
+        if mark in ("R", "F") and blank(keeper):
+            bad(test, f"{mark} row must name the contract it guards")
+        if mark == "C" and not keeper_re.match(keeper):
+            bad(test, "C row needs a keeper as <path>::<name>, not none: or a bare path")
+        if mark == "D" and not (keeper_re.match(keeper) or re.match(r"^none:\s*\S", keeper)):
+            bad(test, "D row needs a keeper <path>::<name> or 'none: <reason>'")
+        if mark in ("C", "D") and blank(evidence):
+            bad(test, f"{mark} row needs evidence: the proof that remains")
+        if mark in ("F", "C") and blank(mutation):
+            bad(test, f"{mark} row needs a mutation the keeper catches")
+        if not blank(mutation) and not os.path.isfile(os.path.join(ldir, mutation)):
+            bad(test, f"mutation {mutation} does not exist")
+
+    if mode == "campaign":
+        for defect, commit, control in table(sec.get("Product defects", []), "Product defects", 3,
+                                             ["Defect", "Fix commit", "Control evidence"]):
+            if not commit:
+                bad(defect or "(defect)", "product defect needs its fix commit")
+            if not control:
+                bad(defect or "(defect)", "product defect needs control evidence (the reverted fix going red)")
+
+    if tree:
+        v += check_tree(ldir, fm, sec, rows, mode)
+
+    for line in v:
+        print(line)
+    return 1 if v else 0
+
+
+def check_tree(ldir, fm, sec, rows, mode):
+    v = []
+    def bad(test, rule):
+        v.append(f"ledger: {test}: {rule}")
+    rc, top = git(ldir, "rev-parse", "--show-toplevel")
+    if rc != 0:
+        die("--tree needs the ledger inside a git repository")
+    top = top.strip()
+    base = fm.get("baseline_sha", "")
+    if git(top, "cat-file", "-e", f"{base}^{{commit}}")[0] != 0:
+        die(f"baseline_sha {base} is not a commit in this repository")
+
+    base_cache = {}
+    def base_text(p):
+        if p not in base_cache:
+            base_cache[p] = at_sha(top, base, p)
+        return base_cache[p]
+
+    for test, mark, keeper, evidence, _ in rows:
+        if mark not in ("R", "F", "C", "D"):
+            continue
+        path, name = split_test(test)
+        if name is None:
+            if base_text(path) is None:
+                bad(test, f"file not found at baseline {base[:12]}")
+            elif mark in ("C", "D") and os.path.exists(os.path.join(top, path)):
+                bad(test, f"{mark} row, but the file is still in the tree")
+        else:
+            if name not in declarations(base_text(path)):
+                bad(test, f"declaration not found at baseline {base[:12]} (typo, or an unsupported form: use a whole-file row)")
+            elif mark in ("C", "D") and name in declarations(in_tree(top, path)):
+                bad(test, f"{mark} row, but the declaration is still in the tree")
+        if mark in ("C", "D") and "::" in keeper:
+            kp, kn = keeper.split("::", 1)
+            if kn not in declarations(in_tree(top, kp)):
+                bad(test, f"keeper {keeper} is not in the tree")
+
+    if mode != "campaign":
+        return v
+
+    scope = fm.get("scope", ".")
+    glob = fm.get("test_glob", "*")
+    rc, listing = git(top, "ls-tree", "-r", "--name-only", base, "--", "" if scope == "." else scope)
+    files = [f for f in listing.splitlines() if fnmatch.fnmatch(os.path.basename(f), glob) or fnmatch.fnmatch(f, glob)]
+
+    lanes = {}
+    for lane, flist in table(sec.get("Lanes", []), "Lanes", 2, ["Lane", "Files"]):
+        for f in (x.strip().strip("`") for x in flist.split(",")):
+            if f:
+                lanes.setdefault(f, []).append(lane)
+    whole = {t for t, *_ in rows if "::" not in t}
+    named = {t for t, *_ in rows if "::" in t}
+    by_file = {}
+    for t, *_ in rows:
+        by_file.setdefault(split_test(t)[0], []).append(t)
+
+    for f in files:
+        n = len(lanes.get(f, []))
+        if n == 0:
+            bad(f, "test file is in no lane")
+        elif n > 1:
+            bad(f, f"test file is in {n} lanes: {', '.join(lanes[f])}")
+        if f not in by_file:
+            bad(f, "test file has no ledger row")
+            continue
+        if f in whole:
+            continue
+        for d in declarations(base_text(f)):
+            if f"{f}::{d}" not in named:
+                bad(f"{f}::{d}", "declaration has no ledger row (full coverage)")
+
+    old = fm.get("rebaselined_from")
+    if old:
+        rc, changed = git(top, "diff", "--name-only", old, base, "--", "" if scope == "." else scope)
+        if rc != 0:
+            die(f"rebaselined_from {old} cannot be compared with {base}")
+        reconciled = {split_test(t)[0] for t, m, k, e, mu in rows if e.startswith("reconciled:")}
+        for f in changed.splitlines():
+            if f in files and f not in reconciled:
+                bad(f, f"main changed this file since {old[:12]}; it needs a reconciled: row")
+    return v
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
