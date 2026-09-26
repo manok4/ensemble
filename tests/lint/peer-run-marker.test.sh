@@ -106,10 +106,23 @@ fi
 # --- all carriers identical --------------------------------------------------
 # 5 -> 4 on 2026-08-31: D52 left en-build dispatching no peer of its own, so it
 # stopped carrying the invoker. The four that remain all invoke it by name.
-n=$(ls "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke 2>/dev/null | wc -l | tr -d ' ')
 # 4 -> 3 on 2026-09-01: en-cross-review merged into /en-review as its --peer
 # mode, so its copy of the invoker went with it.
-assert_eq "$n" "3" "three skills carry the peer invoker"
+# 3 -> 4 on 2026-09-26 (EN21): en-test-audit's preservation review. The pinned
+# count failed the change that added a legitimate carrier, which is all a pinned
+# count can do. What the history above actually tracks is that every carrier
+# invokes the helper; that is asserted now, so a stray copy still goes red.
+n=$(ls "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke 2>/dev/null | wc -l | tr -d ' ')
+stray=""
+for f in "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke; do
+  sk="$(dirname "$(dirname "$f")")"
+  grep -qF 'scripts/ensemble-peer-invoke' "$sk/SKILL.md" || stray="$stray $(basename "$sk")"
+done
+if [ "$n" -ge 1 ] && [ -z "$stray" ]; then
+  pass "every skill that carries the peer invoker invokes it ($n)"
+else
+  fail "a skill carries the peer invoker without invoking it" "n=$n stray:$stray"
+fi
 d=$(for f in "$REPO_ROOT"/skills/*/scripts/ensemble-peer-invoke; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
 assert_eq "$d" "1" "every carried copy is byte-identical"
 
