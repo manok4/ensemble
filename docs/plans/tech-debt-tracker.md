@@ -389,6 +389,18 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 **Suggested fix:** Count the anti-pattern bullets and assert each bullet's paragraph carries '*The tell:'.
 - **Logged:** 2026-09-26
 
+### TD36. A plan can split a carried file from the citation that reaches it
+
+- **Source:** en-learn capture (EN22 build)
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** skills/en-plan/references/plan-prewrite.md
+- **Why it matters:** tests/lint/skill-payload.test.sh fails any unit that adds a reference or script no skill flow reaches yet; EN22 put the rubric and appender in U1/U2 and their citations in U3/U6, and the build had to widen two units mid-run.
+- **Suggested fix:** Add a pre-write check to plan-prewrite.md: a unit that adds a file under skills/<s>/references/ or skills/<s>/scripts/ also lists the SKILL.md or reference edit that cites it, or depends on a unit that already did.
+- **Enforce at:** L4 skill
+- **Rule key:** carried-file-and-citation-same-unit
+- **Logged:** 2026-09-26
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
