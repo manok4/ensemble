@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-09-21
+updated: 2026-09-26
 ---
 
 # Tech debt tracker
@@ -256,6 +256,139 @@ is present at promotion by design, and the check reports a false violation.
   porcelain entries), or exclude the consumed `related_design` path.
 - **Logged:** 2026-09-24
 
+### TD24. `/en-ship` does not check a test-audit commit's ledger
+
+Filed 2026-09-26 from EN21 (out of scope there by plan). `/en-test-audit` commits a batch only after `ensemble-test-ledger-verify --tree` exits 0, and every such commit carries a `Test-Audit-Ledger: <path>` trailer. Nothing downstream reads the trailer. A test-deleting commit made by hand, or amended after the verifier ran, reaches `/en-ship` with nothing checking that the ledger it names still verifies against the tree being shipped.
+
+- **Source:** EN21 plan, Out of scope; D122
+- **Severity:** P3
+- **Confidence:** 7/10
+- **Location:** `skills/en-ship/SKILL.md` preflight; `skills/en-test-audit/scripts/ensemble-test-ledger-verify`
+- **Why it matters:** the ledger is the only justification a reviewer sees for a deleted test, and a trailer nobody verifies is decorative once the commit has left the skill.
+- **Suggested fix:** in `/en-ship`'s preflight, for each commit in the range carrying `Test-Audit-Ledger:`, run the verifier with `--tree` against the ledger at HEAD; carry the verifier in en-ship as a byte-identical copy. Add a negative control with a ledger whose D row's test is still present.
+- **Logged:** 2026-09-26
+
+### TD25. A mutation-check timeout does not KILL a descendant that ignores TERM
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/scripts/ensemble-mutation-check:run_test`
+**Persona:** correctness
+**Severity:** P3
+**Why it matters:** The watcher sends TERM, then KILL after 2s, but the script kills the watcher as soon as the process-group leader exits, so a grandchild that ignores TERM survives the check and keeps running.
+**Suggested fix:** After `wait` on a timed-out run, send `kill -KILL -- -$CHILD` before killing the watcher; do the same in on_signal.
+- **Logged:** 2026-09-26
+
+### TD26. A second rebaseline can reuse the first one's reconciled: rows
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/scripts/ensemble-test-ledger-verify (rebaseline check)`
+**Persona:** correctness
+**Severity:** P3
+**Why it matters:** rebaselined_from holds only the latest previous SHA and a reconciled: row does not name which rebaseline it answered, so a declaration main changed in two windows is judged once.
+**Suggested fix:** Tie each reconciled row to its rebaseline (e.g. `reconciled@<baseline_sha>:`) and accept only rows naming the current baseline.
+- **Logged:** 2026-09-26
+
+### TD27. The mutation fingerprint ignores file mode
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/scripts/ensemble-mutation-check:fingerprint`
+**Persona:** security
+**Severity:** P3
+**Why it matters:** git hash-object hashes content only, so a patch that changes a file's mode and a restore that recreates it with a different mode read as a clean restore.
+**Suggested fix:** Include the mode in fingerprint() (git ls-files -s plus an executable-bit check) so a mode change counts as a failed restore.
+- **Logged:** 2026-09-26
+
+### TD28. The preservation brief points the peer at good-tests.md, which the peer cannot read
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/references/peer-brief.md (retention)`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** The peer runs read-tree in the audited repo, where references/good-tests.md does not exist; the brief also carries a location rule outside the section the prompt builder sends.
+**Suggested fix:** Name the nine anti-patterns and their tells inline in the retention section, and move the ledger-row location rule into 'What the peer is asked'.
+- **Logged:** 2026-09-26
+
+### TD29. campaign.md restates the marks with a keeper vocabulary the verifier rejects
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/references/campaign.md step 3`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** Step 3 says a C row names 'the owner that absorbs the assertion', a suite; the verifier requires `<path>::<name>`, so lane agents briefed from campaign.md return rows that fail at the end of a long run.
+**Suggested fix:** Replace the step-3 mark list with a pointer to ledger-format.md's Mark table and say keepers are cited as `<path>::<name>`.
+- **Logged:** 2026-09-26
+
+### TD30. outside-voice.md's peer roster omits en-test-audit
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-review/references/outside-voice.md:3 (and its byte-identical copies)`
+**Persona:** standards
+**Severity:** P3
+**Why it matters:** The contract that lists where a peer fires no longer lists every place one does: en-test-audit runs a read-tree preservation review and stops when it fails.
+**Suggested fix:** Add an en-test-audit row to 'When the peer fires' in all three copies, and reword line 3 to cover skills that run a peer without carrying the file.
+- **Logged:** 2026-09-26
+
+### TD31. foundation's repository-layout block still says '11 skills'
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `docs/foundation.md (repository layout, skills/ line)`
+**Persona:** standards
+**Severity:** P3
+**Why it matters:** The count is older than EN21, but the same registration pass removed it from the plugin manifests so it could not drift, and §5 says seventeen.
+**Suggested fix:** Drop the number from the layout comment, as the manifests did.
+- **Logged:** 2026-09-26
+
+### TD32. en-test-audit's --resume row names a step by number
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/SKILL.md (Invocation, --resume row)`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** 'continues at step 10' is unguarded; removing an earlier step would send a resumed run to the verifier and skip the review it exists to rerun, with every ordering assertion still green.
+**Suggested fix:** Name the step by its title ('Stage, then the preservation review') or assert the number equals step_of('ensemble-test-audit-review-artifact').
+- **Logged:** 2026-09-26
+
+### TD33. The mutation-check TERM scenario can pass without the mutation applied
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/en-test-audit/mutation-check.test.sh (killed mid-run)`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** The wait loop gives up after about 3s and kills anyway; if the kill lands during the baseline run the tree is clean whether or not the trap works.
+**Suggested fix:** Record whether the loop saw the mutation applied and fail the scenario with 'mutation never applied; timing' when it did not.
+- **Logged:** 2026-09-26
+
+### TD34. The preservation-review test re-asserts peer-invoke's own failure contract
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/en-test-audit/peer-brief.test.sh (peer-failed scenario)`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** ensemble-peer-invoke is byte-identical across carriers and en-review-peer-default.test.sh owns its peer-failed decisions; the scenario's name claims a stop it does not check.
+**Suggested fix:** Drop it, or rename it to what it asserts and justify it with a failure only this carrier's read-tree path can show.
+- **Logged:** 2026-09-26
+
+### TD35. good-tests-reference pins the tell count at exactly nine
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/lint/good-tests-reference.test.sh:66`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** A legitimate tenth anti-pattern fails the lint, and a bullet losing its tell while another gains a second keeps the count at nine.
+**Suggested fix:** Count the anti-pattern bullets and assert each bullet's paragraph carries '*The tell:'.
+- **Logged:** 2026-09-26
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
@@ -479,8 +612,6 @@ line turns the clause red.
   with a negative control.
 
 - **Logged:** 2026-08-31
-
-## Resolved
 
 ### TD13. ~~A Codex session cannot dispatch a bundled agent by name, so the rendered TOML model does not bind~~ RESOLVED upstream 2026-09-10
 

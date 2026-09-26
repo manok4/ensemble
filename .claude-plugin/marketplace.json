@@ -8,7 +8,7 @@
     {
       "name": "ensemble",
       "source": ".",
-      "description": "Host-agnostic product-development toolkit: 11 skills + 11 agents with cross-agent peer review (Claude Code ↔ Codex), compounding learning store, and event-driven doc-drift cleanup.",
+      "description": "Host-agnostic product-development toolkit: skills and agents with cross-agent peer review (Claude Code ↔ Codex), compounding learning store, and event-driven doc-drift cleanup.",
       "version": "0.1.0",
       "category": "development-workflow",
       "keywords": [

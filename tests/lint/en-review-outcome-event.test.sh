@@ -83,6 +83,9 @@ assert_file_exists "$REPO_ROOT/skills/en-review/references/run-metrics.md" \
 W="$(mktemp -d)"
 trap 'rm -rf "$W"' EXIT INT TERM HUP
 export ENSEMBLE_ANALYTICS_DIR="$W/analytics"
+# These scenarios test how the helpers find the open run, so the scratch
+# ledger tests/run.sh exports for every test would mask exactly that.
+unset ENSEMBLE_RUN_LEDGER
 ( cd "$W" && git init -q . && git config user.email t@e && git config user.name t )
 L=$( cd "$W" && bash "$RM" start --skill en-review )
 ( cd "$W" && bash "$RM" emit --kind peer --json '{"peer":"codex","decision":"on","elapsed_s":126}' )

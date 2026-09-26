@@ -19,6 +19,9 @@
 # Negative controls at authoring: deleting one tell turned the tell assertion
 # red; removing the tautological row from the peer brief turned the drift
 # assertion red; dropping the 9c pointer turned the reachability assertion red.
+# When D121 added four anti-patterns and three questions: deleting the
+# test-only-seam tell, the Cannot fail brief row, the third question, and the
+# "fail on the old code" clause each turned its assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -51,19 +54,19 @@ grep -qF 'references/good-tests.md' "$DISPATCH" \
 # --- 2. the anti-patterns, and a tell for each -------------------------------
 # The names are the contract between the two files; the tells are what makes a
 # name actionable rather than a slogan.
-PATTERNS='Implementation-coupled Tautological "Horizontal slicing" "Reads source instead of running it" "Mocked past the boundary"'
 missing=""
-for pat in "Implementation-coupled" "Tautological" "Horizontal slicing" "Reads source instead of running it" "Mocked past the boundary"; do
+for pat in "Implementation-coupled" "Tautological" "Horizontal slicing" "Reads source instead of running it" "Mocked past the boundary" \
+           "Tests the mock" "Cannot fail" "Duplicated contract" "Test-only seam"; do
   grep -qF "$pat" "$GT" || missing="$missing '$pat'"
 done
 [ -z "$missing" ] \
-  && pass "all five anti-patterns are named" \
+  && pass "all nine anti-patterns are named" \
   || fail "good-tests.md is missing an anti-pattern" "$missing"
 
 tells=$(grep -c '\*The tell:' "$GT" || true)
-[ "$tells" -eq 5 ] \
-  && pass "every anti-pattern carries its tell (5)" \
-  || fail "every anti-pattern must carry a tell" "found $tells, expected 5"
+[ "$tells" -eq 9 ] \
+  && pass "every anti-pattern carries its tell (9)" \
+  || fail "every anti-pattern must carry a tell" "found $tells, expected 9"
 
 # --- 3. the definition itself, not just the failures -------------------------
 if grep -qiE 'through the public interface, not the' "$GT" && grep -qiE 'reads like a specification' "$GT"; then
@@ -71,6 +74,17 @@ if grep -qiE 'through the public interface, not the' "$GT" && grep -qiE 'reads l
 else
   fail "good-tests.md must define a good test positively" \
        "a list of anti-patterns alone tells a writer what not to do and nothing about what to do"
+fi
+
+# The three questions gate a test before it is written. Scoped to their section:
+# the regression rule also appears in the peer brief and the credit line.
+questions=$(awk '/^## Before adding one/{on=1; next} /^## /{on=0} on' "$GT")
+n=$(printf '%s\n' "$questions" | grep -cE '^[0-9]\. \*\*' || true)
+if [ "$n" -eq 3 ] && printf '%s' "$questions" | grep -qiF 'fail on the old code'; then
+  pass "it asks three questions before a test is added, the regression one included"
+else
+  fail "good-tests.md must carry the three questions before adding a test" \
+       "found $n; a regression test that never failed on the old code proves the mock"
 fi
 
 # Seams are /en-plan's decision; restating them here would fork the rule.
@@ -85,7 +99,8 @@ fi
 # a pointer would be one it cannot follow. The brief therefore restates the
 # anti-patterns, and this is the assertion that keeps the two in step.
 drift=""
-for pat in "Tautological" "Horizontal slicing" "read source instead of running it"; do
+for pat in "Tautological" "Horizontal slicing" "read source instead of running it" \
+           "Tests the mock" "Cannot fail" "Duplicated contract" "Test-only seam"; do
   grep -qiF "$pat" "$BRIEF" || drift="$drift '$pat'"
 done
 [ -z "$drift" ] \

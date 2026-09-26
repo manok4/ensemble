@@ -1,0 +1,819 @@
+#!/usr/bin/env bash
+# ensemble-peer-invoke — peer invocation with classified, bounded fail-soft (EN11).
+#
+# Sourced by /en-review (step 9) AND by tests/lint/en-review-peer-default.test.sh,
+# so the test drives the REAL state machine. The retry contract lives here as
+# EXECUTABLE code rather than skill prose, because a prose invariant cannot be
+# behaviorally tested (D41): assertions on text can prove the words "retry once"
+# appear, never that exactly one retry happened.
+#
+# Pure functions, no top-level side effects, safe to source under `set -eu`.
+#
+# Usage (all flags optional unless noted):
+#   ensemble_peer_invoke --peer-cmd <cmd> --peer-format <fmt> [--peer-turns <t>]
+#                        [--peer-model <frag>] [--peer-effort <frag>]
+#                        --prompt-file <path> [--out-file <path>]
+#                        [--peer-mode <mode>] [--effort <tier>]
+#                        [--model-alias <alias>] [--reason-on <reason>]
+#                        [--access none|read-tree] [--schema <file>]
+#
+# Prints ONE peer_decision JSON object (references/peer-contract.md) on
+# stdout. The peer's own stdout goes to --out-file, unwrapped to the peer's
+# findings object when the CLI returned a transport envelope.
+#
+# Detached form (D81), for a peer that may run for minutes: no tool call has
+# to stay open for its lifetime, and host personas can run alongside it.
+#   ensemble_peer_start  --job-dir <dir> <every ensemble_peer_invoke flag>
+#                        -> prints <dir>; returns at once
+#   ensemble_peer_wait   <dir> [--max-secs <n>]  -> prints running|done; 0 done, 3 running
+#   ensemble_peer_result <dir>  -> prints the decision; returns the invoke's exit code
+#   ensemble_peer_reap   <dir>  -> kills a still-running peer and records peer-failed:timeout
+
+# Locate and load the shared classifier (reused from EN10, never duplicated).
+#
+# BASH_SOURCE is bash-only. Consumers `source` this file (it exports a function,
+# so they must), and on macOS the sourcing shell is often zsh -- which leaves
+# BASH_SOURCE unset and, under `set -u`, aborted the sibling loads while
+# ensemble_peer_invoke still returned a well-formed
+# {"peer":"off","reason":"peer-failed:retry-exhausted"}. A broken helper was
+# therefore indistinguishable from a real peer failure, silently disabling peer
+# review. zsh sets $0 to the sourced file, bash does not, so the fallback covers
+# sourced and executed under both shells.
+_epi_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# The CLI this run is talking to, for the recorded event. Set by the entry
+# points; defaulted here because _epi_decision is also called directly by tests
+# and this file runs under the caller's `set -u`.
+_epi_peer_name=""
+# shellcheck source=$SKILL_DIR/scripts/ensemble-cli-smoke
+. "$_epi_dir/ensemble-cli-smoke"
+# shellcheck source=$SKILL_DIR/scripts/ensemble-extract-json
+. "$_epi_dir/ensemble-extract-json"
+
+# Split a flag fragment into argv, WITHOUT asking the shell to word-split.
+# Two shells, two reasons. Setting IFS is not enough on its own: a caller with
+# a non-default IFS would pass a whole fragment as one argument. And zsh does
+# not split unquoted parameter expansions at all, so `for _w in $_frag` handed
+# `claude -p` to exec as ONE argument there and the peer never launched at all
+# (peer-failed:unknown in zero seconds). On macOS the sourcing shell is
+# routinely zsh, which is why this cannot be left to the shell.
+# Reading a newline-per-word stream behaves identically in both, and `read`
+# neither globs nor strips quotes, so `set -f` is no longer needed either.
+_epi_push() {
+  local _frag="$1" _w
+  [ -n "$_frag" ] || return 0
+  while IFS= read -r _w; do
+    [ -n "$_w" ] || continue
+    _epi_argv+=("$_w")
+  done <<EOF
+$(printf '%s' "$_frag" | tr ' \t' '\n\n')
+EOF
+}
+
+# Decide which fragment a flag rejection is about.
+#   $1 = stderr text
+# prints: effort | model | "" (ambiguous)
+_epi_attribute() {
+  if printf '%s' "${1:-}" | grep -qiE 'model_reasoning_effort|--effort'; then
+    echo effort; return 0
+  fi
+  if printf '%s' "${1:-}" | grep -qiE '\-\-model|(^|[[:space:]])-m([[:space:]]|$)'; then
+    echo model; return 0
+  fi
+  echo ""
+}
+
+# --- Isolation for the peer subprocess, in two access modes -------------------
+# The peer is a reporter (D30): it never writes. Every Claude peer gets no MCP
+# servers, no skills, no session state and no user-level settings (a loaded
+# LSP once spent the single --max-turns on a tool call before any JSON came
+# back). What differs is whether it may READ the tree (D81):
+#   none       --tools '' and the caller's turn cap (one turn). For a document
+#              review, or a lite code review: the artifact is the whole input.
+#   read-tree  --tools Read,Grep,Glob, --permission-mode dontAsk so a denied
+#              tool fails fast instead of waiting for an answer, and a turn cap
+#              of ENSEMBLE_PEER_MAX_TURNS (150) so the peer can open the caller
+#              of a changed function and the test beside it. A turn is one
+#              model-to-tool round trip inside the peer; the host sees one
+#              report either way. No Bash, Edit, Write, Agent, web or MCP.
+# `codex exec` gets `-s read-only` in both modes and none of the Claude flags.
+# Flags are keyed on the command, never on the host.
+# ENSEMBLE_PEER_ISOLATION=off disables the set for one session (debugging).
+_EPI_ISOLATION_BASE=(--strict-mcp-config --mcp-config '{"mcpServers":{}}'
+                     --disable-slash-commands --no-session-persistence
+                     --setting-sources project)
+_EPI_ACCESS_NONE=(--tools '')
+_EPI_ACCESS_READ_TREE=(--tools Read,Grep,Glob --permission-mode dontAsk)
+_EPI_CODEX_SANDBOX=(-s read-only)
+
+_epi_is_claude() { case "${1%% *}" in claude|*/claude) return 0 ;; esac; return 1; }
+_epi_is_codex()  { case "${1%% *}" in codex|*/codex)   return 0 ;; esac; return 1; }
+
+_epi_isolation_applies() {  # $1=peer_cmd
+  [ "${ENSEMBLE_PEER_ISOLATION:-on}" != "off" ] || return 1
+  _epi_is_claude "$1" || _epi_is_codex "$1"
+}
+
+# Push the isolation set for this command and access mode, plus the schema
+# flag when a schema was given. One place, so attempt 1 and the retry agree.
+#   $1=peer_cmd $2=access $3=schema_file
+_epi_push_isolation() {
+  if _epi_is_claude "$1"; then
+    _epi_argv+=("${_EPI_ISOLATION_BASE[@]}")
+    if [ "$2" = "read-tree" ]; then
+      # 150, not 25. 25 was a borrowed convention rather than a measured
+      # budget, and it is the one bound here whose failure mode throws the
+      # work away: the CLI returns error_max_turns with an EMPTY result, so a
+      # peer that has already finished thinking is billed in full and reports
+      # nothing. It bound at 117s on a 19-file diff, $2.76 and 21,976 output
+      # tokens for no findings, while the 1200s ceiling went untouched
+      # (2026-09-16). The wall clock is the real guard; this is a backstop
+      # against a peer that loops, and it should not bind on a real diff.
+      _epi_argv+=("${_EPI_ACCESS_READ_TREE[@]}" --max-turns "${ENSEMBLE_PEER_MAX_TURNS:-150}")
+    else
+      _epi_argv+=("${_EPI_ACCESS_NONE[@]}")
+    fi
+    [ -z "$3" ] || _epi_argv+=(--json-schema "$(cat "$3")")
+  elif _epi_is_codex "$1"; then
+    _epi_argv+=("${_EPI_CODEX_SANDBOX[@]}")
+    [ -z "$3" ] || _epi_argv+=(--output-schema "$3")
+  fi
+}
+
+# A rejection of one of the isolation flags, as opposed to the model or effort
+# fragment. Anchored on the rejection phrasing so a usage dump that merely
+# lists --tools is not mistaken for one.
+_epi_is_isolation_rejection() {  # $1=stderr
+  printf '%s' "${1:-}" | grep -qiE "(unexpected|unrecognized|unknown|invalid) (argument|option)[^[:cntrl:]]*(strict-mcp-config|mcp-config|disable-slash-commands|no-session-persistence|setting-sources|--tools|permission-mode|json-schema|output-schema|--sandbox|'-s')"
+}
+
+# Escape a value for embedding in a JSON string. Without this a configured
+# alias containing a quote, backslash, or control character would emit invalid
+# JSON and silently defeat the structured contract (EN11-CR-003).
+_epi_json_escape() {
+  printf '%s' "${1:-}" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' \
+    | tr -d '\000-\010\013\014\016-\037' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
+# Emit the peer_decision object. Values come from the caller's resolved state,
+# so this helper never re-derives policy.
+_epi_decision() {  # $1=peer $2=reason $3=peer_mode $4=effort $5=model_alias [$6=elapsed_s] [$7=model_actual]
+  # Emitting a decision IS the terminal event, so the marker is cleared here
+  # rather than at each exit path. Clearing per-path meant an exit added later
+  # would leave a false orphan behind, and a false orphan is worse than none: it
+  # reports an interruption that never happened.
+  [ -n "${_epi_marker_out:-}" ] && _epi_marker_clear "$_epi_marker_out"
+  _epi_marker_out=""
+  local _alias
+  if [ -n "${5:-}" ]; then _alias="\"$(_epi_json_escape "$5")\""; else _alias="null"; fi
+  local _el; if [ -n "${6:-}" ]; then _el="$6"; else _el="null"; fi
+  local _actual
+  if [ -n "${7:-}" ]; then _actual="\"$(_epi_json_escape "$7")\""; else _actual="null"; fi
+  printf '{"peer":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"elapsed_s":%s,"model_actual":%s}\n' \
+    "$(_epi_json_escape "$1")" "$(_epi_json_escape "$2")" \
+    "$(_epi_json_escape "${3:-off}")" "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_el" "$_actual"
+
+  # Record the pass. AFTER the printf and to /dev/null, because this function's
+  # stdout IS the decision object the caller parses. Every return path in
+  # ensemble_peer_invoke passes through here, and so does the detached trio, so
+  # one pass is one event however it was run. Outside a run the helper writes
+  # nothing and exits 0, which is why no caller had to change.
+  if [ -x "$_epi_dir/ensemble-run-metrics" ]; then
+    bash "$_epi_dir/ensemble-run-metrics" emit --kind peer --json "$(printf \
+      '{"peer":"%s","decision":"%s","reason":"%s","peer_mode":"%s","effort":"%s","model_alias":%s,"model_actual":%s,"elapsed_s":%s,"cost_usd":%s,"tokens_in":%s,"tokens_out":%s}' \
+      "$(_epi_json_escape "${_epi_peer_name:-unknown}")" "$(_epi_json_escape "$1")" \
+      "$(_epi_json_escape "$2")" "$(_epi_json_escape "${3:-off}")" \
+      "$(_epi_json_escape "${4:-medium}")" "$_alias" "$_actual" "$_el" \
+      "$(_epi_num_or_null "${_epi_cost_usd:-}")" \
+      "$(_epi_num_or_null "${_epi_tokens_in:-}")" \
+      "$(_epi_num_or_null "${_epi_tokens_out:-}")")" >/dev/null || true
+  fi
+  # The recording block is this function's last command, so an absent helper
+  # made `if` false and _epi_decision returned 1 while printing a valid decision
+  # object. Its status must be a fact about the decision, not about the
+  # filesystem: every direct caller in the test suite reads it.
+  return 0
+}
+
+# Recover the JSON envelope from a response wrapped in fences or prose. Applied
+# to every successful peer call so all four peer-invoking skills get it without
+# each re-implementing it. On failure the file is left byte-for-byte untouched:
+# the caller's existing "retry once with valid JSON only" is still the fallback
+# for genuinely broken responses, and must not be pre-empted by a partial write.
+_epi_normalize_out() {
+  local _f="${1:-}" _clean
+  [ -n "$_f" ] && [ "$_f" != "/dev/null" ] && [ -s "$_f" ] || return 0
+  _epi_unwrap_envelope "$_f"
+  _clean=$(ensemble_extract_json "$_f") || return 0
+  printf '%s' "$_clean" > "$_f"
+}
+
+# `claude -p --output-format json` returns a transport envelope
+# {"type":"result","result":"<text>","structured_output":{...},"modelUsage":{...}}.
+# The findings are the structured_output when a schema was given, else the
+# result text; the served model is the modelUsage key (canonicalModel when
+# present), which becomes the decision's model_actual so a degraded or
+# fallback run records what actually served it (D81). Leaves anything that is
+# not that envelope untouched, so codex streams and plain JSON pass through.
+#
+# It also reads the RECEIPT both CLIs already print: what the pass cost and how
+# many tokens it moved. Nothing anywhere recorded that, so no report could ask
+# whether a peer was worth what it charged, and the numbers behind "$3.23 for a
+# run that returned nothing, $2.87 for one that returned seven findings" had to
+# be measured by hand. The CLI hands them over in the response being parsed
+# here, so collecting them costs one more field each and no extra call.
+#
+# Codex's `--json` is a JSONL STREAM, not one envelope: its `turn.completed`
+# line carries usage. That branch is READ-ONLY, because ensemble_extract_json
+# downstream still needs the stream intact. Codex reports no cost and no served
+# model, so those stay null: null means "the CLI did not say", never zero.
+_epi_model_actual=""
+_epi_cost_usd=""
+_epi_tokens_in=""
+_epi_tokens_out=""
+_epi_err_subtype=""
+_epi_unwrap_envelope() {  # $1=out_file [$2=readonly]
+  local _f="$1" _res
+  command -v python3 >/dev/null 2>&1 || return 0
+  _res=$(python3 - "$_f" "${2:-}" <<'PY' 2>/dev/null
+import json, sys
+
+READONLY = len(sys.argv) > 2 and sys.argv[2] == "readonly"
+
+def emit(model, cost, tin, tout, subtype=""):
+    # Four lines, in this order, empty where unknown. The caller reads them
+    # with `read` rather than jq: this helper has no jq dependency and is not
+    # going to acquire one for a receipt.
+    #
+    # Numbers are normalised HERE, so the shell never has to judge a float it
+    # did not produce. repr of a small cost is "1e-05", which is a valid JSON
+    # number and not something a [0-9.] test accepts, so a cheap pass would
+    # have recorded null and read as "the CLI said nothing".
+    def dec(v):
+        try:
+            return "%.6f" % float(v)
+        except Exception:
+            return ""
+
+    def whole(v):
+        try:
+            return "%d" % int(v)
+        except Exception:
+            return ""
+
+    print(model or "")
+    print(dec(cost) if cost is not None else "")
+    print(whole(tin) if tin is not None else "")
+    print(whole(tout) if tout is not None else "")
+    print(subtype or "")
+
+p = sys.argv[1]
+raw = open(p, encoding="utf-8", errors="replace").read()
+
+try:
+    d = json.loads(raw)
+except Exception:
+    d = None
+
+# Claude: one envelope. Unwrap it in place to the findings.
+if isinstance(d, dict) and d.get("type") == "result":
+    # modelUsage lists EVERY model the CLI touched, and Claude Code puts its own
+    # small internal model first: a --model opus pass reports
+    #   [0] claude-haiku-4-5  in=905 out=12     <- side tasks
+    #   [1] claude-opus-5     in=4   out=383    <- the actual work
+    # Reading entry [0] named haiku as the server of an opus review and
+    # reported 12 output tokens as the whole pass. A real review recorded
+    # tokens_out 17, which is what gave it away (2026-09-16). The model that
+    # did the work is the one that produced the output; the pass consumed all
+    # of them, so the tokens are the sum, not one entry's share.
+    mu = d.get("modelUsage") or {}
+
+    def _out(v):
+        return (v or {}).get("outputTokens") or 0
+
+    actual, tin, tout = "", None, None
+    if mu:
+        k, v = max(mu.items(), key=lambda kv: _out(kv[1]))
+        actual = (v or {}).get("canonicalModel") or k
+        tin = sum((x or {}).get("inputTokens") or 0 for x in mu.values())
+        tout = sum(_out(x) for x in mu.values())
+    u = d.get("usage") or {}
+    if not tin:
+        tin = u.get("input_tokens")
+    if not tout:
+        tout = u.get("output_tokens")
+    # A FAILING envelope is read, never rewritten: the classifier and the one
+    # retry still need the CLI's own answer on disk, and there are no findings
+    # in it to unwrap. Its receipt is the point. An error_max_turns pass cost
+    # $2.09 and recorded cost_usd null, because this only ran on the success
+    # path (2026-09-16).
+    sub = d.get("subtype") or ""
+    if not READONLY:
+        so = d.get("structured_output")
+        body = json.dumps(so) if isinstance(so, dict) else (d.get("result") or "")
+        open(p, "w", encoding="utf-8").write(body)
+    emit(actual, d.get("total_cost_usd"), tin, tout, sub)
+    sys.exit(0)
+
+# Codex: a stream. Read the last turn.completed and touch nothing.
+tin = tout = None
+for line in raw.splitlines():
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        ev = json.loads(line)
+    except Exception:
+        continue
+    if isinstance(ev, dict) and ev.get("type") == "turn.completed":
+        u = ev.get("usage") or {}
+        tin, tout = u.get("input_tokens"), u.get("output_tokens")
+if tin is not None or tout is not None:
+    emit("", None, tin, tout, "")
+PY
+) || true
+  # `read` in the current shell, not a pipeline: a pipeline would run the loop
+  # in a subshell and every assignment would be discarded.
+  # Cleared first: `read` past end-of-input leaves the variable ALONE in some
+  # shells, so a pass whose CLI reported nothing would inherit the previous
+  # pass's receipt and look like it had one.
+  _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""
+  _epi_err_subtype=""
+  {
+    IFS= read -r _epi_model_actual || true
+    IFS= read -r _epi_cost_usd     || true
+    IFS= read -r _epi_tokens_in    || true
+    IFS= read -r _epi_tokens_out   || true
+    IFS= read -r _epi_err_subtype  || true
+  } <<EOF
+${_res:-}
+EOF
+}
+
+# A receipt field reaches the ledger as a JSON NUMBER or as null, never as a
+# quoted string a report would have to re-parse, and never as a value the CLI
+# did not actually print. Anything that is not a plain number is null.
+_epi_num_or_null() {
+  case "${1:-}" in
+    ''|*[!0-9.]*|*.*.*|.*|*.) printf 'null' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# --- run marker: make a killed host call visible -----------------------------
+# `timeout` bounds a peer that runs too long, and exit 124 is reported. It cannot
+# help when the HOST's tool call dies — context exhaustion, Ctrl-C, a truncated
+# call. The subprocess dies with it and nothing is written, so the next step sees
+# an absent or stale output file and cannot tell "the peer was never asked" from
+# "the peer answered nothing".
+#
+# A marker written before the call and cleared after turns that silence into
+# evidence. This is deliberately not a job runner: no polling, no job roots, no
+# process supervision. The ceiling still does the bounding; the marker only makes
+# a death visible to the next invocation.
+_epi_marker_path() {
+  [ -n "${1:-}" ] && [ "$1" != "/dev/null" ] || return 1
+  printf '%s.run' "$1"
+}
+
+_epi_marker_write() {  # $1=out_file $2=peer_cmd $3=peer_mode
+  local _m; _m=$(_epi_marker_path "${1:-}") || return 0
+  printf '{"started":"%s","peer_cmd":"%s","peer_mode":"%s","host_pid":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(_epi_json_escape "${2:-}")" \
+    "$(_epi_json_escape "${3:-}")" "$$" > "$_m" 2>/dev/null || true
+}
+
+_epi_marker_clear() {
+  local _m; _m=$(_epi_marker_path "${1:-}") || return 0
+  rm -f "$_m" 2>/dev/null || true
+}
+
+# Public: report an orphaned marker from a previous run, if one is present.
+# A caller checks this BEFORE invoking, so an interrupted review is surfaced
+# rather than silently retried over a stale output file.
+ensemble_peer_orphaned_run() {  # $1=out_file
+  local _m; _m=$(_epi_marker_path "${1:-}") || return 1
+  [ -f "$_m" ] || return 1
+  cat "$_m" 2>/dev/null
+}
+
+# Resolve a timeout wrapper once. Same convention as references/outside-voice.md.
+_epi_timeout_bin() {
+  command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true
+}
+
+ensemble_peer_invoke() {
+  local peer_cmd="" peer_format="" peer_turns="" peer_model="" peer_effort=""
+  local prompt_file="" out_file="/dev/null" peer_mode="cross-agent"
+  local effort="medium" model_alias="" reason_on="default-on"
+  local access="none" schema_file="" timeout_secs=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --peer-cmd)     peer_cmd="$2";     shift 2 ;;
+      --peer-format)  peer_format="$2";  shift 2 ;;
+      --peer-turns)   peer_turns="$2";   shift 2 ;;
+      --peer-model)   peer_model="$2";   shift 2 ;;
+      --peer-effort)  peer_effort="$2";  shift 2 ;;
+      --prompt-file)  prompt_file="$2";  shift 2 ;;
+      --out-file)     out_file="$2";     shift 2 ;;
+      --peer-mode)    peer_mode="$2";    shift 2 ;;
+      --effort)       effort="$2";       shift 2 ;;
+      --model-alias)  model_alias="$2";  shift 2 ;;
+      --reason-on)    reason_on="$2";    shift 2 ;;
+      --timeout)      timeout_secs="$2"; shift 2 ;;
+      --access)       access="$2";       shift 2 ;;
+      --schema)       schema_file="$2";  shift 2 ;;
+      *) echo "ensemble_peer_invoke: unknown flag $1" >&2; return 2 ;;
+    esac
+  done
+
+  if [ -z "$peer_cmd" ] || [ -z "$prompt_file" ]; then
+    echo "ensemble_peer_invoke: --peer-cmd and --prompt-file are required" >&2
+    return 2
+  fi
+  # basename, not the first word: an operator invoking the CLI by absolute path
+  # would otherwise write that path into the durable store on every peer pass.
+  _epi_peer_name=$(basename "$(printf '%s' "$peer_cmd" | awk '{print $1}')" 2>/dev/null) \
+    || _epi_peer_name="unknown"
+  case "$access" in none|read-tree) ;; *) echo "ensemble_peer_invoke: --access must be none or read-tree" >&2; return 2 ;; esac
+  if [ -n "$schema_file" ] && [ ! -f "$schema_file" ]; then
+    echo "ensemble_peer_invoke: --schema file not found: $schema_file" >&2; return 2
+  fi
+  # A one-shot peer answers in minutes; a peer reading the tree may take
+  # longer, so its ceiling is doubled. peer_timeout_seconds still overrides
+  # both, and --timeout overrides everything.
+  if [ -z "$timeout_secs" ]; then
+    if [ -n "${peer_timeout_seconds:-}" ]; then timeout_secs="$peer_timeout_seconds"
+    elif [ "$access" = "read-tree" ]; then timeout_secs=1200
+    else timeout_secs=600; fi
+  fi
+  # In read-tree the access mode owns the Claude turn cap; the caller's
+  # --max-turns 1 would defeat the reads it was granted.
+  if [ "$access" = "read-tree" ] && _epi_is_claude "$peer_cmd" && _epi_isolation_applies "$peer_cmd"; then
+    peer_turns=""
+  fi
+  _epi_model_actual=""; _epi_cost_usd=""; _epi_tokens_in=""; _epi_tokens_out=""; _epi_err_subtype=""
+
+  # A stuck peer must not block a default-on review forever (EN11-CR-002).
+  # `timeout` exits 124 when it fires, which maps to the published
+  # peer-failed:timeout reason.
+  local _tb; _tb=$(_epi_timeout_bin)
+  # outside-voice.md promised a fail-fast here for years while this helper ran
+  # the peer unwrapped. Refusing would turn a missing coreutils into a skipped
+  # review on every macOS host without it, so the call proceeds, bounded only
+  # by the run marker; but it says so, once, where the operator can see it.
+  [ -n "$_tb" ] || echo "ensemble-peer-invoke: neither 'timeout' nor 'gtimeout' on PATH; the peer runs unbounded (macOS: brew install coreutils)" >&2
+
+  # --- attempt 1 ---------------------------------------------------------
+  # Marker first: if this tool call is killed mid-flight, the marker is the only
+  # trace that a peer was ever asked. Cleared by _epi_decision on every exit.
+  _epi_marker_write "$out_file" "$peer_cmd" "$peer_mode"
+  _epi_marker_out="$out_file"
+  _epi_trace "invoke:marker-written"
+  local _t0; _t0=$(date +%s)
+  local _epi_argv=() _err _rc _class _iso_on=0
+  [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
+  _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
+  if _epi_isolation_applies "$peer_cmd"; then _epi_push_isolation "$peer_cmd" "$access" "$schema_file"; _iso_on=1; fi
+  _epi_push "$peer_model"; _epi_push "$peer_effort"
+
+  # The `if err=$(...)` form captures a non-zero exit WITHOUT tripping the
+  # caller's `set -e` (a bare `err=$(...); rc=$?` would abort under errexit).
+  # Flag NAMES only, never their values: one of them is the whole schema and
+  # another is a prompt path. "Was --json-schema actually bound?" was the first
+  # question a failing run raised, and the trace could not answer it.
+  _epi_trace "invoke:exec-begin flags=$(printf '%s\n' "${_epi_argv[@]}" 2>/dev/null | grep '^-' | tr '\n' ' ')"
+  if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
+    _epi_normalize_out "$out_file"
+    _epi_decision "on" "$reason_on" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+    return 0
+  else
+    _rc=$?
+  fi
+
+  if [ "$_rc" -eq 124 ]; then
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
+    return 1
+  fi
+
+  # A failed attempt still has a receipt, and the CLI usually names its own
+  # failure. Read both BEFORE classifying on stderr, which is empty in exactly
+  # the case that matters: a peer that spends its turn budget and returns
+  # nothing exits non-zero with a complete envelope on STDOUT and silence on
+  # stderr, so `unknown` was reported for a failure the CLI had already named
+  # (2026-09-16: subtype error_max_turns, 26 turns, $2.09, no findings).
+  _epi_unwrap_envelope "$out_file" readonly
+  if [ "${_epi_err_subtype:-}" = "error_max_turns" ]; then
+    _epi_decision "off" "peer-failed:max-turns" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+    return 1
+  fi
+
+  _class=$(ensemble_smoke_classify "$_err" "$_rc")
+
+  case "$_class" in
+    auth)    _epi_decision "off" "peer-failed:auth"    "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"; return 1 ;;
+    unknown) _epi_decision "off" "peer-failed:unknown" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"; return 1 ;;
+  esac
+
+  # --- flagdrift: ONE bounded retry, dropping ONLY the rejected fragment ---
+  local _target _dropped
+  if [ "$_iso_on" -eq 1 ] && _epi_is_isolation_rejection "$_err"; then
+    # An isolation flag the installed CLI no longer knows. Drop the whole
+    # isolation set (it is one fragment for this purpose) and keep the model
+    # and effort fragments; the review still runs, and the decision says so.
+    _target="isolation"
+  else
+    _target=$(_epi_attribute "$_err")
+  fi
+
+  # An attributed-but-empty fragment cannot be the cause; prefer a fragment
+  # that is actually present. Ambiguous attribution drops the model fragment
+  # first (Codex never sets it, so it is the likelier culprit on Claude).
+  if [ "$_target" = "effort" ] && [ -z "$peer_effort" ]; then _target=""; fi
+  if [ "$_target" = "model" ]  && [ -z "$peer_model"  ]; then _target=""; fi
+  if [ -z "$_target" ]; then
+    if   [ -n "$peer_model" ];  then _target="model"
+    elif [ -n "$peer_effort" ]; then _target="effort"
+    else
+      # Neither fragment is set, so no retry could change the outcome.
+      _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
+      return 1
+    fi
+  fi
+
+  _epi_argv=()
+  [ -z "$_tb" ] || [ -z "$timeout_secs" ] || _epi_argv+=("$_tb" "$timeout_secs")
+  _epi_push "$peer_cmd"; _epi_push "$peer_format"; _epi_push "$peer_turns"
+  # Drop ONLY the rejected fragment; the others are retained deliberately.
+  case "$_target" in
+    isolation)
+      _dropped="dropped-isolation-fragment"
+      _epi_push "$peer_model"; _epi_push "$peer_effort" ;;
+    model)
+      _dropped="dropped-model-fragment"
+      [ "$_iso_on" -eq 0 ] || _epi_push_isolation "$peer_cmd" "$access" "$schema_file"
+      _epi_push "$peer_effort" ;;
+    *)
+      _dropped="dropped-effort-fragment"
+      [ "$_iso_on" -eq 0 ] || _epi_push_isolation "$peer_cmd" "$access" "$schema_file"
+      _epi_push "$peer_model" ;;
+  esac
+
+  # Capture the retry's exit code in an `else`, exactly as attempt 1 does. A
+  # bare `$?` after a completed `if` reads the IF STATEMENT's status (always 0
+  # when no branch ran), which would make the 124 check dead code and misreport
+  # a timed-out retry as retry-exhausted.
+  if _err=$("${_epi_argv[@]}" < "$prompt_file" 2>&1 >"$out_file"); then
+    _epi_normalize_out "$out_file"
+    _epi_decision "degraded" "$_dropped" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+    return 0
+  else
+    _rc=$?
+  fi
+  if [ "$_rc" -eq 124 ]; then
+    _epi_decision "off" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))"
+    return 1
+  fi
+
+  _epi_unwrap_envelope "$out_file" readonly
+  if [ "${_epi_err_subtype:-}" = "error_max_turns" ]; then
+    _epi_decision "off" "peer-failed:max-turns" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+    return 1
+  fi
+  _epi_decision "off" "peer-failed:retry-exhausted" "$peer_mode" "$effort" "$model_alias" "$(( $(date +%s) - _t0 ))" "$_epi_model_actual"
+  return 1
+}
+
+# --- detached form (D81) --------------------------------------------------------
+# A read-tree peer can run for minutes. Holding a host tool call open for that
+# long is how a pass silently vanishes when the harness kills the call, and it
+# serialises the peer behind nothing. So: start it in its own process with every
+# descriptor on a file, return the job dir, and let the host collect later in
+# bounded slices. Durable state is the job dir; a missing exit file means the
+# peer is still running (or died with the host, which the run marker records).
+#   <dir>/decision.json  the peer_decision the invoke printed
+#   <dir>/exit           the invoke's exit code; its presence means terminal
+#   <dir>/pid            the detached process id
+#   <dir>/started        epoch seconds at start
+#   <dir>/peer           the CLI's name, so a reap in the parent can attribute it
+#   <dir>/meta           peer_mode, effort, model_alias: the context a decision
+#                        written by the parent needs and cannot otherwise know
+#   <dir>/trace          timestamped checkpoints either side of the fork and the
+#                        exec, so a job that dies in between says where
+ensemble_peer_start() {
+  local job_dir="" peer_cmd="" peer_mode="" effort="" model_alias=""
+  local -a rest=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --job-dir) job_dir="$2"; shift 2 ;;
+      # Captured on the way past, never consumed: the invoke still receives it.
+      # Indexing `rest` afterwards would have been the portable-looking way to
+      # find it, and arrays are 0-based in bash and 1-based in zsh.
+      --peer-cmd)    peer_cmd="$2";    rest+=("$1" "$2"); shift 2 ;;
+      --peer-mode)   peer_mode="$2";   rest+=("$1" "$2"); shift 2 ;;
+      --effort)      effort="$2";      rest+=("$1" "$2"); shift 2 ;;
+      --model-alias) model_alias="$2"; rest+=("$1" "$2"); shift 2 ;;
+      *) rest+=("$1"); shift ;;
+    esac
+  done
+  [ -n "$job_dir" ] || { echo "ensemble_peer_start: --job-dir is required" >&2; return 2; }
+  mkdir -p "$job_dir" || return 2
+  rm -f "$job_dir/exit" "$job_dir/decision.json" "$job_dir/stderr"
+  rm -f "$job_dir/trace"
+  date +%s > "$job_dir/started"
+  _EPI_TRACE_DIR="$job_dir"
+  # Which CLI this job is running, for the terminal paths below. _epi_peer_name
+  # is set inside ensemble_peer_invoke, which runs in the detached subshell, so
+  # the parent that reaps has never seen it: every reaped pass reached the
+  # durable store as "peer":"unknown", and three of the five peer events ever
+  # recorded lost which CLI ran them. The job dir is the only state both sides
+  # share. Same reason for meta: a decision written by the parent has to name
+  # the tier the job actually ran at, and re-defaulting it to "medium" would put
+  # a fresh lie in the ledger the receipt fields exist to keep honest.
+  printf '%s\n' "$(basename "$(printf '%s' "$peer_cmd" | awk '{print $1}')" 2>/dev/null)" \
+    > "$job_dir/peer" 2>/dev/null || true
+  printf '%s\n%s\n%s\n' "$peer_mode" "$effort" "$model_alias" \
+    > "$job_dir/meta" 2>/dev/null || true
+  if ! _epi_detach_ok; then
+    _epi_trace "start:no-detach-on-this-host"
+    _epi_run_here "$job_dir" "${rest[@]}"
+    printf '%s\n' "$job_dir"
+    return 0
+  fi
+  _epi_trace "start:forking"
+  (
+    trap '' HUP
+    set +e
+    _epi_trace "child:entered"
+    ensemble_peer_invoke "${rest[@]}" > "$job_dir/decision.json" 2> "$job_dir/stderr"
+    printf '%s\n' "$?" > "$job_dir/exit.tmp" && mv -f "$job_dir/exit.tmp" "$job_dir/exit"
+    _epi_trace "child:exit-written"
+  ) </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" > "$job_dir/pid"
+  disown "$!" 2>/dev/null || true
+  # Did the fork actually take? The host signal above is deterministic where it
+  # applies, and silent where the marker is absent, so this covers the same
+  # failure on a host nobody has identified yet: a job provably dead this early
+  # never ran, and running it here beats reporting it dead in 20 minutes.
+  local _w=0
+  while [ "$_w" -lt 20 ]; do
+    _epi_job_died "$job_dir" || { printf '%s\n' "$job_dir"; return 0; }
+    _w=$((_w + 1)); sleep 0.1 2>/dev/null || sleep 1
+  done
+  _epi_trace "start:fork-died-before-exec, running in the foreground instead"
+  rm -f "$job_dir/exit" "$job_dir/decision.json"
+  _epi_run_here "$job_dir" "${rest[@]}"
+  printf '%s\n' "$job_dir"
+}
+
+# --- a job that will never finish --------------------------------------------
+# ensemble_peer_wait tested for the exit file and nothing else, so "the peer
+# died in its first second" and "the peer is still thinking" were the same
+# observation for the whole budget. On 2026-09-15 a Codex-hosted review spent
+# 1276 seconds waiting on a subshell that never reached exec (its out-file was
+# never created, which the shell does before the command runs), and reported
+# peer-failed:timeout: a ceiling that never fired, blamed on a peer that never
+# ran. The pid has been in the job dir since the detached form was written.
+#
+# Three guards against calling a live job dead:
+#   no pid file yet   the parent writes it just after the fork; still starting
+#   kill -0 succeeds  alive (a recycled pid reads as alive, which errs toward
+#                     waiting, and the ceiling still bounds that)
+#   exit re-checked   the job routinely finishes between the two tests
+_epi_job_died() {  # <dir> -> 0 only when the job is provably dead
+  local d="${1:-}" pid
+  [ -n "$d" ] && [ ! -f "$d/exit" ] || return 1
+  pid=$(cat "$d/pid" 2>/dev/null) || return 1
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null && return 1
+  [ -f "$d/exit" ] && return 1
+  return 0
+}
+
+# ONE terminal path for both parent-side endings, death and reap, so the two
+# cannot drift on what they record. Explicit arguments win; otherwise the
+# context comes from the job dir, where start left it.
+_epi_job_finalize() {  # <dir> <reason> [peer_mode] [effort] [model_alias]
+  local d="$1" reason="$2" pm="${3:-}" ef="${4:-}" ma="${5:-}" _t0
+  [ -n "$pm" ] || pm=$(sed -n 1p "$d/meta" 2>/dev/null || true)
+  [ -n "$ef" ] || ef=$(sed -n 2p "$d/meta" 2>/dev/null || true)
+  [ -n "$ma" ] || ma=$(sed -n 3p "$d/meta" 2>/dev/null || true)
+  [ -n "$pm" ] || pm="cross-agent"
+  [ -n "$ef" ] || ef="medium"
+  _epi_peer_name=$(cat "$d/peer" 2>/dev/null || true)
+  _t0=$(cat "$d/started" 2>/dev/null || date +%s)
+  _epi_decision "off" "$reason" "$pm" "$ef" "$ma" "$(( $(date +%s) - _t0 ))" > "$d/decision.json"
+  printf '1\n' > "$d/exit"
+}
+
+# --- a trace across the fork, and the hosts where the fork does not survive ---
+# Three Codex-hosted reviews in one day started a detached peer that never
+# reached exec: the job dir held the run marker but NOT the out-file, and the
+# shell creates the out-file when it sets up the redirection, BEFORE the command
+# runs. So the subshell died in the gap between the two. Nothing recorded that
+# gap, and the parent could only report what it saw much later: a timeout.
+#
+# _epi_trace closes it. It writes only inside a job dir, so the foreground path
+# that four skills use is untouched, and it brackets the exec exactly, which is
+# where the evidence stops.
+_epi_trace() {  # <msg>
+  [ -n "${_EPI_TRACE_DIR:-}" ] && [ -d "${_EPI_TRACE_DIR}" ] || return 0
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${1:-}" \
+    >> "${_EPI_TRACE_DIR}/trace" 2>/dev/null || true
+}
+
+# Whether the detached form can be trusted on this host.
+#
+# On a Codex host it cannot: the same foreground invoke reaches the CLI and gets
+# an answer (a peer-direct pass in the same session came back in 0s with the
+# CLI's own flag error), while the detached one never execs. D81 introduced the
+# fork so no tool call stays open for the peer's lifetime, which buys nothing on
+# a host where the forked job never runs, and buys nothing at all under --peer,
+# where the peer is the sole reviewer and no personas run alongside it.
+#
+# The signal is the one ensemble-detect-host already uses, rather than a new
+# one invented here, and it is checked in the safe direction: only a positive
+# Codex marker disables the fork, so a host that sets neither keeps today's
+# behaviour. ENSEMBLE_PEER_DETACH=never|always overrides for one session.
+_epi_detach_ok() {
+  case "${ENSEMBLE_PEER_DETACH:-auto}" in
+    never)  return 1 ;;
+    always) return 0 ;;
+  esac
+  [ -n "${CODEX_HOME:-}" ] || [ -n "${CODEX_VERSION:-}" ] || return 0
+  return 1
+}
+
+# The peer, in THIS process, filling the same job-dir contract the fork does, so
+# wait, result and reap need no special case and no caller changes at all.
+_epi_run_here() {  # <dir> <invoke args...>
+  local job_dir="$1" rc; shift
+  printf '%s\n' "$$" > "$job_dir/pid" 2>/dev/null || true
+  _epi_trace "foreground:begin"
+  # `if` form, not a bare $?: a caller running under errexit would abort here
+  # on the peer's own non-zero exit, which is an ordinary outcome.
+  if ensemble_peer_invoke "$@" > "$job_dir/decision.json" 2> "$job_dir/stderr"; then rc=0; else rc=$?; fi
+  _epi_trace "foreground:end rc=$rc"
+  printf '%s\n' "$rc" > "$job_dir/exit.tmp" && mv -f "$job_dir/exit.tmp" "$job_dir/exit"
+}
+
+ensemble_peer_wait() {  # <dir> [--max-secs <n>]
+  local job_dir="${1:-}"; shift || true
+  local max_secs=60
+  while [ $# -gt 0 ]; do
+    case "$1" in --max-secs) max_secs="$2"; shift 2 ;; *) shift ;; esac
+  done
+  [ -d "$job_dir" ] || { echo "ensemble_peer_wait: no such job dir: $job_dir" >&2; return 2; }
+  local _t0; _t0=$(date +%s)
+  while [ ! -f "$job_dir/exit" ]; do
+    # `done` means TERMINAL, not successful, exactly as it already does for a
+    # peer that exited non-zero: the caller reads the decision either way. So a
+    # dead job is recorded and reported here rather than needing a third word
+    # every caller would have to learn.
+    if _epi_job_died "$job_dir"; then
+      _epi_job_finalize "$job_dir" "peer-failed:died"
+      echo done; return 0
+    fi
+    if [ $(( $(date +%s) - _t0 )) -ge "$max_secs" ]; then echo running; return 3; fi
+    sleep 1
+  done
+  echo done; return 0
+}
+
+ensemble_peer_result() {  # <dir> -> prints decision.json; returns the invoke's exit
+  local job_dir="${1:-}"
+  [ -f "$job_dir/exit" ] || { echo "ensemble_peer_result: job not terminal: $job_dir" >&2; return 3; }
+  cat "$job_dir/decision.json" 2>/dev/null
+  return "$(cat "$job_dir/exit")"
+}
+
+ensemble_peer_reap() {  # <dir> [--peer-mode m] [--effort t] [--model-alias a]
+  local job_dir="${1:-}"; shift || true
+  # Empty, not defaulted: _epi_job_finalize can only prefer the job dir's own
+  # context over a re-invented default if it can tell the two apart.
+  local peer_mode="" effort="" model_alias=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --peer-mode) peer_mode="$2"; shift 2 ;;
+      --effort) effort="$2"; shift 2 ;;
+      --model-alias) model_alias="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ -d "$job_dir" ] || { echo "ensemble_peer_reap: no such job dir: $job_dir" >&2; return 2; }
+  [ -f "$job_dir/exit" ] && return 0   # already terminal: a safe no-op
+  local _pid; _pid=$(cat "$job_dir/pid" 2>/dev/null || true)
+  if [ -n "$_pid" ]; then
+    # Children first (the CLI under `timeout`), then the subshell itself.
+    pkill -TERM -P "$_pid" 2>/dev/null || true
+    kill -TERM "$_pid" 2>/dev/null || true
+    sleep 1
+    pkill -KILL -P "$_pid" 2>/dev/null || true
+    kill -KILL "$_pid" 2>/dev/null || true
+  fi
+  _epi_job_finalize "$job_dir" "peer-failed:timeout" "$peer_mode" "$effort" "$model_alias"
+  return 0
+}

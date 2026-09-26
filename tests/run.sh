@@ -34,6 +34,21 @@ done
 
 cd "$REPO_ROOT"
 
+# Every test runs against a scratch metrics ledger. The run-metrics helper
+# writes to $ENSEMBLE_RUN_LEDGER, else to the newest open run in the current
+# repository, and tests run from this repository's root. When the suite runs
+# inside a live skill run (/en-build's checkpoint and full suite do), every stub
+# peer a test drives was recorded as a real peer call in that run's ledger: 90
+# of them in the EN21 build. A ledger path that does not exist makes each emit a
+# no-op; a test that exercises the helper on purpose sets its own.
+# ENSEMBLE_ANALYTICS_DIR keeps rollups out of ~/.ensemble/analytics, as
+# AGENTS.md requires of every test run.
+ENSEMBLE_TEST_SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/ensemble-tests.XXXXXX")
+trap 'rm -rf "$ENSEMBLE_TEST_SCRATCH"' EXIT
+export ENSEMBLE_RUN_LEDGER="$ENSEMBLE_TEST_SCRATCH/no-run.jsonl"
+export ENSEMBLE_ANALYTICS_DIR="$ENSEMBLE_TEST_SCRATCH/analytics"
+export ENSEMBLE_TEST_RUNNER=1
+
 # Find all test files
 TEST_FILES=$(find "$ROOT" -name '*.test.sh' -type f | sort)
 

@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# ensemble-test-audit-preflight — may /en-test-audit start here, and on what?
+#
+# The skill deletes tests. Every refusal below is a condition under which a
+# deletion would land somewhere it should not, or be judged against a baseline
+# nobody recorded. They live in a script because a model reading "refuse on the
+# default branch" can skip the step; a non-zero exit it has to read cannot.
+#
+# Usage:
+#   ensemble-test-audit-preflight [--scope <path>] [--resume <ledger.md>]
+#                                 [--agents-file <path>]
+#
+# Prints, on success, one key=value per line:
+#   branch=<current branch>
+#   baseline_sha=<HEAD>
+#   test_command=<AGENTS.md Test command>
+#   scope=<path, "." when none was given>
+#   baseline=green|red          (not printed under --resume)
+#
+# A red baseline still exits 0: the skill reports each failure as a product bug
+# before judging anything, and never deletes a failing test to make it pass.
+#
+# --resume <ledger.md> is the way back into a batch that stopped staged (the
+# preservation review could not run). It accepts a tree whose every change is
+# staged, and whose staged paths are exactly: the ledger, the mutation diffs it
+# names and their caught receipts, the files its rows name (keepers included),
+# and the paths in its `## Seams removed` table.
+# Anything unstaged, or any other staged path, is named and refused. The suite
+# is not re-run: the batch already changed the tests.
+#
+# Exit codes:
+#   0  ready
+#   2  refused (default branch, dirty tree, missing scope, no Test command,
+#      resume mismatch) or bad arguments; the reason is on stderr
+
+set -u
+
+SCOPE=""; RESUME=""; AGENTS_FILE=""
+
+usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; }
+refuse() { printf 'refusing: %s\n' "$*" >&2; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --scope)       [ $# -ge 2 ] || { usage; exit 2; }; SCOPE="$2"; shift 2 ;;
+    --resume)      [ $# -ge 2 ] || { usage; exit 2; }; RESUME="$2"; shift 2 ;;
+    --agents-file) [ $# -ge 2 ] || { usage; exit 2; }; AGENTS_FILE="$2"; shift 2 ;;
+    -h|--help)     usage; exit 0 ;;
+    *)             printf 'unknown argument: %s\n' "$1" >&2; usage; exit 2 ;;
+  esac
+done
+
+TOP=$(git rev-parse --show-toplevel 2>/dev/null) || refuse "not inside a git repository"
+# --resume and --scope are given relative to where the caller stands; everything
+# below compares repo-relative paths, so resolve them before moving to the top.
+# A path outside the repository is refused: nothing git holds could bring back
+# a deletion made there.
+TOP_P=$(cd "$TOP" && pwd -P)
+relpath() {  # <path> -> repo-relative ("." for the top); exit 2 when outside or missing
+  local d b
+  d=$(cd "$(dirname "$1")" 2>/dev/null && pwd -P) || refuse "$1 does not exist"
+  b="$d/$(basename "$1")"
+  [ "$(basename "$1")" = "." ] && b="$d"
+  [ "$(basename "$1")" = ".." ] && b=$(cd "$b" 2>/dev/null && pwd -P)
+  case "$b" in
+    "$TOP_P") printf '.' ;;
+    "$TOP_P"/*) printf '%s' "${b#"$TOP_P"/}" ;;
+    *) refuse "$1 is outside the repository" ;;
+  esac
+}
+if [ -n "$RESUME" ]; then RESUME=$(relpath "$RESUME") || exit 2; fi
+if [ -n "$SCOPE" ]; then SCOPE=$(relpath "$SCOPE") || exit 2; else SCOPE="."; fi
+cd "$TOP" || refuse "cannot enter $TOP"
+[ -n "$AGENTS_FILE" ] || AGENTS_FILE="AGENTS.md"
+
+# --- branch ------------------------------------------------------------------
+BRANCH=$(git symbolic-ref -q --short HEAD) || refuse "detached HEAD; check out a feature branch"
+DEFAULT=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+if [ -n "$DEFAULT" ]; then
+  [ "$BRANCH" != "$DEFAULT" ] || refuse "default branch ($BRANCH); create a feature branch first"
+else
+  # No remote HEAD to ask. The two conventional names are the default branch
+  # for every repo this runs in that has not said otherwise.
+  case "$BRANCH" in main|master) refuse "default branch ($BRANCH); create a feature branch first" ;; esac
+fi
+
+# --- scope and Test command -----------------------------------------------------
+[ -e "$SCOPE" ] || refuse "scope $SCOPE does not exist"
+
+# Same reading as ensemble-test-select: `- **Test:** `cmd`` in AGENTS.md's
+# project-shape block, with the template's `<unset>` meaning none.
+TEST_CMD=""
+[ -f "$AGENTS_FILE" ] && TEST_CMD=$(sed -n 's/^- \*\*Test:\*\* *`\(.*\)`.*/\1/p' "$AGENTS_FILE" | head -1 | sed 's/^<unset>$//')
+[ -n "$TEST_CMD" ] || refuse "$AGENTS_FILE declares no Test command; nothing can prove a deletion safe"
+
+emit() {
+  printf 'branch=%s\nbaseline_sha=%s\ntest_command=%s\nscope=%s\n' \
+    "$BRANCH" "$(git rev-parse HEAD)" "$TEST_CMD" "$SCOPE"
+}
+
+# --- fresh run: clean tree, then the baseline -----------------------------------
+if [ -z "$RESUME" ]; then
+  dirty=$(git status --porcelain --untracked-files=all)
+  [ -z "$dirty" ] || refuse "dirty tree; commit or stash first:
+$dirty"
+  emit
+  # The baseline's output is the project's; only its verdict is ours.
+  if (eval "$TEST_CMD") >/dev/null 2>&1; then echo "baseline=green"; else echo "baseline=red"; fi
+  exit 0
+fi
+
+# --- resume: the staged batch must be exactly the ledger's ------------------------
+[ -f "$RESUME" ] || refuse "ledger $RESUME does not exist"
+
+unstaged=$(git diff --name-only; git ls-files --others --exclude-standard)
+[ -z "$unstaged" ] || refuse "changes outside the index; a resumed batch is fully staged:
+$unstaged"
+
+ledger_dir=$(dirname "$RESUME")
+allowed=$(
+  printf '%s\n' "$RESUME"
+  # Test cells and Mutation cells of the ledger table; Path cells of Seams removed.
+  awk -F'|' -v dir="$ledger_dir" '
+    function trim(s) { gsub(/^[ \t`]+|[ \t`]+$/, "", s); return s }
+    /^## / { sec = $0; hdr = 0; next }
+    sec ~ /^## Ledger/ && /^\|/ {
+      if (!hdr) { hdr = 1; next }             # header row
+      if ($2 ~ /^[ \t]*:?-+/) next            # separator row
+      t = trim($2); sub(/::.*/, "", t); if (t != "") print t
+      k = trim($4); if (k ~ /::/) { sub(/::.*/, "", k); print k }   # the keeper a C row edits
+      m = trim($6); if (m != "" && m != "-") { print dir "/" m; print dir "/" m ".caught" }
+    }
+    sec ~ /^## Seams removed/ && /^\|/ {
+      if (!hdr) { hdr = 1; next }
+      if ($2 ~ /^[ \t]*:?-+/) next
+      p = trim($2); if (p != "") print p
+    }
+  ' "$RESUME"
+)
+allowed=$(printf '%s\n' "$allowed" | sed 's#^\./##')
+extra=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  printf '%s\n' "$allowed" | grep -qxF -- "$f" || extra="$extra $f"
+done <<EOF
+$(git diff --cached --name-only)
+EOF
+[ -z "$extra" ] || refuse "staged paths the ledger does not name:$extra"
+
+emit
+exit 0
