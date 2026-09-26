@@ -2,7 +2,7 @@
 
 > An engineering harness for **Claude Code** and **Codex** with cross-agent peer review, structured plans, a compounding learnings wiki, and event-driven doc-drift cleanup.
 
-Ensemble is a 14-skill, 11-agent toolkit that turns rough ideas into shipped, peer-reviewed code and keeps the project's documentation honest as it goes. Every skill detects whether it's running under Claude Code or Codex and adapts tool names, peer-review CLI invocations, and platform-specific behaviors automatically.
+Ensemble is a toolkit of skills and agents that turns rough ideas into shipped, peer-reviewed code and keeps the project's documentation honest as it goes. Every skill detects whether it's running under Claude Code or Codex and adapts tool names, peer-review CLI invocations, and platform-specific behaviors automatically.
 
 ## What problem this solves
 
@@ -15,14 +15,14 @@ Solo and small-team development with AI agents tends to accumulate three kinds o
 Ensemble fixes each by design:
 
 - **Document-as-source-of-truth** — every phase produces a durable artifact in `docs/`; the next phase reads it. The repo *is* the system of record.
-- **Compounding wiki** — `docs/learnings/` accumulates bug fixes, patterns, and decisions. `/en-learn` links them, prunes them, and surfaces them when planning new work.
+- **Compounding wiki** — `/en-learn` captures what the code cannot say (terms in `docs/CONTEXT.md`, decisions in `docs/decisions/`, solved problems in `docs/learnings/`), writes nothing that fails its gate, and planning reads it back.
 - **Cross-agent peer review** — Claude Code and Codex review each other's work via subprocess CLI calls. Single-agent fallback when only one CLI is installed.
 - **Always-on safety** — `/en-guardrail` prompts before destructive Bash commands; `/en-sweep` cleans up doc drift on a schedule from a dedicated machine.
 
 ## Five design pillars
 
 1. **Document-as-source-of-truth.** Foundation, architecture, plans, learnings — all live in `docs/`. Anything not in the repo is illegible to the agent.
-2. **Map, not encyclopedia.** `AGENTS.md` and `CLAUDE.md` are pointer indexes (~100 lines each); SKILL.md files run 150–400 lines with templates externalized to each skill's own `references/`.
+2. **Map, not encyclopedia.** `AGENTS.md` and `CLAUDE.md` are pointer indexes (~100 lines each); each SKILL.md stays under a 24KB budget, with templates and rarely-needed steps in the skill's own `references/`.
 3. **Cross-agent peer review.** `claude -p ↔ codex exec`. Outside Voice catches blind spots a single agent misses.
 4. **Compounding knowledge.** Every solved problem and decision gets captured. Future runs query the wiki automatically.
 5. **Lean by design.** Skills are small. Agents are short specialist prompts. The scaffolding earns its keep.
@@ -31,7 +31,7 @@ Ensemble fixes each by design:
 
 ## Workflow
 
-The lifecycle pipeline with four orthogonal skills:
+The lifecycle pipeline, with the orthogonal skills below it:
 
 ```text
                           ┌──────────────┐
@@ -54,14 +54,14 @@ The lifecycle pipeline with four orthogonal skills:
                                               │
                                               ▼
                                        ┌──────────────┐
-                                       │  /en-build   │  Per-unit: implement → gate1 → simplifier
-                                       │              │  → gate2 → peer review → host applies → commit
+                                       │  /en-build   │  Per unit: implement → test → commit; then one
+                                       │              │  simplify pass + cross-agent review of the branch
                                        └──────┬───────┘
                                               │
                                               ▼
                                        ┌──────────────┐
-                                       │  /en-review  │  Multi-persona; confidence-gated
-                                       │              │  Sub-threshold → TD entries
+                                       │  /en-review  │  Cross-agent peer on by default; personas
+                                       │              │  with --cross; sub-threshold → TD entries
                                        └──────┬───────┘
                                               │
                                               ▼
@@ -72,8 +72,8 @@ The lifecycle pipeline with four orthogonal skills:
                                               │
                                               ▼
                                        ┌──────────────┐
-                                       │  /en-learn   │  capture / ingest / refresh / pack / lint /
-                                       │              │  bootstrap-patterns. Syncs architecture.md
+                                       │  /en-learn   │  capture / refresh / lint / migrate. Gated:
+                                       │              │  writes only what reading cannot recover
                                        └──────┬───────┘
                                               │
                                               ▼
@@ -99,19 +99,25 @@ The lifecycle pipeline with four orthogonal skills:
                                               │  PR merged to main
                                               ▼
                                        ┌──────────────┐
-                                       │   /en-sweep  │  Doc-drift cleanup; auto-merging PRs
-                                       │              │  + continuous monitoring (dead-code +
-                                       │              │  dep-vuln) → TD or draft plan
+                                       │   /en-sweep  │  Scheduled doc-drift cleanup; doc-only
+                                       │              │  PRs the runner merges + continuous
+                                       │              │  monitoring (dead-code, dep-vuln)
                                        └──────────────┘
 
    Orthogonal skills, available at any point in the flow:
 
-         ┌────────────────┐  ┌────────────────┐
-         │   /en-debug    │  │  /en-guardrail │
-         │  Trace-driven  │  │  Always-on     │
-         │  bug repro;    │  │  PreToolUse    │
-         │  read-only     │  │  hook on Bash  │
-         └────────────────┘  └────────────────┘
+         ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
+         │   /en-debug    │  │  /en-guardrail │  │  /en-simplify  │
+         │  Trace-driven  │  │  Always-on     │  │  Behaviour-    │
+         │  hypothesis;   │  │  PreToolUse    │  │  preserving    │
+         │  read-only     │  │  hook on Bash  │  │  cleanup       │
+         └────────────────┘  └────────────────┘  └────────────────┘
+         ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
+         │    /en-flow    │  │    /en-loop    │  │ /en-test-audit │
+         │  plan → build  │  │  Bounded auto  │  │  Prune a test  │
+         │  → learn →     │  │  loop, one     │  │  suite with a  │
+         │  ship, chained │  │  slice a turn  │  │  proven ledger │
+         └────────────────┘  └────────────────┘  └────────────────┘
 
    Ad-hoc peer review of any artifact is `/en-review --peer <path|ref|branch>`.
 ```
@@ -123,14 +129,14 @@ A typical cycle:
 ```text
 /en-plan "Add SSO via Okta"
 /en-build docs/plans/active/EN03-feature_sso-okta.md
-/en-review
+# Builds unit by unit, then runs /en-simplify and a cross-agent /en-review over
+# the branch, and asks once at the end whether to capture a learning.
 /en-qa
 /en-ship --auto-merge
 # PR opens. Reviewers (humans + Anthropic action + optional Codex) leave comments.
 /en-resolve-pr
 # All comments addressed; auto-merge flips green; merge.
 # /en-sweep runs on a schedule from a dedicated machine to clean doc drift.
-# /en-learn capture auto-prompts to file what you learned.
 ```
 
 For a focused bug investigation:
@@ -200,22 +206,24 @@ cd my-existing-project
 /en-setup
 ```
 
-`/en-setup` runs a 14-step retrofit flow:
+`/en-setup` runs a 16-step retrofit flow:
 
 1. Detect sub-variant (which of `AGENTS.md` / `CLAUDE.md` exist).
 2. **Existing-plans archival** — if you already have plans in some other format, offers to move them to `docs/plans/legacy/` so Ensemble's lint/build flows ignore them. Migrate them later via `/en-plan --from-legacy`.
-3. Create `docs/` skeleton.
-4. Seed empty `index.md`, `log.md`, generated indexes.
+3. Scaffold the project: `docs/` skeleton, seeded indexes and logs, `bin/ensemble-lint`, `.gitignore` entries, `.ensemble/config.local.example.yaml`.
+4. Seed `docs/CONTEXT.md` with the project's core domain terms.
 5. Generate or merge `AGENTS.md` (preserving any existing content).
 6. Generate or merge `CLAUDE.md`.
-7. Add `.gitignore` entries.
+7. Stage what the scaffold wrote.
 8. Record the sweep cadence and print the sweep machine's install commands (the sweep runs there, not in CI).
-9. Create `.ensemble/config.local.example.yaml`.
+9. Create `.ensemble/config.local.yaml` with likely defaults, when asked.
 10. **Guardrail check** — offer to install `/en-guardrail` (project-scoped or global).
 11. **Claude Code Review action check** — offer to install Anthropic's PR-review action.
 12. **Auto-merge repo-setting check** — surface if `allow_auto_merge` is off at the repo level.
-13. **Bootstrap-patterns offer** — informational; surfaces `/en-learn --bootstrap-patterns` for after `/en-foundation --retrofit`.
-14. Recommend next steps.
+13. **`REVIEW.md` offer** — seed review guidance tuned for Ensemble's severity scale.
+14. **Verification-receipt notice** — informational; writes nothing.
+15. **Final verification** — confirm every required artifact is present.
+16. Recommend next steps.
 
 After `/en-setup`, the typical retrofit path is:
 
@@ -224,13 +232,7 @@ After `/en-setup`, the typical retrofit path is:
 # Reads the codebase, asks targeted Q&A, fills foundation.md + architecture.md
 # from observed reality.
 
-/en-learn --bootstrap-patterns
-# Optional: dispatches repo-research to identify 5-10 strong conventions
-# already in the codebase, files them as docs/learnings/patterns/ entries
-# with requires_validation: true. Gives the wiki a starting point without
-# pretending to be capture-fresh.
-
-# Now jump into normal flow: /en-plan for the next feature.
+# Then jump into normal flow: /en-plan for the next feature.
 ```
 
 ### State 3 — Already integrated
@@ -284,72 +286,58 @@ You can run both simultaneously for two AI perspectives.
 
 ## Skill catalog
 
-14 skills total — 9 lifecycle, 5 orthogonal. All prefixed `en-`.
+17 skills total: 9 lifecycle, 8 orthogonal. All prefixed `en-`. Numbering follows
+[§5.1 of the foundation](./docs/foundation.md#51-skill-summary).
 
 ### Lifecycle skills (9)
 
 | # | Skill | Purpose |
 |---|---|---|
-| 1 | `/en-brainstorm` | Q&A + research + 2–3 approaches with trade-offs. Outputs a design doc. |
-| 2 | `/en-foundation` | Combined PRD + technical direction + initial architecture. Asks for `plan_id_prefix`; Outside Voice peer review. Emits `foundation.md`, `architecture.md`, `AGENTS.md`, `CLAUDE.md`, plus a bootstrap plan for greenfield. |
-| 3 | `/en-plan` | Feature/refactor plan with stable U-IDs + `plan_type` (feature \| improvement \| bug). Modes: default; `--resume <plan>` (promote a draft); `--from-legacy <path>` (migrate legacy plan with proper R-ID/U-ID assignment + peer review). |
-| 4 | `/en-build` | Execute a plan unit-by-unit. Per-unit flow: implement → gate1 (tests + lint) → simplifier → gate2 → peer review → host applies findings → commit. Flips `status: open → in_progress` at start. |
-| 5 | `/en-review` | Multi-persona code review (correctness / testing / maintainability / standards always-on; security / performance / migrations conditional). **Confidence-gated** — sub-threshold findings file as TD entries instead of cluttering review output. Modes: interactive / headless / report-only. |
-| 6 | `/en-qa` | System checks + Playwright browser end-to-end testing. Atomic bug-fix + regression test commits. |
-| 7 | `/en-learn` | Compounding wiki maintainer. Modes: `capture` (default, auto-fires post-build/qa); `ingest <path-or-url>`; `--refresh` (audit staleness); `--pack <library>` (flatten library docs); `--lint` (graph health); `--bootstrap-patterns` (one-time retrofit, seeds `patterns/` from existing codebase). |
-| 8 | `/en-ship` | Pre-flight (lint + typecheck + targeted tests) + secret scan + conventional commit + push + `gh pr create`. `--auto-merge` enables `gh pr merge --auto --squash`. |
-| 9 | `/en-resolve-pr` | Address incoming PR review comments. 6-verdict triage (`fixed` / `fixed-differently` / `replied` / `not-addressing` / `declined` / `needs-human`). Reports merge readiness; `--enable-auto-merge` flag flips on auto-merge after addressing. Up to 2 fix-verify cycles per invocation. |
+| 1 | `/en-brainstorm` | Explore an idea through Q&A and 2–3 approaches with trade-offs, a recommendation and a devil's-advocate pass. Writes a design doc to `docs/designs/`. |
+| 2 | `/en-foundation` | Produce or retrofit `docs/foundation.md` (PRD, technical direction, architecture), `docs/architecture.md`, `AGENTS.md` and `CLAUDE.md`. Asks for `plan_id_prefix`; the draft is peer-reviewed. |
+| 3 | `/en-plan` | Turn a feature, refactor or bug fix into a plan with stable U-IDs and a `plan_type`: reads the foundation, runs research agents, breaks the work into units with files, tests and risk, then a cross-agent peer review. `--resume` and `--from-legacy` modes. |
+| 4 | `/en-build` | Execute a plan unit by unit on a feature branch (implement, test, lint, commit per unit), then one `/en-simplify` pass and one cross-agent review over the branch diff, an evidence audit, and the learning checkpoint. |
+| 5 | `/en-review` | Code review of the current branch with a cross-agent peer on by default. `--cross` adds host personas (correctness, testing, maintainability, standards always; security, performance, migrations when the diff matches); findings below the confidence threshold file as TD entries. |
+| 6 | `/en-qa` | Test the work like a real user: lint, typecheck, tests, then Playwright end-to-end on the golden path and edge cases. Each bug gets a fix, a regression test and a commit. |
+| 7 | `/en-learn` | Capture durable learnings as a term, a decision or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Also `--refresh`, `--lint` and `--migrate`. |
+| 8 | `/en-ship` | Preflight (lint, typecheck, targeted tests, secret scan, merge check), conventional commit, push and `gh pr create`. `--auto-merge` optional. |
+| 9 | `/en-resolve-pr` | Address review comments on the current PR with a six-verdict rubric per comment, then fix, reply and resolve. Needs-human items are surfaced, never guessed. |
 
-### Orthogonal skills (5)
+### Orthogonal skills (8)
 
 | # | Skill | Purpose |
 |---|---|---|
-| 10 | `/en-debug` | Telemetry-driven debugging. Reads structured logs (per `references/observability-conventions.md`), correlates by `trace_id` / `request_id` / event field, surfaces hypothesis with `file:line` and confidence 1–10. **Read-only** — never writes code. |
-| 12 | `/en-guardrail` | Always-on `PreToolUse` hook that prompts before destructive Bash commands (recursive `rm`, `DROP TABLE`, force-push, `terraform destroy`, `aws s3 rm --recursive`, etc.). Localhost+test/dev DB exemption. Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. Installed globally or project-scoped. |
-| 13 | `/en-sweep` | Scheduled doc-drift cleanup, run by launchd on a dedicated machine through Codex; opens doc-only PRs and the runner merges them once checks pass. **Continuous monitoring** (opt-in): dead-code (`ts-prune` / `vulture` / Go `deadcode`) + dep-vuln (`npm audit` / `pip-audit` / `cargo audit`) with size-based triage — trivial → TD entry; pattern → draft plan. |
-| 14 | `/en-setup` | Project-level bootstrap and diagnostics. Detects state 1/2/3; for retrofits: archives non-conforming plans, creates skeleton, generates AGENTS.md/CLAUDE.md, records the sweep schedule, installs guardrail + Claude Code Review action, checks `allow_auto_merge`, surfaces bootstrap-patterns offer. |
-| 15 | `/en-test-audit` | Prune an existing test suite one owner-boundary batch at a time. Every deletion is justified in a committed ledger (`docs/test-audits/`), and a preflight script refuses the default branch, a dirty tree or an undeclared Test command. Manual-invoke only; commits on the feature branch and never pushes or merges. |
+| 10 | `/en-debug` | Debug from telemetry: read structured logs, correlate by trace or request id, return a hypothesis with `file:line` and confidence. Read-only in telemetry mode; code mode fixes only on request. |
+| 11 | `/en-sweep` | Scheduled doc-drift cleanup run by launchd on a dedicated machine through Codex: file-shape lint, wiki-graph health, architecture and plan-lifecycle drift, then doc-only PRs the runner merges once checks pass. Manual-invoke only. |
+| 12 | `/en-guardrail` | Always-on `PreToolUse` hooks that force a permission prompt before destructive Bash commands and DB-writing MCP calls (recursive `rm`, `DROP TABLE`, force-push, `terraform destroy`). Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. |
+| 13 | `/en-setup` | Bootstrap and diagnostics for a project: detects its state, creates the docs skeleton, generates `AGENTS.md` and `CLAUDE.md`, offers optional integrations and health checks. Manual-invoke only. |
+| 14 | `/en-loop` | A bounded autonomous loop until an evidence-based stop condition: one committed, test-gated slice per iteration, cross-agent review at checkpoints. Wraps the `gnhf` CLI. Manual-invoke only; never auto-merges. |
+| 15 | `/en-flow` | The hands-off pipeline for one piece of work: `/en-plan`, `/en-build`, `/en-learn`, then `/en-ship` with its watch loop. Manual-invoke only. |
+| 16 | `/en-simplify` | Simplify recently changed code for clarity, reuse and efficiency while preserving exact behaviour; the default scope is the branch diff. `/en-build` runs it once per build. |
+| 17 | `/en-test-audit` | Prune an existing test suite one owner-boundary batch at a time: evidence for every deletion in a committed ledger, a caught mutation proving each kept test still fails, and a peer check for lost coverage. `--campaign <path>` covers one subsystem. Manual-invoke only; never pushes or merges. |
 
-For full process detail, mode flags, and reference files per skill, see each skill's `SKILL.md` under [`skills/`](./skills/) — it is the contract the skill executes — and [§5 Skill Catalog](./docs/foundation.md#5-skill-catalog) in the foundation.
+For full process detail, flags and reference files, see each skill's `SKILL.md`
+under [`skills/`](./skills/), which is the contract the skill executes, and
+[§5 Skill Catalog](./docs/foundation.md#5-skill-catalog) in the foundation.
 
 ---
 
 ## Agent catalog
 
-11 agents total. Skills orchestrate; agents specialize. **No agent invokes another agent.**
+6 agent definitions. Skills orchestrate; agents specialize. **No agent invokes
+another agent.** Each skill carries its own copy of the agents it dispatches, in
+its `agents/` directory.
 
-### Always-on reviewers (4) — read-only, return findings JSON
+| Agent | Role | Dispatched by |
+|---|---|---|
+| `dimension-reviewer` | Reviews a diff along one named dimension (correctness, testing, maintainability, standards, security, performance, migrations); the dimension, focus and scope arrive in the prompt. Read-only; replaced seven per-dimension reviewer agents. | `/en-review` (`--cross`, `--host`) |
+| `repo-research` | Scans the codebase for patterns, conventions, file paths and prior art. Read-only. | `/en-plan`, `/en-foundation`, `/en-sweep`, `/en-debug` |
+| `learnings-research` | Queries the knowledge store (`docs/learnings/`, decisions, terms) for entries relevant to a task, with citations. Read-only. | `/en-plan`, `/en-review`, `/en-learn` |
+| `web-research` | External docs (Context7) and best-practice search, with URL fetch when a source is named. Read-only. | `/en-plan`, `/en-brainstorm` |
+| `repo-fact-lookup` | Answers specific questions about what the repo contains, and verifies absence claims, by quoting it. Retrieval only. | `/en-brainstorm` |
+| `code-simplifier` | Reviews a diff along one simplification dimension (reuse, quality or efficiency) and returns findings with the proposed edit. Read-only; the dispatching skill applies what it accepts. | `/en-simplify` |
 
-| Agent | Specialty |
-|---|---|
-| `correctness-reviewer` | Logic errors, race conditions, edge cases, type-safety violations |
-| `testing-reviewer` | Coverage gaps, brittle assertions, missing failure-path tests |
-| `maintainability-reviewer` | Naming, complexity, premature abstraction, dead code |
-| `standards-reviewer` | Project conventions (CLAUDE.md / AGENTS.md / `docs/learnings/patterns/`) |
-
-### Conditional reviewers (3) — fire when the diff matches
-
-| Agent | Triggers on |
-|---|---|
-| `security-reviewer` | Auth, sessions, tokens, crypto, SQL, file uploads, secrets |
-| `performance-reviewer` | DB queries, hot paths, N+1, cache strategy, large data sets |
-| `migrations-reviewer` | Schema changes, data migrations, backwards-compat shims |
-
-### Research agents (3) — read-only, return data
-
-| Agent | Specialty |
-|---|---|
-| `repo-research` | Scan codebase for patterns, conventions, file paths, prior art |
-| `learnings-research` | Query `docs/learnings/` for relevant prior terms, decisions, and solutions |
-| `web-research` | External docs (Context7) and best-practice search (WebSearch) with Wayback fallback |
-
-### Refiner (1) — modifies code, wrapped in two verification gates
-
-| Agent | Role |
-|---|---|
-| `code-simplifier` | Per-unit cleanup pass during `/en-build`. Runs between gate 1 (tests pass) and gate 2 (re-verify after simplifier). On gate 2 failure, simplifier edits revert automatically. |
-
-For agent invariants and per-agent prompts, see [§6 Agent Catalog](./docs/foundation.md#6-agent-catalog) and the `agents/` directory inside each skill.
+For agent invariants, see [§6 Agent Catalog](./docs/foundation.md#6-agent-catalog).
 
 ---
 
@@ -477,11 +465,11 @@ Full schema in [`skills/en-setup/references/templates/config-local-example.yaml`
 ./tests/run.sh
 ```
 
-13 test files, 268 assertions. CI runs the suite via `.github/workflows/ensemble-tests.yml`.
+It runs every `*.test.sh` under `tests/`. While iterating, `./tests/select-for.sh <changed paths>` runs the subset a change can break; run the full suite before committing. CI runs it via `.github/workflows/ensemble-tests.yml`.
 
 ## Status
 
-**Phases 0–6 complete.** Foundation document, all 14 skills, 11 agents, all cross-cutting references, plugin manifests, install script, CI tooling, and integration guides are in place.
+Every skill and agent in the catalogs above ships, with the foundation document, plugin manifests, install script, CI tooling and integration guides. Work in flight is in [`docs/plans/active/`](./docs/plans/active/); shipped plans are in [`docs/plans/completed/`](./docs/plans/completed/).
 
 ## License
 
