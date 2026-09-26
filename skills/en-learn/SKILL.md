@@ -21,6 +21,7 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | `--refresh` | Audit content staleness (~monthly) | Per-entry: keep / update / replace / archive |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
 | `--migrate` | A project still on the retired `bugs/`/`patterns/`/`decisions/` layout | Entries moved to the artifact-type layout; legacy decisions converted to ADRs |
+| `--enforce-audit` | Adopting the router, or a map file grew | TD entries for prose rules a check should hold; `references/enforce-audit.md` |
 
 ## Always-on behaviors
 

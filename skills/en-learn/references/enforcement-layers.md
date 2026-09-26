@@ -34,6 +34,9 @@ one.
   `scripts/ensemble-td-append`. Fields: `Enforce at:`, `Proposed check:` (L1 and
   L2), `Rule key:`. Read `ensemble-td-append --list-keys` first and reuse the key
   of an open entry that describes the same correction.
+- **The appender exits 1** when the tracker is missing or not in the canonical
+  `## Open` / `## Resolved` layout. Print the proposed entry (layer, check, key)
+  in the run's output instead, and never fall back to a prose learning.
 - **L5:** not a TD entry. It goes to `/en-learn`'s term, decision or solution
   routing, or to nothing when the capture gate says so.
 
