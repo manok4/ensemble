@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-09-21
+updated: 2026-09-26
 ---
 
 # Tech debt tracker
@@ -255,6 +255,18 @@ is present at promotion by design, and the check reports a false violation.
 - **Suggested fix:** scope the contract to what the promotion itself wrote (no new
   porcelain entries), or exclude the consumed `related_design` path.
 - **Logged:** 2026-09-24
+
+### TD24. `/en-ship` does not check a test-audit commit's ledger
+
+Filed 2026-09-26 from EN21 (out of scope there by plan). `/en-test-audit` commits a batch only after `ensemble-test-ledger-verify --tree` exits 0, and every such commit carries a `Test-Audit-Ledger: <path>` trailer. Nothing downstream reads the trailer. A test-deleting commit made by hand, or amended after the verifier ran, reaches `/en-ship` with nothing checking that the ledger it names still verifies against the tree being shipped.
+
+- **Source:** EN21 plan, Out of scope; D122
+- **Severity:** P3
+- **Confidence:** 7/10
+- **Location:** `skills/en-ship/SKILL.md` preflight; `skills/en-test-audit/scripts/ensemble-test-ledger-verify`
+- **Why it matters:** the ledger is the only justification a reviewer sees for a deleted test, and a trailer nobody verifies is decorative once the commit has left the skill.
+- **Suggested fix:** in `/en-ship`'s preflight, for each commit in the range carrying `Test-Audit-Ledger:`, run the verifier with `--tree` against the ledger at HEAD; carry the verifier in en-ship as a byte-identical copy. Add a negative control with a ledger whose D row's test is still present.
+- **Logged:** 2026-09-26
 
 ## Resolved
 

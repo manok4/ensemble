@@ -15,6 +15,8 @@
 #   MUTATE ON CLEAN CODE   after the test edits, before seams touch production (U3).
 #   REVIEW, OR STOP        a peer that cannot run stops the batch; only --no-peer
 #                          commits unreviewed (U4).
+#   CAMPAIGN ON DEMAND     campaign.md loads only from --campaign, and its
+#                          reconcile step keeps every safeguard (U5).
 #   RED BASELINE KEPT      a failing test is a product bug, never a deletion.
 #   NO PUSH, NO MERGE      /en-ship owns those.
 #
@@ -22,8 +24,9 @@
 # preflight below discovery, moving the ledger step below the edit step, moving
 # the verifier below the commit, moving the mutation step below the seam
 # removal, moving the review below the verifier, letting a failed peer continue,
-# writing skipped-by-flag off the --no-peer route, and deleting the red-baseline
-# clause each turned its assertion red.
+# writing skipped-by-flag off the --no-peer route, naming campaign.md in the
+# flow, dropping the reconcile re-review, and deleting the red-baseline clause
+# each turned its assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -95,6 +98,27 @@ if [ "$nopeer" -ge 1 ] && ! grep -v -- '--no-peer' "$SK" | grep -q 'skipped-by-f
 else
   fail "skipped-by-flag must appear only alongside --no-peer" "lines naming it without --no-peer exist"
 fi
+
+# Campaign mode loads only when asked (D75): references/campaign.md is named on
+# the --campaign flag row and nowhere else in SKILL.md (U5).
+CAMP="$REPO_ROOT/skills/en-test-audit/references/campaign.md"
+camp_lines=$(grep -n 'references/campaign.md' "$SK")
+if [ "$(printf '%s\n' "$camp_lines" | grep -c .)" -eq 1 ] && printf '%s' "$camp_lines" | grep -qF '| `--campaign <path>` |'; then
+  pass "campaign.md is loaded only from the --campaign flag"
+else
+  fail "references/campaign.md must be named only on the --campaign flag row" "$camp_lines"
+fi
+# The reconcile step is where a campaign can silently drop what main added: it
+# must rebaseline, re-judge with reconciled: rows, re-prove, and re-review before
+# a deleted-file conflict resolves.
+recon=$(awk '/^## 8\. Reconcile/{on=1; next} /^## /{on=0} on' "$CAMP" | tr '\n' ' ')
+missing=""
+for need in 'rebaselined_from' 'reconciled:' 'new caught mutation' 'rerun the preservation review' 'Only then'; do
+  printf '%s' "$recon" | grep -qF -- "$need" || missing="$missing '$need'"
+done
+[ -z "$missing" ] \
+  && pass "the reconcile step rebaselines, re-judges, re-proves and re-reviews before resolving a deletion" \
+  || fail "campaign.md's reconcile step is missing a safeguard" "missing:$missing"
 
 grep -qiE 'never its bare name' "$SK" \
   && pass "--expect is the keeper's failure output, never its bare name" \
