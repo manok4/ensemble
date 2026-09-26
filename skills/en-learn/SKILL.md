@@ -57,7 +57,7 @@ After every write:
 
    **One learning per run.** A session holding two distinct durable lessons gets two runs; batching pushes the weaker through on the stronger one's merit.
 
-5. **Route to an artifact type — read `references/artifact-types.md` and follow it.** The gate decided *whether* to write; this decides *which artifact*, and the three differ in shape, lifecycle, and write path.
+5. **Route to an artifact type — read `references/artifact-types.md` and `references/enforcement-layers.md` and follow them.** The gate decided *whether* to write; this decides *which artifact*, and the three differ in shape, lifecycle, and write path.
 
    A candidate that says **what a word means here** is a **term** (`docs/CONTEXT.md`). One that records **a choice and the rules that now hold** is a **decision** (`docs/decisions/NNNN-<slug>.md`). One that records **a solved problem whose lesson outlives the fix** is a **solution** (`docs/learnings/<slug>-<date>.md`).
 
