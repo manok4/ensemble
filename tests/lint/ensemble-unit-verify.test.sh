@@ -227,6 +227,9 @@ assert_exit_code 2 $rc "no --unit is a usage error"
 # assertion above depends on.
 RM="$REPO_ROOT/skills/en-build/scripts/ensemble-run-metrics"
 export ENSEMBLE_ANALYTICS_DIR="$WORK/analytics"
+# These scenarios test how the helpers find the open run, so the scratch
+# ledger tests/run.sh exports for every test would mask exactly that.
+unset ENSEMBLE_RUN_LEDGER
 ledger() { ( cd "$P" && bash "$RM" "$@" ); }
 
 agents <<'A'
