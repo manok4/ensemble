@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN21
 title: /en-test-audit, audit and prune an existing test suite with evidence before every deletion
-status: open
+status: in_progress
 location: active
 created: 2026-09-26
 shipped:
