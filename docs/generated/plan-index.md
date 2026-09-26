@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-09-11
-total_entries: 16
+updated: 2026-09-26
+total_entries: 21
 ---
 
 # Plans — index
@@ -32,3 +32,8 @@ _(none)_
 - [`EN15-feature_verification-receipt.md`](../plans/completed/EN15-feature_verification-receipt.md) — **EN15** Verification receipt, structured ship state, and a test-impact map (shipped 2026-09-02)
 - [`EN16-improvement_agent-model-control.md`](../plans/completed/EN16-improvement_agent-model-control.md) — **EN16** Per-host agent model control and en-plan cost fixes (shipped 2026-09-08)
 - [`EN17-feature_per-skill-analytics.md`](../plans/completed/EN17-feature_per-skill-analytics.md) — **EN17** Per-skill analytics, helpers record what each skill run cost and produced (shipped 2026-09-11)
+- [`EN18-feature_linear-plan-store.md`](../plans/completed/EN18-feature_linear-plan-store.md) — **EN18** Linear plan store — publish reviewed plans to Linear and build from them (shipped 2026-09-23)
+- [`EN19-feature_linear-plan-follow-ups.md`](../plans/completed/EN19-feature_linear-plan-follow-ups.md) — **EN19** Linear plan store follow-ups: deterministic transforms, issue intake, amend, portable provenance, setup check (shipped 2026-09-23)
+- [`EN20-feature_brainstorm-from-linear.md`](../plans/completed/EN20-feature_brainstorm-from-linear.md) — **EN20** Brainstorm from a Linear issue, and hand the design to /en-plan (shipped 2026-09-24)
+- [`EN21-feature_test-audit.md`](../plans/completed/EN21-feature_test-audit.md) — **EN21** /en-test-audit, audit and prune an existing test suite with evidence before every deletion (shipped 2026-09-26)
+- [`EN22-feature_correction-router.md`](../plans/completed/EN22-feature_correction-router.md) — **EN22** Correction router, route each correction to the strongest enforcement layer (shipped 2026-09-26)
