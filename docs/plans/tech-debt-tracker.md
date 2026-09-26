@@ -492,7 +492,6 @@ line turns the clause red.
 
 - **Logged:** 2026-08-31
 
-## Resolved
 
 ### TD13. ~~A Codex session cannot dispatch a bundled agent by name, so the rendered TOML model does not bind~~ RESOLVED upstream 2026-09-10
 
