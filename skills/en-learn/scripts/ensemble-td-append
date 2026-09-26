@@ -106,8 +106,9 @@ last=$(grep -oE '^### TD[0-9]+\.' "$TRACKER" | grep -oE '[0-9]+' | sort -n | tai
 NEXT="TD$(( ${last:-0} + 1 ))"
 TODAY=$(date +%Y-%m-%d)
 
-# Scratch files live beside the tracker under unpredictable names, and the
-# result is copied into the tracker so its owner and mode are kept.
+# Scratch files live beside the tracker under unpredictable names. The result
+# takes the tracker's mode and is renamed over it: a same-directory rename swaps
+# in a complete file at once, so an interrupted append never truncates it.
 DIR=$(dirname "$TRACKER")
 ENTRY_FILE=$(mktemp "$DIR/.td-append-entry.XXXXXX")
 OUT_FILE=$(mktemp "$DIR/.td-append-out.XXXXXX")
@@ -134,6 +135,9 @@ awk -v entry="$ENTRY_FILE" '
   { print }
   END { if (open && !done) { print ""; put() } }
 ' "$TRACKER" > "$OUT_FILE"
-cat "$OUT_FILE" > "$TRACKER"
+MODE=$(stat -f '%Lp' "$TRACKER" 2>/dev/null || stat -c '%a' "$TRACKER") \
+  || die 1 "cannot read the mode of $TRACKER"
+chmod "$MODE" "$OUT_FILE"
+mv -f "$OUT_FILE" "$TRACKER"
 
 echo "$NEXT"

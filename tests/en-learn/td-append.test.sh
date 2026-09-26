@@ -125,6 +125,16 @@ assert_eq "2" "$?" "a malformed layer value is refused, not rewritten to L1"
 add --rule-key "$(printf 'k%.0s' $(seq 1 70))" >/dev/null 2>&1
 assert_eq "2" "$?" "a rule key over 64 characters is refused"
 
+# --- the tracker is replaced by rename, never rewritten in place ---
+# An in-place rewrite truncates the tracker before the new content lands, so an
+# interrupted append could leave it empty. A rename swaps a complete file in one
+# step, which shows up as a new inode.
+fixture; ino_before=$(ls -i "$TR" | awk '{print $1}'); add >/dev/null 2>&1
+ino_after=$(ls -i "$TR" | awk '{print $1}')
+[ "$ino_before" != "$ino_after" ] \
+  && pass "an append swaps in a complete file by rename" \
+  || fail "an append swaps in a complete file by rename" "inode unchanged: $ino_before"
+
 # --- the tracker keeps its mode ---
 fixture; chmod 644 "$TR"; add >/dev/null 2>&1
 assert_eq "644" "$(stat -f '%Lp' "$TR" 2>/dev/null || stat -c '%a' "$TR")" "an append keeps the tracker's mode"
