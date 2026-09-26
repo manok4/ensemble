@@ -42,6 +42,7 @@ mkdir -p "$R/docs/test-audits"
   printf '## Lanes\n\n%s\n| only | tests/a.test.sh |\n\n' "$LANES_H"
   printf '## Product defects\n\n%s\n| rounding | abc1234 | reverting abc1234 turns tests/a.test.sh::one red |\n' "$DEFECTS_H"
 } > "$R/docs/test-audits/c.md"
+(cd "$R" && git add docs)   # the skill verifies its staged evidence
 out=$("$LV" "$R/docs/test-audits/c.md" --tree 2>&1); rc=$?
 [ "$rc" -eq 0 ] \
   && pass "a campaign ledger built from the reference's documented headers passes the verifier" \

@@ -58,6 +58,21 @@ else
   fail "the artifact must hold ledger and staged diff" "rc=$rc path=$path"
 fi
 
+# A campaign reviews one boundary group at a time: paths after -- limit the diff.
+(cd "$R" && echo '# other group' >> src.sh && git add src.sh)
+grp=$(cd "$R" && "$ART" docs/test-audits/l.md -- old.test.sh); rc=$?
+if [ "$rc" -eq 0 ] && grep -qF -- '-pass "old one"' "$grp" && ! grep -qF '# other group' "$grp"; then
+  pass "paths after -- limit the staged diff to one group"
+else
+  fail "a path-limited artifact must hold only that group's hunks" "rc=$rc"
+fi
+out=$(cd "$R" && "$ART" docs/test-audits/l.md --out "$W/nogroup.md" -- nothing-here 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ ! -e "$W/nogroup.md" ] \
+  && pass "a group with nothing staged is refused" \
+  || fail "an empty group must exit 2" "rc=$rc out=$out"
+(cd "$R" && git reset -q HEAD src.sh && git checkout -q -- src.sh)
+rm -f "$grp"
+
 # --- the prompt ---------------------------------------------------------------------
 prompt=$("$BUILD" --brief "$BRIEF" --project-context "fixture" --goal "Preservation review of a test-audit batch" \
           --artifact-file "$path" --peer-mode cross-agent 2>&1); rc=$?

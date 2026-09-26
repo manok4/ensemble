@@ -12,27 +12,46 @@
 # Usage:
 #   ensemble-test-ledger-verify <ledger.md> [--tree]
 #
-# Without --tree: frontmatter, the ledger table, the rules each mark carries,
-# mutation files on disk, and in campaign mode the Product defects table.
+# Without --tree: frontmatter, the ledger table, the rules each mark carries, and
+# for every F and C row a caught receipt from ensemble-mutation-check that
+# matches its patch; in campaign mode, the Product defects table.
 # With --tree, against `baseline_sha` and the working tree as well:
+#   - every path the ledger names is inside the repository;
 #   - every named declaration existed at baseline in a supported form, and every
 #     whole-file row's file did;
-#   - a D or C row's declaration (or file) is gone now, and its keeper is present;
-#   - campaign: every test file under scope is in exactly one lane, every
-#     declaration in it has a row unless the file has a whole-file row, and after
-#     a rebaseline every file main changed has a `reconciled:` row.
+#   - every declaration removed since baseline, in a file the ledger names or a
+#     changed test file, has a D or C row; an R or F row's test is still there;
+#   - a keeper is present in the tree;
+#   - campaign: every test file under scope is in exactly one lane and every
+#     declaration in it has a row, and after a rebaseline every declaration main
+#     added or changed has a `reconciled:` row.
 #
 # Exit codes:
 #   0  valid, silent
 #   1  violations, one line each on stdout: `ledger: <test cell>: <rule>`
 #   2  unreadable or malformed ledger, or bad arguments (reason on stderr)
 
-import fnmatch, os, re, subprocess, sys
+import collections, fnmatch, functools, hashlib, json, os, re, subprocess, sys
 
 COLUMNS = ["Test", "Mark", "Keeper or contract", "Evidence", "Mutation"]
 PRESERVATION = {"cross-agent", "single-agent-fallback", "skipped-by-flag"}
-DECL_CALLS = r"(?:it|test|describe|context|specify|t\.Run|pass|fail)"
+MARKS = ("R", "F", "C", "D")
+DELETION_MARKS = ("C", "D")   # rows whose test must be gone, backed by evidence
+PROVEN_MARKS = ("F", "C")     # rows that need a caught mutation
+
+# Supported declaration forms (references/ledger-format.md). Call forms need an
+# opening parenthesis and must not be the tail of a longer name or a method call,
+# so `x.test("a")`, `submit("a")` and the shell builtin `test "$x"` are not tests.
+_QUOTED = r"""(["'`])(.+?)\2"""
+DECL_FORMS = [
+    re.compile(r"(?<![\w.$])(it|test|describe|context|specify)(?:\.(?:only|skip|todo|concurrent))?\s*\(\s*" + _QUOTED),
+    re.compile(r"(?<![\w.$])(t)\.Run\s*\(\s*" + _QUOTED),
+    re.compile(r"(?<![\w.$-])(pass)\s+" + _QUOTED),            # shell suites: ... && pass "name"
+    re.compile(r"^\s*(@test)\s+" + _QUOTED),                 # bats
+]
+DECL_DEFS = re.compile(r"^\s*(?:async\s+)?(?:def\s+(test_\w+)|func\s+(Test\w+))")
 COMMENT = re.compile(r"^\s*(#|//|\*|/\*|--|;)")
+SHA = re.compile(r"^[0-9a-fA-F]{4,64}$")
 
 
 def die(msg):
@@ -93,31 +112,41 @@ def git(top, *args):
     return r.returncode, r.stdout
 
 
-def at_sha(top, sha, path):
-    rc, out = git(top, "show", f"{sha}:{path}")
-    return out if rc == 0 else None
-
-
-def in_tree(top, path):
-    p = os.path.join(top, path)
-    return open(p, encoding="utf-8", errors="replace").read() if os.path.isfile(p) else None
+def blob_id(data):
+    """The id `git hash-object` gives these bytes."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
 def declarations(text):
-    """Every declaration name in a supported form, comment lines excluded."""
-    names = []
-    call = re.compile(DECL_CALLS + r"""\s*\(?\s*(["'`])(.+?)\1""")
-    defn = re.compile(r"\b(?:def|func|function)\s+([A-Za-z_][A-Za-z0-9_]*)")
-    for ln in (text or "").splitlines():
+    """[(name, block)] for every declaration in a supported form, in order.
+
+    A declaration's block runs from its line to the line before the next one; it is
+    what a rebaseline compares to tell whether main changed a test.
+    """
+    found = []
+    lines = (text or "").splitlines()
+    for i, ln in enumerate(lines):
         if COMMENT.match(ln):
             continue
-        names += [m.group(2) for m in call.finditer(ln)]
-        names += [m.group(1) for m in defn.finditer(ln)]
-    return names
+        for rx in DECL_FORMS:
+            found += [(i, m.group(3)) for m in rx.finditer(ln)]
+        m = DECL_DEFS.match(ln)
+        if m:
+            found.append((i, m.group(1) or m.group(2)))
+    found.sort(key=lambda x: x[0])
+    out = []
+    for k, (i, name) in enumerate(found):
+        end = found[k + 1][0] if k + 1 < len(found) else len(lines)
+        out.append((name, "\n".join(lines[i:end])))
+    return out
+
+
+def names(decls):
+    return collections.Counter(n for n, _ in decls)
 
 
 def split_test(cell):
-    return cell.split("::", 1) if "::" in cell else (cell, None)
+    return tuple(cell.split("::", 1)) if "::" in cell else (cell, None)
 
 
 def main(argv):
@@ -146,30 +175,30 @@ def main(argv):
         bad("frontmatter", "mode must be batch or campaign")
     if fm.get("preservation_review") not in PRESERVATION:
         bad("frontmatter", "preservation_review must be one of " + ", ".join(sorted(PRESERVATION)))
-    if mode == "campaign" and not fm.get("test_glob"):
-        bad("frontmatter", "test_glob is required in campaign mode")
+    if not fm.get("test_glob"):
+        bad("frontmatter", "test_glob is required: it is how a deletion in a file the ledger never mentions is found")
 
     keeper_re = re.compile(r"^[^:\s][^:]*::.+$")
+    blank = lambda s: s in ("", "-")
     for test, mark, keeper, evidence, mutation in rows:
         if not test:
             bad("(empty)", "Test cell is empty")
             continue
-        if mark not in ("R", "F", "C", "D"):
+        if mark not in MARKS:
             bad(test, f"mark '{mark}' is not one of R, F, C, D")
             continue
-        blank = lambda s: s in ("", "-")
         if mark in ("R", "F") and blank(keeper):
             bad(test, f"{mark} row must name the contract it guards")
         if mark == "C" and not keeper_re.match(keeper):
             bad(test, "C row needs a keeper as <path>::<name>, not none: or a bare path")
         if mark == "D" and not (keeper_re.match(keeper) or re.match(r"^none:\s*\S", keeper)):
             bad(test, "D row needs a keeper <path>::<name> or 'none: <reason>'")
-        if mark in ("C", "D") and blank(evidence):
+        if mark in DELETION_MARKS and blank(evidence):
             bad(test, f"{mark} row needs evidence: the proof that remains")
-        if mark in ("F", "C") and blank(mutation):
+        if mark in PROVEN_MARKS and blank(mutation):
             bad(test, f"{mark} row needs a mutation the keeper catches")
-        if not blank(mutation) and not os.path.isfile(os.path.join(ldir, mutation)):
-            bad(test, f"mutation {mutation} does not exist")
+        if not blank(mutation):
+            check_mutation(test, os.path.join(ldir, mutation), mutation, bad)
 
     if mode == "campaign":
         for defect, commit, control in table(sec.get("Product defects", []), "Product defects", 3,
@@ -180,69 +209,164 @@ def main(argv):
                 bad(defect or "(defect)", "product defect needs control evidence (the reverted fix going red)")
 
     if tree:
-        v += check_tree(ldir, fm, sec, rows, mode)
+        v += check_tree(ldir, fm, sec, rows, mode, ledger)
 
     for line in v:
         print(line)
     return 1 if v else 0
 
 
-def check_tree(ldir, fm, sec, rows, mode):
+def check_mutation(test, path, cell, bad):
+    """The diff exists, and ensemble-mutation-check left a caught receipt for exactly it."""
+    if not os.path.isfile(path):
+        bad(test, f"mutation {cell} does not exist")
+        return
+    try:
+        receipt = json.load(open(path + ".caught", encoding="utf-8"))
+    except (OSError, ValueError):
+        bad(test, f"mutation {cell} has no caught receipt; run ensemble-mutation-check on it")
+        return
+    patch_id = blob_id(open(path, "rb").read())
+    if receipt.get("result") != "caught" or receipt.get("patch") != patch_id:
+        bad(test, f"mutation {cell}: the receipt is not a caught run of this patch (edited after the check?)")
+
+
+def check_tree(ldir, fm, sec, rows, mode, ledger_path):
     v = []
     def bad(test, rule):
         v.append(f"ledger: {test}: {rule}")
     rc, top = git(ldir, "rev-parse", "--show-toplevel")
     if rc != 0:
         die("--tree needs the ledger inside a git repository")
-    top = top.strip()
-    base = fm.get("baseline_sha", "")
-    if git(top, "cat-file", "-e", f"{base}^{{commit}}")[0] != 0:
-        die(f"baseline_sha {base} is not a commit in this repository")
+    top = os.path.realpath(top.strip())
 
-    base_cache = {}
-    def base_text(p):
-        if p not in base_cache:
-            base_cache[p] = at_sha(top, base, p)
-        return base_cache[p]
+    def commit(key):
+        """A frontmatter revision resolved to a commit id, never handed to git raw."""
+        raw = fm.get(key, "")
+        if not SHA.match(raw):
+            die(f"{key} must be a commit SHA, found {raw!r}")
+        rc, out = git(top, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{raw}^{{commit}}")
+        if rc != 0:
+            die(f"{key} {raw} is not a commit in this repository")
+        return out.strip()
+    base = commit("baseline_sha")
 
-    for test, mark, keeper, evidence, _ in rows:
-        if mark not in ("R", "F", "C", "D"):
+    def inside(p):
+        full = os.path.realpath(os.path.join(top, p))
+        return full == top or full.startswith(top + os.sep)
+
+    @functools.lru_cache(maxsize=None)
+    def at(sha, p):
+        rc, out = git(top, "show", f"{sha}:{p}")
+        return out if rc == 0 else None
+
+    @functools.lru_cache(maxsize=None)
+    def base_decls(p):
+        return declarations(at(base, p))
+
+    @functools.lru_cache(maxsize=None)
+    def tree_decls(p):
+        full = os.path.join(top, p)
+        text = open(full, encoding="utf-8", errors="replace").read() if os.path.isfile(full) else None
+        return declarations(text)
+
+    scope = fm.get("scope", ".") or "."
+    pathspec = "." if scope == "." else scope
+    glob = fm.get("test_glob", "")
+    is_test = lambda f: bool(glob) and (fnmatch.fnmatch(os.path.basename(f), glob) or fnmatch.fnmatch(f, glob))
+
+    # --- what is verified is what will be committed ------------------------------
+    # The commit carries the ledger, its diffs and their receipts; a fresh clone
+    # can only re-verify the audit if those are staged exactly as checked here.
+    evidence = [os.path.abspath(ledger_path)]
+    for _, mark, _, _, mutation in rows:
+        if mark in MARKS and mutation not in ("", "-"):
+            m = os.path.abspath(os.path.join(ldir, mutation))
+            evidence += [m, m + ".caught"]
+    for e in dict.fromkeys(evidence):
+        if not os.path.exists(e) or not os.path.realpath(e).startswith(top + os.sep):
+            continue                                   # reported by the checks below
+        rel = os.path.relpath(os.path.realpath(e), top)
+        staged = git(top, "ls-files", "--error-unmatch", "--", rel)[0] == 0
+        if not staged or git(top, "diff", "--quiet", "--", rel)[0] != 0:
+            bad(rel, "not staged as verified: stage the ledger, its diffs and their receipts before the commit")
+
+    # --- every path the ledger names stays inside the repository ---------------
+    ok_rows = []
+    for row in rows:
+        test, mark, keeper, _, mutation = row
+        if mark not in MARKS or not test:
             continue
+        paths = [split_test(test)[0]] + ([keeper.split("::", 1)[0]] if "::" in keeper else [])
+        outside = [p for p in paths if not inside(p)]
+        if mutation not in ("", "-") and not os.path.realpath(os.path.join(ldir, mutation)).startswith(top + os.sep):
+            outside.append(mutation)
+        if outside:
+            bad(test, f"path outside the repository: {', '.join(outside)}")
+            continue
+        ok_rows.append(row)
+
+    by_file = collections.defaultdict(list)
+    for row in ok_rows:
+        by_file[split_test(row[0])[0]].append(row)
+
+    # --- each row against baseline and tree -------------------------------------
+    for test, mark, keeper, _, _ in ok_rows:
         path, name = split_test(test)
         if name is None:
-            if base_text(path) is None:
+            if at(base, path) is None:
                 bad(test, f"file not found at baseline {base[:12]}")
-            elif mark in ("C", "D") and os.path.exists(os.path.join(top, path)):
+            elif mark in DELETION_MARKS and os.path.exists(os.path.join(top, path)):
                 bad(test, f"{mark} row, but the file is still in the tree")
+            elif mark not in DELETION_MARKS and not os.path.exists(os.path.join(top, path)):
+                bad(test, f"{mark} row, but the file is gone from the tree")
         else:
-            if name not in declarations(base_text(path)):
+            if names(base_decls(path))[name] == 0:
                 bad(test, f"declaration not found at baseline {base[:12]} (typo, or an unsupported form: use a whole-file row)")
-            elif mark in ("C", "D") and name in declarations(in_tree(top, path)):
-                bad(test, f"{mark} row, but the declaration is still in the tree")
-        if mark in ("C", "D") and "::" in keeper:
+            elif mark not in DELETION_MARKS and names(tree_decls(path))[name] == 0:
+                bad(test, f"{mark} row, but the declaration is gone from the tree")
+        if mark in DELETION_MARKS and "::" in keeper:
             kp, kn = keeper.split("::", 1)
-            if kn not in declarations(in_tree(top, kp)):
+            if names(tree_decls(kp))[kn] == 0:
                 bad(test, f"keeper {keeper} is not in the tree")
+
+    # --- every removal is a D or C row -------------------------------------------
+    rc, changed = git(top, "diff", "--name-only", base, "--", pathspec)
+    if rc != 0:
+        die(f"cannot diff baseline {base[:12]} against the working tree")
+    candidates = set(by_file) | {f for f in changed.splitlines() if is_test(f) and at(base, f) is not None}
+    for f in sorted(candidates):
+        file_rows = by_file.get(f, [])
+        if any(r[1] in DELETION_MARKS and "::" not in r[0] for r in file_rows):
+            continue                                   # the whole file is a D/C row
+        removed = names(base_decls(f)) - names(tree_decls(f))
+        if any("::" not in r[0] for r in file_rows):  # a whole-file R/F row
+            if removed:
+                bad(f, f"whole-file {file_rows[0][1]} row, but declarations were removed: {', '.join(sorted(removed))}")
+            continue
+        claimed = collections.Counter(split_test(r[0])[1] for r in file_rows if r[1] in DELETION_MARKS)
+        for n, k in sorted(removed.items()):
+            if claimed[n] < k:
+                bad(f"{f}::{n}", "declaration removed since baseline without a D or C row")
+        for n, k in sorted(claimed.items()):
+            if removed[n] < k:
+                bad(f"{f}::{n}", f"{k} D/C row(s), but {k - removed[n]} of those declaration(s) are still in the tree")
 
     if mode != "campaign":
         return v
 
-    scope = fm.get("scope", ".")
-    glob = fm.get("test_glob", "*")
-    rc, listing = git(top, "ls-tree", "-r", "--name-only", base, "--", "" if scope == "." else scope)
-    files = [f for f in listing.splitlines() if fnmatch.fnmatch(os.path.basename(f), glob) or fnmatch.fnmatch(f, glob)]
+    # --- campaign: lanes and full coverage ------------------------------------------
+    rc, listing = git(top, "ls-tree", "-r", "--name-only", base, "--", pathspec)
+    if rc != 0:
+        die(f"cannot list {pathspec} at baseline {base[:12]}")
+    files = [f for f in listing.splitlines() if is_test(f)]
 
     lanes = {}
     for lane, flist in table(sec.get("Lanes", []), "Lanes", 2, ["Lane", "Files"]):
         for f in (x.strip().strip("`") for x in flist.split(",")):
             if f:
                 lanes.setdefault(f, []).append(lane)
-    whole = {t for t, *_ in rows if "::" not in t}
-    named = {t for t, *_ in rows if "::" in t}
-    by_file = {}
-    for t, *_ in rows:
-        by_file.setdefault(split_test(t)[0], []).append(t)
-
+    named = {r[0] for r in ok_rows if "::" in r[0]}
     for f in files:
         n = len(lanes.get(f, []))
         if n == 0:
@@ -252,21 +376,34 @@ def check_tree(ldir, fm, sec, rows, mode):
         if f not in by_file:
             bad(f, "test file has no ledger row")
             continue
-        if f in whole:
+        if any("::" not in r[0] for r in by_file[f]):
             continue
-        for d in declarations(base_text(f)):
+        for d in sorted(names(base_decls(f))):
             if f"{f}::{d}" not in named:
                 bad(f"{f}::{d}", "declaration has no ledger row (full coverage)")
 
-    old = fm.get("rebaselined_from")
-    if old:
-        rc, changed = git(top, "diff", "--name-only", old, base, "--", "" if scope == "." else scope)
+    # --- campaign: rebaseline, judged per declaration --------------------------------
+    if fm.get("rebaselined_from"):
+        old = commit("rebaselined_from")
+        rc, moved = git(top, "diff", "--name-only", old, base, "--", pathspec)
         if rc != 0:
-            die(f"rebaselined_from {old} cannot be compared with {base}")
-        reconciled = {split_test(t)[0] for t, m, k, e, mu in rows if e.startswith("reconciled:")}
-        for f in changed.splitlines():
-            if f in files and f not in reconciled:
-                bad(f, f"main changed this file since {old[:12]}; it needs a reconciled: row")
+            die(f"rebaselined_from {old[:12]} cannot be compared with {base[:12]}")
+        for f in moved.splitlines():
+            if f not in files:
+                continue
+            reconciled = [r for r in by_file.get(f, []) if r[3].startswith("reconciled:")]
+            if any("::" not in r[0] for r in reconciled):
+                continue                               # the whole file was judged again
+            judged = {split_test(r[0])[1] for r in reconciled}
+            before = collections.defaultdict(list)
+            for n, block in declarations(at(old, f)):
+                before[n].append(block)
+            after = collections.defaultdict(list)
+            for n, block in base_decls(f):
+                after[n].append(block)
+            for n in sorted(after):
+                if after[n] != before.get(n) and n not in judged:
+                    bad(f"{f}::{n}", f"main added or changed this since {old[:12]}; it needs a reconciled: row")
     return v
 
 

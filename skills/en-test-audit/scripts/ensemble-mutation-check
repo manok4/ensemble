@@ -11,7 +11,8 @@
 #                           [--timeout <seconds>]
 #
 #   --patch    a unified diff against the working tree (git apply format). Its
-#              target files must have no uncommitted changes.
+#              targets must be tracked with no unstaged changes; staged ones are
+#              fine, and the restore returns the tree to them.
 #   --test     the keeper, run alone where the runner allows. Run from the repo
 #              top, under sh.
 #   --expect   the keeper's FAILURE output: its assertion message, or the
@@ -19,17 +20,19 @@
 #              baseline must not print it, or it proves nothing about failure.
 #   --timeout  seconds per run, default 300.
 #
-# Order: refuse dirty targets and patches that do not apply; hash the targets;
+# Order: remove any old receipt; refuse unsafe targets and patches that do not apply; hash the targets;
 # run the command unmutated; apply; run again; reverse; re-hash. A trap reverses
 # the patch if the script is interrupted between apply and reverse.
 #
 # Exit codes:
-#   0  caught: the mutated run exited non-zero AND printed the --expect text
+#   0  caught: the mutated run exited non-zero AND printed the --expect text.
+#      Writes <patch>.caught, the receipt ensemble-test-ledger-verify requires
 #   1  survived: the mutated run exited 0
 #   2  bad input; patch does not apply; a target has uncommitted changes; or the
 #      --expect text appears in the passing baseline
 #   3  the baseline run is already red, so nothing it says about a mutation counts
-#   4  the restore failed: the named files differ from before. Stop and fix by hand
+#   4  the restore failed (reverse did not apply, or the files differ from before).
+#      Stop and fix by hand
 #   5  inconclusive: the mutated run timed out, or went red without the --expect
 #      text (a syntax error, a sibling test). Blocks the row like a survival.
 
@@ -58,11 +61,33 @@ PATCH=$(cd "$(dirname "$PATCH")" && pwd -P)/$(basename "$PATCH")
 TOP=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository"
 cd "$TOP" || die "cannot enter $TOP"
 
-TARGETS=$(git apply --numstat "$PATCH" 2>/dev/null | cut -f3-)
+# Every path the patch touches, unquoted: -z keeps a non-ASCII name from coming
+# back C-quoted (a quoted name matches no file, so it would escape both the
+# dirty check and the restore check), and gives a rename's source and target.
+TARGETS=$(git apply -z --numstat "$PATCH" 2>/dev/null | python3 -c '
+import sys
+parts = sys.stdin.buffer.read().split(b"\0")
+out, i = [], 0
+while i < len(parts) and parts[i]:
+    stat = parts[i].split(b"\t")
+    if len(stat) >= 3 and stat[2]:
+        out.append(stat[2]); i += 1
+    else:                         # rename: "<add>\t<del>\t" then source, target
+        out += parts[i + 1:i + 3]; i += 3
+sys.stdout.buffer.write(b"\n".join(sorted(set(out))))')
 [ -n "$TARGETS" ] || die "$PATCH is not a patch git apply can read"
-dirty=$(printf '%s\n' "$TARGETS" | while IFS= read -r f; do git status --porcelain -- "$f"; done)
-[ -z "$dirty" ] || die "target has uncommitted changes; commit or stash it first:
-$dirty"
+# A target must be tracked and match the index. Staged changes are fine: the
+# batch stages its own edits before a restored row is proved (SKILL.md step 10),
+# and the reverse puts the working tree back to exactly that staged content.
+# Unstaged or untracked content is refused, because nothing in git could bring
+# it back if the restore failed.
+bad_targets=$(printf '%s\n' "$TARGETS" | while IFS= read -r f; do
+  [ -e "$f" ] || continue                               # created by the patch
+  if ! git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then echo "untracked: $f"
+  elif ! git diff --quiet -- "$f"; then echo "unstaged changes: $f"; fi
+done)
+[ -z "$bad_targets" ] || die "a target is not safe to mutate; stage or commit it first:
+$bad_targets"
 git apply --whitespace=nowarn --check "$PATCH" 2>/dev/null || die "$PATCH does not apply to the working tree"
 
 fingerprint() {  # the targets' content, or "absent", one line each
@@ -71,6 +96,11 @@ fingerprint() {  # the targets' content, or "absent", one line each
   done
 }
 BEFORE=$(fingerprint)
+
+# The receipt says this exact patch was caught. A stale one from an earlier run
+# must not outlive a run that did not catch it.
+RECEIPT="$PATCH.caught"
+rm -f "$RECEIPT"
 
 OUT=$(mktemp); CHILD=""; WATCH=""; APPLIED=0
 
@@ -93,9 +123,10 @@ run_test() {  # -> RC, TIMED_OUT; output in $OUT
   CHILD=""; WATCH=""
 }
 
+RESTORE_FAILED=0
 restore() {
   [ "$APPLIED" -eq 1 ] || return 0
-  git apply --whitespace=nowarn -R "$PATCH" 2>/dev/null
+  git apply --whitespace=nowarn -R "$PATCH" 2>/dev/null || RESTORE_FAILED=1
   APPLIED=0
 }
 
@@ -104,7 +135,7 @@ on_signal() {
   [ -n "$WATCH" ] && kill -- -"$WATCH" 2>/dev/null
   restore
   rm -f "$OUT" "$OUT.timeout"
-  if [ "$(fingerprint)" != "$BEFORE" ]; then
+  if [ "$RESTORE_FAILED" -eq 1 ] || [ "$(fingerprint)" != "$BEFORE" ]; then
     printf 'ensemble-mutation-check: interrupted, and the restore failed:\n%s\n' "$TARGETS" >&2
     exit 4
   fi
@@ -131,7 +162,7 @@ run_test
 restore
 
 AFTER=$(fingerprint)
-if [ "$AFTER" != "$BEFORE" ]; then
+if [ "$RESTORE_FAILED" -eq 1 ] || [ "$AFTER" != "$BEFORE" ]; then
   printf 'ensemble-mutation-check: restore failed; these files differ from before:\n' >&2
   diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") | sed -n 's/^> [^ ]* //p' >&2
   exit 4
@@ -146,6 +177,11 @@ if [ "$RC" -eq 0 ]; then
   exit 1
 fi
 if grep -qF -- "$EXPECT" "$OUT"; then
+  # ensemble-test-ledger-verify requires this receipt, keyed to the patch's
+  # blob id, for every F and C row: a diff file alone proves nothing ran.
+  python3 -c 'import json, sys; print(json.dumps({"result": "caught", "patch": sys.argv[1], "test": sys.argv[2], "expect": sys.argv[3], "exit": int(sys.argv[4])}))' \
+    "$(git hash-object -- "$PATCH")" "$TEST_CMD" "$EXPECT" "$RC" > "$RECEIPT" \
+    || die "caught, but could not write $RECEIPT"
   echo "caught: exit $RC with the expected failure"
   exit 0
 fi

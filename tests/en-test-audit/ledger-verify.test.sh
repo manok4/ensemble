@@ -11,7 +11,11 @@
 #
 # Negative controls at authoring: disabling the D-row evidence rule, the
 # baseline-existence check, the comment-line rejection and the campaign
-# full-coverage rule each turned its scenario red.
+# full-coverage rule each turned its scenario red. After the EN21 branch review:
+# an empty pathspec for scope '.', a reconcile that only checks new names,
+# dropping the R/F still-present check, allowing paths outside the repo, passing
+# rebaselined_from to git unvalidated, skipping the staged-evidence check, and
+# requiring test_glob only in campaigns each turned its scenario red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -35,6 +39,9 @@ EOF
 )
 BASE=$(cd "$R" && git rev-parse HEAD)
 LD="$R/docs/test-audits"; mkdir -p "$LD/m"; echo diff > "$LD/m/a.diff"; echo diff > "$LD/m/b.diff"
+# What ensemble-mutation-check writes on a caught run, keyed to the patch's blob id.
+receipt() { printf '{"result": "caught", "patch": "%s"}\n' "$(git hash-object "$1")" > "$1.caught"; }
+receipt "$LD/m/a.diff"; receipt "$LD/m/b.diff"
 
 # ledger <mode> <preservation or ""> <rows...> ; extra frontmatter via $EXTRA_FM,
 # extra sections via $EXTRA_BODY. Writes $LD/l.md.
@@ -52,7 +59,11 @@ ledger() {
     [ -n "${EXTRA_BODY:-}" ] && printf '\n%s\n' "$EXTRA_BODY"
   } > "$LD/l.md"
 }
-verify() { "$LV" "$LD/l.md" "$@" 2>&1; }
+# The skill verifies with --tree just before the commit, with its evidence staged.
+verify() {
+  case " $* " in *" --tree "*) (cd "$R" && git add -A docs) ;; esac
+  "$LV" "$LD/l.md" "$@" 2>&1
+}
 
 GOOD_R='| test.sh::adds two numbers | R | addition, public | only test of add | - |'
 GOOD_F='| test.sh::rejects letters | F | input validation | asserted nothing, now checks empty | m/a.diff |'
@@ -167,6 +178,128 @@ out=$(verify --tree); rc=$?
   && pass "a whole-file row for a file absent at baseline fails" \
   || fail "a whole file absent at baseline must fail" "rc=$rc out=$out"
 
+# --- rules each mark carries, without --tree ------------------------------------------
+for row in '| old.test.sh | D | - | removed | - |' '| old.test.sh | D | none: | removed | - |' '| old.test.sh | D | foo | removed | - |'; do
+  ledger batch cross-agent "$row"
+  out=$(verify); rc=$?
+  [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'D row needs a keeper' \
+    && pass "a D row keeper of '$(printf '%s' "$row" | cut -d'|' -f4 | xargs)' is refused" \
+    || fail "a D row needs <path>::<name> or none: <reason>" "row=$row rc=$rc out=$out"
+done
+ledger batch cross-agent '| test.sh::adds two numbers | R | | kept | - |'
+out=$(verify); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'must name the contract' \
+  && pass "an R row with no contract fails" || fail "an R row must name its contract" "rc=$rc out=$out"
+ledger batch cross-agent "$GOOD_R"; sed -i.bak '/^mode: /d' "$LD/l.md"; rm -f "$LD/l.md.bak"
+out=$(verify); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'mode is required' \
+  && pass "frontmatter without mode fails" || fail "a missing mode must fail" "rc=$rc out=$out"
+
+# --- mutation receipts ------------------------------------------------------------------
+echo diff > "$LD/m/c.diff"
+ledger batch cross-agent '| test.sh::rejects letters | F | input validation | tightened | m/c.diff |'
+out=$(verify); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'no caught receipt' \
+  && pass "a mutation diff with no caught receipt fails: a file alone proves nothing ran" \
+  || fail "a receipt-less mutation must fail" "rc=$rc out=$out"
+receipt "$LD/m/c.diff"; echo 'edited after the check' >> "$LD/m/c.diff"
+out=$(verify); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'not a caught run of this patch' \
+  && pass "a receipt for a different version of the patch fails" \
+  || fail "a receipt must match the patch it names" "rc=$rc out=$out"
+receipt "$LD/m/c.diff"; out=$(verify); rc=$?
+[ "$rc" -eq 0 ] && pass "a receipt matching the patch passes" || fail "a matching receipt must pass" "rc=$rc out=$out"
+
+ledger batch cross-agent "$GOOD_R"; sed -i.bak '/^test_glob: /d' "$LD/l.md"; rm -f "$LD/l.md.bak"
+out=$(verify); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'test_glob is required' \
+  && pass "a batch ledger without test_glob fails, since removals elsewhere would go unseen" \
+  || fail "test_glob must be required in batch mode" "rc=$rc out=$out"
+
+# What --tree checks is what the commit will carry: evidence edited after staging fails.
+(cd "$R" && sed -i.bak '/adds two numbers/d' test.sh && rm test.sh.bak)
+ledger batch cross-agent '| test.sh::adds two numbers | C | keeper.sh::covers addition | same | m/c.diff |'
+(cd "$R" && git add -A docs)
+echo ' ' >> "$LD/m/c.diff.caught"
+out=$("$LV" "$LD/l.md" --tree 2>&1); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'm/c.diff.caught: not staged as verified' \
+  && pass "a receipt that differs from its staged copy fails: the commit would not carry what was checked" \
+  || fail "unstaged evidence must fail --tree" "rc=$rc out=$out"
+receipt "$LD/m/c.diff"; (cd "$R" && git checkout -q -- test.sh)
+
+# --- every removal has a row; retained tests are still there ------------------------------
+ledger batch cross-agent "$GOOD_R"
+(cd "$R" && sed -i.bak '/pass "adds two numbers"/d' test.sh && rm test.sh.bak)
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'R row, but the declaration is gone' \
+  && pass "an R row whose test was deleted anyway fails" \
+  || fail "a retained test that vanished must fail" "rc=$rc out=$out"
+ledger batch cross-agent '| test.sh::rejects letters | R | validation | kept | - |'
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'test.sh::adds two numbers: declaration removed since baseline without a D or C row' \
+  && pass "a declaration removed from a judged file with no row fails" \
+  || fail "an unrecorded removal in a judged file must fail" "rc=$rc out=$out"
+ledger batch cross-agent '| test.sh | R | addition | kept whole | - |'
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'whole-file R row, but declarations were removed' \
+  && pass "a whole-file R row over a file that lost a declaration fails" \
+  || fail "a whole-file R row must not cover a removal" "rc=$rc out=$out"
+(cd "$R" && git checkout -q -- test.sh)
+(cd "$R" && sed -i.bak '/old one/d' old.test.sh && rm old.test.sh.bak)
+ledger batch cross-agent "$GOOD_R"
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'old.test.sh::old one' \
+  && pass "a test removed from a changed test file the ledger never mentions fails" \
+  || fail "an unmentioned test file's removal must fail" "rc=$rc out=$out"
+(cd "$R" && git checkout -q -- old.test.sh)
+
+# --- keepers --------------------------------------------------------------------------
+(cd "$R" && sed -i.bak '/adds two numbers/d' test.sh && rm test.sh.bak)
+ledger batch cross-agent '| test.sh::adds two numbers | C | keeper.sh::no such keeper | same | m/b.diff |'
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'keeper keeper.sh::no such keeper is not in the tree' \
+  && pass "a keeper file that exists but lacks the named declaration fails" \
+  || fail "the keeper's declaration, not just its file, must exist" "rc=$rc out=$out"
+(cd "$R" && git checkout -q -- test.sh)
+
+# --- duplicate names -------------------------------------------------------------------
+(
+  cd "$R" || exit 1
+  printf 'pass "works"\npass "works"\n' > dup.test.sh && git add dup.test.sh && git commit -qm dup
+  printf 'pass "works"\n' > dup.test.sh
+)
+BASE=$(cd "$R" && git rev-parse HEAD)
+ledger batch cross-agent '| dup.test.sh::works | D | none: second copy of the same check | identical body | - |'
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 0 ] && pass "deleting one of two same-named declarations with one D row passes" || fail "a duplicate name must be deletable" "rc=$rc out=$out"
+ledger batch cross-agent '| dup.test.sh::works | D | none: dup | x | - |' '| dup.test.sh::works | D | none: dup | x | - |'
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'still in the tree' \
+  && pass "two D rows for one removal fail: one copy is still there" \
+  || fail "D rows must not outnumber the removals" "rc=$rc out=$out"
+(cd "$R" && git checkout -q -- dup.test.sh)
+
+# --- paths stay inside the repository ------------------------------------------------------
+(cd "$R" && sed -i.bak '/adds two numbers/d' test.sh && rm test.sh.bak)
+printf 'pass "covers addition"\n' > "$R/../outside-keeper.sh"
+ledger batch cross-agent '| test.sh::adds two numbers | D | ../outside-keeper.sh::covers addition | outside | - |'
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'path outside the repository' \
+  && pass "a keeper outside the repository is refused" \
+  || fail "a ../ keeper must be refused" "rc=$rc out=$out"
+rm -f "$R/../outside-keeper.sh"
+(cd "$R" && git checkout -q -- test.sh)
+
+# --- revisions are validated before git sees them --------------------------------------------
+echo keep > "$R/victim.txt"
+EXTRA_FM="rebaselined_from: --output=$R/victim.txt"
+ledger campaign cross-agent "$GOOD_R"
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 2 ] && [ "$(cat "$R/victim.txt")" = keep ] \
+  && pass "a rebaselined_from that is not a SHA is refused before git runs, and nothing is written" \
+  || fail "rebaselined_from must never reach git as an option" "rc=$rc victim=$(cat "$R/victim.txt")"
+EXTRA_FM=""; rm -f "$R/victim.txt"
+
 # --- campaign ----------------------------------------------------------------------
 (
   cd "$R" || exit 1
@@ -244,7 +377,26 @@ out=$(verify --tree); rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'tests/a.test.sh::three' \
   && pass "a declaration main added with no row fails" \
   || fail "main's new declaration must need a row" "rc=$rc out=$out"
+
+# Main changes two existing declarations in one file; reconciling one is not enough.
+OLD=$BASE
+(cd "$R" && printf 'pass "one"   # now stricter\npass "two"   # now stricter too\npass "three"\n' > tests/a.test.sh && git commit -qam main-again)
+BASE=$(cd "$R" && git rev-parse HEAD); EXTRA_FM="rebaselined_from: $OLD"
+ledger campaign cross-agent '| tests/a.test.sh::one | R | one | reconciled: stricter | - |' "$A2" "$A3" "$B1"; cscope
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'tests/a.test.sh::two' && ! printf '%s' "$out" | grep -q 'tests/a.test.sh::one' \
+  && pass "each declaration main changed needs its own reconciled: row, not one per file" \
+  || fail "a second changed declaration must need its own reconciled row" "rc=$rc out=$out"
 EXTRA_FM=""; EXTRA_BODY=""
+
+# Scope "." is the whole repo, and must list files rather than silently list none.
+EXTRA_BODY="$LANES_BOTH"
+ledger campaign cross-agent "$A1" "$A2" "$A3" "$B1"
+out=$(verify --tree); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'old.test.sh: test file is in no lane' \
+  && pass "scope '.' covers the whole repo: a test file outside every lane fails" \
+  || fail "scope '.' must list the repo's test files" "rc=$rc out=$out"
+EXTRA_BODY=""
 
 rm -rf "$R"
 report

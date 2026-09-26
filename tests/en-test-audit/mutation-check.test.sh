@@ -11,6 +11,8 @@
 # scenario apply its patch; removing the --expect-in-baseline check let the
 # name-only scenario report caught; treating a timeout as caught turned the
 # hang scenario red; removing the trap left the TERM scenario's tree mutated.
+# After the EN21 branch review: reading quoted numstat output, removing the
+# restore check, and keeping a stale receipt each turned its scenario red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -100,6 +102,54 @@ out=$(mc --patch "$P/junk.diff" --test 'sh test.sh' --expect 'FAIL adds two numb
 
 out=$(mc --patch "$P/minus.diff" --test 'sh test.sh'); rc=$?
 [ "$rc" -eq 2 ] && clean && pass "--expect is required" || fail "a missing --expect must exit 2" "rc=$rc out=$out"
+
+# --- receipts ---------------------------------------------------------------------
+rm -f "$P"/*.caught
+mc --patch "$P/minus.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers' >/dev/null
+rc=$?
+if [ "$rc" -eq 0 ] && grep -q '"result": "caught"' "$P/minus.diff.caught" \
+   && grep -qF "\"patch\": \"$(git hash-object "$P/minus.diff")\"" "$P/minus.diff.caught"; then
+  pass "a caught run writes a receipt keyed to the patch's blob id"
+else
+  fail "a caught run must write <patch>.caught naming the patch" "rc=$rc $(cat "$P/minus.diff.caught" 2>&1)"
+fi
+cp "$P/comment.diff" "$P/flip.diff"; echo '{"result": "caught"}' > "$P/flip.diff.caught"
+mc --patch "$P/flip.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers' >/dev/null; rc=$?
+[ "$rc" -eq 1 ] && [ ! -e "$P/flip.diff.caught" ] \
+  && pass "a run that does not catch removes any earlier receipt for the patch" \
+  || fail "a survived run must not leave a receipt behind" "rc=$rc"
+
+# --- staged changes are fine, unstaged and untracked are not ------------------------
+(cd "$R" && echo '# staged by the batch' >> src.sh && git add src.sh)
+mkpatch staged src.sh "$(cd "$R" && cat src.sh | sed 's/+ \$2/- $2/')"
+(cd "$R" && git add src.sh)
+staged_before=$(cd "$R" && git diff --cached)
+out=$(mc --patch "$P/staged.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers'); rc=$?
+[ "$rc" -eq 0 ] && [ "$(cd "$R" && git diff --cached)" = "$staged_before" ] && (cd "$R" && git diff --quiet) \
+  && pass "a target with only staged changes is mutated and restored to exactly the staged content" \
+  || fail "staged-only targets must be allowed and restored" "rc=$rc out=$out"
+(cd "$R" && git reset -q --hard HEAD)
+
+(cd "$R" && printf 'x\n' > loose.sh)
+printf -- '--- a/loose.sh\n+++ b/loose.sh\n@@ -1 +1 @@\n-x\n+y\n' > "$P/loose.diff"
+out=$(mc --patch "$P/loose.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers'); rc=$?
+[ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'untracked: loose.sh' && [ "$(cat "$R/loose.sh")" = x ] \
+  && pass "an untracked target is refused, since git could not restore it" \
+  || fail "an untracked target must be refused" "rc=$rc out=$out"
+rm -f "$R/loose.sh"
+
+# --- a non-ASCII target is dirty-checked and restore-checked like any other ----------
+(cd "$R" && printf 'add() { echo $(( $1 + $2 )); }\n' > café.sh && sed -i.bak 's#\./src\.sh#./café.sh#' test.sh && rm test.sh.bak \
+   && git add café.sh test.sh && git commit -qm unicode)
+mkpatch cafe café.sh 'add() { echo $(( $1 - $2 )); }'
+out=$(mc --patch "$P/cafe.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers'); rc=$?
+[ "$rc" -eq 0 ] && clean && pass "a mutation on a non-ASCII path is caught and restored" || fail "a non-ASCII target must work" "rc=$rc out=$out"
+# The test itself edits the target while failing, so the reverse cannot apply.
+out=$(mc --patch "$P/cafe.diff" --test 'sh test.sh || { echo junk >> café.sh; exit 1; }' --expect 'FAIL adds two numbers' 2>&1); rc=$?
+[ "$rc" -eq 4 ] && printf '%s' "$out" | grep -q 'caf' && ! clean \
+  && pass "a restore that cannot put the file back is exit 4, naming it, never 'caught'" \
+  || fail "a failed restore must be exit 4" "rc=$rc out=$out"
+(cd "$R" && git checkout -q -- . && git reset -q --hard HEAD~1)
 
 # --- killed mid-run -----------------------------------------------------------------
 (cd "$R" && exec "$MC" --patch "$P/hang.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers' --timeout 60 >/dev/null 2>&1) &

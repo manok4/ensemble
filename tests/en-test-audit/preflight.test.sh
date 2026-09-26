@@ -10,7 +10,8 @@
 # Negative controls at authoring: dropping the main|master case let the
 # default-branch scenario pass; dropping the untracked-files flag let the dirty
 # scenario pass; dropping the Seams removed block turned the staged-seam
-# scenario red.
+# scenario red. After the EN21 branch review: dropping keepers from the resume
+# allowlist, and accepting a scope outside the repository, each turned red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -67,6 +68,22 @@ out=$(run --scope missing/); rc=$?
   && pass "a missing scope is refused" \
   || fail "a missing scope must be refused" "rc=$rc out=$out"
 
+mkdir -p "$R/lib" && touch "$R/lib/.keep" && (cd "$R" && git add lib && git commit -qm lib)
+out=$(run --scope lib); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qx 'scope=lib' \
+  && pass "an existing scope is accepted and printed repo-relative" \
+  || fail "--scope lib must print scope=lib" "rc=$rc out=$out"
+out=$(cd "$R/lib" && "$PF" --scope . 2>&1); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qx 'scope=lib' \
+  && pass "a scope is resolved against the caller's directory, so '.' in lib/ is lib" \
+  || fail "--scope . from lib/ must print scope=lib" "rc=$rc out=$out"
+for outside in .. /; do
+  out=$(run --scope "$outside"); rc=$?
+  [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'outside the repository' \
+    && pass "a scope outside the repository ($outside) is refused" \
+    || fail "--scope $outside must be refused" "rc=$rc out=$out"
+done
+
 (cd "$R" && printf -- '- **Test:** `<unset>`\n' > AGENTS.md && git commit -qam unset)
 out=$(run); rc=$?
 [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'declares no Test command' && unchanged \
@@ -90,6 +107,7 @@ R=$(make_audit_repo)
   mkdir -p docs/test-audits/m lib
   echo 'reset() { :; }' > lib/reset-for-tests.sh
   printf 'check() { :; }\n' > old.test.sh
+  printf 'pass "covers addition"\n' > keeper.sh
   git add . && git commit -qm more
   cat > docs/test-audits/2026-09-26-x.md <<'EOF'
 ---
@@ -102,6 +120,7 @@ type: test-audit
 |---|---|---|---|---|
 | old.test.sh | D | none: duplicate of test.sh | same assertion | - |
 | test.sh::adds two numbers | F | addition | tightened | m/add.diff |
+| test.sh::rejects nothing | C | keeper.sh::covers addition | moved into keeper.sh | m/add.diff |
 
 ## Seams removed
 
@@ -110,13 +129,15 @@ type: test-audit
 | lib/reset-for-tests.sh | only tests called it |
 EOF
   echo 'diff' > docs/test-audits/m/add.diff
+  echo '{"result": "caught"}' > docs/test-audits/m/add.diff.caught
   git rm -q old.test.sh
   echo '# tightened' >> test.sh
-  git add docs test.sh
+  echo 'pass "moved assertion"' >> keeper.sh
+  git add docs test.sh keeper.sh
 )
 out=$(run --resume "$R/docs/test-audits/2026-09-26-x.md"); rc=$?
 [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qx 'branch=audit' && ! printf '%s' "$out" | grep -q '^baseline=' \
-  && pass "a staged batch of exactly the ledger, its diff and its rows' files resumes" \
+  && pass "a staged batch of the ledger, its diff and receipt, its rows' files and a C row's keeper resumes" \
   || fail "the ledger's own staged batch must resume" "rc=$rc out=$out"
 
 (cd "$R" && git rm -q lib/reset-for-tests.sh)

@@ -9,9 +9,12 @@
 # changes it.
 #
 # Usage:
-#   ensemble-test-audit-review-artifact <ledger.md> [--out <path>]
+#   ensemble-test-audit-review-artifact <ledger.md> [--out <path>] [-- <path>...]
 #
-# Prints the path it wrote (a new temp file unless --out is given).
+# Prints the path it wrote (a new temp file unless --out is given). Paths after
+# `--` limit the staged diff to them: a campaign reviews one boundary group at a
+# time (references/campaign.md step 6), and the whole campaign's diff is too
+# large for one reader.
 #
 # Exit codes:
 #   0  written
@@ -21,9 +24,10 @@ set -u
 
 die() { printf 'ensemble-test-audit-review-artifact: %s\n' "$*" >&2; exit 2; }
 
-LEDGER=""; OUTFILE=""
+LEDGER=""; OUTFILE=""; LIMIT=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --) shift; LIMIT=1; break ;;
     --out) [ $# -ge 2 ] || die "--out needs a path"; OUTFILE="$2"; shift 2 ;;
     -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "unknown argument: $1" ;;
@@ -33,7 +37,7 @@ done
 [ -n "$LEDGER" ] || die "usage: ensemble-test-audit-review-artifact <ledger.md> [--out <path>]"
 [ -f "$LEDGER" ] || die "ledger $LEDGER does not exist"
 git rev-parse --show-toplevel >/dev/null 2>&1 || die "not inside a git repository"
-git diff --cached --quiet && die "nothing is staged; stage the batch and the ledger first"
+git diff --cached --quiet -- "$@" && die "nothing is staged${LIMIT:+ under the given paths}; stage the batch and the ledger first"
 
 [ -n "$OUTFILE" ] || OUTFILE=$(mktemp "${TMPDIR:-/tmp}/en-test-audit-review.XXXXXX")
 {
@@ -43,7 +47,7 @@ git diff --cached --quiet && die "nothing is staged; stage the batch and the led
   cat "$LEDGER"
   printf '\n## Staged diff\n\n'
   printf '```diff\n'
-  git diff --cached --no-color --no-ext-diff
+  git diff --cached --no-color --no-ext-diff -- "$@"
   printf '```\n'
 } > "$OUTFILE" || die "cannot write $OUTFILE"
 printf '%s\n' "$OUTFILE"

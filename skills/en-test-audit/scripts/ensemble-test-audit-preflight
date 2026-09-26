@@ -23,7 +23,8 @@
 # --resume <ledger.md> is the way back into a batch that stopped staged (the
 # preservation review could not run). It accepts a tree whose every change is
 # staged, and whose staged paths are exactly: the ledger, the mutation diffs it
-# names, the files its rows name, and the paths in its `## Seams removed` table.
+# names and their caught receipts, the files its rows name (keepers included),
+# and the paths in its `## Seams removed` table.
 # Anything unstaged, or any other staged path, is named and refused. The suite
 # is not re-run: the batch already changed the tests.
 #
@@ -34,7 +35,7 @@
 
 set -u
 
-SCOPE="."; RESUME=""; AGENTS_FILE=""
+SCOPE=""; RESUME=""; AGENTS_FILE=""
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; }
 refuse() { printf 'refusing: %s\n' "$*" >&2; exit 2; }
@@ -52,14 +53,23 @@ done
 TOP=$(git rev-parse --show-toplevel 2>/dev/null) || refuse "not inside a git repository"
 # --resume and --scope are given relative to where the caller stands; everything
 # below compares repo-relative paths, so resolve them before moving to the top.
-relpath() {  # <path> -> repo-relative, or the input unchanged when outside
+# A path outside the repository is refused: nothing git holds could bring back
+# a deletion made there.
+TOP_P=$(cd "$TOP" && pwd -P)
+relpath() {  # <path> -> repo-relative ("." for the top); exit 2 when outside or missing
   local d b
-  d=$(cd "$(dirname "$1")" 2>/dev/null && pwd -P) || { printf '%s' "$1"; return; }
+  d=$(cd "$(dirname "$1")" 2>/dev/null && pwd -P) || refuse "$1 does not exist"
   b="$d/$(basename "$1")"
-  case "$b" in "$(cd "$TOP" && pwd -P)"/*) printf '%s' "${b#"$(cd "$TOP" && pwd -P)"/}" ;; *) printf '%s' "$1" ;; esac
+  [ "$(basename "$1")" = "." ] && b="$d"
+  [ "$(basename "$1")" = ".." ] && b=$(cd "$b" 2>/dev/null && pwd -P)
+  case "$b" in
+    "$TOP_P") printf '.' ;;
+    "$TOP_P"/*) printf '%s' "${b#"$TOP_P"/}" ;;
+    *) refuse "$1 is outside the repository" ;;
+  esac
 }
-[ -z "$RESUME" ] || RESUME=$(relpath "$RESUME")
-[ "$SCOPE" = "." ] || SCOPE=$(relpath "$SCOPE")
+if [ -n "$RESUME" ]; then RESUME=$(relpath "$RESUME") || exit 2; fi
+if [ -n "$SCOPE" ]; then SCOPE=$(relpath "$SCOPE") || exit 2; else SCOPE="."; fi
 cd "$TOP" || refuse "cannot enter $TOP"
 [ -n "$AGENTS_FILE" ] || AGENTS_FILE="AGENTS.md"
 
@@ -117,7 +127,8 @@ allowed=$(
       if (!hdr) { hdr = 1; next }             # header row
       if ($2 ~ /^[ \t]*:?-+/) next            # separator row
       t = trim($2); sub(/::.*/, "", t); if (t != "") print t
-      m = trim($6); if (m != "" && m != "-") print dir "/" m
+      k = trim($4); if (k ~ /::/) { sub(/::.*/, "", k); print k }   # the keeper a C row edits
+      m = trim($6); if (m != "" && m != "-") { print dir "/" m; print dir "/" m ".caught" }
     }
     sec ~ /^## Seams removed/ && /^\|/ {
       if (!hdr) { hdr = 1; next }

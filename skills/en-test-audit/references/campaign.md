@@ -6,7 +6,12 @@ bar, candidate evidence and scripts apply to every lane unchanged; this file add
 the order of work. Each step ends on its done criterion, and the next step does
 not start early.
 
-The campaign writes one ledger with `mode: campaign`. Its extra tables (Lanes,
+The campaign writes one ledger with `mode: campaign` and lands as **one commit
+at the end** (batch mode's steps 11 and 12, once): the verifier's full-coverage
+and removal rules only hold when every lane is cut over, so no lane commits on
+its own. Until then each lane's work is **staged**. The mutation check accepts
+targets whose only changes are staged, so a later lane can still prove a
+mutation on a file an earlier lane edited. Its extra tables (Lanes,
 Product defects) and the full-coverage and rebaselining rules are in
 `references/ledger-format.md`, and `ensemble-test-ledger-verify --tree` enforces
 all of them, so a campaign that skips a step below fails the verifier rather
@@ -79,7 +84,10 @@ this campaign actually found.
 ## 6. Preservation review
 
 Batch mode's step 10, run once per boundary group rather than once for the whole
-diff, so each review sees a diff it can read in full.
+diff, so each review sees a diff it can read in full: pass the group's paths to
+the artifact script after `--`
+(`ensemble-test-audit-review-artifact <ledger> -- <path>...`), and it holds only
+those hunks.
 
 **Done when** every reported gap is restored, with its own caught mutation, or
 rejected with source evidence in its row.
