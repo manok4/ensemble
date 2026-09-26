@@ -469,7 +469,7 @@ It runs every `*.test.sh` under `tests/`. While iterating, `./tests/select-for.s
 
 ## Status
 
-Every skill and agent in the catalogs above ships, with the foundation document, plugin manifests, install script, CI tooling and integration guides. Work in flight is in [`docs/plans/active/`](./docs/plans/active/); shipped plans are in [`docs/plans/completed/`](./docs/plans/completed/).
+Every skill and agent in the catalogs above ships, with the foundation document, plugin manifests, install script, CI tooling and integration guides. Work in flight is in `docs/plans/active/`, which is empty between features and so is not linked; shipped plans are in [`docs/plans/completed/`](./docs/plans/completed/).
 
 ## License
 
