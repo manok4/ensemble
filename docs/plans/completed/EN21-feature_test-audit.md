@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN21
 title: /en-test-audit, audit and prune an existing test suite with evidence before every deletion
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-09-26
-shipped:
+shipped: 2026-09-26
 deepened:
 covers_requirements: []
 requirements_pending: true
@@ -431,3 +431,4 @@ None resolved. U5 files one entry (the `/en-ship` trailer check).
 > - 2026-09-26 (peer 2, Codex, revise, 1 P0 + 4 P1): applied all 5. `reconciled_sha` for declarations main adds during a campaign, a ledger row required for every campaign file, whole-file row checks, `--expect` must be absent from the passing baseline, `--resume <ledger>` as the way back from a stopped peer review. Iteration cap reached.
 > - 2026-09-26 (peer 3, Codex, revise, 3 P1; cap raised by one at the user's request): applied all 3. Two sat inside pass 2's fixes, which is the design signal the repo's learning names, so the reconcile design was simplified instead of patched: one moving `baseline_sha` with `rebaselined_from`, full declaration coverage in campaign mode, and a `reconciled:` row per file main changed. `reconciled_sha` is gone. `--expect` is the failure output, not the name. Seam paths are on the resume allowlist.
 > - 2026-09-26 (finalize): cap reached on `revise` with every finding resolved; user chose accept as-is. Status open.
+> - 2026-09-26 (built): shipped as five units plus the branch simplify and cross-review fixes. Where the build differs from the plan: the verifier runs under python3 (re-exec, as `ensemble-linear-plan` does), not bash with awk; the flow proves mutations before removing seams, because the check refuses targets production edits would have dirtied; the mutation check accepts staged targets and writes a `.caught` receipt the verifier requires; the verifier also fails any declaration removed without a D or C row, an R or F row whose test vanished, and evidence that is not staged as verified, and it requires `test_glob` in both modes; the review artifact takes `-- <paths>` for per-group campaign review; campaign tables are defined once in `ledger-format.md` and checked by `tests/en-test-audit/campaign-format.test.sh`. Eleven sub-threshold review findings were filed as TD25 to TD35.
