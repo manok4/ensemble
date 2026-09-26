@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN22
 title: Correction router, route each correction to the strongest enforcement layer
-status: open
+status: in_progress
 location: active
 created: 2026-09-26
 shipped:
