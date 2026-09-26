@@ -96,10 +96,27 @@ The gaps are in the three layers underneath, and the first one is the largest.
 | Independent live verifier per PR | The peer reviews the diff, not the running app | Medium |
 | Parallel build fan-out | Not present, by decision D52 (the host builds every unit) | Deliberate |
 | Outer loop from issue reports | Not present. `en-debug` reproduces one issue on request | Large, but blocked on the verify harness |
+| Small PRs: five narrow ones over one large one, each independently verified | A whole plan ships as one branch and one PR | Medium. Every PR is harder to verify, and a single failure blocks all its units |
 
 ## Recommendation
 
 Adopt her ordering. Build verification first, then correction routing, then target-repo structure, then volume. Every later piece consumes the earlier ones. Benny cannot reproduce anything without a drive CLI and a feature map, and a verifier per PR is only as good as the harness it runs. Each step below is sized to become one `/en-plan`.
+
+### Leanness rule: replace, don't add
+
+Skills exist to produce a solid product, and every step they add costs the model context and the user time. So each item below must meet one of two conditions:
+
+1. **It replaces or shrinks an existing cycle.**
+   - The harness's scripted drives replace `en-qa`'s model-driven clicking.
+   - A live PASS from the verifier becomes the evidence that lets low-risk diffs skip the host persona reviewers, once `ensemble-metrics` shows the verifier catches what they catch.
+2. **It stays off the hot path.** Anything that is neither sits in a step that already runs, costs at most one question, or runs off-hours and opt-in. The hot path is `en-build`, `en-review`, `en-resolve-pr` and `en-ship`. EN22 is the first application: it changes none of those four.
+
+Two process rules follow:
+
+- **Every plan sets a byte budget for each SKILL.md it touches, and its tests assert it.** The skill-size lint caps a file's total size; the budget caps what one plan adds.
+- **In peer review, a fix that adds machinery needs a reason.** When a second round's findings land inside the first round's fixes, simplify rather than patch. The repo already records this lesson (`docs/learnings/repeated-review-rejects-are-a-design-signal-2026-09-11.md`). EN22's first version broke this rule and was cut from six units to five, with one carrier set halved and one script removed.
+
+Verification steps are the exception that proves the rule. Launching the app and driving a feature are real added steps, but they are the product check itself, not overhead. The test is whether a step replaces weaker work, not whether a step was added.
 
 ### Track A: Ensemble skills
 
@@ -126,11 +143,17 @@ Adopt her ordering. Build verification first, then correction routing, then targ
 - Adds a verify-drift pass with her three outcomes: clean, one PR, blocked.
 - The live pass is required, and a product regression becomes a bug report, never a doc edit.
 
-**A5. Correction router.** This one is cheap and compounds, so it can run in parallel with A1.
+**A5. Correction router.** Planned as EN22. It carries out §17.1, and it follows the existing memory rule that prose invariants need auditable gates.
 
-- When `en-learn capture`, `en-resolve-pr` and `en-review` see a correction, they classify it against the five layers first. The recommended layer is the strongest one that works: a type or structure change, then a lint or test, then an AGENTS.md rule, then a skill, and only then prose.
-- The output is a proposed lint rule or test (a TD entry or a plan unit), not just a learning.
-- The same comment recurring across two PRs is the trigger. This carries out §17.1 and fits the existing memory rule that prose invariants need auditable gates.
+- **Where it runs.** Three places:
+  - `en-learn capture`, in a step that already runs once per build;
+  - an opt-in sweep scan, where a comment recurring across two merged PRs is the trigger;
+  - an audit mode over a repo's existing prose rules.
+
+  Review, resolve-pr and the other hot-path skills are unchanged.
+- **How it classifies.** The strongest layer that works wins: a structure change, then a lint or test, then an AGENTS.md rule, then a skill, and only then prose.
+- **What it produces.** Layers 1 to 4 become TD entries proposing the change. A lint rule rejects any layer 1 or 2 entry that names no concrete check.
+- **The lever, now or later.** For a layer 1 or 2 check in the current repo, capture asks whether to add it on the branch now. This is her "write the lint when you see the mistake", kept to one question.
 
 **A6. Independent verifier on ship.**
 
@@ -144,6 +167,12 @@ Adopt her ordering. Build verification first, then correction routing, then targ
   - an `en-flow` queue mode: several plans, one worktree each, a ledger of verdicts, human gates parked;
   - a Benny-style intake: tracker or Slack report, then triage, then `en-debug` reproducing twice through the harness, then a draft PR.
 - Both go against D52 or add infrastructure, so they should wait until A1 to A6 show in `ensemble-metrics` that unattended PRs pass the verifier without rework.
+
+**A8. Smaller PRs.** This one is to be designed, not planned yet.
+
+- Her trust scales partly because each PR is small enough for one verifier to prove. Ensemble ships a whole plan as one PR.
+- The candidate is for `en-ship` to open one PR per contiguous group of units, stacked on each other. Each PR carries its own receipt and verifier verdict, and only the verified run at the bottom of the stack lands.
+- This only pays off once A6 exists, because small PRs without a live verifier just multiply review work. Brainstorm it after A6.
 
 ### Track B: making target repos agent-friendly
 
@@ -184,13 +213,14 @@ Ensemble can't write Dune for anyone. What it can do is install the mechanics th
 
 ## Proposed sequence
 
-1. **A5 correction router.** Small, no dependencies, and it starts compounding immediately. It is proven on Emble by converting three or four of its AGENTS.md prose rules.
-2. **A1 and A2, harness plus feature map, as `en-verify init` on Emble.** Pilot there before generalizing.
-3. **A3, then A4.**
+1. **A5 correction router (EN22, slimmed).** Small, with no dependencies, and it touches no hot path. It is proven on Emble through `/en-learn --enforce-audit`, whose TD entries seed an Emble plan.
+2. **A1 and A2, harness plus feature map, as `en-verify init` on Emble.** This is the next plan after EN22. It is the step that makes Ensemble verification-driven; A5 does not. Pilot on Emble before generalizing.
+3. **A3, then A4.** A3 retires `en-qa`'s model-driven clicking in favour of scripted drives.
 4. **B1 and B2** on the same pilot repo.
 5. **B3, B4, B5.**
-6. **A6.**
-7. **A7**, only if the metrics from steps 1 to 6 say unattended output holds up.
+6. **A6.** Measure which layer catches each defect from the first PR it runs on.
+7. **A8 smaller PRs**, brainstormed once A6 has a track record.
+8. **A7**, only if the metrics from steps 1 to 7 say unattended output holds up.
 
 ## Decisions (2026-09-26)
 
