@@ -69,6 +69,13 @@ it must go red **for the reason the gate names**. A control that perturbs the
 wrong copy of a duplicated helper, or trips a different assertion in the same
 file, proves the suite reacts to something and says nothing about the gate.
 
+### Keeper
+In a test audit, the test that remains the proof of a contract after another
+test covering it is consolidated or deleted, cited as `<path>::<name>`. A test
+does not count as a keeper because it exercises the same code; it counts once a
+deliberate break of that behaviour turns it red with its own failure message.
+_Avoid:_ owner test, surviving test
+
 ## Captured knowledge
 
 ### Artifact type
