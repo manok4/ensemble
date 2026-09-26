@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# ensemble-mutation-check — does the keeper actually fail when the code breaks?
+#
+# /en-test-audit consolidates assertions into keeper tests and repairs vacuous
+# ones. "The keeper covers it" is a claim; this makes it a measurement. It
+# applies one deliberate break to production code, runs the keeper, and puts
+# the code back exactly as it was.
+#
+# Usage:
+#   ensemble-mutation-check --patch <file.diff> --test '<command>' --expect '<text>'
+#                           [--timeout <seconds>]
+#
+#   --patch    a unified diff against the working tree (git apply format). Its
+#              target files must have no uncommitted changes.
+#   --test     the keeper, run alone where the runner allows. Run from the repo
+#              top, under sh.
+#   --expect   the keeper's FAILURE output: its assertion message, or the
+#              runner's failure line for it. Not its bare name. The passing
+#              baseline must not print it, or it proves nothing about failure.
+#   --timeout  seconds per run, default 300.
+#
+# Order: refuse dirty targets and patches that do not apply; hash the targets;
+# run the command unmutated; apply; run again; reverse; re-hash. A trap reverses
+# the patch if the script is interrupted between apply and reverse.
+#
+# Exit codes:
+#   0  caught: the mutated run exited non-zero AND printed the --expect text
+#   1  survived: the mutated run exited 0
+#   2  bad input; patch does not apply; a target has uncommitted changes; or the
+#      --expect text appears in the passing baseline
+#   3  the baseline run is already red, so nothing it says about a mutation counts
+#   4  the restore failed: the named files differ from before. Stop and fix by hand
+#   5  inconclusive: the mutated run timed out, or went red without the --expect
+#      text (a syntax error, a sibling test). Blocks the row like a survival.
+
+set -u
+
+PATCH=""; TEST_CMD=""; EXPECT=""; TIMEOUT=300
+
+usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; }
+die() { printf 'ensemble-mutation-check: %s\n' "$*" >&2; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --patch)   [ $# -ge 2 ] || { usage; exit 2; }; PATCH="$2"; shift 2 ;;
+    --test)    [ $# -ge 2 ] || { usage; exit 2; }; TEST_CMD="$2"; shift 2 ;;
+    --expect)  [ $# -ge 2 ] || { usage; exit 2; }; EXPECT="$2"; shift 2 ;;
+    --timeout) [ $# -ge 2 ] || { usage; exit 2; }; TIMEOUT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *)         die "unknown argument: $1" ;;
+  esac
+done
+[ -n "$PATCH" ] && [ -n "$TEST_CMD" ] && [ -n "$EXPECT" ] || die "--patch, --test and --expect are all required"
+case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout takes whole seconds" ;; esac
+[ -f "$PATCH" ] || die "patch $PATCH does not exist"
+PATCH=$(cd "$(dirname "$PATCH")" && pwd -P)/$(basename "$PATCH")
+
+TOP=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository"
+cd "$TOP" || die "cannot enter $TOP"
+
+TARGETS=$(git apply --numstat "$PATCH" 2>/dev/null | cut -f3-)
+[ -n "$TARGETS" ] || die "$PATCH is not a patch git apply can read"
+dirty=$(printf '%s\n' "$TARGETS" | while IFS= read -r f; do git status --porcelain -- "$f"; done)
+[ -z "$dirty" ] || die "target has uncommitted changes; commit or stash it first:
+$dirty"
+git apply --whitespace=nowarn --check "$PATCH" 2>/dev/null || die "$PATCH does not apply to the working tree"
+
+fingerprint() {  # the targets' content, or "absent", one line each
+  printf '%s\n' "$TARGETS" | while IFS= read -r f; do
+    if [ -e "$f" ]; then printf '%s %s\n' "$(git hash-object -- "$f")" "$f"; else printf 'absent %s\n' "$f"; fi
+  done
+}
+BEFORE=$(fingerprint)
+
+OUT=$(mktemp); CHILD=""; WATCH=""; APPLIED=0
+
+# Run the command in its own process group, so a timeout or an interrupt ends
+# everything it started: a hung mutation usually loops in a subshell, and
+# killing only the parent would leave that running.
+run_test() {  # -> RC, TIMED_OUT; output in $OUT
+  set -m
+  (eval "$TEST_CMD") >"$OUT" 2>&1 </dev/null &
+  CHILD=$!
+  rm -f "$OUT.timeout"
+  # The watcher marks the timeout before it kills, so the verdict never depends
+  # on whether the watcher itself is still alive when the child exits.
+  (sleep "$TIMEOUT"; : > "$OUT.timeout"; kill -TERM -- -"$CHILD" 2>/dev/null; sleep 2; kill -KILL -- -"$CHILD" 2>/dev/null) >/dev/null 2>&1 &
+  WATCH=$!
+  set +m
+  wait "$CHILD"; RC=$?
+  kill -- -"$WATCH" 2>/dev/null; wait "$WATCH" 2>/dev/null
+  if [ -e "$OUT.timeout" ]; then TIMED_OUT=1; else TIMED_OUT=0; fi
+  CHILD=""; WATCH=""
+}
+
+restore() {
+  [ "$APPLIED" -eq 1 ] || return 0
+  git apply --whitespace=nowarn -R "$PATCH" 2>/dev/null
+  APPLIED=0
+}
+
+on_signal() {
+  [ -n "$CHILD" ] && kill -TERM -- -"$CHILD" 2>/dev/null
+  [ -n "$WATCH" ] && kill -- -"$WATCH" 2>/dev/null
+  restore
+  rm -f "$OUT" "$OUT.timeout"
+  if [ "$(fingerprint)" != "$BEFORE" ]; then
+    printf 'ensemble-mutation-check: interrupted, and the restore failed:\n%s\n' "$TARGETS" >&2
+    exit 4
+  fi
+  exit 130
+}
+trap on_signal INT TERM HUP
+trap 'rm -f "$OUT" "$OUT.timeout"' EXIT
+
+# --- baseline ---------------------------------------------------------------------
+run_test
+if [ "$TIMED_OUT" -eq 1 ] || [ "$RC" -ne 0 ]; then
+  printf 'baseline is red (exit %s%s); fix it before measuring a mutation\n' "$RC" \
+    "$([ "$TIMED_OUT" -eq 1 ] && echo ', timed out')" >&2
+  exit 3
+fi
+if grep -qF -- "$EXPECT" "$OUT"; then
+  die "--expect text appears in the passing baseline output, so it is not failure-specific: $EXPECT"
+fi
+
+# --- mutated ------------------------------------------------------------------------
+git apply --whitespace=nowarn "$PATCH" || die "$PATCH failed to apply"
+APPLIED=1
+run_test
+restore
+
+AFTER=$(fingerprint)
+if [ "$AFTER" != "$BEFORE" ]; then
+  printf 'ensemble-mutation-check: restore failed; these files differ from before:\n' >&2
+  diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") | sed -n 's/^> [^ ]* //p' >&2
+  exit 4
+fi
+
+if [ "$TIMED_OUT" -eq 1 ]; then
+  echo "inconclusive: the mutated run timed out after ${TIMEOUT}s"
+  exit 5
+fi
+if [ "$RC" -eq 0 ]; then
+  echo "survived: the mutated run passed"
+  exit 1
+fi
+if grep -qF -- "$EXPECT" "$OUT"; then
+  echo "caught: exit $RC with the expected failure"
+  exit 0
+fi
+echo "inconclusive: exit $RC without the expected failure; last lines:"
+tail -5 "$OUT"
+exit 5

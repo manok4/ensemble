@@ -12,13 +12,14 @@
 #   PREFLIGHT FIRST        the refusals run before discovery reads anything.
 #   LEDGER BEFORE EDIT     evidence is written before the batch is touched.
 #   VERIFY BEFORE COMMIT   the ledger verifier gates the commit (U2).
+#   MUTATE ON CLEAN CODE   after the test edits, before seams touch production (U3).
 #   RED BASELINE KEPT      a failing test is a product bug, never a deletion.
 #   NO PUSH, NO MERGE      /en-ship owns those.
 #
 # Negative controls at authoring: removing disable-model-invocation, moving the
 # preflight below discovery, moving the ledger step below the edit step, moving
-# the verifier below the commit, and deleting the red-baseline clause each
-# turned its assertion red.
+# the verifier below the commit, moving the mutation step below the seam
+# removal, and deleting the red-baseline clause each turned its assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -61,6 +62,21 @@ if [ -n "$ver" ] && [ -n "$com" ] && [ "$ver" -lt "$com" ] && [ "$edit" -lt "$ve
 else
   fail "the verifier must run between the edit and the commit" "edit=${edit:-none} verify=${ver:-none} commit=${com:-none}"
 fi
+# Mutations run on clean production files: after the test edits, before the
+# seam removal touches production code (the check refuses dirty targets), and
+# before the verifier, which requires their diffs to exist.
+mut=$(step_of 'ensemble-mutation-check'); seam=$(step_of '\\*\\*Remove the seams')
+if [ -n "$mut" ] && [ -n "$seam" ] && [ "$edit" -lt "$mut" ] && [ "$mut" -lt "$seam" ] && [ "$mut" -lt "$ver" ]; then
+  pass "mutations (step $mut) run after the test edits and before seams (step $seam) and the verifier"
+else
+  fail "mutations must run between the test edits and the seam removal" \
+       "edit=${edit:-none} mutation=${mut:-none} seams=${seam:-none} verify=${ver:-none}"
+fi
+grep -qiE 'never its bare name' "$SK" \
+  && pass "--expect is the keeper's failure output, never its bare name" \
+  || fail "SKILL.md must say --expect is failure output, not a name" \
+          "a name printed on a passing run proves nothing about failure"
+
 awk '/^## Process/{on=1} /^## Retention/{on=0} on' "$SK" | grep -qE 'Nothing is committed until it exits 0' \
   && pass "the commit is conditional on the verifier's exit 0" \
   || fail "the flow must commit only on the verifier's exit 0"
