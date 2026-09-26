@@ -96,6 +96,7 @@ gate and `/en-ship`'s preflight select something here instead of reporting
 - **Capture a learning after a fix** → `/en-learn capture`
 - **Ad-hoc peer review** → `/en-review --peer <path-or-ref>`
 - **Diagnose project setup** → `/en-setup`
+- **Prune a bloated test suite** → `/en-test-audit [<path>]`
 
 ## Notes for Claude Code users
 
