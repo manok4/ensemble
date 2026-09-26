@@ -535,9 +535,11 @@ The count read **fourteen** until 2026-09-03, and had done since `en-flow` and `
 - **Process (high-level).** (`skills/en-test-audit/SKILL.md` is canonical.)
   1. Preflight script: refuses the default branch, a dirty tree, a missing scope and an undeclared Test command; records the baseline SHA and whether the suite is green. A red baseline is reported as a product bug, never deleted.
   2. Read-only discovery; every declaration in the judged files gets a ledger row (R/F/C/D) with candidate evidence before any edit.
-  3. Edit one owner-boundary batch, removing the test-only seams it unlocks; run owner and sibling tests.
-  4. Commit batch and ledger together; hand off counts, retained false positives, proof run, and production versus test lines.
-- **Reference files.** `references/good-tests.md` (shared), `references/ledger-format.md`, `references/script-invocation.md`; script `ensemble-test-audit-preflight`.
+  3. Edit the tests; prove each moved (C) or repaired (F) assertion with `ensemble-mutation-check`, which counts only the keeper's own failure text and restores the files exactly; then remove the test-only seams the batch unlocked.
+  4. Stage, and send the ledger plus staged diff to the cross-agent peer (read-tree) for a preservation review: did a contract lose its only proof, can a new assertion pass for the wrong reason. A peer that is off or failed stops the batch uncommitted; `--resume <ledger> --no-peer` is the only unreviewed route, and the ledger records it.
+  5. `ensemble-test-ledger-verify --tree` gates the commit, which carries a `Test-Audit-Ledger:` trailer; hand off counts, retained false positives, proof run, and production versus test lines.
+- **Cross-review.** On: the preservation review, via the code variant of `ensemble-build-peer-prompt` and the shared `ensemble-peer-invoke`.
+- **Reference files.** `references/good-tests.md` (shared), `references/ledger-format.md`, `references/peer-brief.md`, `references/peer-contract.md` (shared), `references/finding-schema.md` (shared), `references/script-invocation.md`; scripts `ensemble-test-audit-preflight`, `ensemble-test-ledger-verify`, `ensemble-mutation-check`, `ensemble-test-audit-review-artifact`, and the peer stack carried from `/en-review`.
 
 ## 6. Agent Catalog
 

@@ -19,6 +19,11 @@ Finds tests that cost more than they protect and removes them, one owner-boundar
 
 `/en-test-audit [<path>]`. The scope defaults to the whole repo.
 
+| Flag | Effect |
+|---|---|
+| `--resume <ledger>` | Return to a batch that stopped staged because the preservation review could not run. Step 1 runs the preflight with `--resume <ledger>`, which accepts only the ledger's own staged batch; the run then continues at step 10. |
+| `--no-peer` | Only with `--resume`. Commit the staged batch without a preservation review, writing `preservation_review: skipped-by-flag` into the ledger and saying so in the hand-off. The only route to an unreviewed commit. |
+
 ## Process
 
 1. **Preflight.** If `ENSEMBLE_PEER_REVIEW=true`, stop: this skill never runs inside a peer subprocess. Then `bash "$SKILL_DIR/scripts/ensemble-test-audit-preflight" --scope <path>`. Exit 2 stops the run with the reason it printed: default branch, dirty tree, missing scope, or no Test command in AGENTS.md. Keep its `baseline_sha=` and `test_command=`. **`baseline=red` is a finding, not a licence:** report each failing test as a probable product bug, reproduce it, and leave it alone. A test that fails on the baseline is never deleted to make the suite pass.
@@ -33,13 +38,20 @@ Finds tests that cost more than they protect and removes them, one owner-boundar
 7. **Prove each moved or repaired assertion can fail.** For every C and F row, break the production behaviour the keeper guards, save it as a patch, and restore the file: edit it, `git diff -- <file> > docs/test-audits/<date>-<slug>/mutations/<name>.diff`, `git checkout -- <file>`. Then `bash "$SKILL_DIR/scripts/ensemble-mutation-check" --patch <diff> --test '<the keeper alone>' --expect '<the keeper's failure output>'`. `--expect` is the assertion message or the runner's failure line for that keeper, never its bare name. Exit 0 is caught: record the diff's path, relative to the ledger, in the row's Mutation cell. Exit 1 (survived) or 5 (inconclusive) means the keeper has not been shown to catch it: repair the keeper, or return the row to R. Exit 4 means the restore failed: **stop** and name the files.
 8. **Remove the seams the batch unlocked.** Delete the test-only exports, flags, wrappers and reset hooks whose only callers were the removed tests, and list them under `## Seams removed`; do not keep aliases. Prefer a net-negative production line count.
 9. **Run the owner and sibling tests** for everything the batch touched. A retained test that now fails is a product bug to reproduce, not a row to flip to D.
-10. **Verify the ledger.** `bash "$SKILL_DIR/scripts/ensemble-test-ledger-verify" <ledger> --tree`. It checks every row against its mark, and every named declaration against `baseline_sha` and the working tree. Exit 1 prints one line per violation: fix the ledger or the batch, never the verifier's input to dodge it, and re-run. Exit 2 means the file is malformed. **Nothing is committed until it exits 0.**
-11. **Commit** the batch and the ledger together, staged by path, never `git add -A`, with a `Test-Audit-Ledger: <ledger path>` trailer so the justification is findable from the commit.
-12. **Hand off**:
+10. **Stage, then the preservation review.** Stage the batch, the ledger and its mutation diffs by path, never `git add -A`. `bash "$SKILL_DIR/scripts/ensemble-test-audit-review-artifact" <ledger>` writes them into one file and prints its path. Then run the peer the way `/en-review` does:
+    - `eval "$(bash "$SKILL_DIR/scripts/ensemble-detect-host")"` for `PEER_CMD`, `PEER_FORMAT`, `PEER_TURNS`, `PEER_MODE`; read `peer_model_<peer>` and `peer_effort_<peer>` with `$SKILL_DIR/scripts/ensemble-config-get` and translate them with `$SKILL_DIR/scripts/ensemble-peer-flags`.
+    - Build the prompt: `bash "$SKILL_DIR/scripts/ensemble-build-peer-prompt" --brief "$SKILL_DIR/references/peer-brief.md" --artifact-file <artifact> --project-context "<one line>" --goal "Preservation review of a test-audit batch" --peer-mode "$PEER_MODE"`.
+    - Source `$SKILL_DIR/scripts/ensemble-peer-invoke` and, with `ENSEMBLE_PEER_REVIEW=true`, start it detached with `ensemble_peer_start --access read-tree --schema "$SKILL_DIR/scripts/peer-findings.schema.json"` plus the flags above; `ensemble_peer_wait` in slices up to the read-tree ceiling (1200s), then `ensemble_peer_result`. Findings follow `references/finding-schema.md`.
+
+    Decide each finding per the brief's last section. A restored row gets its own caught mutation (step 7), is re-staged, and the artifact is rebuilt before step 11. Write the reviewer into the ledger's `preservation_review`: `cross-agent`, or `single-agent-fallback` when only the host's CLI ran, which still counts as a fresh reviewer. **A decision of `peer: "off"` or any `peer-failed:*` reason stops the run here, uncommitted**, with the batch staged and the reason reported; the way back is `--resume <ledger>`, with `--no-peer` only if the user chooses to commit unreviewed.
+11. **Verify the ledger.** `bash "$SKILL_DIR/scripts/ensemble-test-ledger-verify" <ledger> --tree`. It checks every row against its mark, and every named declaration against `baseline_sha` and the working tree. Exit 1 prints one line per violation: fix the ledger or the batch, never the verifier's input to dodge it, and re-run. Exit 2 means the file is malformed. **Nothing is committed until it exits 0.**
+12. **Commit** the batch and the ledger together, staged by path, never `git add -A`, with a `Test-Audit-Ledger: <ledger path>` trailer so the justification is findable from the commit.
+13. **Hand off**:
    - the anti-pattern categories removed, with counts;
    - production seams simplified;
    - retained false positives, and why each stays;
    - the proof actually run, focused and full;
+   - who did the preservation review (the ledger's `preservation_review`), and each finding with its decision;
    - production and tooling lines changed, reported separately from test and test-support lines (`git diff --numstat`);
    - named follow-ups: the next batch's candidates and any product bugs found.
 

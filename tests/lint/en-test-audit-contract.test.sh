@@ -13,13 +13,17 @@
 #   LEDGER BEFORE EDIT     evidence is written before the batch is touched.
 #   VERIFY BEFORE COMMIT   the ledger verifier gates the commit (U2).
 #   MUTATE ON CLEAN CODE   after the test edits, before seams touch production (U3).
+#   REVIEW, OR STOP        a peer that cannot run stops the batch; only --no-peer
+#                          commits unreviewed (U4).
 #   RED BASELINE KEPT      a failing test is a product bug, never a deletion.
 #   NO PUSH, NO MERGE      /en-ship owns those.
 #
 # Negative controls at authoring: removing disable-model-invocation, moving the
 # preflight below discovery, moving the ledger step below the edit step, moving
 # the verifier below the commit, moving the mutation step below the seam
-# removal, and deleting the red-baseline clause each turned its assertion red.
+# removal, moving the review below the verifier, letting a failed peer continue,
+# writing skipped-by-flag off the --no-peer route, and deleting the red-baseline
+# clause each turned its assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -72,6 +76,26 @@ else
   fail "mutations must run between the test edits and the seam removal" \
        "edit=${edit:-none} mutation=${mut:-none} seams=${seam:-none} verify=${ver:-none}"
 fi
+# The preservation review sees the staged batch, so it runs after the owner
+# tests and before the verifier; a peer that cannot run stops the batch, and
+# only an explicit --no-peer resume commits without it (U4).
+rev=$(step_of 'ensemble-test-audit-review-artifact'); own=$(step_of '\\*\\*Run the owner and sibling tests')
+if [ -n "$rev" ] && [ -n "$own" ] && [ "$own" -lt "$rev" ] && [ "$rev" -lt "$ver" ]; then
+  pass "the preservation review (step $rev) runs after the owner tests and before the verifier"
+else
+  fail "the preservation review must run between the owner tests and the verifier" \
+       "owner=${own:-none} review=${rev:-none} verify=${ver:-none}"
+fi
+grep -qE 'peer-failed:\*. reason stops the run here, uncommitted' "$SK" \
+  && pass "a peer that is off or failed stops the run uncommitted" \
+  || fail "SKILL.md must stop, uncommitted, when the peer is off or failed"
+nopeer=$(grep -c 'skipped-by-flag' "$SK")
+if [ "$nopeer" -ge 1 ] && ! grep -v -- '--no-peer' "$SK" | grep -q 'skipped-by-flag'; then
+  pass "skipped-by-flag is written only on the --no-peer route"
+else
+  fail "skipped-by-flag must appear only alongside --no-peer" "lines naming it without --no-peer exist"
+fi
+
 grep -qiE 'never its bare name' "$SK" \
   && pass "--expect is the keeper's failure output, never its bare name" \
   || fail "SKILL.md must say --expect is failure output, not a name" \
