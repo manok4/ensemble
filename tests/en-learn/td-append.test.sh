@@ -137,7 +137,7 @@ ino_after=$(ls -i "$TR" | awk '{print $1}')
 
 # --- the tracker keeps its mode ---
 fixture; chmod 644 "$TR"; add >/dev/null 2>&1
-assert_eq "644" "$(stat -f '%Lp' "$TR" 2>/dev/null || stat -c '%a' "$TR")" "an append keeps the tracker's mode"
+assert_eq "-rw-r--r--" "$(ls -l "$TR" | cut -c1-10)" "an append keeps the tracker's mode"
 assert_eq "" "$(ls -A "$TMP/docs/plans" | grep -v '^tech-debt-tracker.md$')" "no scratch file is left beside the tracker"
 
 # --- list keys ---

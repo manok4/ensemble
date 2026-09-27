@@ -107,12 +107,15 @@ NEXT="TD$(( ${last:-0} + 1 ))"
 TODAY=$(date +%Y-%m-%d)
 
 # Scratch files live beside the tracker under unpredictable names. The result
-# takes the tracker's mode and is renamed over it: a same-directory rename swaps
-# in a complete file at once, so an interrupted append never truncates it.
+# file starts as a `cp -p` of the tracker, so it carries the tracker's mode
+# without asking stat (whose flags differ between BSD and GNU), and is renamed
+# over it: a same-directory rename swaps in a complete file at once, so an
+# interrupted append never truncates the tracker.
 DIR=$(dirname "$TRACKER")
 ENTRY_FILE=$(mktemp "$DIR/.td-append-entry.XXXXXX")
 OUT_FILE=$(mktemp "$DIR/.td-append-out.XXXXXX")
 trap 'rm -f "$ENTRY_FILE" "$OUT_FILE"' EXIT
+cp -p "$TRACKER" "$OUT_FILE" || die 1 "cannot copy $TRACKER"
 {
   printf '### %s. %s\n\n' "$NEXT" "$TITLE"
   printf -- '- **Source:** %s\n' "$SOURCE"
@@ -135,9 +138,6 @@ awk -v entry="$ENTRY_FILE" '
   { print }
   END { if (open && !done) { print ""; put() } }
 ' "$TRACKER" > "$OUT_FILE"
-MODE=$(stat -f '%Lp' "$TRACKER" 2>/dev/null || stat -c '%a' "$TRACKER") \
-  || die 1 "cannot read the mode of $TRACKER"
-chmod "$MODE" "$OUT_FILE"
 mv -f "$OUT_FILE" "$TRACKER"
 
 echo "$NEXT"
