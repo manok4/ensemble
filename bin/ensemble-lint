@@ -902,6 +902,40 @@ check_plan_resolutions_schema() {
   done <<< "$entries"
 }
 
+# --- Rule: td.enforce-layer ---
+# A tracker entry routed to L1 or L2 (references/enforcement-layers.md) must name
+# a concrete check, `<path>: <rule>`, with both parts present; otherwise the
+# router has produced prose with a layer label. Open entries only, and only
+# entries that carry `Enforce at:`, so unrouted entries are untouched.
+check_td_enforce_layer() {
+  [ "$1" = "docs/plans/tech-debt-tracker.md" ] || return 0
+  local file="$1" tdid layer check
+  while IFS='|' read -r tdid layer check; do
+    [ -z "$tdid" ] && continue
+    case "$layer" in
+      L1|"L1 structure"|L2|"L2 static")
+        check="${check#\`}"; check="${check%\`}"
+        if ! printf '%s' "$check" | grep -qE '^[A-Za-z0-9_./-]+:[[:space:]]+[^[:space:]]'; then
+          emit "td.enforce-layer" "$file" "" "P1" \
+            "$tdid is routed to ${layer%% *} but names no concrete check" \
+            "Add '- **Proposed check:** <path>: <rule or assertion>' per references/enforcement-layers.md"
+        fi ;;
+      L3|"L3 rules"|L4|"L4 skill") ;;
+      *)
+        emit "td.enforce-layer" "$file" "" "P2" \
+          "$tdid has an unknown Enforce at value '$layer'" \
+          "Use one of: L1 structure, L2 static, L3 rules, L4 skill" ;;
+    esac
+  done < <(awk '
+    function flush() { if (id != "" && routed) print id "|" layer "|" check; id=""; layer=""; check=""; routed=0 }
+    /^## / { flush(); open = ($0 ~ /^## Open[[:space:]]*$/); next }
+    open && /^### TD[0-9]+\./ { flush(); id=$2; sub(/\.$/, "", id); next }
+    open && id != "" && /\*\*Enforce at:\*\*/ { routed=1; v=$0; sub(/.*\*\*Enforce at:\*\*[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v); layer=v; next }
+    open && id != "" && /\*\*Proposed check:\*\*/ { v=$0; sub(/.*\*\*Proposed check:\*\*[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v); check=v; next }
+    END { flush() }
+  ' "$file")
+}
+
 # --- Run lints ---
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -921,6 +955,7 @@ while IFS= read -r file; do
   check_plan_unit_test_scenarios "$file"
   check_plan_destructive_order "$file"
   check_plan_resolutions_schema "$file"
+  check_td_enforce_layer "$file"
   check_cross_links "$file"
   check_architecture_freshness "$file"
   check_generated_marker "$file"

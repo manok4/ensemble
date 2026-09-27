@@ -109,6 +109,12 @@ The catalog of file-shape checks that `bin/ensemble-lint` enforces. Distinct fro
 | `unit.category-enum` | P2 | `Category:` when present must match the documented enum |
 | `unit.test-scenarios` | P2 | A `category: feature` unit whose `Test scenarios:` has fewer than two scenario lines is flagged — a nudge toward real scenarios across happy/edge/error/integration (never a P1 blocker) |
 
+### `td.*`: routed tech-debt entries (`docs/plans/tech-debt-tracker.md` only)
+
+| Rule | Severity | Notes |
+|---|---|---|
+| `td.enforce-layer` | P1 / P2 | An open entry with `Enforce at: L1` or `L2` must carry `Proposed check: <path>: <rule>` with both parts present (P1). An unknown layer value is P2. Entries without `Enforce at:` are not checked. The layers are defined in `references/enforcement-layers.md`. |
+
 ## Output format
 
 JSON-lines, one violation per line:

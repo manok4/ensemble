@@ -74,8 +74,11 @@ land here.
 - **How the code works.** Reading is cheaper than your summary, and your summary
   goes stale while the code does not.
 - **What a fix changed.** The diff says it, permanently and precisely.
-- **Restating a convention already written down.** If `AGENTS.md`, `CLAUDE.md` or
-  a linter enforces it, a second copy only creates a chance to disagree.
+- **Already enforced at the strongest feasible layer.** If a type, a module
+  boundary, a lint rule or a test already rejects the mistake, a prose copy only
+  creates a chance to disagree. A line in `AGENTS.md` or `CLAUDE.md` for something
+  a lint could check does not count as enforcement: that candidate is not
+  rejected here, it is routed by `enforcement-layers.md` (see `artifact-types.md`).
 - **Point-in-time state.** "The peer path is currently slow." True today, noise
   next month. Tech-debt tracker or an issue.
 - **The narrative of the session.** What you tried in what order is interesting

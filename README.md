@@ -299,7 +299,7 @@ You can run both simultaneously for two AI perspectives.
 | 4 | `/en-build` | Execute a plan unit by unit on a feature branch (implement, test, lint, commit per unit), then one `/en-simplify` pass and one cross-agent review over the branch diff, an evidence audit, and the learning checkpoint. |
 | 5 | `/en-review` | Code review of the current branch with a cross-agent peer on by default. `--cross` adds host personas (correctness, testing, maintainability, standards always; security, performance, migrations when the diff matches); findings below the confidence threshold file as TD entries. |
 | 6 | `/en-qa` | Test the work like a real user: lint, typecheck, tests, then Playwright end-to-end on the golden path and edge cases. Each bug gets a fix, a regression test and a commit. |
-| 7 | `/en-learn` | Capture durable learnings as a term, a decision or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Also `--refresh`, `--lint` and `--migrate`. |
+| 7 | `/en-learn` | Capture durable learnings as a term, a decision or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Also `--refresh`, `--lint`, `--migrate` and `--enforce-audit`. |
 | 8 | `/en-ship` | Preflight (lint, typecheck, targeted tests, secret scan, merge check), conventional commit, push and `gh pr create`. `--auto-merge` optional. |
 | 9 | `/en-resolve-pr` | Address review comments on the current PR with a six-verdict rubric per comment, then fix, reply and resolve. Needs-human items are surfaced, never guessed. |
 

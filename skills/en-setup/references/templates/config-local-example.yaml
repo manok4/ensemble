@@ -170,6 +170,10 @@ default_branch_fallback: main
 #   auto_plan_threshold_loc: 50
 #   auto_plan_threshold_locations: 2
 #   max_drafts_per_run: 3
+#   # Recurrence scan (step 8b): a correction made in 2+ merged PRs within the
+#   # window becomes one routed TD entry. Off by default.
+#   recurrence_scan: false
+#   recurrence_window_days: 60
 
 # --- Plan branching ---
 

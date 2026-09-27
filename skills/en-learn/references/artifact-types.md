@@ -31,6 +31,29 @@ written at all, and the gate's default is to write nothing.
 
 Only a candidate that has already passed the gate reaches the routing question.
 
+## Enforcement comes first
+
+Before asking which artifact, ask where the *next* occurrence should be stopped,
+using `enforcement-layers.md`, and follow its Outcomes. For capture that means:
+
+- **L1 to L4:** file through `$SKILL_DIR/scripts/ensemble-td-append` with
+  `--source "en-learn capture"`. This outcome writes no learning file, and the
+  artifact routing below does not run.
+- **The lever, now.** The entry is filed first, so the correction is on record
+  whatever happens next. Then, only when a person invoked capture directly, and
+  only for L1 or L2 with a check path inside this repo, ask once: "add this check
+  on the branch now?" Yes hands the proposal back as the next piece of work; the
+  entry resolves when the check lands. A caller-driven or unattended run
+  (`/en-build`, `/en-loop`, `CI=true`) never asks.
+- **L5:** continue to the routing below.
+
+| Candidate | Outcome |
+|---|---|
+| "routes never call `useAuthFetch` directly", in `AGENTS.md`, checked by nothing | L2: biome `noRestrictedImports` scoped to `frontend/src/routes/` |
+| "`/en-build` forgot the simplify pass" | L4: names `skills/en-build/SKILL.md` and the step |
+
+The rubric carries the already-enforced and L5 examples.
+
 ## Routing
 
 Ask what the candidate **is**, not what it is about.

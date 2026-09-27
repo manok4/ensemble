@@ -21,6 +21,7 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | `--refresh` | Audit content staleness (~monthly) | Per-entry: keep / update / replace / archive |
 | `--lint` | Wiki-graph health check | JSON report of orphans, missing back-refs, etc.; `--fix` auto-applies |
 | `--migrate` | A project still on the retired `bugs/`/`patterns/`/`decisions/` layout | Entries moved to the artifact-type layout; legacy decisions converted to ADRs |
+| `--enforce-audit` | Adopting the router, or a map file grew | TD entries for prose rules a check should hold; `references/enforce-audit.md` |
 
 ## Always-on behaviors
 
@@ -57,7 +58,7 @@ After every write:
 
    **One learning per run.** A session holding two distinct durable lessons gets two runs; batching pushes the weaker through on the stronger one's merit.
 
-5. **Route to an artifact type — read `references/artifact-types.md` and follow it.** The gate decided *whether* to write; this decides *which artifact*, and the three differ in shape, lifecycle, and write path.
+5. **Route to an artifact type — read `references/artifact-types.md` and `references/enforcement-layers.md` and follow them.** The gate decided *whether* to write; this decides *which artifact*, and the three differ in shape, lifecycle, and write path. Enforcement is decided first: L1 to L4 file a TD entry and write no artifact; only L5 continues here.
 
    A candidate that says **what a word means here** is a **term** (`docs/CONTEXT.md`). One that records **a choice and the rules that now hold** is a **decision** (`docs/decisions/NNNN-<slug>.md`). One that records **a solved problem whose lesson outlives the fix** is a **solution** (`docs/learnings/<slug>-<date>.md`).
 

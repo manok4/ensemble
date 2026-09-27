@@ -52,6 +52,9 @@ updated: YYYY-MM-DD
 | `Suggested fix` | yes | Concrete description |
 | `Logged` | yes | `YYYY-MM-DD` (date the entry was added) |
 | `Resolved` | for resolved entries | `YYYY-MM-DD by <commit-sha> in <plan-path>` |
+| `Enforce at` | routed entries only | `L1 structure` \| `L2 static` \| `L3 rules` \| `L4 skill`, the layer from the enforcement-layer rubric that `/en-learn` and `/en-sweep` carry |
+| `Proposed check` | when `Enforce at` is L1 or L2 | `<path>: <rule or assertion>`, both parts non-empty; `bin/ensemble-lint` rule `td.enforce-layer` rejects an entry without one |
+| `Rule key` | routed entries only | Kebab-case slug naming the correction; `ensemble-td-append` refuses a second open entry with the same key |
 
 ## TD-ID stability
 
