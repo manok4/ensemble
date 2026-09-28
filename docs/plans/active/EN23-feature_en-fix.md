@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN23
 title: /en-fix, small bug fixes and improvements from request to PR without a plan
-status: open
+status: in_progress
 location: active
 created: 2026-09-27
 shipped:
