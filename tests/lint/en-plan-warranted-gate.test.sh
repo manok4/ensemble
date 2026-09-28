@@ -75,13 +75,23 @@ else
   fail "risk surfaces must never be offered the skip"
 fi
 
-# --- 5. the no-file consequence is stated, not implied ---
-if grep -qiE '/en-build. is not available|no file, no U-IDs' "$SKILL" \
-   && grep -qiE 'consumes a plan file' "$SKILL"; then
-  pass "declining the file names its consequence for /en-build"
+# --- 5. the no-file consequence is stated, and the path leads somewhere ---
+# /en-plan "fix the typo in the --verbose help text" qualifies for the skip.
+# The user who takes it gets no plan file and no U-IDs, is told /en-build
+# cannot run, and is pointed at /en-fix, which carries a small change to a PR
+# without a plan (D124). Suggested, never invoked: /en-fix is manual-only.
+if printf '%s' "$gate_block" | grep -qF 'no file, no U-IDs' \
+   && printf '%s' "$gate_block" | grep -qiE 'consumes a plan file' \
+   && printf '%s' "$gate_block" | grep -qF 'suggest `/en-fix`'; then
+  pass "declining the file names its consequence for /en-build and suggests /en-fix"
 else
-  fail "the no-file path must state that /en-build cannot run" \
+  fail "the no-file path must state that /en-build cannot run and suggest /en-fix" \
        "implying a handoff that cannot happen is worse than writing the file"
+fi
+if printf '%s' "$gate_block" | grep -qiE 'invok(e|ing) (the )?`?/en-fix'; then
+  fail "the no-file path must suggest /en-fix, never invoke it" "a manual-only skill cannot be invoked"
+else
+  pass "the no-file path suggests /en-fix and never invokes it"
 fi
 
 # --- 6. the gate and the design close-out do not contradict each other ---
