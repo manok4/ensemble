@@ -6,8 +6,8 @@
 # written before the question, and the contract a skill caller relies on.
 #
 # Negative controls at authoring: re-adding a "Fix it now" option, re-adding a
-# test-first edit step, and moving the blocking choice above the findings rule
-# each turned an assertion red.
+# test-first edit step, moving the blocking choice above the findings rule, and
+# dropping telemetry mode's verdict each turned an assertion red.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,7 @@ else
 fi
 dhas "$DS" "**Never writes code.**"         "neither mode writes code"
 grep -qiE "[Cc]ausal.chain gate" "$DS" && pass "the causal-chain gate is stated" || fail "the causal-chain gate is stated"
-dhas "$DS" "one change at a time"           "states the one-change-at-a-time principle"
+dhas "$DS" "one hypothesis at a time"       "states the one-hypothesis-at-a-time principle"
 if [ -f "$REF" ] && grep -qF "debug-investigation.md" "$DS"; then
   pass "debug-investigation reference exists and is referenced"
 else
@@ -50,9 +50,19 @@ else
   pass "no step writes a test or edits source"
 fi
 dlacks "$DS" "suggest \`/en-ship\`"         "the handoff no longer suggests /en-ship"
-grep -qiE 'invok(e|ing) (the )?`?/en-fix' "$DS" \
-  && fail "en-debug suggests /en-fix and never invokes it" "a manual-only skill cannot be invoked" \
-  || pass "en-debug suggests /en-fix and never invokes it"
+# Invoking /en-fix, a manual-only skill, is caught by contract-shape.test.sh.
+dhas "$DS" "Neither mode leaves an edit behind" "no edit survives a diagnosis"
+dhas "$DS" "Temporary instrumentation is reverted" "boundary instrumentation is reverted before the handoff"
+dhas "$DS" "ends with \`git bisect reset\`"  "bisect restores the tree it started from"
+dhas "$CT" "temporary instrumentation is reverted" "the contract's read-only promise names the revert"
+
+# --- a trace id from /en-fix: telemetry mode returns a verdict too ------------
+tele=$(awk '/^## Process/{on=1; next} /^## /{on=0} on && /^10\. \*\*Surface a hypothesis/' "$DS")
+grep -qF 'Carry a `verdict`' <<<"$tele" && grep -qF 'continue into code mode' <<<"$tele" \
+  && pass "a telemetry hypothesis carries a verdict, or continues into code mode" \
+  || fail "telemetry step 10 must carry a verdict or continue into code mode" "$tele"
+dhas "$DS" "When a skill caller passed resolved issue text, use it and fetch nothing" \
+                                            "a skill caller's resolved issue text is used, not re-fetched"
 
 # --- /en-debug "checkout total is off by one cent", run by a person ----------
 # The findings block is written in full before the choice, and the choice
@@ -85,13 +95,20 @@ dhas "$DS" "On a \`convergent\` verdict, suggest \`/en-fix\`" \
 
 # --- invoked by /en-fix: no question, a verdict return ------------------------
 dhas "$DS" "\`CONTRACT.md\`"                 "SKILL.md points a skill caller at CONTRACT.md"
-dhas "$CT" "never calls a"                  "the contract promises no blocking question"
+dhas "$CT" "never calls a blocking-question tool" "the contract promises no blocking question"
+ret=$(awk '/^## Return/{on=1; next} /^## /{on=0} on' "$CT")
+for f in root_cause proposed_fix reason; do
+  grep -qF "\`$f\`" <<<"$ret" && pass "the contract's Return names \`$f\`" || fail "the contract's Return must name \`$f\`"
+done
+grep -qE '`reason`.*required on `design-problem` and `unresolved`' <<<"$ret" \
+  && pass "a stop verdict must carry its reason" \
+  || fail "the contract must require reason on design-problem and unresolved"
 for v in convergent divergent design-problem unresolved; do
   grep -qF "\`$v\`" "$CT" && grep -qF "\`$v\`" "$DS" \
     && pass "verdict '$v' is in both contract and skill" \
     || fail "verdict '$v' is in both contract and skill"
 done
-dhas "$CT" "never edits a file"             "the contract promises read-only"
+dhas "$CT" "never leaves a file edited"     "the contract promises read-only"
 
 # --- investigation techniques ------------------------------------------------
 dhas "$DS" "instrument the boundaries before theorising" \
@@ -123,10 +140,11 @@ grep -qE '^\| .en-debug. \| \(any\) \| fallback only' \
   || fail "the dispatch matrix has en-debug's row"
 
 # --- D89, amended by D124: the description says what the skill does ---------
-sed -n 3p "$DS" | grep -q "telemetry mode" \
+desc=$(sed -n 3p "$DS")
+grep -q "telemetry mode" <<<"$desc" \
   && pass "the description names telemetry mode" \
   || fail "the description must name telemetry mode"
-sed -n 3p "$DS" | grep -qF 'Never writes code' && sed -n 3p "$DS" | grep -qF '/en-fix' \
+grep -qF 'Never writes code' <<<"$desc" && grep -qF '/en-fix' <<<"$desc" \
   && pass "the description says it never writes code and names /en-fix" \
   || fail "the description must say it never writes code and name /en-fix"
 CONV="$REPO_ROOT/skills/en-debug/references/observability-conventions.md"
@@ -134,6 +152,6 @@ grep -q "logging.unstructured" "$CONV" && fail "the conventions reference no lon
 TPL="$REPO_ROOT/skills/en-setup/references/templates/config-local-example.yaml"
 grep -q "allowed_log_commands" "$TPL" && grep -q "max_log_lines" "$TPL" \
   && pass "the config template carries the keys the skill reads" || fail "the config template must carry allowed_log_commands and max_log_lines"
-grep -qE '/en-build.*write a fix|/en-build \(write a fix' "$DS" && fail "the telemetry handoff no longer sends a hypothesis to /en-build" || pass "the telemetry handoff no longer sends a hypothesis to /en-build"
+grep -qE '/en-build.*write a fix|/en-build \(write a fix|follow-up `/en-build` acts on' "$DS" && fail "the telemetry handoff no longer sends a hypothesis to /en-build" || pass "the telemetry handoff no longer sends a hypothesis to /en-build"
 
 report

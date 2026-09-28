@@ -88,11 +88,12 @@ else
   fail "the no-file path must state that /en-build cannot run and suggest /en-fix" \
        "implying a handoff that cannot happen is worse than writing the file"
 fi
-if printf '%s' "$gate_block" | grep -qiE 'invok(e|ing) (the )?`?/en-fix'; then
-  fail "the no-file path must suggest /en-fix, never invoke it" "a manual-only skill cannot be invoked"
-else
-  pass "the no-file path suggests /en-fix and never invokes it"
-fi
+# Invoking /en-fix, a manual-only skill, is caught by contract-shape.test.sh.
+# plan-prewrite.md owns the offer's wording, so the offer itself names /en-fix.
+PREWRITE="$REPO_ROOT/skills/en-plan/references/plan-prewrite.md"
+grep -E '^> "This is one low-risk change' "$PREWRITE" | grep -qF '`/en-fix`' \
+  && pass "the offer in plan-prewrite.md names /en-fix" \
+  || fail "plan-prewrite.md's offer must name /en-fix"
 
 # --- 6. the gate and the design close-out do not contradict each other ---
 # The close-out is downstream of the gate. If the gate could fire on a

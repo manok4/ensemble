@@ -16,6 +16,6 @@ The design-doc condition is not about size: the no-file path never reaches the p
 
 > "This is one low-risk change. I can write it up as a plan, or just describe the change for `/en-fix` to make. A plan file buys peer review and a `/en-build` run; for a change this size that may cost more than it returns."
 
-If they take the no-file path, state the change concretely and suggest `/en-fix`: **no file, no U-IDs, no peer review**, and `/en-build` cannot run, since it consumes a plan file. `/en-fix` carries a change this small to a reviewed PR without one. Say that plainly rather than implying a handoff that cannot happen.
+What happens after the user takes the no-file path is SKILL.md's, at the write step; this file owns only the offer.
 
 **Never offer the skip** when the work touches a risk surface — authentication, payments, migrations, external contracts — however small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.

@@ -11,7 +11,9 @@ Owned by `en-debug`. Callers depend on this page, not on `SKILL.md`.
 The words are the user's request plus any issue or tracker text the caller
 already resolved. `/en-debug` does not fetch from Linear itself. Mode is chosen
 from the words exactly as for a person: telemetry when they are log-anchored and
-`observability:` is configured, code mode otherwise.
+`observability:` is configured, code mode otherwise. Both modes return a
+`verdict`; a telemetry hypothesis that cannot anchor a complete causal chain
+continues into code mode.
 
 ## Non-interactive guarantee
 
@@ -39,8 +41,9 @@ A diagnosis the caller branches on. `verdict` is exactly one of:
 
 ## Authority envelope
 
-Read-only. It never edits a file, commits, pushes or opens a PR, whoever calls
-it. The fix belongs to the caller.
+Read-only in effect. It never leaves a file edited, commits, pushes or opens a
+PR, whoever calls it: temporary instrumentation is reverted and the tree checked
+identical before it returns. The fix belongs to the caller.
 
 ## Cost bounds
 

@@ -14,12 +14,20 @@
 #   PRECEDENCE             the user's word beats a Linear Bug label.
 #   STOPS                  three failed attempts, a P0 or a second blocked review,
 #                          a risk surface after review, a failed receipt.
+#   CLEAN START            tracked edits refuse the run, since /en-ship stages
+#                          every tracked modification.
+#   RECEIPT TARGET         /en-review runs with no target: the bare branch diff is
+#                          the only one its post-review check writes a receipt for.
 #   NO SILENT MERGE        --auto-merge only when the user gave it.
+#
+# Steps are referred to by title, never by number, so a reorder cannot leave a
+# cross-reference pointing at the wrong step with every assertion green.
 #
 # Negative controls at authoring: removing disable-model-invocation, moving the
 # ship step above the receipt step, moving the /en-debug invoke into the
-# improvement bullet, and deleting the post-review risk re-check each turned
-# its assertion red.
+# improvement bullet, deleting the post-review risk re-check, adding --base to
+# the review invocation, and dropping the clean-tree refusal each turned its
+# assertion red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -32,8 +40,12 @@ assert_file_exists "$SK" "the skill exists"
 
 # The number of the first Process step whose line matches a pattern.
 step_of() { awk -v pat="$1" '/^## Process/{on=1; next} /^## /{on=0} on && /^[0-9]+\. / && $0 ~ pat {sub(/\..*/, ""); print; exit}' "$SK"; }
-# The whole text of Process step N, sub-bullets included, on one line.
-step_text() { awk -v n="$1" '/^## Process/{on=1; next} /^## /{on=0} on && /^[0-9]+\. /{cur=$0; sub(/\..*/, "", cur)} on && cur==n' "$SK" | tr '\n' ' '; }
+# The lines of Process step N, one per output line, sub-bullets included.
+step_lines() { awk -v n="$1" '/^## Process/{on=1; next} /^## /{on=0} on && /^[0-9]+\. /{cur=$0; sub(/\..*/, "", cur)} on && cur==n' "$SK"; }
+# The whole text of Process step N on one line.
+step_text() { step_lines "$1" | tr '\n' ' '; }
+# The first line of Process step N that also matches an extended regex.
+step_line_matching() { step_lines "$1" | grep -m1 -E "$2"; }
 
 frontmatter=$(awk 'NR==1 && /^---$/{on=1; next} on && /^---$/{exit} on' "$SK")
 printf '%s' "$frontmatter" | grep -qx 'disable-model-invocation: true' \
@@ -51,8 +63,9 @@ chg=$(step_of 'Change, test-first'); rsk=$(step_of 'Risk re-check')
 com=$(step_of '\\*\\*Commit');     rev=$(step_of '\\*\\*Review')
 rcp=$(step_of 'Receipt gate');     shp=$(step_of '\\*\\*Ship')
 order="$pre $tri $brn $und $chg $rsk $com $rev $rcp $shp"
-if [ "$(printf '%s\n' $order | grep -c .)" -eq 10 ] && [ "$(printf '%s\n' $order | sort -n | tr '\n' ' ')" = "$order " ]; then
-  pass "the ten steps run in order: $order"
+# sort -nu drops duplicates, so two titles resolving to one step fail the count.
+if [ "$(printf '%s\n' $order | sort -nu | grep -c .)" -eq 10 ] && [ "$(printf '%s\n' $order | sort -nu | tr '\n' ' ')" = "$order " ]; then
+  pass "the ten checked steps run in strict order: $order"
 else
   fail "the steps must run preflight, triage, branch, understand, change, risk, commit, review, receipt, ship" "got: $order"
 fi
@@ -60,10 +73,26 @@ fi
 grep -qF 'ENSEMBLE_PEER_REVIEW=true' <<<"$(step_text "$pre")" \
   && pass "the preflight refuses to run inside a peer subprocess" \
   || fail "step $pre must stop under ENSEMBLE_PEER_REVIEW=true"
+if grep -nE '\bstep [0-9]+|[Ss]teps [0-9]+' "$SK" >/dev/null; then
+  fail "SKILL.md refers to steps by title, never by number" "$(grep -nE '\bstep [0-9]+|[Ss]teps [0-9]+' "$SK" | head -3)"
+else
+  pass "SKILL.md refers to steps by title, never by number"
+fi
+
+# --- /en-debug is never invoked before the bug/improvement split ---
+early=""
+i=1
+while [ -n "$und" ] && [ "$i" -lt "$und" ]; do
+  grep -qiF 'invoke `/en-debug`' <<<"$(step_text "$i")" && early="$early $i"
+  i=$((i + 1))
+done
+[ -z "$early" ] \
+  && pass "no step before Understand invokes /en-debug" \
+  || fail "/en-debug must not be invoked before the bug/improvement split" "steps:$early"
 
 # --- /en-fix "login 500s when email is null": the bug path invokes /en-debug ---
 und_text=$(step_text "$und")
-first_debug=$(awk -v n="$und" '/^## Process/{on=1; next} /^## /{on=0} on && /^[0-9]+\. /{cur=$0; sub(/\..*/, "", cur)} on && cur==n && /invoke `\/en-debug`/{print; exit}' "$SK")
+first_debug=$(step_line_matching "$und" 'invoke `/en-debug`')
 printf '%s' "$first_debug" | grep -qF '**Bug:**' \
   && pass "the first /en-debug invoke is on the bug path" \
   || fail "the first 'invoke \`/en-debug\`' in step $und must be the **Bug:** bullet" "$first_debug"
@@ -83,15 +112,20 @@ grep -qE 'make no edit, and stop' <<<"$und_text" && grep -qF 'suggest `/en-brain
 grep -qF 'resolved issue or tracker text' <<<"$und_text" \
   && pass "an identifier-only request passes the resolved issue text to /en-debug" \
   || fail "step $und must pass the resolved issue or tracker text to /en-debug"
-grep -qF 'record the pre-fix scope' <<<"$(step_text "$brn")" && grep -qF 'fix-owned files' <<<"$(step_text "$brn")" \
+brn_text=$(step_text "$brn")
+grep -qF 'record the pre-fix scope' <<<"$brn_text" && grep -qF 'fix-owned files' <<<"$brn_text" \
   && pass "the pre-fix scope is recorded before any edit (moved from /en-debug, D124)" \
   || fail "step $brn must record the pre-fix scope and track fix-owned files"
-grep -qF '`<IDENT>-<slug>`' <<<"$(step_text "$brn")" \
-  && pass "a Linear request branches as <IDENT>-<slug>" \
-  || fail "step $brn must name the branch <IDENT>-<slug> for a Linear issue"
+grep -qF '`<IDENT>-<slug>`' <<<"$brn_text" && grep -qF '`TD<N>-<slug>`' <<<"$brn_text" \
+  && pass "a Linear request branches as <IDENT>-<slug>, a tracker entry as TD<N>-<slug>" \
+  || fail "step $brn must name <IDENT>-<slug> and TD<N>-<slug> branches"
+grep -qF 'Refuse to start while tracked files carry uncommitted edits' <<<"$brn_text" \
+  && pass "a tree with uncommitted tracked edits refuses the run" \
+  || fail "step $brn must refuse to start on uncommitted tracked edits" \
+          "/en-ship stages every tracked modification, so they would ship with the fix"
 
 # --- /en-fix "make the CSV export include a header row": no /en-debug up front ---
-impr=$(awk -v n="$und" '/^## Process/{on=1; next} /^## /{on=0} on && /^[0-9]+\. /{cur=$0; sub(/\..*/, "", cur)} on && cur==n && /\*\*Improvement:\*\*/{print; exit}' "$SK")
+impr=$(step_line_matching "$und" '\*\*Improvement:\*\*')
 printf '%s' "$impr" | grep -qF 'no `/en-debug`' && printf '%s' "$impr" | grep -qF 'three-line spec' \
   && printf '%s' "$impr" | grep -qF 'only when triage marked the request ambiguous' \
   && pass "an improvement skips /en-debug and confirms its spec only when ambiguous" \
@@ -105,33 +139,65 @@ grep -qE "explicit word.*beats a Linear \`Bug\` label" <<<"$tri_text" \
 grep -qF 'references/diff-signal-detection.md' <<<"$tri_text" && grep -qF 'suggest `/en-plan`' <<<"$tri_text" \
   && pass "triage checks the shared risk surface and suggests /en-plan when it fails" \
   || fail "step $tri must use references/diff-signal-detection.md and suggest /en-plan"
+grep -qF '**Is it ambiguous?**' <<<"$tri_text" \
+  && pass "triage makes the ambiguity call the Improvement bullet depends on" \
+  || fail "step $tri must mark whether the request is ambiguous"
 
 # --- stops ---
-grep -qF 'Three failed attempts' <<<"$(step_text "$chg")" \
+chg_text=$(step_text "$chg")
+grep -qF 'Three failed attempts' <<<"$chg_text" \
   && pass "a third failed attempt stops the run" \
   || fail "step $chg must stop after three failed attempts"
-grep -qF 'stop with the change uncommitted' <<<"$(step_text "$rsk")" \
-  && pass "a risk surface in the real diff stops before the commit" \
-  || fail "step $rsk must stop with the change uncommitted"
+grep -qF 'may be asserting behaviour that is correct' <<<"$chg_text" && grep -qF 'stop and ask' <<<"$chg_text" \
+  && grep -qF 'explicitly invalidate the current theory' <<<"$chg_text" \
+  && pass "an existing assertion is changed only once it is shown to encode the bug (D62)" \
+  || fail "step $chg must guard existing assertions and invalidate failed theories (D62)"
+grep -qF "Run Triage's size check again" <<<"$(step_text "$rsk")" && grep -qF 'stop with the change uncommitted' <<<"$(step_text "$rsk")" \
+  && pass "the risk re-check reruns Triage's size check and stops before the commit" \
+  || fail "step $rsk must rerun Triage's size check and stop uncommitted"
+
+# --- /en-fix EMB-42 again: what the commit carries ---
+com_text=$(step_text "$com")
+missing=""
+for need in 'fix-owned files only' 'never `git add -A`' 'Fixes <IDENT>' '## Resolved'; do
+  grep -qF -- "$need" <<<"$com_text" || missing="$missing '$need'"
+done
+[ -z "$missing" ] \
+  && pass "the commit stages fix-owned files only, references the issue and resolves the TD entry" \
+  || fail "step $com is missing:$missing"
+
 rev_text=$(step_text "$rev")
-grep -qF '/en-review --lite --mode headless' <<<"$rev_text" \
-  && pass "the review is /en-review --lite --mode headless" \
-  || fail "step $rev must invoke /en-review --lite --mode headless"
-grep -qF 'At most two rounds' <<<"$rev_text" && grep -qF 'A P0 in either envelope' <<<"$rev_text" \
-  && pass "a P0 or a second blocked round stops the run" \
-  || fail "step $rev must cap review at two rounds and stop on a P0"
-grep -qF 'run the step 7 risk check again' <<<"$rev_text" \
+grep -qF 'Invoke `/en-review --lite --mode headless` with no target' <<<"$rev_text" \
+  && ! grep -qF -- '--base' <<<"$rev_text" \
+  && pass "the review runs on the bare branch diff, the target that writes a receipt" \
+  || fail "step $rev must invoke /en-review --lite --mode headless with no target" \
+          "post-review-check.md writes no receipt for a --base target, so the Receipt gate could never pass"
+grep -qF 'At most two rounds' <<<"$rev_text" && grep -qF 'A P0 stops the run here' <<<"$rev_text" \
+  && grep -qF 'Apply nothing yourself' <<<"$rev_text" && grep -qF 'never a `conflicting` finding' <<<"$rev_text" \
+  && pass "round 1 stops on a P0 and never applies conflicting findings; round 2 applies nothing" \
+  || fail "step $rev must cap review at two rounds, stop on a P0, skip conflicting findings, and apply nothing in round 2"
+grep -qF 'commit every review edit' <<<"$rev_text" \
+  && pass "round-1 review edits are committed before round 2 reviews them" \
+  || fail "step $rev must commit round-1 review edits before round 2"
+grep -qF 'run the Risk re-check again' <<<"$rev_text" \
   && pass "review edits re-run the risk check" \
-  || fail "step $rev must re-run the risk check after review edits"
+  || fail "step $rev must re-run the Risk re-check after review edits"
 rcp_text=$(step_text "$rcp")
 grep -qF 'ensemble-verification-receipt" verify' <<<"$rcp_text" && grep -qF 'do not invoke `/en-ship`' <<<"$rcp_text" \
   && pass "a failed receipt stops the run before the ship" \
   || fail "step $rcp must verify the receipt and not invoke /en-ship on failure"
+grep -qF 'dropping `typecheck` when `AGENTS.md` declares no Typecheck command' <<<"$rcp_text" \
+  && pass "the receipt gate requires typecheck only where the project declares one" \
+  || fail "step $rcp must drop typecheck from --requires when none is declared"
 [ -x "$REPO_ROOT/skills/en-fix/scripts/ensemble-verification-receipt" ] \
   && pass "the receipt script is carried and executable" \
   || fail "skills/en-fix/scripts/ensemble-verification-receipt must be carried and executable"
 
-grep -qF -- '`--auto-merge` only when the user gave them' <<<"$(step_text "$shp")" \
+shp_text=$(step_text "$shp")
+grep -qF 'Invoke `/en-ship`' <<<"$shp_text" \
+  && pass "the ship step invokes /en-ship" \
+  || fail "step $shp must invoke /en-ship"
+grep -qF -- '`--auto-merge` only when the user gave them' <<<"$shp_text" \
   && pass "--auto-merge reaches /en-ship only when given" \
   || fail "step $shp must pass --auto-merge only when the user gave it"
 grep -qF 'never a host substitution such as `$ARGUMENTS`' "$SK" \

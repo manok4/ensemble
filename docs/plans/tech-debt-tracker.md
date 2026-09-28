@@ -390,6 +390,27 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 - **Rule key:** carried-file-and-citation-same-unit
 - **Logged:** 2026-09-26
 
+### TD37. Lint tests re-declare the same grep and Process-step helpers
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/lint/en-fix.test.sh` (step_of, step_lines), `tests/lint/en-test-audit-contract.test.sh` (step_of), and the has/lacks family across about fourteen `tests/lint/*.test.sh`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** step_of is a byte-for-byte copy between two tests, and the "file contains string" pass/fail helper exists under a dozen names, so the next Process-order test copies them again.
+**Suggested fix:** Move step_of, step_lines and a file-taking has/lacks pair into `tests/lib/assert.sh`, then migrate the call sites with the full suite run once.
+- **Logged:** 2026-09-27
+
+### TD38. No skill adds a new plan to the generated plan index
+
+- **Source:** EN23 build, post-build docs lint
+- **Severity:** P2
+- **Confidence:** 9/10
+- **Location:** `docs/generated/plan-index.md` (frontmatter `generator: en-learn`); `skills/en-sweep/references/doc-lints.md` (regeneration)
+- **Why it matters:** `index-coverage.plan-missing` is a P1 on every branch from the moment `/en-plan` writes a plan until a sweep regenerates the index. EN18 to EN21 each shipped with it red, and `b22a480` backfilled them by hand. The frontmatter names `en-learn` as the generator, but `/en-learn` maintains only `learning-index.md`.
+- **Suggested fix:** Have `/en-plan`'s auto-commit step append the plan's line under `## Active`, and `/en-learn`'s lifecycle flip move it to `## Completed`, both in the generator's existing line format; or make the lint rule advisory for plans under `active/`.
+- **Logged:** 2026-09-27
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29

@@ -109,9 +109,15 @@ The lifecycle pipeline, with the orthogonal skills below it:
          ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
          │   /en-debug    │  │  /en-guardrail │  │  /en-simplify  │
          │  Trace-driven  │  │  Always-on     │  │  Behaviour-    │
-         │  hypothesis;   │  │  PreToolUse    │  │  preserving    │
+         │  diagnosis;    │  │  PreToolUse    │  │  preserving    │
          │  read-only     │  │  hook on Bash  │  │  cleanup       │
          └────────────────┘  └────────────────┘  └────────────────┘
+         ┌────────────────┐
+         │    /en-fix     │
+         │  Small fix →   │
+         │  test-first →  │
+         │  --lite → PR   │
+         └────────────────┘
          ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
          │    /en-flow    │  │    /en-loop    │  │ /en-test-audit │
          │  plan → build  │  │  Bounded auto  │  │  Prune a test  │
@@ -142,9 +148,9 @@ A typical cycle:
 For a focused bug investigation:
 
 ```text
-/en-debug "trace_id 4bf92f3577…"
-# Hypothesis: error originates at src/auth/refresh.ts:42, confidence 9/10, verdict convergent.
-/en-fix "handle the null user.email at src/auth/refresh.ts:42"
+/en-debug "TypeError: Cannot read properties of null (reading 'label')"
+# Diagnosis: src/reports/csv-export.ts:42 reads a null header, confidence 8/10, verdict convergent.
+/en-fix "skip null headers in src/reports/csv-export.ts:42"
 # Test-first fix, /en-review --lite, then /en-ship opens the PR.
 /en-resolve-pr
 ```
