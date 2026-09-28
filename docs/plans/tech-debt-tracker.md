@@ -411,6 +411,18 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 - **Suggested fix:** Have `/en-plan`'s auto-commit step append the plan's line under `## Active`, and `/en-learn`'s lifecycle flip move it to `## Completed`, both in the generator's existing line format; or make the lint rule advisory for plans under `active/`.
 - **Logged:** 2026-09-27
 
+### TD39. A plan can gate on evidence a called skill never leaves behind
+
+- **Source:** en-learn capture (EN23 build)
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** skills/en-plan/references/plan-prewrite.md
+- **Why it matters:** EN23 planned /en-fix to gate its ship on a receipt that /en-review writes only for the bare branch diff (skills/en-review/references/post-review-check.md) and to call /en-ship, whose preflight stages every tracked edit without --scope (skills/en-ship/scripts/ensemble-ship-preflight). The plan, two plan-peer passes and the lite brief all missed both; the branch review caught them only because a persona read the callee's reference and script. CONTRACT.md summaries did not state either behaviour.
+- **Suggested fix:** Add a pre-write check to plan-prewrite.md: a unit whose skill invokes another skill and then relies on what it leaves behind (a receipt, staged or committed files, a trailer, a verdict) cites the callee's reference or script that produces it, for that exact invocation form, not only the callee's CONTRACT.md row.
+- **Enforce at:** L4 skill
+- **Rule key:** callee-side-effects-cited-at-plan-time
+- **Logged:** 2026-09-27
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
