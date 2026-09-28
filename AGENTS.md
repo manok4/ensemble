@@ -93,6 +93,7 @@ gate and `/en-ship`'s preflight select something here instead of reporting
 
 - **Start a new feature** → `/en-plan`
 - **Implement a plan** → `/en-build <plan-path>`
+- **Small bug fix or improvement, no plan** → `/en-fix <request>`
 - **Review code** → `/en-review`
 - **End-to-end test in browser** → `/en-qa`
 - **Capture a learning after a fix** → `/en-learn capture`

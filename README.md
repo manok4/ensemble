@@ -109,9 +109,15 @@ The lifecycle pipeline, with the orthogonal skills below it:
          ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
          │   /en-debug    │  │  /en-guardrail │  │  /en-simplify  │
          │  Trace-driven  │  │  Always-on     │  │  Behaviour-    │
-         │  hypothesis;   │  │  PreToolUse    │  │  preserving    │
+         │  diagnosis;    │  │  PreToolUse    │  │  preserving    │
          │  read-only     │  │  hook on Bash  │  │  cleanup       │
          └────────────────┘  └────────────────┘  └────────────────┘
+         ┌────────────────┐
+         │    /en-fix     │
+         │  Small fix →   │
+         │  test-first →  │
+         │  --lite → PR   │
+         └────────────────┘
          ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
          │    /en-flow    │  │    /en-loop    │  │ /en-test-audit │
          │  plan → build  │  │  Bounded auto  │  │  Prune a test  │
@@ -142,9 +148,10 @@ A typical cycle:
 For a focused bug investigation:
 
 ```text
-/en-debug "trace_id 4bf92f3577…"
-# Hypothesis: error originates at src/auth/refresh.ts:42, confidence 9/10.
-/en-build docs/plans/active/EN12-bug_refresh-null-email.md
+/en-debug "TypeError: Cannot read properties of null (reading 'label')"
+# Diagnosis: src/reports/csv-export.ts:42 reads a null header, confidence 8/10, verdict convergent.
+/en-fix "skip null headers in src/reports/csv-export.ts:42"
+# Test-first fix, /en-review --lite, then /en-ship opens the PR.
 /en-resolve-pr
 ```
 
@@ -286,7 +293,7 @@ You can run both simultaneously for two AI perspectives.
 
 ## Skill catalog
 
-17 skills total: 9 lifecycle, 8 orthogonal. All prefixed `en-`. Numbering follows
+18 skills total: 9 lifecycle, 9 orthogonal. All prefixed `en-`. Numbering follows
 [§5.1 of the foundation](./docs/foundation.md#51-skill-summary).
 
 ### Lifecycle skills (9)
@@ -303,11 +310,11 @@ You can run both simultaneously for two AI perspectives.
 | 8 | `/en-ship` | Preflight (lint, typecheck, targeted tests, secret scan, merge check), conventional commit, push and `gh pr create`. `--auto-merge` optional. |
 | 9 | `/en-resolve-pr` | Address review comments on the current PR with a six-verdict rubric per comment, then fix, reply and resolve. Needs-human items are surfaced, never guessed. |
 
-### Orthogonal skills (8)
+### Orthogonal skills (9)
 
 | # | Skill | Purpose |
 |---|---|---|
-| 10 | `/en-debug` | Debug from telemetry: read structured logs, correlate by trace or request id, return a hypothesis with `file:line` and confidence. Read-only in telemetry mode; code mode fixes only on request. |
+| 10 | `/en-debug` | Diagnose a bug: in telemetry mode read structured logs and correlate by trace or request id, in code mode trace the cause; return a root cause with `file:line`, a verdict and confidence. Never writes code; `/en-fix` makes the change. |
 | 11 | `/en-sweep` | Scheduled doc-drift cleanup run by launchd on a dedicated machine through Codex: file-shape lint, wiki-graph health, architecture and plan-lifecycle drift, then doc-only PRs the runner merges once checks pass. Manual-invoke only. |
 | 12 | `/en-guardrail` | Always-on `PreToolUse` hooks that force a permission prompt before destructive Bash commands and DB-writing MCP calls (recursive `rm`, `DROP TABLE`, force-push, `terraform destroy`). Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. |
 | 13 | `/en-setup` | Bootstrap and diagnostics for a project: detects its state, creates the docs skeleton, generates `AGENTS.md` and `CLAUDE.md`, offers optional integrations and health checks. Manual-invoke only. |
@@ -315,6 +322,7 @@ You can run both simultaneously for two AI perspectives.
 | 15 | `/en-flow` | The hands-off pipeline for one piece of work: `/en-plan`, `/en-build`, `/en-learn`, then `/en-ship` with its watch loop. Manual-invoke only. |
 | 16 | `/en-simplify` | Simplify recently changed code for clarity, reuse and efficiency while preserving exact behaviour; the default scope is the branch diff. `/en-build` runs it once per build. |
 | 17 | `/en-test-audit` | Prune an existing test suite one owner-boundary batch at a time: evidence for every deletion in a committed ledger, a caught mutation proving each kept test still fails, and a peer check for lost coverage. `--campaign <path>` covers one subsystem. Manual-invoke only; never pushes or merges. |
+| 18 | `/en-fix` | Take one small bug fix or improvement from request to PR without a plan: `/en-debug` diagnoses a bug first, then a test-first change, `/en-review --lite` and `/en-ship`. Stops and suggests `/en-plan` when the change touches a risk surface or fails review twice. Manual-invoke only. |
 
 For full process detail, flags and reference files, see each skill's `SKILL.md`
 under [`skills/`](./skills/), which is the contract the skill executes, and

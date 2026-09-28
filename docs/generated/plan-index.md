@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-09-26
-total_entries: 21
+updated: 2026-09-28
+total_entries: 22
 ---
 
 # Plans — index
@@ -37,3 +37,4 @@ _(none)_
 - [`EN20-feature_brainstorm-from-linear.md`](../plans/completed/EN20-feature_brainstorm-from-linear.md) — **EN20** Brainstorm from a Linear issue, and hand the design to /en-plan (shipped 2026-09-24)
 - [`EN21-feature_test-audit.md`](../plans/completed/EN21-feature_test-audit.md) — **EN21** /en-test-audit, audit and prune an existing test suite with evidence before every deletion (shipped 2026-09-26)
 - [`EN22-feature_correction-router.md`](../plans/completed/EN22-feature_correction-router.md) — **EN22** Correction router, route each correction to the strongest enforcement layer (shipped 2026-09-26)
+- [`EN23-feature_en-fix.md`](../plans/completed/EN23-feature_en-fix.md) — **EN23** /en-fix, small bug fixes and improvements from request to PR without a plan (shipped 2026-09-27)

@@ -12,6 +12,7 @@ Owned by `en-ship`. Callers depend on this page, not on `SKILL.md`.
 | Form | Caller |
 |---|---|
 | `/en-ship` | `en-flow`, after a green build |
+| `/en-ship [--no-watch] [--auto-merge]` | `en-fix`, after its receipt gate passes on a tree that started clean; each flag only when the user gave it |
 | `--auto-merge` | arms `gh pr merge --auto --squash`; default OFF |
 | `--draft` · `--no-pr` · `--base <branch>` · `--reviewers <list>` | PR shape |
 | `--no-watch` | open the PR and stop, skipping the watch loop |

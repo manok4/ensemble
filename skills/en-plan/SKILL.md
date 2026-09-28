@@ -97,7 +97,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
     **Is a plan file warranted?** Offer the no-file path only when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, **no design doc was consumed**, and the user did not ask for a plan file. `references/plan-prewrite.md` owns the offer's wording and why the design-doc condition is not about size.
 
-    If they take the no-file path, state the change concretely and stop: **no file, no U-IDs, no peer review, and `/en-build` is not available** for it, since `/en-build` consumes a plan file and there will not be one. Say that plainly rather than implying a handoff that cannot happen.
+    If they take the no-file path, state the change concretely and suggest `/en-fix`: **no file, no U-IDs, no peer review**, and `/en-build` cannot run, since it consumes a plan file. Say that plainly rather than implying a handoff that cannot happen.
 
     **Never offer the skip** when the work touches a risk surface, authentication, payments, migrations or external contracts, however small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.
 

@@ -334,17 +334,6 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 **Suggested fix:** Add an en-test-audit row to 'When the peer fires' in all three copies, and reword line 3 to cover skills that run a peer without carrying the file.
 - **Logged:** 2026-09-26
 
-### TD31. foundation's repository-layout block still says '11 skills'
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `docs/foundation.md (repository layout, skills/ line)`
-**Persona:** standards
-**Severity:** P3
-**Why it matters:** The count is older than EN21, but the same registration pass removed it from the plugin manifests so it could not drift, and §5 says seventeen.
-**Suggested fix:** Drop the number from the layout comment, as the manifests did.
-- **Logged:** 2026-09-26
-
 ### TD32. en-test-audit's --resume row names a step by number
 
 Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
@@ -400,6 +389,39 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 - **Enforce at:** L4 skill
 - **Rule key:** carried-file-and-citation-same-unit
 - **Logged:** 2026-09-26
+
+### TD37. Lint tests re-declare the same grep and Process-step helpers
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/lint/en-fix.test.sh` (step_of, step_lines), `tests/lint/en-test-audit-contract.test.sh` (step_of), and the has/lacks family across about fourteen `tests/lint/*.test.sh`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** step_of is a byte-for-byte copy between two tests, and the "file contains string" pass/fail helper exists under a dozen names, so the next Process-order test copies them again.
+**Suggested fix:** Move step_of, step_lines and a file-taking has/lacks pair into `tests/lib/assert.sh`, then migrate the call sites with the full suite run once.
+- **Logged:** 2026-09-27
+
+### TD38. No skill adds a new plan to the generated plan index
+
+- **Source:** EN23 build, post-build docs lint
+- **Severity:** P2
+- **Confidence:** 9/10
+- **Location:** `docs/generated/plan-index.md` (frontmatter `generator: en-learn`); `skills/en-sweep/references/doc-lints.md` (regeneration)
+- **Why it matters:** `index-coverage.plan-missing` is a P1 on every branch from the moment `/en-plan` writes a plan until a sweep regenerates the index. EN18 to EN21 each shipped with it red, and `b22a480` backfilled them by hand. The frontmatter names `en-learn` as the generator, but `/en-learn` maintains only `learning-index.md`.
+- **Suggested fix:** Have `/en-plan`'s auto-commit step append the plan's line under `## Active`, and `/en-learn`'s lifecycle flip move it to `## Completed`, both in the generator's existing line format; or make the lint rule advisory for plans under `active/`.
+- **Logged:** 2026-09-27
+
+### TD39. A plan can gate on evidence a called skill never leaves behind
+
+- **Source:** en-learn capture (EN23 build)
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** skills/en-plan/references/plan-prewrite.md
+- **Why it matters:** EN23 planned /en-fix to gate its ship on a receipt that /en-review writes only for the bare branch diff (skills/en-review/references/post-review-check.md) and to call /en-ship, whose preflight stages every tracked edit without --scope (skills/en-ship/scripts/ensemble-ship-preflight). The plan, two plan-peer passes and the lite brief all missed both; the branch review caught them only because a persona read the callee's reference and script. CONTRACT.md summaries did not state either behaviour.
+- **Suggested fix:** Add a pre-write check to plan-prewrite.md: a unit whose skill invokes another skill and then relies on what it leaves behind (a receipt, staged or committed files, a trailer, a verdict) cites the callee's reference or script that produces it, for that exact invocation form, not only the callee's CONTRACT.md row.
+- **Enforce at:** L4 skill
+- **Rule key:** callee-side-effects-cited-at-plan-time
+- **Logged:** 2026-09-27
 
 ## Resolved
 
@@ -855,3 +877,16 @@ things in practice rather than only in principle. The lint now scopes the rule t
 
 - **Severity:** P3 — historical record, no action.
 - **Logged:** 2026-08-29.
+
+### TD31. ~~foundation's repository-layout block still says '11 skills'~~ RESOLVED 2026-09-27
+
+**Resolved 2026-09-27 (EN23 U1).** The layout comment now reads "one directory per skill", with no number to drift, as the plugin manifests already do.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `docs/foundation.md (repository layout, skills/ line)`
+**Persona:** standards
+**Severity:** P3
+**Why it matters:** The count is older than EN21, but the same registration pass removed it from the plugin manifests so it could not drift, and §5 says seventeen.
+**Suggested fix:** Drop the number from the layout comment, as the manifests did.
+- **Logged:** 2026-09-26

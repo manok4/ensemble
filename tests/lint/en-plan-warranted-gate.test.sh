@@ -75,14 +75,25 @@ else
   fail "risk surfaces must never be offered the skip"
 fi
 
-# --- 5. the no-file consequence is stated, not implied ---
-if grep -qiE '/en-build. is not available|no file, no U-IDs' "$SKILL" \
-   && grep -qiE 'consumes a plan file' "$SKILL"; then
-  pass "declining the file names its consequence for /en-build"
+# --- 5. the no-file consequence is stated, and the path leads somewhere ---
+# /en-plan "fix the typo in the --verbose help text" qualifies for the skip.
+# The user who takes it gets no plan file and no U-IDs, is told /en-build
+# cannot run, and is pointed at /en-fix, which carries a small change to a PR
+# without a plan (D124). Suggested, never invoked: /en-fix is manual-only.
+if printf '%s' "$gate_block" | grep -qF 'no file, no U-IDs' \
+   && printf '%s' "$gate_block" | grep -qiE 'consumes a plan file' \
+   && printf '%s' "$gate_block" | grep -qF 'suggest `/en-fix`'; then
+  pass "declining the file names its consequence for /en-build and suggests /en-fix"
 else
-  fail "the no-file path must state that /en-build cannot run" \
+  fail "the no-file path must state that /en-build cannot run and suggest /en-fix" \
        "implying a handoff that cannot happen is worse than writing the file"
 fi
+# Invoking /en-fix, a manual-only skill, is caught by contract-shape.test.sh.
+# plan-prewrite.md owns the offer's wording, so the offer itself names /en-fix.
+PREWRITE="$REPO_ROOT/skills/en-plan/references/plan-prewrite.md"
+grep -E '^> "This is one low-risk change' "$PREWRITE" | grep -qF '`/en-fix`' \
+  && pass "the offer in plan-prewrite.md names /en-fix" \
+  || fail "plan-prewrite.md's offer must name /en-fix"
 
 # --- 6. the gate and the design close-out do not contradict each other ---
 # The close-out is downstream of the gate. If the gate could fire on a
