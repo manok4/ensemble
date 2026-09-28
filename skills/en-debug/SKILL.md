@@ -13,7 +13,7 @@ description: "Debug from telemetry: read structured logs, correlate by trace or 
 
 Telemetry-driven debugging. Takes an error message, trace ID, or log excerpt; reads logs from the project's configured source; correlates entries; surfaces a hypothesis pointing at specific source code.
 
-> **This skill is invoked by a person, not by another skill.** Nothing in Ensemble drives it: `/en-ship` routes a failing check to `/en-resolve-pr`, and `/en-build` hands off rather than calling in. So the blocking choice in code mode is **deliberate, not an oversight** — there is always someone to answer it. If a caller is ever wired in, that gate is the first thing that needs a non-blocking path, and this line is where to start.
+> **Called by a person, or by `/en-fix` on its bug path.** A person gets the blocking choices below. A skill caller gets `CONTRACT.md` instead: no blocking question anywhere, including the fix-choice gate, and a return carrying a `verdict`.
 
 > **Read-only by default.** The skill defaults to diagnosis. It writes code only on the **code-mode fix path**, and only after the user explicitly chooses "Fix it now" — never silently.
 

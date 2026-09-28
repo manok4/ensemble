@@ -334,17 +334,6 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 **Suggested fix:** Add an en-test-audit row to 'When the peer fires' in all three copies, and reword line 3 to cover skills that run a peer without carrying the file.
 - **Logged:** 2026-09-26
 
-### TD31. foundation's repository-layout block still says '11 skills'
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `docs/foundation.md (repository layout, skills/ line)`
-**Persona:** standards
-**Severity:** P3
-**Why it matters:** The count is older than EN21, but the same registration pass removed it from the plugin manifests so it could not drift, and §5 says seventeen.
-**Suggested fix:** Drop the number from the layout comment, as the manifests did.
-- **Logged:** 2026-09-26
-
 ### TD32. en-test-audit's --resume row names a step by number
 
 Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
@@ -855,3 +844,16 @@ things in practice rather than only in principle. The lint now scopes the rule t
 
 - **Severity:** P3 — historical record, no action.
 - **Logged:** 2026-08-29.
+
+### TD31. ~~foundation's repository-layout block still says '11 skills'~~ RESOLVED 2026-09-27
+
+**Resolved 2026-09-27 (EN23 U1).** The layout comment now reads "one directory per skill", with no number to drift, as the plugin manifests already do.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `docs/foundation.md (repository layout, skills/ line)`
+**Persona:** standards
+**Severity:** P3
+**Why it matters:** The count is older than EN21, but the same registration pass removed it from the plugin manifests so it could not drift, and §5 says seventeen.
+**Suggested fix:** Drop the number from the layout comment, as the manifests did.
+- **Logged:** 2026-09-26

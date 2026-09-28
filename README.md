@@ -286,7 +286,7 @@ You can run both simultaneously for two AI perspectives.
 
 ## Skill catalog
 
-17 skills total: 9 lifecycle, 8 orthogonal. All prefixed `en-`. Numbering follows
+18 skills total: 9 lifecycle, 9 orthogonal. All prefixed `en-`. Numbering follows
 [§5.1 of the foundation](./docs/foundation.md#51-skill-summary).
 
 ### Lifecycle skills (9)
@@ -303,7 +303,7 @@ You can run both simultaneously for two AI perspectives.
 | 8 | `/en-ship` | Preflight (lint, typecheck, targeted tests, secret scan, merge check), conventional commit, push and `gh pr create`. `--auto-merge` optional. |
 | 9 | `/en-resolve-pr` | Address review comments on the current PR with a six-verdict rubric per comment, then fix, reply and resolve. Needs-human items are surfaced, never guessed. |
 
-### Orthogonal skills (8)
+### Orthogonal skills (9)
 
 | # | Skill | Purpose |
 |---|---|---|
@@ -315,6 +315,7 @@ You can run both simultaneously for two AI perspectives.
 | 15 | `/en-flow` | The hands-off pipeline for one piece of work: `/en-plan`, `/en-build`, `/en-learn`, then `/en-ship` with its watch loop. Manual-invoke only. |
 | 16 | `/en-simplify` | Simplify recently changed code for clarity, reuse and efficiency while preserving exact behaviour; the default scope is the branch diff. `/en-build` runs it once per build. |
 | 17 | `/en-test-audit` | Prune an existing test suite one owner-boundary batch at a time: evidence for every deletion in a committed ledger, a caught mutation proving each kept test still fails, and a peer check for lost coverage. `--campaign <path>` covers one subsystem. Manual-invoke only; never pushes or merges. |
+| 18 | `/en-fix` | Take one small bug fix or improvement from request to PR without a plan: `/en-debug` diagnoses a bug first, then a test-first change, `/en-review --lite` and `/en-ship`. Stops and suggests `/en-plan` when the change touches a risk surface or fails review twice. Manual-invoke only. |
 
 For full process detail, flags and reference files, see each skill's `SKILL.md`
 under [`skills/`](./skills/), which is the contract the skill executes, and
