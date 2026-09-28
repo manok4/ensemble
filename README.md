@@ -143,8 +143,9 @@ For a focused bug investigation:
 
 ```text
 /en-debug "trace_id 4bf92f3577…"
-# Hypothesis: error originates at src/auth/refresh.ts:42, confidence 9/10.
-/en-build docs/plans/active/EN12-bug_refresh-null-email.md
+# Hypothesis: error originates at src/auth/refresh.ts:42, confidence 9/10, verdict convergent.
+/en-fix "handle the null user.email at src/auth/refresh.ts:42"
+# Test-first fix, /en-review --lite, then /en-ship opens the PR.
 /en-resolve-pr
 ```
 
@@ -307,7 +308,7 @@ You can run both simultaneously for two AI perspectives.
 
 | # | Skill | Purpose |
 |---|---|---|
-| 10 | `/en-debug` | Debug from telemetry: read structured logs, correlate by trace or request id, return a hypothesis with `file:line` and confidence. Read-only in telemetry mode; code mode fixes only on request. |
+| 10 | `/en-debug` | Diagnose a bug: in telemetry mode read structured logs and correlate by trace or request id, in code mode trace the cause; return a root cause with `file:line`, a verdict and confidence. Never writes code; `/en-fix` makes the change. |
 | 11 | `/en-sweep` | Scheduled doc-drift cleanup run by launchd on a dedicated machine through Codex: file-shape lint, wiki-graph health, architecture and plan-lifecycle drift, then doc-only PRs the runner merges once checks pass. Manual-invoke only. |
 | 12 | `/en-guardrail` | Always-on `PreToolUse` hooks that force a permission prompt before destructive Bash commands and DB-writing MCP calls (recursive `rm`, `DROP TABLE`, force-push, `terraform destroy`). Per-command bypass via `ENSEMBLE_GUARDRAIL=off`. |
 | 13 | `/en-setup` | Bootstrap and diagnostics for a project: detects its state, creates the docs skeleton, generates `AGENTS.md` and `CLAUDE.md`, offers optional integrations and health checks. Manual-invoke only. |

@@ -83,6 +83,9 @@ grep -qE 'make no edit, and stop' <<<"$und_text" && grep -qF 'suggest `/en-brain
 grep -qF 'resolved issue or tracker text' <<<"$und_text" \
   && pass "an identifier-only request passes the resolved issue text to /en-debug" \
   || fail "step $und must pass the resolved issue or tracker text to /en-debug"
+grep -qF 'record the pre-fix scope' <<<"$(step_text "$brn")" && grep -qF 'fix-owned files' <<<"$(step_text "$brn")" \
+  && pass "the pre-fix scope is recorded before any edit (moved from /en-debug, D124)" \
+  || fail "step $brn must record the pre-fix scope and track fix-owned files"
 grep -qF '`<IDENT>-<slug>`' <<<"$(step_text "$brn")" \
   && pass "a Linear request branches as <IDENT>-<slug>" \
   || fail "step $brn must name the branch <IDENT>-<slug> for a Linear issue"
