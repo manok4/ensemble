@@ -34,40 +34,23 @@ P0 + low confidence is a real case (the reviewer suspects something serious but 
 
 ## What happens to filtered findings
 
-### Interactive / headless modes
-
-Each filtered finding is appended to `docs/plans/tech-debt-tracker.md` as a TD entry. Format per `references/tech-debt-tracker-format.md`, plus a marker line:
-
-```markdown
-### TD<N>. <Finding title>
-
-Filed by /en-review (confidence <N>) — sub-threshold; surfaced for later review.
-
-**Location:** `<file>:<line>`
-**Persona:** <reviewer-agent>
-**Severity:** <P1-P3>
-**Why it matters:** <quoted from finding>
-**Suggested fix:** <if any>
-
-> [pasted finding body]
-```
-
-The TD-ID is auto-incremented (same as user-filed entries). The `Filed by /en-review` marker lets `/en-sweep`'s tech-debt-hygiene checks distinguish auto-filed entries from human-filed ones.
-
-### Report-only mode
-
-No mutations allowed. Sub-threshold findings appear in the JSON envelope under a separate key:
+**They are reported, never filed.** In every mode, `interactive`, `headless` and `report-only` alike, a filtered finding goes into the envelope's `sub_threshold_findings[]` and the markdown summary's "Below threshold" list, and nowhere else. The threshold exists to filter noise; appending the filtered noise to an append-only tracker undoes the filter.
 
 ```json
 {
   "verdict": "approve | revise | reject",
   "findings": [...],                  // ≥ threshold
-  "sub_threshold_findings": [...],    // < threshold; not filed (caller decides)
+  "sub_threshold_findings": [...],    // < threshold; reported only
   ...
 }
 ```
 
-Callers like `/en-sweep` (which invokes `/en-review` in `report-only`) can decide what to do with sub-threshold findings — typically they're discarded since `/en-sweep` is itself producing a doc-only PR.
+A sub-threshold finding leaves the side list in exactly two cases:
+
+- **The host verifies it.** The host reads the code and can name the `file:line` where the claim holds. Verification re-grades the finding's confidence to the threshold, and it then routes through the `references/severity.md` matrix like any other, which usually means fixing it on the branch.
+- **The user defers it.** In `interactive` mode the user picks it from the summary's "Below threshold" list and asks to defer it. It becomes a TD entry, which follows `references/tech-debt-tracker-format.md`.
+
+`/en-sweep` discards the list, since it is producing a doc-only PR.
 
 ## What persona agents must emit
 
@@ -80,10 +63,10 @@ P0 findings (security vulnerabilities, data-loss risks, broken correctness invar
 - **High-confidence P0** → user fixes immediately
 - **Low-confidence P0** → flagged with `low_confidence: true`; user verifies the claim before fixing
 
-Filtering a P0 to TD would be silently downgrading a potential blocker. Never do that.
+Filtering a P0 into the side list would silently downgrade a potential blocker. Never do that.
 
 ## Tuning
 
 If review output feels noisy, raise the threshold to `8` or `9`. If the team feels they're missing real findings, lower to `6`. The number is meant to be tuned per-project based on the persona-agent precision observed in practice.
 
-The `~/.ensemble/analytics/review.jsonl` log (when enabled) records each run's `findings_count`, `filtered_count`, and `filed_to_td_count` so you can calibrate.
+The `~/.ensemble/analytics/review.jsonl` log (when enabled) records each run's `findings_count` and `filtered_count` so you can calibrate.

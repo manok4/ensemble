@@ -34,9 +34,12 @@ Read at the output-report step. This file is the **single owner of the envelope 
       "autofix_class": "manual",
       "applied": false
     }
-  ]
+  ],
+  "sub_threshold_findings": []
 }
 ```
+
+`sub_threshold_findings[]` holds the findings below the confidence threshold, in the same shape as `findings[]`. It is present in every mode and is never filed as tech debt (`references/review-confidence-gating.md`).
 
 ## Mandatory outcome lines
 
@@ -74,6 +77,11 @@ verification_pass: not-run (no-p0-p1-addressed)
   - `src/auth/refresh.ts:42`
   - Two requests can race during rotation; second invalidates the first.
   - Fix: serialize per-user via singleFlight cache.
+
+### Below threshold (2, not filed)
+
+- Retry loop swallows the last error (correctness; conf 5) — `src/auth/refresh.ts:88`
+- Test name does not match the fixture (testing; conf 4) — `tests/auth/refresh.test.ts:12`
 ```
 
-One `###` section per severity present, P0 first, each finding carrying its U-ID, personas, confidence, location, why and fix.
+One `###` section per severity present, P0 first, each finding carrying its U-ID, personas, confidence, location, why and fix. Then **Below threshold**, one line per `sub_threshold_findings[]` entry (title, personas and confidence, location), so a user can defer one by name; omit the section when the list is empty.

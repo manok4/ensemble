@@ -131,4 +131,4 @@ about the change as a whole.
 
 ## What this skill does with the findings
 
-Routing by severity, confidence and autofix class is the matrix in `references/severity.md`; sub-threshold findings file per `references/review-confidence-gating.md`; the effort tier resolves per `references/peer-model-policy.md`, with `/en-review` as the only resolver. Stated there once rather than repeated here. `conflicting` findings are never auto-applied; `corroborated` ones lead the report.
+Routing by severity, confidence and autofix class is the matrix in `references/severity.md`; sub-threshold findings route per `references/review-confidence-gating.md`; the effort tier resolves per `references/peer-model-policy.md`, with `/en-review` as the only resolver. Stated there once rather than repeated here. `conflicting` findings are never auto-applied; `corroborated` ones lead the report.

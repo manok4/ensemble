@@ -61,7 +61,7 @@ The lifecycle pipeline, with the orthogonal skills below it:
                                               ▼
                                        ┌──────────────┐
                                        │  /en-review  │  Cross-agent peer on by default; personas
-                                       │              │  with --cross; sub-threshold → TD entries
+                                       │              │  with --cross; sub-threshold → report only
                                        └──────┬───────┘
                                               │
                                               ▼
@@ -304,7 +304,7 @@ You can run both simultaneously for two AI perspectives.
 | 2 | `/en-foundation` | Produce or retrofit `docs/foundation.md` (PRD, technical direction, architecture), `docs/architecture.md`, `AGENTS.md` and `CLAUDE.md`. Asks for `plan_id_prefix`; the draft is peer-reviewed. |
 | 3 | `/en-plan` | Turn a feature, refactor or bug fix into a plan with stable U-IDs and a `plan_type`: reads the foundation, runs research agents, breaks the work into units with files, tests and risk, then a cross-agent peer review. `--resume` and `--from-legacy` modes. |
 | 4 | `/en-build` | Execute a plan unit by unit on a feature branch (implement, test, lint, commit per unit), then one `/en-simplify` pass and one cross-agent review over the branch diff, an evidence audit, and the learning checkpoint. |
-| 5 | `/en-review` | Code review of the current branch with a cross-agent peer on by default. `--cross` adds host personas (correctness, testing, maintainability, standards always; security, performance, migrations when the diff matches); findings below the confidence threshold file as TD entries. |
+| 5 | `/en-review` | Code review of the current branch with a cross-agent peer on by default. `--cross` adds host personas (correctness, testing, maintainability, standards always; security, performance, migrations when the diff matches); findings below the confidence threshold are reported, never filed as tech debt. |
 | 6 | `/en-qa` | Test the work like a real user: lint, typecheck, tests, then Playwright end-to-end on the golden path and edge cases. Each bug gets a fix, a regression test and a commit. |
 | 7 | `/en-learn` | Capture durable learnings as a term, a decision or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Also `--refresh`, `--lint`, `--migrate` and `--enforce-audit`. |
 | 8 | `/en-ship` | Preflight (lint, typecheck, targeted tests, secret scan, merge check), conventional commit, push and `gh pr create`. `--auto-merge` optional. |
@@ -432,7 +432,7 @@ Per-project config lives in `.ensemble/config.local.yaml` (gitignored). All keys
 peer_mode_override: auto                # auto | cross-agent-only | single-agent-only | off
 skip_peer_below_lines: 50
 
-# Review confidence gate (sub-threshold → TD entries)
+# Review confidence gate (sub-threshold → reported, never filed)
 review:
   confidence_threshold: 7
 

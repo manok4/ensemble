@@ -13,14 +13,13 @@ How findings are graded and how the host decides what to do with them.
 
 ## Confidence (1–10)
 
-How sure the reviewer is. Surfacing rules:
+How sure the reviewer is. `T` is the effective `review.confidence_threshold`: the project's `.ensemble/config.local.yaml` first, then `~/.ensemble/config.json`, default `7`. Surfacing rules:
 
 | Confidence | Behavior |
 |---|---|
-| 8–10 | Surface in main report. |
-| 6–7 | Surface with a caveat tag (`(conf 7)`). |
-| 5 | Surface only if severity ≥ P1. |
-| 1–4 | Suppressed unless severity = P0. |
+| above T | Surface in main report. |
+| exactly T | Surface with a caveat tag (`(conf 7)`). |
+| below T | P0: surface with `low_confidence: true`. P1–P3: listed in `sub_threshold_findings[]`, never filed. |
 
 ## Autofix classes
 
@@ -31,25 +30,23 @@ Each finding routes through one of four classes:
 | `safe_auto` | Apply automatically without asking. Re-verify after. | Typos, broken cross-link repair, frontmatter field missing-but-known, naming convention fixes |
 | `gated_auto` | Show user a one-line summary; default = apply; user can decline. | Variable rename across a unit, dead-code removal, simple refactor with test coverage |
 | `manual` | Surface to user with the full finding; user decides. | Logic change, architectural choice, security-sensitive edit |
-| `advisory` | Note in the report. Don't act. Add to `tech-debt-tracker.md` if useful. | "Consider extracting this helper later", style preference |
+| `advisory` | Note in the report. Don't act. | "Consider extracting this helper later", style preference |
 
 ## Routing rules
 
-The host applies findings using this matrix:
+The host applies findings using this matrix, with `T` as defined under Confidence above.
 
 | Severity | Confidence | Autofix class | Default host action |
 |---|---|---|---|
 | P0 | any | any | **Pause and ask user.** Even `safe_auto` doesn't apply silently for P0. |
-| P1 | ≥7 | `safe_auto` | Apply, re-verify, note in commit body. |
-| P1 | ≥7 | `gated_auto` | Apply with one-line announcement; user can revert. |
-| P1 | ≥7 | `manual` | Surface; user decides. |
-| P1 | <7 | any | Surface; user decides. |
-| P2 | ≥8 | `safe_auto` | Apply silently. |
-| P2 | ≥8 | `gated_auto` | Apply with one-line announcement. |
-| P2 | <8 | any | Add to `tech-debt-tracker.md`; mention in summary. |
-| P2 | any | `manual` | Surface; user decides. |
-| P3 | any | `advisory` | Add to summary. No action. |
-| P3 | any | other | Add to `tech-debt-tracker.md`. |
+| P1 | ≥T | `safe_auto` | Apply, re-verify, note in commit body. |
+| P1 | ≥T | `gated_auto` | Apply with one-line announcement; user can revert. |
+| P1 | ≥T | `manual` | Surface; user decides. |
+| P2 | ≥T | `safe_auto` | Apply silently. |
+| P2 | ≥T | `gated_auto` | Apply with one-line announcement. |
+| P2 | ≥T | `manual` | Surface; user decides. |
+| P3 | ≥T | any | Note in the summary. No action. |
+| P1–P3 | <T | any | Below the confidence threshold: listed in the report's `sub_threshold_findings[]`, never filed. |
 
 ## Three host responses to a finding (D30 contract)
 

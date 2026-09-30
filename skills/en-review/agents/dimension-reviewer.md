@@ -62,6 +62,6 @@ Confidence is about the *finding*, not your writing. A defect you can name with 
 concrete failing input is high confidence; a smell you cannot reduce to a failure
 is low, and belongs at low confidence or not at all.
 
-The dispatcher gates on this: sub-threshold findings file as tech debt rather
-than cluttering the review, so an inflated confidence does not make a weak
-finding stronger — it makes it louder in the wrong place.
+The dispatcher gates on this: sub-threshold findings drop to a side list that
+nobody acts on unless the host verifies them, so an inflated confidence does not
+make a weak finding stronger — it makes it louder in the wrong place.
