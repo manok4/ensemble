@@ -13,6 +13,8 @@
 # hang scenario red; removing the trap left the TERM scenario's tree mutated.
 # After the EN21 branch review: reading quoted numstat output, removing the
 # restore check, and keeping a stale receipt each turned its scenario red.
+# TD25: dropping the post-timeout KILL left the TERM-ignoring member running.
+# TD33: an unapplied mutation now fails the TERM scenario instead of passing it.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -56,6 +58,16 @@ out=$(mc --patch "$P/hang.diff" --test 'sh test.sh' --expect 'FAIL adds two numb
 [ "$rc" -eq 5 ] && printf '%s' "$out" | grep -q 'timed out' && clean \
   && pass "a timed-out mutated run is inconclusive, not caught; tree restored" \
   || fail "a hang must be exit 5 with the tree restored" "rc=$rc out=$out"
+
+# A test member that ignores TERM must not outlive the run: the leader exits on
+# TERM, and nothing else would reap the rest of its process group (TD25). The
+# member proves it is still alive by writing a marker after the run has ended.
+MARK="$R/.git/leaked"; rm -f "$MARK"
+out=$(mc --patch "$P/minus.diff" --test "sh -c 'trap \"\" TERM; sleep 2; : > \"$MARK\"' & sleep 30" --expect 'FAIL adds two numbers' --timeout 1); rc=$?
+sleep 3
+[ "$rc" -eq 3 ] && [ ! -e "$MARK" ] \
+  && pass "a timed-out run reaps a member that ignores TERM" \
+  || fail "a timed-out run must reap every member of its process group" "rc=$rc; a TERM-ignoring member outlived the run"
 
 # --- the keeper, not a sibling ----------------------------------------------------
 (
@@ -154,15 +166,18 @@ out=$(mc --patch "$P/cafe.diff" --test 'sh test.sh || { echo junk >> café.sh; e
 # --- killed mid-run -----------------------------------------------------------------
 (cd "$R" && exec "$MC" --patch "$P/hang.diff" --test 'sh test.sh' --expect 'FAIL adds two numbers' --timeout 60 >/dev/null 2>&1) &
 pid=$!
+applied=0
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 0.3
-  (cd "$R" && git diff --quiet) || break     # the mutation is applied
+  (cd "$R" && git diff --quiet) || { applied=1; break; }     # the mutation is applied
 done
 kill -TERM "$pid" 2>/dev/null
 wait "$pid" 2>/dev/null; rc=$?
-[ "$rc" -ne 0 ] && clean \
+# Without the mutation applied, a TERM during the baseline run exits clean and
+# this scenario would pass without the restore trap ever running (TD33).
+[ "$applied" -eq 1 ] && [ "$rc" -ne 0 ] && clean \
   && pass "killed with TERM while the mutated test runs, it restores the tree" \
-  || fail "TERM mid-run must restore the tree" "rc=$rc status=$(cd "$R" && git status --porcelain)"
+  || fail "TERM mid-run must restore the tree" "applied=$applied (0 = the mutation never applied: timing) rc=$rc status=$(cd "$R" && git status --porcelain)"
 
 rm -rf "$R"
 report
