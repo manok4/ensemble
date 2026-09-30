@@ -13,14 +13,13 @@ How findings are graded and how the host decides what to do with them.
 
 ## Confidence (1–10)
 
-How sure the reviewer is. Surfacing rules:
+How sure the reviewer is. `T` is the effective `review.confidence_threshold`: the project's `.ensemble/config.local.yaml` first, then `~/.ensemble/config.json`, default `7`. Surfacing rules:
 
 | Confidence | Behavior |
 |---|---|
-| 8–10 | Surface in main report. |
-| 6–7 | Surface with a caveat tag (`(conf 7)`). |
-| 5 | Surface only if severity ≥ P1. |
-| 1–4 | Suppressed unless severity = P0. |
+| above T | Surface in main report. |
+| exactly T | Surface with a caveat tag (`(conf 7)`). |
+| below T | P0: surface with `low_confidence: true`. P1–P3: listed in `sub_threshold_findings[]`, never filed. |
 
 ## Autofix classes
 
@@ -35,7 +34,7 @@ Each finding routes through one of four classes:
 
 ## Routing rules
 
-The host applies findings using this matrix. `T` is the effective `review.confidence_threshold`: the project's `.ensemble/config.local.yaml` first, then `~/.ensemble/config.json`, default `7`.
+The host applies findings using this matrix, with `T` as defined under Confidence above.
 
 | Severity | Confidence | Autofix class | Default host action |
 |---|---|---|---|
