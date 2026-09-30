@@ -134,6 +134,15 @@ err=$(cat "$T/err")
   && pass "--required rejects an unset linear_team, naming the key" \
   || fail "--required rejects an unset linear_team" "rc=$rc out=[$out] err=[$err]"
 
+# The EN18 U2 scenario says "absent or empty": an empty value is not a team (TD17).
+for line in 'linear_team: ""' 'linear_team:'; do
+  set_repo "$line"
+  out=$(cg linear_team --required); rc=$?
+  [ "$rc" -eq 3 ] && grep -q "linear_team" "$T/err" \
+    && pass "--required rejects an empty linear_team ($line)" \
+    || fail "--required rejects an empty linear_team ($line)" "rc=$rc out=[$out] err=[$(cat "$T/err")]"
+done
+
 set_repo 'linear_team: ENG'
 assert_eq "ENG" "$(cg linear_team --required)" "--required passes a set value through"
 
@@ -147,6 +156,12 @@ out=$(cg peer_model_claude --default sonnet); rc=$?
   && pass "malformed global JSON still falls through with exit 0 (fail-soft intact)" \
   || fail "malformed global JSON still falls through" "rc=$rc out=[$out]"
 assert_contains "$(cat "$T/err")" "not valid JSON" "and still warns once on stderr naming the file"
+# A malformed global file must not break a repo that never set plan_store,
+# even under --strict: it still resolves local (EN18 U2, TD17).
+out=$(cg plan_store --allowed local,linear --default local --strict); rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "local" ] \
+  && pass "malformed global JSON with no plan_store set still resolves local under --strict" \
+  || fail "malformed global JSON with no plan_store must resolve local" "rc=$rc out=[$out]"
 printf '{}\n' > "$T/home/.ensemble/config.json"
 set_repo 'plan_store: nonsense'
 out=$(cg plan_store --allowed local,linear --default local); rc=$?
