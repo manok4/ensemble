@@ -2,10 +2,11 @@
 # tests/en-test-audit/peer-brief.test.sh
 #
 # The preservation review is the only independent look a test-audit batch gets
-# before it is committed. Three things have to hold for it to mean anything:
-# the peer sees the ledger AND the staged change together, the prompt carries
-# this skill's three questions rather than a code-review brief, and a peer that
-# fails comes back as a failure the flow can stop on, not as an empty pass.
+# before it is committed. Two things have to hold for it to mean anything:
+# the peer sees the ledger AND the staged change together, and the prompt
+# carries this skill's three questions rather than a code-review brief. That a
+# failed peer stops the run is guarded in tests/lint/en-test-audit-contract.test.sh;
+# peer-failed classification itself belongs to en-review-peer-default.test.sh.
 #
 # Negative controls at authoring: dropping the staged-diff block from the
 # artifact script, removing the nothing-staged refusal, and renaming the
@@ -21,9 +22,8 @@ TEST_NAME="en-test-audit preservation review"
 SD="$REPO_ROOT/skills/en-test-audit"
 ART="$SD/scripts/ensemble-test-audit-review-artifact"
 BUILD="$SD/scripts/ensemble-build-peer-prompt"
-INVOKE="$SD/scripts/ensemble-peer-invoke"
 BRIEF="$SD/references/peer-brief.md"
-for f in "$ART" "$BUILD" "$INVOKE"; do [ -x "$f" ] || { fail "missing or not executable: $f"; report; exit 1; }; done
+for f in "$ART" "$BUILD"; do [ -x "$f" ] || { fail "missing or not executable: $f"; report; exit 1; }; done
 
 R=$(make_audit_repo)
 W=$(mktemp -d)
@@ -94,20 +94,6 @@ sed 's/^## What the peer is asked$/## Something else/' "$BRIEF" > "$W/brief.md"
 [ "$rc" -ne 0 ] \
   && pass "a brief without its questions block is refused by the builder" \
   || fail "a brief with no dimensions must be refused" "rc=$rc"
-
-# --- a failed peer is a failure ------------------------------------------------------
-printf '%s\n' '#!/usr/bin/env bash' 'echo "network unreachable" >&2' 'exit 1' > "$W/codex"
-chmod +x "$W/codex"
-printf '%s' "$prompt" > "$W/prompt"
-d=$(bash --noprofile --norc -c '
-      set -eu
-      . "$1"
-      ensemble_peer_invoke --peer-cmd "$2" --peer-format "--json" --prompt-file "$3" \
-        --out-file /dev/null --peer-mode cross-agent --access read-tree || true
-    ' _ "$INVOKE" "$W/codex" "$W/prompt" 2>/dev/null)
-printf '%s' "$d" | grep -q '"reason":"peer-failed' \
-  && pass "a peer that fails returns a peer-failed decision, which the flow stops on" \
-  || fail "a failing peer must come back as peer-failed" "decision=$d"
 
 rm -rf "$R" "$W" "$path"
 report
