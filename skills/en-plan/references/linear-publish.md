@@ -177,11 +177,14 @@ the operator can close it (`status: accepted`, `related_plan:`) in their next co
 Designs used to follow the plan's rule, and in a repo that commits its designs, as this one does,
 that made the tracked-source refusal fire on nearly every promotion that consumed one. A design is
 a durable record rather than an execution artifact, which is the split D118's Problem statement
-draws: plans are transient, the record stays in the repo. Leaving it untouched keeps
-`git status --porcelain` empty without asking anyone to untrack their design history.
+draws: plans are transient, the record stays in the repo. Leaving it untouched means the
+promotion adds nothing to `git status --porcelain` without asking anyone to untrack their
+design history.
 
-**The contract is auditable, not aspirational:** after a `linear`-mode promotion,
-`git status --porcelain` is empty. That is the check, not "no deletion appeared".
+**The contract is auditable, not aspirational:** capture `git status --porcelain` before the
+plan is written; after a `linear`-mode promotion it shows no entry the capture did not. That is
+the check, not "no deletion appeared". An entry that was already there, such as the untracked
+design `/en-brainstorm` just wrote, is expected and is not the promotion's.
 
 ## Recovery
 
