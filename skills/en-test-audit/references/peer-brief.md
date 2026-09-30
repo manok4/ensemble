@@ -42,14 +42,30 @@ if that break was the wrong one to prove the contract.
 
 ### retention — advisory only
 
-Flag an **R** row that is plainly junk by `references/good-tests.md`, with the
-anti-pattern and its tell. This never blocks the batch; it becomes a candidate
-for the next one.
+Flag an **R** row whose test is plainly junk by one of these anti-patterns, and
+name it with the tell you saw. This never blocks the batch; it becomes a
+candidate for the next one.
+
+- **Implementation-coupled:** a refactor that changes no behaviour turns it red.
+- **Tautological:** the expected value can be re-derived from the code under test.
+- **Horizontal slicing:** the test file was complete before its subject existed.
+- **Reads source instead of running it:** it would still pass with the matched
+  code commented out.
+- **Mocked past the boundary:** the mock changes when an internal function is
+  renamed.
+- **Tests the mock:** it still passes with the code under test replaced by a
+  pass-through.
+- **Cannot fail:** break the behaviour it names and it stays green.
+- **Duplicated contract:** one bug turns it and a sibling red for the same reason.
+- **Test-only seam:** every caller of a production hook it relies on is a test.
+
+Point each finding at `<file>:<line>` for code, the ledger row's Test cell for a
+ledger claim, or `global` when it is about the batch as a whole.
 
 ## Where a finding points
 
-Use `<file>:<line>` for code, the ledger row's Test cell for a ledger claim, or
-`global` when it is about the batch as a whole.
+Stated at the end of the section above, because only that section reaches the
+peer. This heading is where the prompt builder stops reading.
 
 ## What this skill does with the findings
 

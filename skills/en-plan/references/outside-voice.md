@@ -1,6 +1,6 @@
 # Outside Voice — cross-agent peer review
 
-The contract every peer pass follows. Carried by the skills that run one: `en-foundation`, `en-plan`, `en-review`.
+The contract every peer pass follows. Carried by `en-foundation`, `en-plan` and `en-review`; `en-build` and `en-test-audit` run a peer without carrying it.
 
 ## The contract (D30)
 
@@ -14,6 +14,7 @@ The contract every peer pass follows. Carried by the skills that run one: `en-fo
 | `en-plan` | After the plan is fully drafted with U-IDs | On; `--no-peer` disables |
 | `en-build` | Once, over the branch diff after `/en-simplify`, through `/en-review --peer` (D52) | On |
 | `en-review` | Sole reviewer by default (`--peer`); beside the personas under `--cross` | On; `--host` runs personas only |
+| `en-test-audit` | Once per batch, before commit: a read-tree preservation review; a failed peer stops the run with the batch staged | On; only `--resume --no-peer` skips it |
 
 ## Single-agent fallback (D31)
 

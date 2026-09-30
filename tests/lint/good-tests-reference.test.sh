@@ -63,6 +63,18 @@ done
   && pass "all nine anti-patterns are named" \
   || fail "good-tests.md is missing an anti-pattern" "$missing"
 
+# en-test-audit's peer cannot read good-tests.md, so its brief restates the nine
+# names inline (TD28). The same list keeps the two from drifting.
+TA_BRIEF="$REPO_ROOT/skills/en-test-audit/references/peer-brief.md"
+missing=""
+for pat in "Implementation-coupled" "Tautological" "Horizontal slicing" "Reads source instead of running it" "Mocked past the boundary" \
+           "Tests the mock" "Cannot fail" "Duplicated contract" "Test-only seam"; do
+  grep -qF "$pat" "$TA_BRIEF" || missing="$missing '$pat'"
+done
+[ -z "$missing" ] \
+  && pass "en-test-audit's peer brief names all nine anti-patterns inline" \
+  || fail "en-test-audit's peer brief is missing an anti-pattern" "$missing"
+
 tells=$(grep -c '\*The tell:' "$GT" || true)
 [ "$tells" -eq 9 ] \
   && pass "every anti-pattern carries its tell (9)" \
