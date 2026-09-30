@@ -70,8 +70,8 @@ default_branch_fallback: main
 # --- Review (layered over ~/.ensemble/config.json via ensemble-config-get) ---
 
 # Confidence gate for /en-review. Findings rated below this threshold are
-# filtered out of the surfaced output and filed as TD entries in
-# docs/plans/tech-debt-tracker.md (with marker "Filed by /en-review").
+# filtered out of the surfaced output into the report's
+# sub_threshold_findings list. They are never filed as TD entries on their own.
 # Range 1-10. Default 7. P0 findings always surface regardless.
 # review:
 #   confidence_threshold: 7

@@ -40,7 +40,7 @@ Use `<file>:<line>` for code, or `global` when it is about the change as a whole
 ## What this skill does with the findings
 
 Routing is the same as for the full brief: severity, confidence and autofix class per
-`references/severity.md`; sub-threshold findings file per
+`references/severity.md`; sub-threshold findings route per
 `references/review-confidence-gating.md`. The effort tier resolves `low` per
 `references/peer-model-policy.md` unless its `high` rung fired, in which case this
 brief is not used at all.

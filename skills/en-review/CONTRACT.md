@@ -35,7 +35,7 @@ A findings envelope. Callers branch on these fields:
 | `reviewer` | `cross-agent` · `single-agent-fallback` · `en-review-host-fallback` |
 | `reconciliation[]` | buckets `corroborated` · `peer-only` · `host-only` · `conflicting` |
 | `peer_decision` | `{peer, reason, peer_mode, effort, model_alias, model_actual}`; `reason` is a closed enum; `model_actual` is the CLI's served-model receipt or `null` |
-| `sub_threshold_findings[]` | present in `report-only`; filed as TD entries in other modes |
+| `sub_threshold_findings[]` | present in every mode; reported only, never filed as TD entries |
 | `verification_pass` | `{outcome, reason, finding_ids}`; `outcome` is `clean` · `new-findings` · `not-run`; when it ran, `verdict` is the verification pass's |
 
 **Branch on these exact spellings.** Never rename, abbreviate or add to them. A
