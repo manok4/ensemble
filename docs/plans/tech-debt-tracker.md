@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-09-26
+updated: 2026-09-30
 ---
 
 # Tech debt tracker
@@ -129,25 +129,9 @@ rather than an implicit refusal, and the agent has to infer an answer.
   so the next gap fails a test instead of a build.
 - **Logged:** 2026-09-21
 
-### TD17. Two EN18 U2 config scenarios are correct but unasserted
-
-Filed by /en-review (confidence 6), sub-threshold; surfaced for later review.
-
-EN18 U2 lists two scenarios `tests/lint/plan-store-config.test.sh` does not
-assert. `linear_team: ""` and a bare `linear_team:` both exit 3 under
-`--required`, but the test covers only an unset key. And the malformed
-`config.json` case runs against `peer_model_claude` without `--strict`, never
-against `plan_store --strict`. Both behave correctly when probed by hand.
-
-- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
-- **Severity:** P3
-- **Confidence:** 6/10
-- **Location:** `tests/lint/plan-store-config.test.sh`
-- **Why it matters:** a regression in either path would pass the suite.
-- **Suggested fix:** add both cases; each is a few lines in the existing style.
-- **Logged:** 2026-09-22
-
 ### TD18. `/en-plan` cannot tell it was invoked by `/en-flow`
+
+**Verified 2026-09-30 (D125 triage), confidence now 6/10.** Still true: `skills/en-flow/SKILL.md` passes only the request and never reads `plan_store`, and `skills/en-plan/SKILL.md` step 18 has no caller check, so the refusal in `skills/en-plan/references/linear-publish.md` depends on the model inferring its caller. The chain stops at en-flow's plan gate, but only after the Linear publish. Needs a design call: a pre-check in en-flow, an explicit flag en-plan keys on, or a Linear-aware en-flow.
 
 Filed by /en-review (confidence 5), sub-threshold; surfaced for later review.
 
@@ -221,41 +205,6 @@ only from a hand edit in Linear.
   order, or drop the clause from the plan when it is next amended.
 - **Logged:** 2026-09-23
 
-### TD22. A brainstorm's issue comment is as public as the issue
-
-Filed by /en-review (confidence 4), sub-threshold; surfaced for later review.
-
-`/en-brainstorm <IDENT>` posts the design's recommendation as an issue comment
-on every write, with no confirmation. For an issue that came in from an app or a
-Slack intake, comments can sync back to the reporter's thread, so internal
-design direction (a vulnerability, unreleased work) can leave the team unseen.
-
-- **Source:** EN20 branch review, security persona, 2026-09-24
-- **Severity:** P3
-- **Confidence:** 4/10
-- **Location:** `skills/en-brainstorm/references/brainstorm-from-linear.md` (Link the design)
-- **Suggested fix:** post only the `Design:` and `Next:` lines by default and add
-  the recommendation after a one-line confirmation, or state in the reference that
-  the comment is visible to everyone who can see the issue.
-- **Logged:** 2026-09-24
-
-### TD23. The empty-porcelain promotion check cannot hold with an untracked brainstormed design
-
-Filed by /en-review (confidence 4), sub-threshold; surfaced for later review.
-
-`linear-publish.md` makes an empty `git status --porcelain` the auditable check
-after a `linear`-mode promotion. The EN20 path has `/en-brainstorm` write an
-uncommitted design that `/en-plan <IDENT>` then consumes, so `?? docs/designs/...`
-is present at promotion by design, and the check reports a false violation.
-
-- **Source:** EN20 branch review, correctness persona, 2026-09-24
-- **Severity:** P3
-- **Confidence:** 4/10
-- **Location:** `skills/en-plan/references/linear-publish.md` (the clean-tree contract)
-- **Suggested fix:** scope the contract to what the promotion itself wrote (no new
-  porcelain entries), or exclude the consumed `related_design` path.
-- **Logged:** 2026-09-24
-
 ### TD24. `/en-ship` does not check a test-audit commit's ledger
 
 Filed 2026-09-26 from EN21 (out of scope there by plan). `/en-test-audit` commits a batch only after `ensemble-test-ledger-verify --tree` exits 0, and every such commit carries a `Test-Audit-Ledger: <path>` trailer. Nothing downstream reads the trailer. A test-deleting commit made by hand, or amended after the verifier ran, reaches `/en-ship` with nothing checking that the ledger it names still verifies against the tree being shipped.
@@ -268,18 +217,9 @@ Filed 2026-09-26 from EN21 (out of scope there by plan). `/en-test-audit` commit
 - **Suggested fix:** in `/en-ship`'s preflight, for each commit in the range carrying `Test-Audit-Ledger:`, run the verifier with `--tree` against the ledger at HEAD; carry the verifier in en-ship as a byte-identical copy. Add a negative control with a ledger whose D row's test is still present.
 - **Logged:** 2026-09-26
 
-### TD25. A mutation-check timeout does not KILL a descendant that ignores TERM
-
-Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
-
-**Location:** `skills/en-test-audit/scripts/ensemble-mutation-check:run_test`
-**Persona:** correctness
-**Severity:** P3
-**Why it matters:** The watcher sends TERM, then KILL after 2s, but the script kills the watcher as soon as the process-group leader exits, so a grandchild that ignores TERM survives the check and keeps running.
-**Suggested fix:** After `wait` on a timed-out run, send `kill -KILL -- -$CHILD` before killing the watcher; do the same in on_signal.
-- **Logged:** 2026-09-26
-
 ### TD26. A second rebaseline can reuse the first one's reconciled: rows
+
+**Verified 2026-09-30 (D125 triage), confidence now 7/10.** Still true: `skills/en-test-audit/scripts/ensemble-test-ledger-verify` counts any row whose Evidence starts `reconciled:` as judged, with nothing tying it to the current `rebaselined_from`/`baseline_sha`, and a whole-file row excuses that file for good. `campaign.md` expects repeated merges of main, so a second change to the same declaration passes unjudged. The fix changes the ledger format (for example `reconciled@<sha>:`) across `ledger-format.md`, `campaign.md`, the verifier and its test: a design decision.
 
 Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 
@@ -288,94 +228,6 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 **Severity:** P3
 **Why it matters:** rebaselined_from holds only the latest previous SHA and a reconciled: row does not name which rebaseline it answered, so a declaration main changed in two windows is judged once.
 **Suggested fix:** Tie each reconciled row to its rebaseline (e.g. `reconciled@<baseline_sha>:`) and accept only rows naming the current baseline.
-- **Logged:** 2026-09-26
-
-### TD27. The mutation fingerprint ignores file mode
-
-Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
-
-**Location:** `skills/en-test-audit/scripts/ensemble-mutation-check:fingerprint`
-**Persona:** security
-**Severity:** P3
-**Why it matters:** git hash-object hashes content only, so a patch that changes a file's mode and a restore that recreates it with a different mode read as a clean restore.
-**Suggested fix:** Include the mode in fingerprint() (git ls-files -s plus an executable-bit check) so a mode change counts as a failed restore.
-- **Logged:** 2026-09-26
-
-### TD28. The preservation brief points the peer at good-tests.md, which the peer cannot read
-
-Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
-
-**Location:** `skills/en-test-audit/references/peer-brief.md (retention)`
-**Persona:** maintainability
-**Severity:** P3
-**Why it matters:** The peer runs read-tree in the audited repo, where references/good-tests.md does not exist; the brief also carries a location rule outside the section the prompt builder sends.
-**Suggested fix:** Name the nine anti-patterns and their tells inline in the retention section, and move the ledger-row location rule into 'What the peer is asked'.
-- **Logged:** 2026-09-26
-
-### TD29. campaign.md restates the marks with a keeper vocabulary the verifier rejects
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `skills/en-test-audit/references/campaign.md step 3`
-**Persona:** maintainability
-**Severity:** P3
-**Why it matters:** Step 3 says a C row names 'the owner that absorbs the assertion', a suite; the verifier requires `<path>::<name>`, so lane agents briefed from campaign.md return rows that fail at the end of a long run.
-**Suggested fix:** Replace the step-3 mark list with a pointer to ledger-format.md's Mark table and say keepers are cited as `<path>::<name>`.
-- **Logged:** 2026-09-26
-
-### TD30. outside-voice.md's peer roster omits en-test-audit
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `skills/en-review/references/outside-voice.md:3 (and its byte-identical copies)`
-**Persona:** standards
-**Severity:** P3
-**Why it matters:** The contract that lists where a peer fires no longer lists every place one does: en-test-audit runs a read-tree preservation review and stops when it fails.
-**Suggested fix:** Add an en-test-audit row to 'When the peer fires' in all three copies, and reword line 3 to cover skills that run a peer without carrying the file.
-- **Logged:** 2026-09-26
-
-### TD32. en-test-audit's --resume row names a step by number
-
-Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
-
-**Location:** `skills/en-test-audit/SKILL.md (Invocation, --resume row)`
-**Persona:** testing
-**Severity:** P3
-**Why it matters:** 'continues at step 10' is unguarded; removing an earlier step would send a resumed run to the verifier and skip the review it exists to rerun, with every ordering assertion still green.
-**Suggested fix:** Name the step by its title ('Stage, then the preservation review') or assert the number equals step_of('ensemble-test-audit-review-artifact').
-- **Logged:** 2026-09-26
-
-### TD33. The mutation-check TERM scenario can pass without the mutation applied
-
-Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
-
-**Location:** `tests/en-test-audit/mutation-check.test.sh (killed mid-run)`
-**Persona:** testing
-**Severity:** P3
-**Why it matters:** The wait loop gives up after about 3s and kills anyway; if the kill lands during the baseline run the tree is clean whether or not the trap works.
-**Suggested fix:** Record whether the loop saw the mutation applied and fail the scenario with 'mutation never applied; timing' when it did not.
-- **Logged:** 2026-09-26
-
-### TD34. The preservation-review test re-asserts peer-invoke's own failure contract
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `tests/en-test-audit/peer-brief.test.sh (peer-failed scenario)`
-**Persona:** testing
-**Severity:** P3
-**Why it matters:** ensemble-peer-invoke is byte-identical across carriers and en-review-peer-default.test.sh owns its peer-failed decisions; the scenario's name claims a stop it does not check.
-**Suggested fix:** Drop it, or rename it to what it asserts and justify it with a failure only this carrier's read-tree path can show.
-- **Logged:** 2026-09-26
-
-### TD35. good-tests-reference pins the tell count at exactly nine
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `tests/lint/good-tests-reference.test.sh:66`
-**Persona:** testing
-**Severity:** P3
-**Why it matters:** A legitimate tenth anti-pattern fails the lint, and a bullet losing its tell while another gains a second keeps the count at nine.
-**Suggested fix:** Count the anti-pattern bullets and assert each bullet's paragraph carries '*The tell:'.
 - **Logged:** 2026-09-26
 
 ### TD36. A plan can split a carried file from the citation that reaches it
@@ -389,17 +241,6 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 - **Enforce at:** L4 skill
 - **Rule key:** carried-file-and-citation-same-unit
 - **Logged:** 2026-09-26
-
-### TD37. Lint tests re-declare the same grep and Process-step helpers
-
-Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
-
-**Location:** `tests/lint/en-fix.test.sh` (step_of, step_lines), `tests/lint/en-test-audit-contract.test.sh` (step_of), and the has/lacks family across about fourteen `tests/lint/*.test.sh`
-**Persona:** maintainability
-**Severity:** P3
-**Why it matters:** step_of is a byte-for-byte copy between two tests, and the "file contains string" pass/fail helper exists under a dozen names, so the next Process-order test copies them again.
-**Suggested fix:** Move step_of, step_lines and a file-taking has/lacks pair into `tests/lib/assert.sh`, then migrate the call sites with the full suite run once.
-- **Logged:** 2026-09-27
 
 ### TD38. No skill adds a new plan to the generated plan index
 
@@ -890,3 +731,192 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 **Why it matters:** The count is older than EN21, but the same registration pass removed it from the plugin manifests so it could not drift, and §5 says seventeen.
 **Suggested fix:** Drop the number from the layout comment, as the manifests did.
 - **Logged:** 2026-09-26
+
+### TD17. ~~Two EN18 U2 config scenarios are correct but unasserted~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `5c6403a`** in the D125 triage of `/en-review`'s sub-threshold filings. Both EN18 U2 edge cases are now asserted in `tests/lint/plan-store-config.test.sh`: an empty `linear_team` (quoted and bare) is refused by `--required`, and a malformed global config with no `plan_store` still resolves `local` under `--strict`. The behaviour was already right.
+
+Filed by /en-review (confidence 6), sub-threshold; surfaced for later review.
+
+EN18 U2 lists two scenarios `tests/lint/plan-store-config.test.sh` does not
+assert. `linear_team: ""` and a bare `linear_team:` both exit 3 under
+`--required`, but the test covers only an unset key. And the malformed
+`config.json` case runs against `peer_model_claude` without `--strict`, never
+against `plan_store --strict`. Both behave correctly when probed by hand.
+
+- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
+- **Severity:** P3
+- **Confidence:** 6/10
+- **Location:** `tests/lint/plan-store-config.test.sh`
+- **Why it matters:** a regression in either path would pass the suite.
+- **Suggested fix:** add both cases; each is a few lines in the existing style.
+- **Logged:** 2026-09-22
+
+### TD22. ~~A brainstorm's issue comment is as public as the issue~~ CLOSED 2026-09-30
+
+**Closed 2026-09-30, no change,** in the D125 triage of `/en-review`'s sub-threshold filings. True but adds almost no exposure: the next step, `/en-plan <IDENT>`, publishes the whole plan into the same issue's description, also without a confirmation (`skills/en-plan/references/linear-intake.md`).
+
+Filed by /en-review (confidence 4), sub-threshold; surfaced for later review.
+
+`/en-brainstorm <IDENT>` posts the design's recommendation as an issue comment
+on every write, with no confirmation. For an issue that came in from an app or a
+Slack intake, comments can sync back to the reporter's thread, so internal
+design direction (a vulnerability, unreleased work) can leave the team unseen.
+
+- **Source:** EN20 branch review, security persona, 2026-09-24
+- **Severity:** P3
+- **Confidence:** 4/10
+- **Location:** `skills/en-brainstorm/references/brainstorm-from-linear.md` (Link the design)
+- **Suggested fix:** post only the `Design:` and `Next:` lines by default and add
+  the recommendation after a one-line confirmation, or state in the reference that
+  the comment is visible to everyone who can see the issue.
+- **Logged:** 2026-09-24
+
+### TD23. ~~The empty-porcelain promotion check cannot hold with an untracked brainstormed design~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `a71eaef`** in the D125 triage of `/en-review`'s sub-threshold filings. `linear-publish.md` now checks against a `git status --porcelain` capture taken before the plan is written, so an untracked design `/en-brainstorm` left behind no longer breaks the contract.
+
+Filed by /en-review (confidence 4), sub-threshold; surfaced for later review.
+
+`linear-publish.md` makes an empty `git status --porcelain` the auditable check
+after a `linear`-mode promotion. The EN20 path has `/en-brainstorm` write an
+uncommitted design that `/en-plan <IDENT>` then consumes, so `?? docs/designs/...`
+is present at promotion by design, and the check reports a false violation.
+
+- **Source:** EN20 branch review, correctness persona, 2026-09-24
+- **Severity:** P3
+- **Confidence:** 4/10
+- **Location:** `skills/en-plan/references/linear-publish.md` (the clean-tree contract)
+- **Suggested fix:** scope the contract to what the promotion itself wrote (no new
+  porcelain entries), or exclude the consumed `related_design` path.
+- **Logged:** 2026-09-24
+
+### TD25. ~~A mutation-check timeout does not KILL a descendant that ignores TERM~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `b839247`** in the D125 triage of `/en-review`'s sub-threshold filings. Verified by reproduction: a TERM-ignoring member outlived the run. `ensemble-mutation-check` now sends KILL to the group once a timeout is recorded and after the signal handler's TERM; a new scenario goes red on the old script.
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/scripts/ensemble-mutation-check:run_test`
+**Persona:** correctness
+**Severity:** P3
+**Why it matters:** The watcher sends TERM, then KILL after 2s, but the script kills the watcher as soon as the process-group leader exits, so a grandchild that ignores TERM survives the check and keeps running.
+**Suggested fix:** After `wait` on a timed-out run, send `kill -KILL -- -$CHILD` before killing the watcher; do the same in on_signal.
+- **Logged:** 2026-09-26
+
+### TD27. ~~The mutation fingerprint ignores file mode~~ CLOSED 2026-09-30
+
+**Closed 2026-09-30, no change,** in the D125 triage of `/en-review`'s sub-threshold filings. The case is theoretical: `git apply -R` reverses the mode lines with the content or fails and sets `RESTORE_FAILED`, and the pre-run dirty check refuses a target with a mode change. Only a test command that chmods a target could diverge, and `git status` would show it.
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/scripts/ensemble-mutation-check:fingerprint`
+**Persona:** security
+**Severity:** P3
+**Why it matters:** git hash-object hashes content only, so a patch that changes a file's mode and a restore that recreates it with a different mode read as a clean restore.
+**Suggested fix:** Include the mode in fingerprint() (git ls-files -s plus an executable-bit check) so a mode change counts as a failed restore.
+- **Logged:** 2026-09-26
+
+### TD28. ~~The preservation brief points the peer at good-tests.md, which the peer cannot read~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `d7f9f2a`** in the D125 triage of `/en-review`'s sub-threshold filings. The preservation brief now names the nine anti-patterns and their tells inline, since the peer cannot read `good-tests.md`, and the ledger location rule moved into the section the builder sends. `good-tests-reference.test.sh` checks the brief keeps all nine.
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/references/peer-brief.md (retention)`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** The peer runs read-tree in the audited repo, where references/good-tests.md does not exist; the brief also carries a location rule outside the section the prompt builder sends.
+**Suggested fix:** Name the nine anti-patterns and their tells inline in the retention section, and move the ledger-row location rule into 'What the peer is asked'.
+- **Logged:** 2026-09-26
+
+### TD29. ~~campaign.md restates the marks with a keeper vocabulary the verifier rejects~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `d7f9f2a`** in the D125 triage of `/en-review`'s sub-threshold filings. `campaign.md` now asks a C row for the keeper test as `<path>::<name>`, matching the ledger format.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/references/campaign.md step 3`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** Step 3 says a C row names 'the owner that absorbs the assertion', a suite; the verifier requires `<path>::<name>`, so lane agents briefed from campaign.md return rows that fail at the end of a long run.
+**Suggested fix:** Replace the step-3 mark list with a pointer to ledger-format.md's Mark table and say keepers are cited as `<path>::<name>`.
+- **Logged:** 2026-09-26
+
+### TD30. ~~outside-voice.md's peer roster omits en-test-audit~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `d7f9f2a`** in the D125 triage of `/en-review`'s sub-threshold filings. All three `outside-voice.md` copies now list en-test-audit's peer and say which skills run a peer without carrying the file.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-review/references/outside-voice.md:3 (and its byte-identical copies)`
+**Persona:** standards
+**Severity:** P3
+**Why it matters:** The contract that lists where a peer fires no longer lists every place one does: en-test-audit runs a read-tree preservation review and stops when it fails.
+**Suggested fix:** Add an en-test-audit row to 'When the peer fires' in all three copies, and reword line 3 to cover skills that run a peer without carrying the file.
+- **Logged:** 2026-09-26
+
+### TD32. ~~en-test-audit's --resume row names a step by number~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `d7f9f2a`** in the D125 triage of `/en-review`'s sub-threshold filings. The `--resume` row names the step by title instead of "step 10".
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `skills/en-test-audit/SKILL.md (Invocation, --resume row)`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** 'continues at step 10' is unguarded; removing an earlier step would send a resumed run to the verifier and skip the review it exists to rerun, with every ordering assertion still green.
+**Suggested fix:** Name the step by its title ('Stage, then the preservation review') or assert the number equals step_of('ensemble-test-audit-review-artifact').
+- **Logged:** 2026-09-26
+
+### TD33. ~~The mutation-check TERM scenario can pass without the mutation applied~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `b839247`** in the D125 triage of `/en-review`'s sub-threshold filings. The TERM scenario now records whether the mutation was seen applied and fails when it was not; checked by starving the poll loop, which turns it red.
+
+Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/en-test-audit/mutation-check.test.sh (killed mid-run)`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** The wait loop gives up after about 3s and kills anyway; if the kill lands during the baseline run the tree is clean whether or not the trap works.
+**Suggested fix:** Record whether the loop saw the mutation applied and fail the scenario with 'mutation never applied; timing' when it did not.
+- **Logged:** 2026-09-26
+
+### TD34. ~~The preservation-review test re-asserts peer-invoke's own failure contract~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `e3af71e`** in the D125 triage of `/en-review`'s sub-threshold filings. The duplicated peer-failed scenario is gone from `peer-brief.test.sh`; classification stays with `en-review-peer-default.test.sh` and the stop with `en-test-audit-contract.test.sh`.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/en-test-audit/peer-brief.test.sh (peer-failed scenario)`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** ensemble-peer-invoke is byte-identical across carriers and en-review-peer-default.test.sh owns its peer-failed decisions; the scenario's name claims a stop it does not check.
+**Suggested fix:** Drop it, or rename it to what it asserts and justify it with a failure only this carrier's read-tree path can show.
+- **Logged:** 2026-09-26
+
+### TD35. ~~good-tests-reference pins the tell count at exactly nine~~ CLOSED 2026-09-30
+
+**Closed 2026-09-30, no change,** in the D125 triage of `/en-review`'s sub-threshold filings. Pinning the count is deliberate: the test already hard-codes all nine names, so a tenth anti-pattern has to edit it anyway, and a bullet losing its tell while another gains a second is not a realistic drift.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/lint/good-tests-reference.test.sh:66`
+**Persona:** testing
+**Severity:** P3
+**Why it matters:** A legitimate tenth anti-pattern fails the lint, and a bullet losing its tell while another gains a second keeps the count at nine.
+**Suggested fix:** Count the anti-pattern bullets and assert each bullet's paragraph carries '*The tell:'.
+- **Logged:** 2026-09-26
+
+### TD37. ~~Lint tests re-declare the same grep and Process-step helpers~~ CLOSED 2026-09-30
+
+**Closed 2026-09-30, no change,** in the D125 triage of `/en-review`'s sub-threshold filings. True but not worth scheduling: the `has()` copies across 18 lint files differ in meaning (regex vs fixed-string, file vs variable), each helper is one line, and keeping each test file self-contained is a reasonable trade.
+
+Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
+
+**Location:** `tests/lint/en-fix.test.sh` (step_of, step_lines), `tests/lint/en-test-audit-contract.test.sh` (step_of), and the has/lacks family across about fourteen `tests/lint/*.test.sh`
+**Persona:** maintainability
+**Severity:** P3
+**Why it matters:** step_of is a byte-for-byte copy between two tests, and the "file contains string" pass/fail helper exists under a dozen names, so the next Process-order test copies them again.
+**Suggested fix:** Move step_of, step_lines and a file-taking has/lacks pair into `tests/lib/assert.sh`, then migrate the call sites with the full suite run once.
+- **Logged:** 2026-09-27
