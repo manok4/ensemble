@@ -41,7 +41,7 @@ The hands-off Ensemble pipeline. Carries one piece of work from plan â†’ build â
 
 ### 3. Plan
 
-- If `--plan <path>` was passed, use that plan; otherwise invoke `/en-plan` with the request the user gave `/en-flow`, passed through verbatim. Pass the words, not a host substitution such as `$ARGUMENTS`, which expands to empty on Codex and plans nothing silently (D70).
+- If `--plan <path>` was passed, use that plan; otherwise invoke `/en-plan --from-flow` with the request the user gave `/en-flow`, passed through verbatim. The flag is how `/en-plan` knows a plan path must come back, and it refuses under `plan_store: linear` before any planning work. Pass the words, not a host substitution such as `$ARGUMENTS`, which expands to empty on Codex and plans nothing silently (D70).
 - **GATE:** a plan file exists at `docs/plans/active/<PREFIX><NN>-*.md` with `status: open` (or the `--no-peer` finalize path). Read its frontmatter; stop the pipeline if the request was non-software / not implementation-ready, or if the plan is stuck in `draft` (surface and stop). **Record the plan path** in `/tmp/ensemble/en-flow/<run-id>/state.json`; it threads through steps 4 to 6, and a stage is long enough for the context to be compacted between it and the next. Before each stage, print one line naming the stage that finished and its result, and the stage starting.
 
 ### 4. Build

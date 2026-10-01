@@ -151,6 +151,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 | Flag | Effect |
 |---|---|
+| `--from-flow` | Set by `/en-flow`. Under `plan_store: linear`, refuse before any planning work, per `references/linear-publish.md`'s `/en-flow` boundary. |
 | `--no-peer` | Skip peer review entirely. Plan is left at `status: open` with `peer_review_verdict: null` (legacy/no-peer mode). |
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
 | `--max-iterations <N>` | Raise the re-loop cap above 1. |
