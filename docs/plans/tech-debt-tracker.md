@@ -129,28 +129,6 @@ rather than an implicit refusal, and the agent has to infer an answer.
   so the next gap fails a test instead of a build.
 - **Logged:** 2026-09-21
 
-### TD18. `/en-plan` cannot tell it was invoked by `/en-flow`
-
-**Verified 2026-09-30 (D125 triage), confidence now 6/10.** Still true: `skills/en-flow/SKILL.md` passes only the request and never reads `plan_store`, and `skills/en-plan/SKILL.md` step 18 has no caller check, so the refusal in `skills/en-plan/references/linear-publish.md` depends on the model inferring its caller. The chain stops at en-flow's plan gate, but only after the Linear publish. Needs a design call: a pre-check in en-flow, an explicit flag en-plan keys on, or a Linear-aware en-flow.
-
-Filed by /en-review (confidence 5), sub-threshold; surfaced for later review.
-
-`linear-publish.md` says the `/en-flow` boundary is "enforced, not merely
-documented": under `plan_store: linear`, `/en-plan` refuses before publishing
-when `/en-flow` invoked it. But `/en-flow` passes no marker, and `/en-plan`'s
-SKILL.md never mentions `/en-flow`, so the refusal depends on the model
-inferring its caller from context.
-
-- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
-- **Severity:** P3
-- **Confidence:** 5/10
-- **Location:** `skills/en-plan/references/linear-publish.md`, *The `/en-flow` boundary*; `skills/en-flow/SKILL.md`
-- **Why it matters:** the chain can publish a plan to Linear and then hand
-  `/en-build` a path that no longer exists, the state the rule exists to prevent.
-- **Suggested fix:** have `/en-flow` read `plan_store` itself and refuse before
-  invoking `/en-plan`, or pass an explicit flag the refusal keys on.
-- **Logged:** 2026-09-22
-
 ### TD19. The Linear plan digests are not a tamper seal
 
 Both `peer_review_plan_hash` and `plan_full_hash` live in the Linear parent they
@@ -920,3 +898,28 @@ Filed by /en-review (confidence 5) — sub-threshold; surfaced for later review.
 **Why it matters:** step_of is a byte-for-byte copy between two tests, and the "file contains string" pass/fail helper exists under a dozen names, so the next Process-order test copies them again.
 **Suggested fix:** Move step_of, step_lines and a file-taking has/lacks pair into `tests/lib/assert.sh`, then migrate the call sites with the full suite run once.
 - **Logged:** 2026-09-27
+
+### TD18. ~~`/en-plan` cannot tell it was invoked by `/en-flow`~~ RESOLVED 2026-09-30
+
+**Resolved 2026-09-30 by `c4ad549`.** `/en-flow` now always invokes `/en-plan --from-flow`, and on that flag `/en-plan` resolves `plan_store` first and refuses under `linear` before any research or drafting. `en-plan-linear-publish.test.sh` checks all three ends and goes red when `/en-flow` stops passing the flag.
+
+
+**Verified 2026-09-30 (D125 triage), confidence now 6/10.** Still true: `skills/en-flow/SKILL.md` passes only the request and never reads `plan_store`, and `skills/en-plan/SKILL.md` step 18 has no caller check, so the refusal in `skills/en-plan/references/linear-publish.md` depends on the model inferring its caller. The chain stops at en-flow's plan gate, but only after the Linear publish. Needs a design call: a pre-check in en-flow, an explicit flag en-plan keys on, or a Linear-aware en-flow.
+
+Filed by /en-review (confidence 5), sub-threshold; surfaced for later review.
+
+`linear-publish.md` says the `/en-flow` boundary is "enforced, not merely
+documented": under `plan_store: linear`, `/en-plan` refuses before publishing
+when `/en-flow` invoked it. But `/en-flow` passes no marker, and `/en-plan`'s
+SKILL.md never mentions `/en-flow`, so the refusal depends on the model
+inferring its caller from context.
+
+- **Source:** EN18 branch review, plan-coverage pass, 2026-09-22
+- **Severity:** P3
+- **Confidence:** 5/10
+- **Location:** `skills/en-plan/references/linear-publish.md`, *The `/en-flow` boundary*; `skills/en-flow/SKILL.md`
+- **Why it matters:** the chain can publish a plan to Linear and then hand
+  `/en-build` a path that no longer exists, the state the rule exists to prevent.
+- **Suggested fix:** have `/en-flow` read `plan_store` itself and refuse before
+  invoking `/en-plan`, or pass an explicit flag the refusal keys on.
+- **Logged:** 2026-09-22
