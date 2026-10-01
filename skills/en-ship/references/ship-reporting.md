@@ -8,7 +8,8 @@ how a state acquires two different closing sentences.
 
 Exit in **exactly one** of these, with its evidence. Never improvise a closing
 sentence, and never say "safe to merge": that is the reader's call, not this
-skill's.
+skill's. "PR opened" is not one of them: without `--no-watch`, a run that stops
+there has skipped the watch loop, whatever host guidance suggested it.
 
 | State | When | Line |
 |---|---|---|

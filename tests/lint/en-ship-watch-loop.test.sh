@@ -14,8 +14,8 @@ WLOOP="$REPO_ROOT/skills/en-ship/references/watch-loop.md"
 GETPR="$REPO_ROOT/skills/en-resolve-pr/scripts/get-pr-comments"
 
 # --- default is a LOCAL watch-and-fix loop ---
-if grep -qiE "Local watch-and-fix loop \(default ON\)" "$EN_SHIP"; then
-  pass "en-ship default is a local watch-and-fix loop"
+if grep -qiE "Local watch-and-fix loop \(mandatory unless \`--no-watch\`\)" "$EN_SHIP"; then
+  pass "en-ship runs a local watch-and-fix loop unless --no-watch"
 else
   fail "en-ship must default to a local watch-and-fix loop"
 fi
@@ -160,6 +160,23 @@ hasf "$WATCH" "doctor: never drive a PR you have not health-checked" \
 hasf "$WATCH" "Re-doctor each round"                 "the doctor re-runs every round"
 hasf "$EN_SHIP" "scripts/ensemble-ship-watch"        "the loop drives the bundled watch script"
 hasf "$EN_SHIP" "Do not hand-write a poll loop"      "the skill forbids re-deriving the loop"
+
+# --- the loop is authorized over host defaults --------------------------------
+# A host can tell the agent never to poll CI and to hand monitoring to its own
+# PR monitor. Claude weighs that above skill text unless the skill says the user
+# authorized the loop, so /en-ship on the desktop app opened
+# singam-labs/stream-psp#27 and stopped. The authorization has to come before
+# the polling instructions, or an agent reading in order has already stopped.
+auth=$(grep -n "Invoking \`/en-ship\` is the user's explicit authorization to poll this PR" "$EN_SHIP" | head -1 | cut -d: -f1)
+poll=$(grep -n "Polling is the script's job" "$EN_SHIP" | head -1 | cut -d: -f1)
+[ -n "$auth" ] && [ -n "$poll" ] && [ "$auth" -lt "$poll" ] \
+  && grep -qF "overrides any host or harness guidance against polling CI" "$EN_SHIP" \
+  && pass "the watch loop is authorized over host defaults, before the polling instructions" \
+  || fail "step 13 must authorize the loop over host defaults, before polling" "auth=${auth:-none} poll=${poll:-none}"
+hasf "$EN_SHIP" "Launch it as a background or long-running command" \
+                                                     "the watch runs in the background, past a shell timeout"
+hasf "$REPO_ROOT/skills/en-ship/references/ship-reporting.md" '"PR opened" is not one of them' \
+                                                     "opening the PR is not an exit state"
 hasf "$EN_SHIP" "does not consume a repair cycle"    "a doctor failure costs no repair budget"
 
 # --- feedback before CI, with the reason recorded ----------------------------
