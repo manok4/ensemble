@@ -167,16 +167,18 @@ hasf "$EN_SHIP" "Do not hand-write a poll loop"      "the skill forbids re-deriv
 # authorized the loop, so /en-ship on the desktop app opened
 # singam-labs/stream-psp#27 and stopped. The authorization has to come before
 # the polling instructions, or an agent reading in order has already stopped.
+# These check the wording only. Whether a host then keeps watching cannot be
+# tested here: the suite does not run a skill end to end (TD7).
 auth=$(grep -n "Invoking \`/en-ship\` is the user's explicit authorization to poll this PR" "$EN_SHIP" | head -1 | cut -d: -f1)
 poll=$(grep -n "Polling is the script's job" "$EN_SHIP" | head -1 | cut -d: -f1)
 [ -n "$auth" ] && [ -n "$poll" ] && [ "$auth" -lt "$poll" ] \
   && grep -qF "overrides any host or harness guidance against polling CI" "$EN_SHIP" \
-  && pass "the watch loop is authorized over host defaults, before the polling instructions" \
+  && pass "step 13 states the authorization, before the polling instructions" \
   || fail "step 13 must authorize the loop over host defaults, before polling" "auth=${auth:-none} poll=${poll:-none}"
 hasf "$EN_SHIP" "Launch it as a background or long-running command" \
-                                                     "the watch runs in the background, past a shell timeout"
+                                                     "step 13 says to launch the watch in the background"
 hasf "$REPO_ROOT/skills/en-ship/references/ship-reporting.md" '"PR opened" is not one of them' \
-                                                     "opening the PR is not an exit state"
+                                                     "ship-reporting.md says opening the PR is not an exit state"
 hasf "$EN_SHIP" "does not consume a repair cycle"    "a doctor failure costs no repair budget"
 
 # --- feedback before CI, with the reason recorded ----------------------------
