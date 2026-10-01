@@ -53,7 +53,7 @@ The host applies findings using this matrix, with `T` as defined under Confidenc
 When the host walks the peer's findings:
 
 1. **Agree and apply.** Host modifies code per the finding. Mechanical fixes (typos, naming, simple refactors) and clear correctness fixes apply autonomously when severity/confidence/autofix-class allow per the matrix above. Note in commit body: `Addresses peer finding: <title>`.
-2. **Agree but defer.** Finding is valid but out of scope for this unit/PR. Append entry to `docs/plans/tech-debt-tracker.md` with stable TD-ID. Cite the unit (`From U3 review`).
+2. **Agree but defer.** Finding is valid but out of scope for this unit/PR. Append entry to `docs/plans/tech-debt-tracker.md` with stable TD-ID. Cite the unit (`From U3 review`). The host defers only a finding outside the branch's diff: one on a line the branch changed is fixed or dropped (D125). A deferral the user asks for is the user's call.
 3. **Disagree with rationale.** Host believes the peer is wrong. Note one-line rationale in the unit progress report. Do not apply.
 
 ## When to surface to user

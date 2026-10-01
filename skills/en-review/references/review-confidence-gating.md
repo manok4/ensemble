@@ -50,7 +50,7 @@ A sub-threshold finding leaves the side list in exactly two cases:
 - **The host verifies it.** The host reads the code and can name the `file:line` where the claim holds. Verification re-grades the finding's confidence to the threshold, and it then routes through the `references/severity.md` matrix like any other, which usually means fixing it on the branch.
 - **The user defers it.** In `interactive` mode the user picks it from the summary's "Below threshold" list and asks to defer it. It becomes a TD entry, which follows `references/tech-debt-tracker-format.md`.
 
-`/en-sweep` discards the list, since it is producing a doc-only PR.
+`/en-build` checks every entry on a line its branch changed against the code, and fixes or drops it (its post-build protocol, D125). `/en-sweep` discards the list, since it is producing a doc-only PR.
 
 ## What persona agents must emit
 
