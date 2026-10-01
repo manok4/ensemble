@@ -120,6 +120,10 @@ run_test() {  # -> RC, TIMED_OUT; output in $OUT
   wait "$CHILD"; RC=$?
   kill -- -"$WATCH" 2>/dev/null; wait "$WATCH" 2>/dev/null
   if [ -e "$OUT.timeout" ]; then TIMED_OUT=1; else TIMED_OUT=0; fi
+  # The leader can exit on TERM while a member that ignores it lives on, and
+  # killing the watcher above cancelled its KILL. Reap the group here, or that
+  # member keeps running against the tree after it is restored.
+  [ "$TIMED_OUT" -eq 1 ] && kill -KILL -- -"$CHILD" 2>/dev/null
   CHILD=""; WATCH=""
 }
 
@@ -131,7 +135,9 @@ restore() {
 }
 
 on_signal() {
-  [ -n "$CHILD" ] && kill -TERM -- -"$CHILD" 2>/dev/null
+  if [ -n "$CHILD" ]; then
+    kill -TERM -- -"$CHILD" 2>/dev/null; sleep 1; kill -KILL -- -"$CHILD" 2>/dev/null
+  fi
   [ -n "$WATCH" ] && kill -- -"$WATCH" 2>/dev/null
   restore
   rm -f "$OUT" "$OUT.timeout"

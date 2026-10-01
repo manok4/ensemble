@@ -68,4 +68,22 @@ else
        "D46 is about the default, not about forbidding the choice"
 fi
 
+# D125: a finding on a line the branch changed is fixed or dropped, never
+# deferred, whatever its confidence. The triage behind it found 9 of 15
+# sub-threshold filings true and small, all in their own branch's code. The
+# rule has to reach the protocol the host follows, the routing every copy of
+# severity.md carries, and the Review: line a reader checks.
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"
+SEV="$REPO_ROOT/skills/en-build/references/severity.md"
+RPT="$REPO_ROOT/skills/en-build/references/build-reporting.md"
+if grep -qF 'A finding on a changed line is fixed or dropped, never deferred' "$PB" \
+   && grep -qF 'sub_threshold_findings[]' "$PB" \
+   && grep -qF 'The host defers only a finding outside the branch' "$SEV" \
+   && grep -qE 'Changed-line check: [0-9]+ checked' "$RPT"; then
+  pass "changed-line findings are fixed or dropped, and the Review: line counts them"
+else
+  fail "the D125 changed-line rule must reach the protocol, severity.md and the Review: line" \
+       "check post-build-protocol.md, severity.md and build-reporting.md"
+fi
+
 report

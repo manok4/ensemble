@@ -63,6 +63,22 @@ done
   && pass "all nine anti-patterns are named" \
   || fail "good-tests.md is missing an anti-pattern" "$missing"
 
+# en-test-audit's peer cannot read good-tests.md, so its brief restates the nine
+# names and their tells inline (TD28). Checked in the prompt the builder actually
+# generates, not the brief file: TD28 was guidance sitting outside the part sent.
+TA="$REPO_ROOT/skills/en-test-audit"
+ta_prompt=$(printf 'x\n' | "$TA/scripts/ensemble-build-peer-prompt" --brief "$TA/references/peer-brief.md" \
+              --project-context x --goal y --artifact-stdin 2>/dev/null)
+missing=""
+for pat in "Implementation-coupled" "Tautological" "Horizontal slicing" "Reads source instead of running it" "Mocked past the boundary" \
+           "Tests the mock" "Cannot fail" "Duplicated contract" "Test-only seam"; do
+  printf '%s' "$ta_prompt" | grep -qF -- "- **$pat:**" || missing="$missing '$pat'"
+done
+printf '%s' "$ta_prompt" | grep -qF "the ledger row's Test cell" || missing="$missing 'ledger location rule'"
+[ -z "$missing" ] \
+  && pass "en-test-audit's generated peer prompt carries all nine anti-patterns and the location rule" \
+  || fail "en-test-audit's generated peer prompt is missing guidance" "$missing"
+
 tells=$(grep -c '\*The tell:' "$GT" || true)
 [ "$tells" -eq 9 ] \
   && pass "every anti-pattern carries its tell (9)" \

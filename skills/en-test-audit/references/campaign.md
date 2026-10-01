@@ -48,8 +48,9 @@ declaration unless its rows need different marks.
 - `R` retain, naming the contract and the bug it catches;
 - `F` keep the contract, repair the assertion (a negative that passes when only
   one of several items is missing, for example);
-- `C` consolidate, naming the owner that absorbs the assertion first;
-- `D` delete, naming the proof that remains, or why no contract exists.
+- `C` consolidate, naming the keeper test that absorbs the assertion first, as
+  `<path>::<name>`;
+- `D` delete, naming the keeper `<path>::<name>` that remains, or `none: <reason>`.
 
 **Judge a test by its assertions, not its name.** Merge the lanes' rows into the
 one ledger yourself; sub-agents never write it.

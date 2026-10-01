@@ -228,6 +228,14 @@ flow=$(awk '/^## The `\/en-flow` boundary/{f=1; next} f&&/^## /{exit} f' "$PUB")
 printf '%s' "$flow" | grep -qiE 'refuse' \
   && pass "and enforced by refusing before publishing" \
   || fail "and enforced by refusing before publishing" "the /en-flow section itself must say refuse"
+# The refusal keys on an explicit flag, not on the model guessing its caller
+# (TD18): en-flow passes it, en-plan declares it, and the boundary reads it.
+printf '%s' "$flow" | grep -qF -- '--from-flow' \
+  && grep -qF -- '| `--from-flow` |' "$REPO_ROOT/skills/en-plan/SKILL.md" \
+  && grep -E '^1\. ' "$REPO_ROOT/skills/en-plan/SKILL.md" | grep -qF -- '--from-flow' \
+  && grep -qF -- '/en-plan --from-flow' "$REPO_ROOT/skills/en-flow/SKILL.md" \
+  && pass "the boundary keys on --from-flow, which en-flow passes and en-plan declares" \
+  || fail "the /en-flow boundary must key on an explicit --from-flow flag" "check linear-publish.md, en-plan's flag table and en-flow step 3"
 
 # --- 11. .gitignore carries the two archive entries, precisely ---------------
 has "$IGNORE" '^\.ensemble/archive-plans/' ".gitignore ignores .ensemble/archive-plans/"

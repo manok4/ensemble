@@ -33,14 +33,14 @@ Lint: clean.
 Typecheck: clean.
 
 Code-simplifier: branch diff; 7 file changes.
-Review: --cross, cross-agent (codex). Found 11 — P0:1 P1:3 P2:5 P3:2. Addressed 6 (1 P0, 3 P1, 2 P2), deferred 4 to tech-debt-tracker (TD11-TD14), disagreed 1.
+Review: --cross, cross-agent (codex). Found 11 — P0:1 P1:3 P2:5 P3:2. Addressed 6 (1 P0, 3 P1, 2 P2), deferred 2 outside the diff (TD11, TD12), dropped 2, disagreed 1. Changed-line check: 5 checked, 3 fixed, 2 dropped.
 simplify_pass: completed
 branch_review_pass: completed
 learning_checkpoint: captured (2 learnings)
 metrics: <path> (<summary>)
 ```
 
-**The `Review:` line is mandatory and carries both halves.** *Found*, broken down by severity, and *addressed*, broken down the same way — a review that found eleven things and addressed six is a different outcome from one that found six and addressed six, and a line reporting only the second is unreadable as either. Deferred findings name their TD IDs so the paper trail is followable from the summary; disagreed ones are counted so a silent drop is visible as a number. Where the review was skipped or fell back, this line says which and why, in place of the counts.
+**The `Review:` line is mandatory and carries both halves.** *Found*, broken down by severity, and *addressed*, broken down the same way — a review that found eleven things and addressed six is a different outcome from one that found six and addressed six, and a line reporting only the second is unreadable as either. Deferred findings name their TD IDs so the paper trail is followable from the summary, and the changed-line check reports how many findings it checked, fixed and dropped (`references/post-build-protocol.md`); disagreed ones are counted so a silent drop is visible as a number. Where the review was skipped or fell back, this line says which and why, in place of the counts.
 
 The `metrics:` line is the run ledger `references/run-metrics.md` describes, with the helper's own summary in the parentheses (`6 units, 3 phases, 1 suite runs`). When metrics were disabled it reads `metrics: disabled (<reason>)`, so a missing file is never mistaken for a run that recorded nothing.
 

@@ -22,7 +22,7 @@ Finds tests that cost more than they protect and removes them, one owner-boundar
 | Flag | Effect |
 |---|---|
 | `--campaign <path>` | Prune one subsystem's whole test surface in one PR: lanes, a layer pass, product-defect control runs and a reconcile with main. **Read `references/campaign.md` now**; it owns the order of work, and the steps below run inside it lane by lane. |
-| `--resume <ledger>` | Return to a batch that stopped staged because the preservation review could not run. Step 1 runs the preflight with `--resume <ledger>`, which accepts only the ledger's own staged batch; the run then continues at step 10. |
+| `--resume <ledger>` | Return to a batch that stopped staged because the preservation review could not run. Step 1 runs the preflight with `--resume <ledger>`, which accepts only the ledger's own staged batch; the run then continues at **Stage, then the preservation review**. |
 | `--no-peer` | Only with `--resume`. Commit the staged batch without a preservation review, writing `preservation_review: skipped-by-flag` into the ledger and saying so in the hand-off. The only route to an unreviewed commit. |
 
 ## Process
