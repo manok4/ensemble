@@ -217,7 +217,7 @@ has "$PUB" 'plan_id`$|this repo.s `repo`' \
   "discovery matches plan_id AND repo, since plan IDs are repo-local"
 has "$PUB" 'different `repo` belongs to another repo' "another repo's parent is ignored, not adopted"
 has "$PUB" '\*\*no\*\* `repo` cannot be attributed' "a parent with no repo refuses rather than guess"
-has "$PUB" 'Contract carrying `plan_full_hash` and `repo`' "the rendered parent records the --full digest and the repo"
+has "$PUB" 'Contract carrying `plan_full_hash`, `repo` and the H1 as `plan_heading`' "the rendered parent records the --full digest, the repo and the heading"
 
 # --- 10. the /en-flow boundary is enforced, not documented -------------------
 has "$PUB" 'en-flow' "the /en-flow boundary is named"

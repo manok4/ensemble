@@ -120,9 +120,9 @@ implements it (D119). **Fetch, then run `intake`; never rebuild or compare the p
 - **Structure.** It normalizes Linear's `* ` markers back to `- ` (a plan materialized as
   returned hashes **seven empty fields per unit**), refuses a description still carrying
   Linear's truncation marker (a build that read it would implement a unit with its Approach cut
-  off), orders units by the `(U<N>)` suffix rather than Linear's `updatedAt`-descending order,
-  skips canceled sub-issues, and refuses a missing suffix, a duplicate U-ID, or a `plan_id` or
-  `plan_type` that could not safely name a file.
+  off), orders units by the `U<N> - ` title prefix (or the legacy `(U<N>)` suffix) rather than
+  Linear's `updatedAt`-descending order, skips canceled sub-issues, and refuses a title with no
+  U-ID, a duplicate U-ID, or a `plan_id` or `plan_type` that could not safely name a file.
 - **Identity.** The contract must carry `repo`, and it must be this repository's, computed by
   the script from `origin` rather than compared by eye.
 - **Both digests.** `ensemble-plan-hash` against `peer_review_plan_hash`, and
