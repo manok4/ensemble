@@ -77,10 +77,11 @@ states are matched by name rather than type, since `In Progress` and `In Review`
 
 Work in `/tmp/ensemble/en-plan/<plan_id>/`. **Render first**:
 `bash "$SKILL_DIR/scripts/ensemble-linear-plan" render <plan-path> > payload.json`. It prints the
-parent's title and description (the plan with its unit blocks removed, then the Verification
-Contract carrying `plan_full_hash` and `repo`) and one entry per unit with its title,
-description and `blocked_by`. A non-zero exit stops the publish before any Linear call, with
-the reason on stderr (no `origin` remote, a unit without a title).
+parent's title and description (the plan with its H1 and unit blocks removed, then the
+Verification Contract carrying `plan_full_hash`, `repo` and the H1 as `plan_heading`) and one
+entry per unit with its title (`U<N> - <unit title>`), description and `blocked_by`. A non-zero
+exit stops the publish before any Linear call, with the reason on stderr (no `origin` remote, a
+unit without a title).
 
 Then write with `save_issue`, following the idempotency protocol below rather than creating
 anything directly: the parent from `payload.parent`, each unit from `payload.units` with
@@ -212,7 +213,8 @@ In this order, because a retry must never create a second parent.
    repo-local, and another repo publishing to the same team can hold the same one.
 3. Create the parent if discovery found none, writing `linear_issue:` into the plan's
    frontmatter **before any sub-issue exists**.
-4. Fetch the parent's existing sub-issues and reconcile by the `(U<N>)` title suffix,
+4. Fetch the parent's existing sub-issues and reconcile by the U-ID in each title: the
+   `U<N> - ` prefix, or the `(U<N>)` suffix a plan published before 2026-10-07 carries,
    creating only the units that are absent and setting each one's state explicitly. An amend
    (`references/linear-intake.md`) also updates surviving units in place and cancels removed ones.
 5. Refuse and surface if two sub-issues claim the same U-ID, rather than guessing which is

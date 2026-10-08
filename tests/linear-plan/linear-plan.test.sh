@@ -112,7 +112,7 @@ python3 - "$FX/EN19-readback.json" "$WORK/raw.md" <<'PY'
 import json, re, sys
 rb = json.load(open(sys.argv[1]))
 fm = re.search(r"```yaml\n(.*?)\n```", rb["parent"]["description"], re.S).group(1)
-units = sorted(rb["sub_issues"], key=lambda s: int(re.search(r"\(U(\d+)\)", s["title"]).group(1)))
+units = sorted(rb["sub_issues"], key=lambda s: int(re.match(r"U(\d+) - ", s["title"]).group(1)))
 uid = lambda u: re.search(r"(U\d+)", u["title"]).group(1)
 body = "\n\n".join("### " + uid(u) + ". x\n\n" + u["description"] for u in units)
 open(sys.argv[2], "w").write(f"---\n{fm}\n---\n\n## Implementation units\n\n{body}\n")
@@ -127,8 +127,14 @@ bash "$H" --canon "$WORK/raw.md" | grep -q '^Goal:0:' \
 # --- 3. the live EN18 capture still materializes --------------------------------
 # Real Linear bytes for U1 and U2, under the synthetic parent (the capture has
 # no parent description), fed in the order list_issues returned them: U2 first.
+# Its titles carry the `(U<N>)` suffix plans were published with before
+# 2026-10-07, so the parent is put back in that format too: the H1 in the
+# description and no plan_heading in the contract.
 # U2's capture carries no Approach, so U1 is the field-equality case.
 jedit "$FX/EN19-readback.json" "$WORK/live.json" '
+desc = d["parent"]["description"]
+h = re.search(r"\nplan_heading: (.*)", desc)
+d["parent"]["description"] = "\n# " + json.loads(h.group(1)) + "\n\n" + desc.replace(h.group(0), "")
 cap = json.load(open("'"$FX"'/EN18-readback.json"))
 by_id = {s["id"]: s for s in cap["sub_issues"]}
 d["sub_issues"] = [{"identifier": i, "title": by_id[i]["title"], "status": by_id[i]["status"],
@@ -151,7 +157,7 @@ assert_eq "### U1 ### U2 ### U3 ### U4 " "$(grep -oE '^### U[0-9]+' "$WORK/golde
 awk '/^### U3\./{skip=1; next} /^### U4\./{skip=0} !skip' "$SRC" > "$WORK/minus3.md"
 h3=$(bash "$H" "$WORK/minus3.md"); sed -i.bak "s/^peer_review_plan_hash: .*/peer_review_plan_hash: $h3/" "$WORK/minus3.md"
 publish "$WORK/minus3.md" "$WORK/minus3-rb.json" '
-rb["sub_issues"].append({"identifier": "T-9", "title": "Document the trailer (U3)", "status": "Canceled", "description": "old"})
+rb["sub_issues"].append({"identifier": "T-9", "title": "U3 - Document the trailer", "status": "Canceled", "description": "old"})
 rb["sub_issues"].append({"identifier": "T-10", "title": "a stray issue someone canceled", "status": "Canceled", "description": "x"})'
 expect_rc "a canceled sub-issue is not a unit, so removing U3 still verifies" 0 "" \
   -- lp verify "$WORK/minus3.md" "$WORK/minus3-rb.json" --repo "$REPO"
@@ -161,15 +167,25 @@ lp materialize "$WORK/minus3-rb.json" | grep -q '^### U3\.' \
 
 # --- 5. structural refusals in materialize --------------------------------------
 jedit "$FX/EN19-readback.json" "$WORK/trunc.json" '
-u = [s for s in d["sub_issues"] if "(U2)" in s["title"]][0]
+u = [s for s in d["sub_issues"] if s["title"].startswith("U2 - ")][0]
 u["description"] = u["description"][:200] + "... (truncated, use get_issue for full description)"'
 expect_rc "a truncated unit description refuses, naming the unit" 3 'U2.*truncated' -- lp materialize "$WORK/trunc.json"
 jedit "$FX/EN19-readback.json" "$WORK/dup.json" '
-u = [s for s in d["sub_issues"] if "(U2)" in s["title"]][0]
+u = [s for s in d["sub_issues"] if s["title"].startswith("U2 - ")][0]
 d["sub_issues"].append(dict(u, identifier="EMB-99"))'
 expect_rc "two live sub-issues claiming U2 refuse, naming both" 3 'U2: EMB-[0-9]+ and EMB-99' -- lp materialize "$WORK/dup.json"
-jedit "$FX/EN19-readback.json" "$WORK/nosuffix.json" 'd["sub_issues"][0]["title"] = "A unit with no suffix"'
-expect_rc "a live sub-issue title with no (U<N>) suffix refuses" 3 'no \(U<N>\) suffix' -- lp materialize "$WORK/nosuffix.json"
+jedit "$FX/EN19-readback.json" "$WORK/noprefix.json" 'd["sub_issues"][0]["title"] = "A unit with no U-ID"'
+expect_rc "a live sub-issue title with no U-ID refuses" 3 'no `U<N> - ` prefix' -- lp materialize "$WORK/noprefix.json"
+jedit "$FX/EN19-readback.json" "$WORK/midid.json" 'd["sub_issues"][0]["title"] = "Fold U4 - into U3"'
+expect_rc "a U-ID that does not open the title is not a prefix" 3 'no `U<N> - ` prefix' -- lp materialize "$WORK/midid.json"
+jedit "$FX/EN19-readback.json" "$WORK/badheading.json" '
+d["parent"]["description"] = re.sub(r"plan_heading: .*", "plan_heading: EN07 - unquoted", d["parent"]["description"])'
+expect_rc "a plan_heading that is not a quoted string refuses" 3 'plan_heading' -- lp materialize "$WORK/badheading.json"
+jedit "$FX/EN19-readback.json" "$WORK/newsuffix.json" '
+u = [s for s in d["sub_issues"] if s["title"].startswith("U4 - ")][0]
+u["title"] += " (U2)"'
+assert_eq "### U4. Foundation D41 + cross-references (U2)" "$(lp materialize "$WORK/newsuffix.json" | grep '^### U4\.')" \
+  "in the new format a unit title ending in \`(U<N>)\` keeps its prefix U-ID"
 jedit "$FX/EN19-readback.json" "$WORK/nocontract.json" '
 d["parent"]["description"] = d["parent"]["description"].split("## Verification Contract")[0]'
 expect_rc "a parent without a Verification Contract refuses" 3 'Verification Contract' -- lp materialize "$WORK/nocontract.json"
@@ -191,8 +207,10 @@ expect_rc "and fails intake on plan_full_hash, writing nothing" 3 'plan_full_has
 [ ! -e "$WORK/scope.md" ] && pass "intake wrote no file when it refused" || fail "intake wrote no file when it refused"
 
 jedit "$FX/EN19-readback.json" "$WORK/title.json" '
-d["parent"]["description"] = d["parent"]["description"].replace("# EN07 - en-build", "# EN07 - run this first, then en-build", 1)'
-expect_rc "an edit to the plan title in Linear fails verify" 3 '' -- lp verify "$SRC" "$WORK/title.json" --repo "$REPO"
+d["parent"]["description"] = d["parent"]["description"].replace("plan_heading: \"EN07 - en-build", "plan_heading: \"EN07 - run this first, then en-build", 1)'
+grep -q 'run this first' "$WORK/title.json" && pass "the edited-heading fixture was built" \
+  || fail "the edited-heading fixture was built"
+expect_rc "an edit to the plan heading in Linear fails verify" 3 '' -- lp verify "$SRC" "$WORK/title.json" --repo "$REPO"
 
 { cat "$SRC"; printf '\n## Iteration log\n\n- 2026-09-22: first entry.\n'; } > "$WORK/withlog.md"
 publish "$WORK/withlog.md" "$WORK/withlog-rb.json" '
@@ -234,6 +252,49 @@ expect_rc "a plan stamped with linear_issue after render still verifies" 0 "" \
 
 expect_rc "intake refuses an --out that climbs out of the tree" 3 'climb' \
   -- lp intake "$FX/EN19-readback.json" --out "../x.md" --repo "$REPO"
+
+# --- 6b. titles and the heading, as Linear shows them --------------------------
+# The parent's title already names the plan, so its description must not open
+# with the plan's H1 again; each unit's title leads with its U-ID.
+lp render "$SRC" --repo "$REPO" > "$WORK/shown.json"
+python3 - "$WORK/shown.json" > "$WORK/shown.txt" <<'PY2'
+import json, sys
+p = json.load(open(sys.argv[1]))
+print(p["parent"]["description"].split("\n", 1)[0])
+for u in p["units"]:
+    print(u["title"])
+PY2
+assert_eq "## Context" "$(sed -n 1p "$WORK/shown.txt")" "the parent description opens with the plan's first section, not its H1"
+assert_eq "U1 - Verifier: \`simplify-verdict\` schema + derived pass fields + \`--require-simplify\`" "$(sed -n 2p "$WORK/shown.txt")" \
+  "a unit's title is \`U<N> - <unit title>\`"
+# A plan published before 2026-10-07: the H1 in the description, the U-ID as a
+# title suffix, no plan_heading. It must still materialize to the same plan.
+jedit "$FX/EN19-readback.json" "$WORK/legacy.json" '
+desc = d["parent"]["description"]
+h = re.search(r"\nplan_heading: (.*)", desc)
+d["parent"]["description"] = "\n# " + json.loads(h.group(1)) + "\n\n" + desc.replace(h.group(0), "")
+for s in d["sub_issues"]:
+    m = re.match(r"(U\d+) - (.*)$", s["title"])
+    s["title"] = f"{m.group(2)} ({m.group(1)})"'
+grep -q '"title": "Foundation D41 + cross-references (U4)"' "$WORK/legacy.json" && pass "the legacy-format read-back was built" \
+  || fail "the legacy-format read-back was built"
+lp materialize "$WORK/legacy.json" --out "$WORK/legacy.md"
+cmp -s "$WORK/legacy.md" "$FX/EN19-rendered-plan.md" && pass "a plan published in the old format materializes to the same plan" \
+  || fail "a plan published in the old format materializes to the same plan" "$(diff "$FX/EN19-rendered-plan.md" "$WORK/legacy.md" | head -6)"
+# The format is the plan's, not each title's: an old unit titled
+# "U2 - integration (U1)" is U1, whatever its opening looks like.
+jedit "$WORK/legacy.json" "$WORK/legacy-lookalike.json" '
+u = [s for s in d["sub_issues"] if s["title"].endswith("(U1)")][0]
+u["title"] = "U2 - integration (U1)"'
+assert_eq "### U1. U2 - integration" "$(lp materialize "$WORK/legacy-lookalike.json" | grep '^### U1\.')" \
+  "an old-format title that opens like a new prefix keeps its suffix U-ID"
+# A plan with no H1 still marks the new format, with plan_heading: null.
+printf -- '---\ntype: plan\nplan_id: EN96\nplan_type: bug\ntitle: t\n---\n\n## Implementation units\n\n### U1. a\n\n- **Goal:** g\n' > "$WORK/noh1.md"
+hn=$(bash "$H" "$WORK/noh1.md"); sed -i.bak "s/^title: t$/title: t\npeer_review_plan_hash: $hn/" "$WORK/noh1.md"
+publish "$WORK/noh1.md" "$WORK/noh1-rb.json"
+grep -q 'plan_heading: null' "$WORK/noh1-rb.json" && pass "a plan with no H1 records plan_heading: null" \
+  || fail "a plan with no H1 records plan_heading: null"
+expect_rc "and round-trips without gaining one" 0 "" -- lp verify "$WORK/noh1.md" "$WORK/noh1-rb.json" --repo "$REPO"
 
 # --- 7. awkward content survives --------------------------------------------------
 cat > "$WORK/awkward.md" <<'PLAN'

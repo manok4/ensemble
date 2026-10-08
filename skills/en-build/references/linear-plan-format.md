@@ -27,7 +27,7 @@ loses a byte the hash moves and the build refuses a plan nobody edited.
 |---|---|
 | the plan | one parent issue, created in state **Agent Ready** |
 | a unit | one sub-issue of that parent, `parentId` set at creation |
-| the U-ID | the title suffix `(U<N>)`, e.g. `Verifier (U1)` |
+| the U-ID | the title prefix `U<N> - `, e.g. `U1 - Verifier`, so a list filtered or sorted by title groups by unit |
 | unit order | **the U-ID, always.** Never Linear's ordering. See below. |
 
 ## What Linear changes, and what it leaves alone
@@ -58,8 +58,9 @@ detail is how the two ends drift apart again.
 `=>`, `+`, `--flag` names, `{missing,failed}`, parenthesised asides, nested
 inline formatting. The values were not the problem; the markers were.
 
-**Titles survive exactly**, `(U<N>)` suffix included, which is what makes the
-U-ID recoverable.
+**Titles survive exactly**, which is what makes the U-ID recoverable. The capture's
+titles carried the U-ID as a `(U<N>)` suffix, the format before 2026-10-07;
+`materialize` still reads it, so a plan published then still builds.
 
 ## Four behaviours the protocol has to account for
 
@@ -75,7 +76,7 @@ unit**. An N-unit plan costs N+1 calls; against 2,500 requests/hour that is not
 a budget concern, but it is not a single call either.
 
 **Ordering is `updatedAt` descending by default, not plan order.** The capture
-returned U2 before U1. Sort by the integer in the `(U<N>)` suffix and ignore the
+returned U2 before U1. Sort by the integer in the `U<N> - ` prefix and ignore the
 order Linear gives you. Two sub-issues carrying the same U-ID is a refusal, not
 a tie to break.
 
@@ -93,16 +94,18 @@ fields step 4 validates but the hash excludes: Test scenarios, Verification,
 Requirements covered, Reversibility, Ship scope, Execution note and Interfaces. A
 plan missing them materializes into a file the pre-flight refuses.
 
-**The parent's description is the whole plan except its unit blocks**: the title, every
+**The parent's description is the whole plan except its H1 and unit blocks**: every
 plan-level section (Context, Out of scope, Approach, Technical design, Decisions, the iteration
 log and the rest) and the `## Implementation units` heading with any preamble, verbatim and in
 order. A build therefore sees the same Out of scope and Technical design the reviewer did, and
-the plan no longer survives only in an archive on the publishing machine.
+the plan no longer survives only in an archive on the publishing machine. The H1 is left out
+because the parent's title already names the plan, and Linear would show it twice; it travels in
+the contract instead.
 
 **It ends with a `## Verification Contract` heading** followed by one fenced `yaml` block: the
 plan's frontmatter verbatim (`plan_id`, `title`, `status`, `depth`, `data_scale`,
 `related_design`, `peer_review_verdict`, `peer_review_resolutions`, `peer_review_plan_hash` and
-the rest), plus two keys `render` adds:
+the rest), plus the keys `render` adds:
 
 - `plan_full_hash`: `ensemble-plan-hash --full` over the plan as published. The
   default hash covers seven fields, so an edit in Linear to Test scenarios or
@@ -113,6 +116,12 @@ the rest), plus two keys `render` adds:
   repo-local and several repos can publish to one team, so discovery matches on
   `plan_id` **and** `repo`. A repo with no `origin` remote refuses `linear` mode: it
   has no identity another repo cannot also claim.
+- `plan_heading`: the plan's H1 without its `# `, as a double-quoted string, or `null` when the
+  plan's body does not open with one. `materialize` puts it back as the plan's first line and
+  drops the key, so the round trip still reproduces the plan the hashes cover. The key also
+  marks the format: a contract without it was published before 2026-10-07, so its H1 is still
+  in the description and its titles are read by the `(U<N>)` suffix alone. The choice is made
+  once per plan, never per title, so an old title like `U2 - integration (U1)` stays U1.
 
 Materialization rebuilds the frontmatter from that block, so nothing in it is
 inferred from the local tree.
@@ -126,16 +135,17 @@ materialize` does with their saved results, and `intake` adds step 8.
 2. `list_issues --parentId` for the sub-issue set. Descriptions here are
    truncated; you want the ids.
 3. `get_issue` each sub-issue for its full description.
-4. Recover the frontmatter, `plan_full_hash` and `repo` from the Verification Contract
+4. Recover the frontmatter, `plan_full_hash`, `repo` and `plan_heading` from the Verification Contract
    block, refusing a `plan_id` that is not `<PREFIX><NN>` or a `plan_type` outside the
    template's enum: the amend path builds a file name from them. Skip canceled sub-issues
    before reading their titles: a canceled unit is not a unit.
-5. Parse `(U<N>)` from each live title. Refuse on a missing suffix, or two live sub-issues
-   with the same U-ID. Sort by that integer.
+5. Parse the `U<N> - ` prefix from each live title, or the `(U<N>)` suffix when the contract
+   has no `plan_heading`. Refuse on a title without it, or two live sub-issues with the same
+   U-ID. Sort by that integer.
 6. **Normalize `* ` to `- `** at the start of every list line, outside code fences and
    inside blockquotes; refuse any description still carrying the truncation marker.
-7. Emit the plan file: the parent's skeleton with the units placed under
-   `## Implementation units`.
+7. Emit the plan file: `plan_heading` as its H1, then the parent's skeleton with the units
+   placed under `## Implementation units`.
 
 8. **`intake` only:** refuse unless the contract carries `plan_full_hash` and `repo`, `repo` is
    this repository's identity, `ensemble-plan-hash --full` of the rebuilt plan equals

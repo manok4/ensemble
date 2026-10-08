@@ -115,7 +115,9 @@ writing nothing, if the parent's state has left the amendable set, or if
 someone edited the plan in Linear, while it was under review.
 
 **Update in place.** `render` the revised plan. Update the parent with `save_issue` by id, and
-each surviving unit's sub-issue by id (the U-ID to identifier map comes from the fresh read-back).
+each surviving unit's sub-issue by id (the U-ID to identifier map comes from the fresh read-back,
+reading each title's `U<N> - ` prefix or legacy `(U<N>)` suffix). Send the rendered title too, so
+a plan published in the old format moves to the new one.
 Create the units the revision added, with `parentId` and state Agent Ready. **Cancel** the
 sub-issue of each unit the revision removed; the MCP server has no delete tool, and a canceled
 sub-issue is not a unit, so `materialize` and `verify` skip it. Then read back, `verify` and

@@ -14,8 +14,9 @@
 # Usage:
 #   ensemble-linear-plan render <plan> [--repo <id>]
 #       Print the publish payload as JSON: plan_id, repo, the parent's title and
-#       description (the plan with its unit blocks removed, then a Verification
-#       Contract), and one entry per unit with title, description, blocked_by.
+#       description (the plan with its H1 and unit blocks removed, then a
+#       Verification Contract), and one entry per unit with title, description,
+#       blocked_by. A unit's title is `U<N> - <unit title>`.
 #   ensemble-linear-plan materialize <readback.json> [--out <path>]
 #       Rebuild the plan file from saved get_issue results:
 #       {"parent": {...}, "sub_issues": [{...}, ...]}. A pure transform: it
@@ -47,7 +48,13 @@
 #     with `* ` bullets still round-trips.
 #   - list_issues truncates descriptions. A description still carrying the
 #     truncation marker is refused, never taken as content.
-#   - Units are ordered by the (U<N>) title suffix, never by Linear's order.
+#   - Units are ordered by the `U<N> - ` title prefix, never by Linear's order.
+#   - The plan's H1 would repeat the parent's title at the top of its
+#     description, so it travels as `plan_heading` in the contract instead
+#     (null for a plan with no H1).
+#   - A contract without `plan_heading` was published before 2026-10-07: its
+#     H1 is still in the description and its titles carry a `(U<N>)` suffix.
+#     The key picks the format for the whole plan, never a guess per title.
 #   - A canceled sub-issue is not a unit. That is how an amend removes one.
 #
 # What the digests prove, and what they do not: they catch accidental drift
@@ -73,12 +80,13 @@ UNITS_HEADING = "## Implementation units"
 PREAMBLE = "(preamble)"
 # Keys render adds to the contract, and keys the publish flow writes into the
 # plan after render ran. Neither is part of what was reviewed.
-CONTRACT_KEYS = frozenset({"plan_full_hash", "repo"})
+CONTRACT_KEYS = frozenset({"plan_full_hash", "repo", "plan_heading"})
 POST_RENDER_KEYS = frozenset({"linear_issue", "archived"})
 PLAN_ID_RE = re.compile(r"^[A-Z]+[0-9]+$")
 PLAN_TYPES = frozenset({"feature", "improvement", "bug"})
 UNIT_RE = re.compile(r"^### (U\d+)\.\s*(.*)$")
-SUFFIX_RE = re.compile(r"\((U\d+)\)\s*$")
+PREFIX_RE = re.compile(r"^(U\d+) - ")
+LEGACY_SUFFIX_RE = re.compile(r"\s*\((U\d+)\)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 MARKER_RE = re.compile(r"^(\s*(?:>\s*)*)\* ")
 
@@ -189,6 +197,26 @@ def parse_body(body):
     return skeleton, [(u, t, trim(b)) for u, t, b in units]
 
 
+def split_heading(body):
+    """(heading, rest): the H1 text when the body's first non-blank line is one."""
+    lines = body.split("\n")
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i == len(lines) or not lines[i].startswith("# "):
+        return None, body
+    return lines[i][2:], "\n".join(trim(lines[i + 1:]))
+
+
+def unit_title(title, legacy):
+    """(u_id, bare title) from a sub-issue title, else (None, title)."""
+    if legacy:
+        m = LEGACY_SUFFIX_RE.search(title)
+        return (m.group(1), title[:m.start()]) if m else (None, title)
+    m = PREFIX_RE.match(title)
+    return (m.group(1), title[m.end():]) if m else (None, title)
+
+
 def trim(block):
     while block and not block[0].strip():
         block = block[1:]
@@ -287,7 +315,8 @@ def render(plan_path, repo):
 
     contract = drop_keys(fm, CONTRACT_KEYS)
     contract += [f"plan_full_hash: {text_hash(text, full=True)}", f"repo: {repo}"]
-    skeleton_text = "\n".join(l for l in skeleton if l != "<<UNITS>>").rstrip()
+    heading, skeleton_text = split_heading("\n".join(l for l in skeleton if l != "<<UNITS>>").rstrip())
+    contract.append("plan_heading: " + json.dumps(heading, ensure_ascii=False))
     description = f"{skeleton_text}\n\n{CONTRACT}\n\n```yaml\n" + "\n".join(contract) + "\n```\n"
 
     out_units = []
@@ -298,7 +327,7 @@ def render(plan_path, repo):
             if m:
                 deps = re.findall(r"U\d+", m.group(1))
                 break
-        out_units.append({"u_id": uid, "title": f"{utitle} ({uid})",
+        out_units.append({"u_id": uid, "title": f"{uid} - {utitle}",
                           "description": "\n".join(block) + "\n", "blocked_by": deps})
     return {"plan_id": plan_id, "repo": repo,
             "parent": {"title": f"{title} ({plan_id})", "description": description},
@@ -336,18 +365,28 @@ def materialize(readback):
     m = re.search(r"```ya?ml\n(.*?)\n```", contract_text, re.S)
     if not m:
         raise Refusal(f"parent {ident(parent)}'s `{CONTRACT}` has no fenced yaml block")
-    fm_text = canonical(m.group(1), include_fenced=True)
-    check_identity(fm_text.split("\n"))
+    fm_lines = canonical(m.group(1), include_fenced=True).split("\n")
+    check_identity(fm_lines)
+    heading = None
+    legacy = not any(fm_key(l) == "plan_heading" for l in fm_lines)
+    if not legacy:
+        try:
+            heading = json.loads(fm_value(fm_lines, "plan_heading"))
+        except ValueError:
+            heading = 0
+        if heading is not None and not isinstance(heading, str):
+            raise Refusal(f"parent {ident(parent)}'s plan_heading is not a quoted string or null")
+    fm_text = "\n".join(drop_keys(fm_lines, {"plan_heading"}))
 
     live = {}
     for issue in readback.get("sub_issues") or []:
         if is_canceled(issue):
             continue
         title = issue.get("title") or ""
-        sm = SUFFIX_RE.search(title)
-        if not sm:
-            raise Refusal(f"sub-issue {ident(issue)} title has no (U<N>) suffix: {title!r}")
-        uid = sm.group(1)
+        uid, _ = unit_title(title, legacy)
+        if uid is None:
+            want = "(U<N>) suffix" if legacy else "`U<N> - ` prefix"
+            raise Refusal(f"sub-issue {ident(issue)} title has no {want}: {title!r}")
         if uid in live:
             raise Refusal(f"two live sub-issues claim {uid}: {ident(live[uid])} and {ident(issue)}")
         d = issue.get("description")
@@ -362,11 +401,13 @@ def materialize(readback):
     blocks = []
     for uid in sorted(live, key=lambda u: int(u[1:])):
         issue = live[uid]
-        utitle = SUFFIX_RE.sub("", issue["title"]).rstrip()
+        utitle = unit_title(issue["title"], legacy)[1].strip()
         body = trim(canonical(issue["description"]).split("\n"))
         blocks.append(f"### {uid}. {utitle}\n\n" + "\n".join(body))
 
     skeleton = canonical(skeleton_text.rstrip()).split("\n")
+    if heading is not None:
+        skeleton = ["", "# " + heading, ""] + trim(skeleton)
     out, placed, in_units = [], False, False
     for line, fenced in with_fence_state(skeleton):
         if not fenced and line.startswith("## "):
