@@ -49,9 +49,12 @@
 #   - list_issues truncates descriptions. A description still carrying the
 #     truncation marker is refused, never taken as content.
 #   - Units are ordered by the `U<N> - ` title prefix, never by Linear's order.
-#     A `(U<N>)` suffix, the format before 2026-10-07, still reads.
 #   - The plan's H1 would repeat the parent's title at the top of its
-#     description, so it travels as `plan_heading` in the contract instead.
+#     description, so it travels as `plan_heading` in the contract instead
+#     (null for a plan with no H1).
+#   - A contract without `plan_heading` was published before 2026-10-07: its
+#     H1 is still in the description and its titles carry a `(U<N>)` suffix.
+#     The key picks the format for the whole plan, never a guess per title.
 #   - A canceled sub-issue is not a unit. That is how an amend removes one.
 #
 # What the digests prove, and what they do not: they catch accidental drift
@@ -205,15 +208,13 @@ def split_heading(body):
     return lines[i][2:], "\n".join(trim(lines[i + 1:]))
 
 
-def unit_title(title):
+def unit_title(title, legacy):
     """(u_id, bare title) from a sub-issue title, else (None, title)."""
+    if legacy:
+        m = LEGACY_SUFFIX_RE.search(title)
+        return (m.group(1), title[:m.start()]) if m else (None, title)
     m = PREFIX_RE.match(title)
-    if m:
-        return m.group(1), title[m.end():]
-    m = LEGACY_SUFFIX_RE.search(title)
-    if m:
-        return m.group(1), title[:m.start()]
-    return None, title
+    return (m.group(1), title[m.end():]) if m else (None, title)
 
 
 def trim(block):
@@ -315,8 +316,7 @@ def render(plan_path, repo):
     contract = drop_keys(fm, CONTRACT_KEYS)
     contract += [f"plan_full_hash: {text_hash(text, full=True)}", f"repo: {repo}"]
     heading, skeleton_text = split_heading("\n".join(l for l in skeleton if l != "<<UNITS>>").rstrip())
-    if heading is not None:
-        contract.append("plan_heading: " + json.dumps(heading, ensure_ascii=False))
+    contract.append("plan_heading: " + json.dumps(heading, ensure_ascii=False))
     description = f"{skeleton_text}\n\n{CONTRACT}\n\n```yaml\n" + "\n".join(contract) + "\n```\n"
 
     out_units = []
@@ -368,13 +368,14 @@ def materialize(readback):
     fm_lines = canonical(m.group(1), include_fenced=True).split("\n")
     check_identity(fm_lines)
     heading = None
-    if fm_value(fm_lines, "plan_heading"):
+    legacy = not any(fm_key(l) == "plan_heading" for l in fm_lines)
+    if not legacy:
         try:
             heading = json.loads(fm_value(fm_lines, "plan_heading"))
         except ValueError:
-            heading = None
-        if not isinstance(heading, str):
-            raise Refusal(f"parent {ident(parent)}'s plan_heading is not a quoted string")
+            heading = 0
+        if heading is not None and not isinstance(heading, str):
+            raise Refusal(f"parent {ident(parent)}'s plan_heading is not a quoted string or null")
     fm_text = "\n".join(drop_keys(fm_lines, {"plan_heading"}))
 
     live = {}
@@ -382,9 +383,10 @@ def materialize(readback):
         if is_canceled(issue):
             continue
         title = issue.get("title") or ""
-        uid, _ = unit_title(title)
+        uid, _ = unit_title(title, legacy)
         if uid is None:
-            raise Refusal(f"sub-issue {ident(issue)} title has no `U<N> - ` prefix: {title!r}")
+            want = "(U<N>) suffix" if legacy else "`U<N> - ` prefix"
+            raise Refusal(f"sub-issue {ident(issue)} title has no {want}: {title!r}")
         if uid in live:
             raise Refusal(f"two live sub-issues claim {uid}: {ident(live[uid])} and {ident(issue)}")
         d = issue.get("description")
@@ -399,7 +401,7 @@ def materialize(readback):
     blocks = []
     for uid in sorted(live, key=lambda u: int(u[1:])):
         issue = live[uid]
-        utitle = unit_title(issue["title"])[1].strip()
+        utitle = unit_title(issue["title"], legacy)[1].strip()
         body = trim(canonical(issue["description"]).split("\n"))
         blocks.append(f"### {uid}. {utitle}\n\n" + "\n".join(body))
 

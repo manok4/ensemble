@@ -116,9 +116,12 @@ the rest), plus the keys `render` adds:
   repo-local and several repos can publish to one team, so discovery matches on
   `plan_id` **and** `repo`. A repo with no `origin` remote refuses `linear` mode: it
   has no identity another repo cannot also claim.
-- `plan_heading`: the plan's H1 without its `# `, as a double-quoted string, when the plan's
-  body opens with one. `materialize` puts it back as the plan's first line and drops the key,
-  so the round trip still reproduces the plan the hashes cover.
+- `plan_heading`: the plan's H1 without its `# `, as a double-quoted string, or `null` when the
+  plan's body does not open with one. `materialize` puts it back as the plan's first line and
+  drops the key, so the round trip still reproduces the plan the hashes cover. The key also
+  marks the format: a contract without it was published before 2026-10-07, so its H1 is still
+  in the description and its titles are read by the `(U<N>)` suffix alone. The choice is made
+  once per plan, never per title, so an old title like `U2 - integration (U1)` stays U1.
 
 Materialization rebuilds the frontmatter from that block, so nothing in it is
 inferred from the local tree.
@@ -136,8 +139,9 @@ materialize` does with their saved results, and `intake` adds step 8.
    block, refusing a `plan_id` that is not `<PREFIX><NN>` or a `plan_type` outside the
    template's enum: the amend path builds a file name from them. Skip canceled sub-issues
    before reading their titles: a canceled unit is not a unit.
-5. Parse the `U<N> - ` prefix from each live title, or a legacy `(U<N>)` suffix. Refuse on
-   a title with neither, or two live sub-issues with the same U-ID. Sort by that integer.
+5. Parse the `U<N> - ` prefix from each live title, or the `(U<N>)` suffix when the contract
+   has no `plan_heading`. Refuse on a title without it, or two live sub-issues with the same
+   U-ID. Sort by that integer.
 6. **Normalize `* ` to `- `** at the start of every list line, outside code fences and
    inside blockquotes; refuse any description still carrying the truncation marker.
 7. Emit the plan file: `plan_heading` as its H1, then the parent's skeleton with the units
