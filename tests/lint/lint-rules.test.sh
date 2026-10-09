@@ -1162,6 +1162,16 @@ if echo "$output" | grep -qF "docs/plans/legacy/"; then
 else
   pass "no rule reports on files under docs/plans/legacy/"
 fi
+for scope in ./docs/ "$TMP/docs/"; do
+  label="a ${scope%%docs/}-prefixed scope also skips docs/plans/legacy/"
+  [ "$scope" = "./docs/" ] || label="an absolute scope also skips docs/plans/legacy/"
+  output=$(cd "$TMP" && "$LINT" --scope "$scope" 2>&1)
+  if echo "$output" | grep -qF "plans/legacy/"; then
+    fail "$label" "$(echo "$output" | grep 'plans/legacy/')"
+  else
+    pass "$label"
+  fi
+done
 
 # --- broken-u: units qualified with another plan's ID --------------------------
 # "FR80 U5" cites FR80's unit, not this plan's, and so does a bare "U5" in the
@@ -1199,5 +1209,10 @@ if echo "$output" | grep -qF "U7 cited but no" && echo "$output" | grep -qF "U9 
 else
   fail "unqualified and self-qualified units still fire cross-link.broken-u" "$(echo "$output" | grep broken-u)"
 fi
+
+# Citing the same unit with this plan's own ID claims it locally, so "FR50 U5"
+# cancels the exemption "FR80 U5" would otherwise give.
+sed -i.bak 's/See also U7 and FR50 U9\./FR50 U5 is ours too./' "$TMP/docs/plans/active/FR50-test.md" && rm -f "$TMP/docs/plans/active/FR50-test.md.bak"
+assert_rule_fires "U5 cited but no" "a unit also cited with this plan's own ID"
 
 report

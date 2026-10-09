@@ -479,18 +479,20 @@ check_cross_links() {
     local u_ids
     u_ids=$(grep -oE '\bU[0-9]+\b' "$file" | sort -u || true)
     # A unit the file also cites as "FR80 U5" belongs to that other plan, so a
-    # bare "U5" nearby means the same unit. Its own plan ID does not qualify.
-    local foreign_u_ids=""
+    # bare "U5" nearby means the same unit. Citing it with the file's own plan
+    # ID ("FR50 U5" in FR50) claims it locally and cancels that exemption.
+    local qualified_u_ids=""
     if [ -n "$plan_prefixes" ]; then
       local own_id; own_id=$(get_plan_id "$file")
-      foreign_u_ids=$(grep -oE "\\b(${plan_prefixes})[0-9]{2,3}[[:space:]]+U[0-9]+\\b" "$file" \
-        | awk -v own="$own_id" '$1 != own { print $2 }' | sort -u || true)
+      qualified_u_ids=$(grep -oE "\\b(${plan_prefixes})[0-9]{2,3}[[:space:]]+U[0-9]+\\b" "$file" \
+        | awk -v own="$own_id" '{ print ($1 == own ? "own" : "foreign"), $2 }' | sort -u || true)
     fi
     while IFS= read -r uid; do
       [ -z "$uid" ] && continue
       # U-ID must have a declaring line in the same plan ("### U3." pattern)
       if ! grep -qE "^#{2,4} ${uid}\." "$file" \
-         && ! printf '%s\n' "$foreign_u_ids" | grep -qx "$uid"; then
+         && { ! printf '%s\n' "$qualified_u_ids" | grep -qx "foreign $uid" \
+              || printf '%s\n' "$qualified_u_ids" | grep -qx "own $uid"; }; then
         emit "cross-link.broken-u" "$file" "" "P1" "$uid cited but no '### $uid.' declaration in same plan" "Add a unit heading or remove the citation"
       fi
     done <<< "$u_ids"
@@ -951,6 +953,9 @@ check_td_enforce_layer() {
 # --- Run lints ---
 while IFS= read -r file; do
   [ -z "$file" ] && continue
+  # Every rule matches repo-relative paths, so a scope spelled ./docs/ or as an
+  # absolute path must not slip past them.
+  file="${file#"$PWD"/}"; file="${file#./}"
   # Archived plans are frozen history in their own older format; no rule
   # applies to them. They stay valid targets for cross-link.broken-fr.
   case "$file" in docs/plans/legacy/*) continue ;; esac
