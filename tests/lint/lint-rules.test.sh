@@ -1118,4 +1118,101 @@ else
   pass "index.md and log.md are not treated as learnings needing an index entry"
 fi
 
+# --- Legacy plans: valid citation targets, never linted ------------------------
+# /en-setup archives non-conforming plans to docs/plans/legacy/. Before the lint
+# knew about them, one repo saw 288 broken-fr P1s (2026-10-09): every ID inside
+# a legacy file, plus every live plan citing one. FR08 exists only in legacy and
+# must resolve; FR99 exists nowhere and must still fire. The legacy file itself
+# cites FR03 and holds an absolute path, and must produce no finding at all.
+setup_minimum
+mkdir -p "$TMP/docs/plans/legacy"
+cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
+---
+type: plan
+plan_type: feature
+fr_id: FR50
+title: Cites a legacy plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# FR50
+
+Builds on FR08. Also cites FR99, which exists nowhere.
+EOF
+echo "- [\`FR50-test.md\`](../plans/active/FR50-test.md) — fixture" >> "$TMP/docs/generated/plan-index.md"
+printf '# Old plan\n\nSuperseded FR03. Lived at /Users/somebody/old/plan.md once.\n' > "$TMP/docs/plans/legacy/FR08-old-plan.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "FR08 cited but no plan file"; then
+  fail "a plan archived to legacy resolves as a citation target" "$(echo "$output" | grep 'FR08 cited')"
+else
+  pass "a plan archived to legacy resolves as a citation target"
+fi
+if echo "$output" | grep -qF "FR99 cited but no plan file"; then
+  pass "a plan ID with no file anywhere still fires cross-link.broken-fr"
+else
+  fail "a plan ID with no file anywhere still fires cross-link.broken-fr" "$(echo "$output" | head -5)"
+fi
+if echo "$output" | grep -qF "docs/plans/legacy/"; then
+  fail "no rule reports on files under docs/plans/legacy/" "$(echo "$output" | grep 'docs/plans/legacy/')"
+else
+  pass "no rule reports on files under docs/plans/legacy/"
+fi
+for scope in ./docs/ "$TMP/docs/"; do
+  label="a ${scope%%docs/}-prefixed scope also skips docs/plans/legacy/"
+  [ "$scope" = "./docs/" ] || label="an absolute scope also skips docs/plans/legacy/"
+  output=$(cd "$TMP" && "$LINT" --scope "$scope" 2>&1)
+  if echo "$output" | grep -qF "plans/legacy/"; then
+    fail "$label" "$(echo "$output" | grep 'plans/legacy/')"
+  else
+    pass "$label"
+  fi
+done
+
+# --- broken-u: units qualified with another plan's ID --------------------------
+# "FR80 U5" cites FR80's unit, not this plan's, and so does a bare "U5" in the
+# same file. U7 is never qualified and "FR50 U9" names this plan, so both must
+# still fire.
+setup_minimum
+cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
+---
+type: plan
+plan_type: feature
+fr_id: FR50
+title: Cites another plan's units
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# FR50
+
+### U1. Real unit
+
+Waits on FR80 U5. U5 remains approval-gated. See also U7 and FR50 U9.
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "U5 cited but no"; then
+  fail "a unit qualified with another plan's ID is not checked locally" "$(echo "$output" | grep 'U5 cited')"
+else
+  pass "a unit qualified with another plan's ID is not checked locally"
+fi
+if echo "$output" | grep -qF "U7 cited but no" && echo "$output" | grep -qF "U9 cited but no"; then
+  pass "unqualified and self-qualified units still fire cross-link.broken-u"
+else
+  fail "unqualified and self-qualified units still fire cross-link.broken-u" "$(echo "$output" | grep broken-u)"
+fi
+
+# Citing the same unit with this plan's own ID claims it locally, so "FR50 U5"
+# cancels the exemption "FR80 U5" would otherwise give.
+sed -i.bak 's/See also U7 and FR50 U9\./FR50 U5 is ours too./' "$TMP/docs/plans/active/FR50-test.md" && rm -f "$TMP/docs/plans/active/FR50-test.md.bak"
+assert_rule_fires "U5 cited but no" "a unit also cited with this plan's own ID"
+
 report
