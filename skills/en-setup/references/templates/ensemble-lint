@@ -490,6 +490,7 @@ check_cross_links() {
   # foundation.md `plan_id_prefix:` plus any prefix already in use under plans/.
   # Rule code retains the `broken-fr` name for back-compat. With no prefix from
   # either source there is nothing to cite, so skip rather than build `\b()`.
+  # Archived plans in docs/plans/legacy/ count as valid targets.
   local plan_prefixes; plan_prefixes=$(get_plan_prefixes)
   local fr_ids=""
   if [ -n "$plan_prefixes" ]; then
@@ -499,13 +500,14 @@ check_cross_links() {
   while IFS= read -r frid; do
     [ -z "$frid" ] && continue
     if ! ls docs/plans/active/${frid}-*.md 2>/dev/null 1>&2 \
-       && ! ls docs/plans/completed/${frid}-*.md 2>/dev/null 1>&2; then
+       && ! ls docs/plans/completed/${frid}-*.md 2>/dev/null 1>&2 \
+       && ! ls docs/plans/legacy/${frid}-*.md 2>/dev/null 1>&2; then
       # Skip if this is a system-describing reference doc — those reference plan-IDs in narrative,
       # not as citations to real plans in this repo.
       case "$file" in
         docs/foundation.md|docs/generated/*.md|docs/plans/tech-debt-tracker.md) ;;
         *)
-          emit "cross-link.broken-fr" "$file" "" "P1" "$frid cited but no plan file matches docs/plans/{active,completed}/$frid-*.md" "Create the plan or remove the citation"
+          emit "cross-link.broken-fr" "$file" "" "P1" "$frid cited but no plan file matches docs/plans/{active,completed,legacy}/$frid-*.md" "Create the plan or remove the citation"
           ;;
       esac
     fi
@@ -939,6 +941,9 @@ check_td_enforce_layer() {
 # --- Run lints ---
 while IFS= read -r file; do
   [ -z "$file" ] && continue
+  # Archived plans are frozen history in their own older format; no rule
+  # applies to them. They stay valid targets for cross-link.broken-fr.
+  case "$file" in docs/plans/legacy/*) continue ;; esac
   check_frontmatter_present "$file"
   check_no_absolute_paths "$file"
   check_plan_status_location "$file"

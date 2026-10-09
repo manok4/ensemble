@@ -1118,4 +1118,49 @@ else
   pass "index.md and log.md are not treated as learnings needing an index entry"
 fi
 
+# --- Legacy plans: valid citation targets, never linted ------------------------
+# /en-setup archives non-conforming plans to docs/plans/legacy/. Before the lint
+# knew about them, one repo saw 288 broken-fr P1s (2026-10-09): every ID inside
+# a legacy file, plus every live plan citing one. FR08 exists only in legacy and
+# must resolve; FR99 exists nowhere and must still fire. The legacy file itself
+# cites FR03 and holds an absolute path, and must produce no finding at all.
+setup_minimum
+mkdir -p "$TMP/docs/plans/legacy"
+cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
+---
+type: plan
+plan_type: feature
+fr_id: FR50
+title: Cites a legacy plan
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# FR50
+
+Builds on FR08. Also cites FR99, which exists nowhere.
+EOF
+echo "- [\`FR50-test.md\`](../plans/active/FR50-test.md) — fixture" >> "$TMP/docs/generated/plan-index.md"
+printf '# Old plan\n\nSuperseded FR03. Lived at /Users/somebody/old/plan.md once.\n' > "$TMP/docs/plans/legacy/FR08-old-plan.md"
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "FR08 cited but no plan file"; then
+  fail "a plan archived to legacy resolves as a citation target" "$(echo "$output" | grep 'FR08 cited')"
+else
+  pass "a plan archived to legacy resolves as a citation target"
+fi
+if echo "$output" | grep -qF "FR99 cited but no plan file"; then
+  pass "a plan ID with no file anywhere still fires cross-link.broken-fr"
+else
+  fail "a plan ID with no file anywhere still fires cross-link.broken-fr" "$(echo "$output" | head -5)"
+fi
+if echo "$output" | grep -qF "docs/plans/legacy/"; then
+  fail "no rule reports on files under docs/plans/legacy/" "$(echo "$output" | grep 'docs/plans/legacy/')"
+else
+  pass "no rule reports on files under docs/plans/legacy/"
+fi
+
 report
