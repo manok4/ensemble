@@ -1163,4 +1163,41 @@ else
   pass "no rule reports on files under docs/plans/legacy/"
 fi
 
+# --- broken-u: units qualified with another plan's ID --------------------------
+# "FR80 U5" cites FR80's unit, not this plan's, and so does a bare "U5" in the
+# same file. U7 is never qualified and "FR50 U9" names this plan, so both must
+# still fire.
+setup_minimum
+cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
+---
+type: plan
+plan_type: feature
+fr_id: FR50
+title: Cites another plan's units
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# FR50
+
+### U1. Real unit
+
+Waits on FR80 U5. U5 remains approval-gated. See also U7 and FR50 U9.
+EOF
+result=$(run_lint)
+output="${result%%|||*}"
+if echo "$output" | grep -qF "U5 cited but no"; then
+  fail "a unit qualified with another plan's ID is not checked locally" "$(echo "$output" | grep 'U5 cited')"
+else
+  pass "a unit qualified with another plan's ID is not checked locally"
+fi
+if echo "$output" | grep -qF "U7 cited but no" && echo "$output" | grep -qF "U9 cited but no"; then
+  pass "unqualified and self-qualified units still fire cross-link.broken-u"
+else
+  fail "unqualified and self-qualified units still fire cross-link.broken-u" "$(echo "$output" | grep broken-u)"
+fi
+
 report
