@@ -93,6 +93,8 @@ LEGACY_SUFFIX_RE = re.compile(r"\s*\((U\d+)\)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 MARKER_RE = re.compile(r"^(\s*(?:>\s*)*)\* ")
 THEMATIC_BREAK_RE = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
+# A line that starts a new Markdown block, so a bold span open before it never closes.
+BLOCK_START_RE = re.compile(r"^\s*$|^\s*#|^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s")
 
 
 class Refusal(Exception):
@@ -341,33 +343,40 @@ def bold_problems(body, first_lineno):
 
     Measured: Linear moves inline code out of a bold span, and closes a bold span
     at a line break and reopens it on the next line. Neither is reversible at
-    verify, so render refuses them. Fenced code is left alone.
+    verify, so render refuses them. Fenced code is left alone, and a `**` with no
+    closer in its block, like the glob `src/**/x.py`, is literal text, not bold.
     """
     problems = []
+    opened = None  # (k, line, start, code_at on that line, code seen anywhere)
     for k, (line, fenced) in enumerate(with_fence_state(body.split("\n"))):
-        if fenced or THEMATIC_BREAK_RE.match(line):
+        skip = fenced or THEMATIC_BREAK_RE.match(line)
+        if skip or BLOCK_START_RE.match(line):
+            opened = None
+        if skip:
             continue
-        open_at, code_at = None, None
         for kind, pos in inline_events(line):
             if kind == "code":
-                if open_at is not None and code_at is None:
-                    code_at = pos
-            elif open_at is None:
+                if opened is not None:
+                    ok, oline, ostart, ocode, _ = opened
+                    if ocode is None and ok == k:
+                        ocode = pos
+                    opened = (ok, oline, ostart, ocode, True)
+            elif opened is None:
                 if pos + 2 < len(line) and not line[pos + 2].isspace():
-                    open_at = pos
+                    opened = (k, line, pos, None, False)
             elif not line[pos - 1].isspace():
-                if code_at is not None:
-                    problems.append(bold_problem(first_lineno + k, line, open_at, pos + 2, code_at))
-                open_at, code_at = None, None
-        if open_at is not None:
-            problems.append(bold_problem(first_lineno + k, line, open_at, None, code_at))
+                ok, oline, ostart, ocode, code_seen = opened
+                if ok != k or code_seen:
+                    end = pos + 2 if ok == k else None
+                    problems.append(bold_problem(first_lineno + ok, oline, ostart, end, ocode, code_seen))
+                opened = None
     return problems
 
 
-def bold_problem(lineno, line, start, end, code_at):
+def bold_problem(lineno, line, start, end, code_at, code_seen):
     span = line[start:end].rstrip()
     reasons = []
-    if code_at is not None:
+    if code_seen:
         reasons.append("holds inline code")
     if end is None:
         reasons.append("crosses a line break")

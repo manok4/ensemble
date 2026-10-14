@@ -422,6 +422,11 @@ expect_rc "render refuses the pattern inside a unit too" 3 'line 14: \*\*use `x`
 mkplan boldok "$(printf -- '- **The service function.** `load_funding_obligations` (existing) in\n- **Who applied the labels in EIG'"'"'s email.** Neither label\n  comes from PolicyAsync.\n\n```\n**bold `code` in a fence\n```\n\n***\n\n- `a ** b` and \\*\\* and 2 ** 3\n\n%s' "$UNITS")"
 expect_rc "render accepts closed bold, fenced code, a thematic break and literal asterisks" 0 "" \
   -- lp render "$WORK/boldok.md" --repo "$REPO"
+# A `**` with no closer in its block is literal text, so Linear has no bold to
+# rewrite: a glob, and one followed by a new list item that has its own bold.
+mkplan boldglob "$(printf -- '- Tests live under src/**/test.py and\n  run in CI.\n- Globs like a/** match\n- **Goal:** more\n\n%s' "$UNITS")"
+expect_rc "render accepts an unmatched ** such as a glob, even before a later bold" 0 "" \
+  -- lp render "$WORK/boldglob.md" --repo "$REPO"
 
 # --- 8. repo identity ------------------------------------------------------------
 R="$WORK/repo"; mkdir -p "$R"; cp "$SRC" "$R/plan.md"
