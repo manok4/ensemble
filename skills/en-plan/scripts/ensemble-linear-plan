@@ -46,6 +46,9 @@
 #   - Linear rewrites list markers `- ` to `* `. Both sides are canonicalized to
 #     `- ` outside code fences, blockquotes included, so a plan quoting a report
 #     with `* ` bullets still round-trips.
+#   - Linear moves inline code out of a bold span, and closes a bold span at a
+#     line break and reopens it on the next line. Neither is reversible, so
+#     render refuses both, outside code fences, before anything is published.
 #   - list_issues truncates descriptions. A description still carrying the
 #     truncation marker is refused, never taken as content.
 #   - Units are ordered by the `U<N> - ` title prefix, never by Linear's order.
@@ -89,6 +92,9 @@ PREFIX_RE = re.compile(r"^(U\d+) - ")
 LEGACY_SUFFIX_RE = re.compile(r"\s*\((U\d+)\)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 MARKER_RE = re.compile(r"^(\s*(?:>\s*)*)\* ")
+THEMATIC_BREAK_RE = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
+# A line that starts a new Markdown block, so a bold span open before it never closes.
+BLOCK_START_RE = re.compile(r"^\s*$|^\s*#|^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s")
 
 
 class Refusal(Exception):
@@ -302,6 +308,103 @@ def text_hash(text, full=False):
         os.unlink(tmp)
 
 
+# --- bold Linear rewrites -------------------------------------------------
+
+def inline_events(line):
+    """("bold", i) for each `**` and ("code", i) for each code span, in order.
+
+    A backslash escapes the next character, a `**` inside a code span is code,
+    and a backtick run with no closing run of the same length is literal text.
+    """
+    events, i, n = [], 0, len(line)
+    while i < n:
+        if line[i] == "\\":
+            i += 2
+        elif line[i] == "`":
+            j = i
+            while j < n and line[j] == "`":
+                j += 1
+            m = re.compile(r"(?<!`)" + line[i:j] + r"(?!`)").search(line, j)
+            if m:
+                events.append(("code", i))
+                i = m.end()
+            else:
+                i = j
+        elif line.startswith("**", i):
+            events.append(("bold", i))
+            i += 2
+        else:
+            i += 1
+    return events
+
+
+def bold_problems(body, first_lineno):
+    """Bold spans Linear rewrites on save, as (lineno, span, reasons, suggestion).
+
+    Measured: Linear moves inline code out of a bold span, and closes a bold span
+    at a line break and reopens it on the next line. Neither is reversible at
+    verify, so render refuses them. Fenced code is left alone, and a `**` with no
+    closer in its block, like the glob `src/**/x.py`, is literal text, not bold.
+    """
+    problems = []
+    opened = None  # (k, line, start, code_at on that line, code seen anywhere)
+    for k, (line, fenced) in enumerate(with_fence_state(body.split("\n"))):
+        skip = fenced or THEMATIC_BREAK_RE.match(line)
+        if skip or BLOCK_START_RE.match(line):
+            opened = None
+        if skip:
+            continue
+        for kind, pos in inline_events(line):
+            if kind == "code":
+                if opened is not None:
+                    ok, oline, ostart, ocode, _ = opened
+                    if ocode is None and ok == k:
+                        ocode = pos
+                    opened = (ok, oline, ostart, ocode, True)
+            elif opened is None:
+                if pos + 2 < len(line) and not line[pos + 2].isspace():
+                    opened = (k, line, pos, None, False)
+            elif not line[pos - 1].isspace():
+                ok, oline, ostart, ocode, code_seen = opened
+                if ok != k or code_seen:
+                    end = pos + 2 if ok == k else None
+                    problems.append(bold_problem(first_lineno + ok, oline, ostart, end, ocode, code_seen))
+                opened = None
+    return problems
+
+
+def bold_problem(lineno, line, start, end, code_at, code_seen):
+    span = line[start:end].rstrip()
+    reasons = []
+    if code_seen:
+        reasons.append("holds inline code")
+    if end is None:
+        reasons.append("crosses a line break")
+    label = line[start + 2:code_at if code_at is not None else None].rstrip(" ,:.(")
+    if not label:
+        suggestion = "drop the bold around the code"
+    elif code_at is not None:
+        rest = line[code_at:] if end is None else line[code_at:end - 2] + line[end:]
+        suggestion = f"**{label}.** {rest.rstrip()}"
+    else:
+        suggestion = f"**{label}.** then continue unbolded on the next line"
+    return lineno, span, reasons, suggestion
+
+
+def refuse_bold(fm, body):
+    # The body starts after the opening `---`, the frontmatter and the closing `---`.
+    problems = bold_problems(body, len(fm) + 3)
+    if not problems:
+        return
+    msg = ["Linear rewrites bold text that holds inline code or crosses a line break, so verify "
+           "would fail after the parent exists. Close each bold before the code or line break "
+           "in the plan, then render again:"]
+    for lineno, span, reasons, suggestion in problems:
+        msg.append(f"  line {lineno}: {span}  ({' and '.join(reasons)})")
+        msg.append(f"    try: {suggestion}")
+    raise Refusal("\n".join(msg))
+
+
 # --- render ---------------------------------------------------------------
 
 def render(plan_path, repo):
@@ -309,6 +412,7 @@ def render(plan_path, repo):
     fm, body = split_frontmatter(text)
     skeleton, units = parse_body(body)
     plan_id = check_identity(fm)
+    refuse_bold(fm, body)
     title = fm_value(fm, "title")
     if repo is None:
         repo = repo_identity(os.path.dirname(os.path.abspath(plan_path)) or ".")

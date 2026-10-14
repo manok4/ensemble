@@ -81,7 +81,7 @@ parent's title and description (the plan with its H1 and unit blocks removed, th
 Verification Contract carrying `plan_full_hash`, `repo` and the H1 as `plan_heading`) and one
 entry per unit with its title (`U<N> - <unit title>`), description and `blocked_by`. A non-zero
 exit stops the publish before any Linear call, with the reason on stderr (no `origin` remote, a
-unit without a title).
+unit without a title, a bold span Linear would rewrite).
 
 Then write with `save_issue`, following the idempotency protocol below rather than creating
 anything directly: the parent from `payload.parent`, each unit from `payload.units` with
@@ -122,12 +122,19 @@ unedited, then run `bash "$SKILL_DIR/scripts/ensemble-linear-plan" verify <plan-
 **Archive only on exit 0.** Exit 3 prints what differs, a unified diff of the first differing
 section or unit; surface it and follow Recovery.
 
-Two measured behaviours shape the fetch, and the script handles both:
+Three measured behaviours shape the fetch, and the script handles all three:
 
 - **Linear rewrites `- ` list markers to `* `** (`- **Goal:**` comes back as `* **Goal:**`). A read-back compared as returned
   canonicalizes to seven *empty* fields per unit, and still hashes. The script normalizes
   the markers, the same code `/en-build`'s materialization runs; when verification fails,
   the fix is never to weaken the comparison.
+- **Linear rewrites bold that holds inline code or crosses a line break.** It moves the code
+  out of the bold, and closes the bold at the line break and reopens it on the next line.
+  Unlike the marker, neither is reversible: undoing it means guessing the original, and
+  `/en-build` builds from the Linear copy. So `render` refuses them instead, before the parent
+  exists, naming the plan line and a rewrite that closes the bold first. Fix the plan and render
+  again. A span inside a hashed unit field moves `peer_review_plan_hash`, so recompute it with
+  `ensemble-plan-hash` after the edit, as promotion does.
 - **`list_issues` truncates descriptions**, returning
   `(truncated, use get_issue for full description)` in place of the tail. That is why each
   unit is fetched with **`get_issue`**, and why the script refuses a description still

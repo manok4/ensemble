@@ -395,6 +395,39 @@ expect_rc "render refuses a heading in the units section that is not a unit" 3 '
 mkplan twice "$(printf '## Implementation units\n\n### U1. a\n\n## Implementation units\n\n### U2. b')"
 expect_rc "render refuses a second units heading outside a fence" 3 'two `## Implementation units`' -- lp render "$WORK/twice.md" --repo "$REPO"
 
+# --- 7d. bold Linear rewrites --------------------------------------------------------
+# Three spans from a live publish (2026-10-14) that Linear stored rewritten: code
+# moved out of the bold, a wrapped bold closed and reopened per line, and both.
+# verify cannot undo either, so render refuses before anything reaches Linear.
+# mkplan's content starts on plan line 10.
+UNITS="$(printf '## Implementation units\n\n### U1. a\n\n- **Goal:** g')"
+mkplan boldcode "$(printf -- '- **The service function `load_funding_obligations`** (existing) in\n\n%s' "$UNITS")"
+expect_rc "render refuses bold holding inline code, naming the plan line" 3 'line 10: \*\*The service function `load_funding_obligations`\*\*  \(holds inline code\)' \
+  -- lp render "$WORK/boldcode.md" --repo "$REPO"
+grep -qF 'try: **The service function.** `load_funding_obligations` (existing) in' "$WORK/err" \
+  && pass "and suggests closing the bold before the code" || fail "and suggests closing the bold before the code" "$(cat "$WORK/err")"
+out="$(lp render "$WORK/boldcode.md" --repo "$REPO" 2>/dev/null)"
+assert_eq "" "$out" "and prints no payload, so nothing can be published"
+mkplan boldwrap "$(printf -- '- **Who applied the "Previously Advanced" and "Unverified" labels in EIG'"'"'s\n  email.** Neither label comes from PolicyAsync.\n\n%s' "$UNITS")"
+expect_rc "render refuses bold that crosses a line break" 3 "line 10: .*EIG's  \\(crosses a line break\\)" \
+  -- lp render "$WORK/boldwrap.md" --repo "$REPO"
+mkplan boldboth "$(printf -- '- **The HTTP routes `GET /api/v1/funding/batches/eligible-policies` and\n  `POST /api/v1/funding/batches`** (existing) in\n\n%s' "$UNITS")"
+expect_rc "render refuses bold holding code and crossing a line break" 3 'line 10: .*\(holds inline code and crosses a line break\)' \
+  -- lp render "$WORK/boldboth.md" --repo "$REPO"
+grep -qF 'try: **The HTTP routes.** `GET' "$WORK/err" \
+  && pass "and suggests closing the bold before the first code span" || fail "and suggests closing the bold before the first code span" "$(cat "$WORK/err")"
+mkplan boldunit "$(printf '## Implementation units\n\n### U1. a\n\n- **Goal:** **use `x`** here')"
+expect_rc "render refuses the pattern inside a unit too" 3 'line 14: \*\*use `x`\*\*' -- lp render "$WORK/boldunit.md" --repo "$REPO"
+# The negative controls: the fixed forms, and look-alikes that are not bold spans.
+mkplan boldok "$(printf -- '- **The service function.** `load_funding_obligations` (existing) in\n- **Who applied the labels in EIG'"'"'s email.** Neither label\n  comes from PolicyAsync.\n\n```\n**bold `code` in a fence\n```\n\n***\n\n- `a ** b` and \\*\\* and 2 ** 3\n\n%s' "$UNITS")"
+expect_rc "render accepts closed bold, fenced code, a thematic break and literal asterisks" 0 "" \
+  -- lp render "$WORK/boldok.md" --repo "$REPO"
+# A `**` with no closer in its block is literal text, so Linear has no bold to
+# rewrite: a glob, and one followed by a new list item that has its own bold.
+mkplan boldglob "$(printf -- '- Tests live under src/**/test.py and\n  run in CI.\n- Globs like a/** match\n- **Goal:** more\n\n%s' "$UNITS")"
+expect_rc "render accepts an unmatched ** such as a glob, even before a later bold" 0 "" \
+  -- lp render "$WORK/boldglob.md" --repo "$REPO"
+
 # --- 8. repo identity ------------------------------------------------------------
 R="$WORK/repo"; mkdir -p "$R"; cp "$SRC" "$R/plan.md"
 ( cd "$R" && git init -q . ) >/dev/null 2>&1

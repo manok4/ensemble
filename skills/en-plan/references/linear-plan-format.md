@@ -54,9 +54,17 @@ sees the text.** Do it at the Linear boundary, never by teaching
 producer and consumer share, and widening its grammar to paper over a transport
 detail is how the two ends drift apart again.
 
-**Everything inside a field survives byte-for-byte.** Backticks and code spans,
-`=>`, `+`, `--flag` names, `{missing,failed}`, parenthesised asides, nested
-inline formatting. The values were not the problem; the markers were.
+**Everything inside a field survives byte-for-byte, with one exception.** Backticks and
+code spans, `=>`, `+`, `--flag` names, `{missing,failed}`, parenthesised asides. The values
+were not the problem; the markers were.
+
+**The exception is bold, measured in a live publish on 2026-10-14.** Linear moves inline
+code out of a bold span (`` **The function `f`** `` comes back as `` **The function** `f` ``),
+and closes a bold span at a line break and reopens it on the next line. Neither can be undone
+at verify without guessing the original, so `render` refuses both before anything is
+written: every description, outside code fences, with the plan line and a rewrite that
+closes the bold before the code or the line break. Whether Linear does the same to italic,
+to bold in a table cell or to bold wrapping a link is unmeasured.
 
 **Titles survive exactly**, which is what makes the U-ID recoverable. The capture's
 titles carried the U-ID as a `(U<N>)` suffix, the format before 2026-10-07;

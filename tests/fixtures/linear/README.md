@@ -9,7 +9,7 @@ the only remaining record of the round-trip.
 |---|---|
 | `EN18-sample-plan.md` | The source plan, copied verbatim from `docs/plans/completed/EN07-improvement_en-build-simplify-gate.md`. Its canonical hash is `40a510c0…`. |
 | `EN18-readback.json` | What Linear returned for the parent and two sub-issues published from it. |
-| `EN19-source-plan.md` | The sample plan with its `peer_review_plan_hash` refreshed. The EN07 original records a hash from an older canonicalizer, which `verify` now correctly calls stale, so the EN19 pair is rendered from this copy. |
+| `EN19-source-plan.md` | The sample plan with its `peer_review_plan_hash` refreshed. The EN07 original records a hash from an older canonicalizer, which `verify` now correctly calls stale, so the EN19 pair is rendered from this copy. Three bold labels that held inline code now close before it, because `render` refuses that form (Linear rewrites it); none is in a unit, so `peer_review_plan_hash` is unchanged. |
 | `EN19-readback.json` | **Synthetic.** `ensemble-linear-plan render` of `EN19-source-plan.md` with Linear's measured `- ` to `* ` rewrite applied and the units reversed, as `list_issues` returns them. |
 | `EN19-rendered-plan.md` | The golden output of `ensemble-linear-plan materialize` on `EN19-readback.json`. Its body is byte-identical to the source plan's. |
 
