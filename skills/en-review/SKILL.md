@@ -137,7 +137,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}`, `files[]` sorted and deduplicated) and echoed by the mandatory `review_fixes:` line (step 12). Tier definitions live in `references/severity.md`, referenced, not duplicated.
 
-**Post-review check** (`references/post-review-check.md`). Ask `$SKILL_DIR/scripts/ensemble-verification-receipt` first: a valid receipt skips lint, typecheck and tests, which is only possible when nothing was applied. Otherwise run lint, typecheck and the graph-selected set (`test_changed_command`), revert the applied edits on failure, and on success record `lint`, `typecheck` and `targeted_tests` for `/en-ship`. `report-only` never runs it.
+**Post-review check** (`references/post-review-check.md`). Ask `$SKILL_DIR/scripts/ensemble-verification-receipt` first: a valid receipt skips lint, typecheck and tests, which is only possible when nothing was applied. Otherwise run lint, typecheck and the set `ensemble-test-select` resolves, revert the applied edits on failure, and on success record `lint`, `typecheck` and `targeted_tests` for `/en-ship`. `report-only` never runs it.
 
 ## Failure protocol
 
