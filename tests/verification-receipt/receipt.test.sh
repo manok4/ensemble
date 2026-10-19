@@ -86,6 +86,37 @@ F=$(new_repo amend)
 assert_eq "0 ok" "$(verdict "$F")" \
   "rewording a commit does not invalidate an unchanged tree"
 
+# --- committing the checked content keeps the receipt ------------------------
+# /en-build writes its receipt at 10.4 and commits at 10.5. The tree a test sees
+# is the same before and after that commit, so the receipt must survive it. The
+# first fingerprint hashed HEAD^{tree} plus `git diff HEAD`, both of which move
+# on commit, and /en-ship refused nearly every receipt it was handed.
+F2=$(new_repo commit-after)
+printf 'two\n' >> "$F2/src.txt"; printf 'new\n' > "$F2/added.txt"
+( cd "$F2" && "$R" write --check full_suite=passed ) >/dev/null
+( cd "$F2" && git add -A && git commit -qm "unit work" ) >/dev/null 2>&1
+assert_eq "0 ok" "$(verdict "$F2")" \
+  "committing exactly the checked content does not invalidate the receipt"
+printf 'three\n' >> "$F2/src.txt"
+assert_eq "1 fingerprint-mismatch" "$(verdict "$F2")" \
+  "an edit after that commit still invalidates it"
+
+# Staging is bookkeeping, not content: the same bytes staged or unstaged are the
+# same tree to a test.
+F3=$(new_repo staged)
+printf 'two\n' >> "$F3/src.txt"
+( cd "$F3" && "$R" write --check full_suite=passed ) >/dev/null
+( cd "$F3" && git add src.txt ) >/dev/null
+assert_eq "0 ok" "$(verdict "$F3")" \
+  "staging the checked change does not invalidate the receipt"
+
+# The fingerprint is computed in a throwaway index; the real one must not move.
+F4=$(new_repo index-untouched)
+printf 'untracked\n' > "$F4/fresh.txt"
+( cd "$F4" && "$R" write --check full_suite=passed ) >/dev/null
+assert_eq "?? fresh.txt" "$(cd "$F4" && git status --porcelain)" \
+  "fingerprinting leaves the real index untouched"
+
 # --- base moved --------------------------------------------------------------
 G=$(new_repo base)
 ( cd "$G" && git branch -q base-ref && "$R" write --check full_suite=passed --base base-ref ) >/dev/null
@@ -172,6 +203,22 @@ assert_eq "1 expired" "$(verdict "$M" --ttl 60)" \
   "a receipt older than the TTL is refused"
 assert_eq "0 ok" "$(verdict "$M" --ttl 600)" \
   "the same receipt is accepted under a longer TTL"
+
+# The default is a day: age stands in only for a toolchain that moved under an
+# unchanged tree, and 120 minutes expired before most builds reached their ship.
+assert_eq "0 ok" "$(verdict "$M")" \
+  "a two-hour-old receipt is valid under the default TTL"
+assert_eq "1 expired" "$(ENSEMBLE_RECEIPT_TTL_MINUTES=60 verdict "$M")" \
+  "ENSEMBLE_RECEIPT_TTL_MINUTES still overrides the default"
+python3 - "$M/.git/ensemble/receipt.json" <<'PY'
+import json, sys, time
+p = sys.argv[1]
+r = json.load(open(p))
+r['written_at'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() - 25 * 3600))
+json.dump(r, open(p, 'w'), indent=2, sort_keys=True)
+PY
+assert_eq "1 expired" "$(verdict "$M")" \
+  "a receipt older than a day is refused under the default TTL"
 
 # --- required check not recorded ---------------------------------------------
 N=$(new_repo requires)

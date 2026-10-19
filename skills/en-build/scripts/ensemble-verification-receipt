@@ -55,7 +55,11 @@ set -u
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SELF_DIR=""
 
-TTL_DEFAULT_MINUTES="${ENSEMBLE_RECEIPT_TTL_MINUTES:-120}"
+# 24 hours. The fingerprint, base, lockfile and repo clauses already refuse on
+# anything the tree can show, so age only stands in for a toolchain that moved
+# under an unchanged tree. At 120 minutes it expired before the usual gap
+# between a build and its ship (13 of 23 measured gaps fit; 21 fit in 24h).
+TTL_DEFAULT_MINUTES="${ENSEMBLE_RECEIPT_TTL_MINUTES:-1440}"
 
 # Record a receipt operation, if a run is open. Silent and exit-0 when no run is
 # open, when the sibling helper is not carried, or when anything here fails: a
@@ -83,37 +87,42 @@ RECEIPT_DIR="$GIT_DIR/ensemble"
 RECEIPT="$RECEIPT_DIR/receipt.json"
 
 # --- fingerprint -------------------------------------------------------------
-# Committed tree + every tracked modification (staged and unstaged) + the content
-# of untracked, non-ignored files. Anything a test could read moves this.
+# The tree a commit of everything would produce: tracked files as they sit on
+# disk (staged or not) plus every untracked, non-ignored file, by content.
+# Anything a test could read moves this.
 #
-# Untracked files are hashed by content rather than by name because a new source
-# file is exactly the case where a stale receipt would be most wrong: the tests
-# that would cover it do not exist in the committed tree at all.
+# It is built in a throwaway index (a copy of the real one, then `git add -A`)
+# and named by `git write-tree`, so it hashes CONTENT, not commit state. The
+# first version hashed `HEAD^{tree}` plus `git diff HEAD`, and that changed when
+# the identical content was committed: /en-build wrote its receipt at 10.4,
+# committed at 10.5, and /en-ship then refused it as `fingerprint-mismatch` on
+# every ship but one (2026-10 usage report, 17 of 43 checks).
+#
+# Untracked files count because a new source file is exactly the case where a
+# stale receipt would be most wrong: the tests that would cover it do not exist
+# in the committed tree at all. Ignored files do not, or every build artifact
+# would invalidate the receipt it was meant to preserve.
+#
+# The copied index keeps git's stat cache, so only changed files are re-hashed.
+# `git add` writes their blobs into the object store; they are unreferenced and
+# `git gc` collects them, the same as `git stash` leaves behind.
+#
+# Any failure prints a value no receipt can hold, so a tree that cannot be
+# fingerprinted reads as a mismatch and the caller runs its checks.
 fingerprint() {
-  {
-    git rev-parse HEAD^{tree} 2>/dev/null || printf 'no-head\n'
-    git diff HEAD 2>/dev/null
-    # Every untracked path is hashed inside ONE python process. The first version
-    # spawned one per file and cost 7s for 200 files - interpreter startup, not
-    # hashing - which would make a large working tree slower to fingerprint than
-    # to just run the tests, defeating the point of the receipt.
-    git ls-files --others --exclude-standard -z 2>/dev/null | sort -z | python3 -c '
-import hashlib, sys
-for name in filter(None, sys.stdin.buffer.read().split(b"\0")):
-    sys.stdout.buffer.write(name + b"\n")
-    sys.stdout.flush()
-    try:
-        h = hashlib.sha256()
-        with open(name, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        sys.stdout.write(h.hexdigest() + "\n")
-    except OSError:
-        # Unreadable or vanished mid-walk: record the fact rather than skipping,
-        # so the fingerprint still moves when the tree does.
-        sys.stdout.write("unreadable\n")
-'
-  } | python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+  local tmpd idx tree
+  tmpd=$(mktemp -d 2>/dev/null) || { printf 'unfingerprintable-%s\n' "$$-$RANDOM"; return; }
+  idx=$(git rev-parse --git-path index 2>/dev/null)
+  # git rejects an empty index file, so copy the real one or start from none.
+  [ -n "$idx" ] && [ -f "$idx" ] && cp "$idx" "$tmpd/index" 2>/dev/null
+  if GIT_INDEX_FILE="$tmpd/index" git -C "$REPO_TOP" add -A -- . >/dev/null 2>&1 \
+     && tree=$(GIT_INDEX_FILE="$tmpd/index" git -C "$REPO_TOP" write-tree 2>/dev/null) \
+     && [ -n "$tree" ]; then
+    printf '%s\n' "$tree"
+  else
+    printf 'unfingerprintable-%s\n' "$$-$RANDOM"
+  fi
+  rm -rf "$tmpd"
 }
 
 hash_file() {  # $1=path -> sha256, or "absent"
