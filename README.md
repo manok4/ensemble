@@ -332,7 +332,7 @@ under [`skills/`](./skills/), which is the contract the skill executes, and
 
 ## Agent catalog
 
-6 agent definitions. Skills orchestrate; agents specialize. **No agent invokes
+7 agent definitions. Skills orchestrate; agents specialize. **No agent invokes
 another agent.** Each skill carries its own copy of the agents it dispatches, in
 its `agents/` directory.
 
@@ -344,6 +344,7 @@ its `agents/` directory.
 | `web-research` | External docs (Context7) and best-practice search, with URL fetch when a source is named. Read-only. | `/en-plan`, `/en-brainstorm` |
 | `repo-fact-lookup` | Answers specific questions about what the repo contains, and verifies absence claims, by quoting it. Retrieval only. | `/en-brainstorm` |
 | `code-simplifier` | Reviews a diff along one simplification dimension (reuse, quality or efficiency) and returns findings with the proposed edit. Read-only; the dispatching skill applies what it accepts. | `/en-simplify` |
+| `test-lane-auditor` | Judges every test declaration in one lane of a test audit against the retention bar, one row per declaration with a mark and evidence. Read-only. | `/en-test-audit` |
 
 For agent invariants, see [§6 Agent Catalog](./docs/foundation.md#6-agent-catalog).
 
