@@ -386,4 +386,96 @@ check "EN09-B6 retired inline prefix"     ask "ENSEMBLE_GUARDRAIL=off rm -rf /va
 check "EN09-B6 inline bypass prefix"      ask "ENSEMBLE_GUARDRAIL_BYPASS=on rm -rf /var/data"
 check "EN09-B6 export then chain"         ask "export ENSEMBLE_GUARDRAIL_BYPASS=on && rm -rf /var/data"
 
+# =============================================================================
+# 2026-10 false-positive classes (D128)
+# =============================================================================
+# 1,690 fires on one laptop, ~71% on the agent's own scratch space or on text
+# inside a heredoc. Each class below was a real fire; each "still asks" twin is
+# the catch the narrowing must not lose.
+
+# --- agent-owned temp space: Claude scratch, /tmp/ensemble, $TMPDIR, mktemp ---
+SCR=/private/tmp/claude-$(id -u)/-Users-x-repo/0a1b2c3d/scratchpad
+check "rm -rf in Claude session scratch"         allow "rm -rf $SCR/fd"
+check "rm -rf scratch via an assigned var"        allow "SP=$SCR; rm -rf \"\$SP/out\""
+check "rm -rf /tmp/ensemble run dir"              allow "rm -rf /tmp/ensemble/en-review/20260924T154334Z"
+check 'rm -rf $TMPDIR child'                      allow 'rm -rf "$TMPDIR/ensemble/fr92-verify"'
+check 'rm -rf var assigned from $TMPDIR'          allow 'RUN=$TMPDIR/ensemble/x; rm -rf $RUN/peer'
+check "rm -rf a mktemp dir"                       allow 'T=$(mktemp -d); rm -rf "$T"'
+check 'rm -rf $TMPDIR itself still asks'          ask   'rm -rf "$TMPDIR"'
+check "rm -rf the scratch root still asks"        ask   "rm -rf /tmp/claude-$(id -u)"
+check "another uid's scratch still asks"         ask   "rm -rf /tmp/claude-$(( $(id -u) + 1 ))/x/scratchpad"
+check "rm -rf escaping scratch via .. asks"       ask   "rm -rf $SCR/../../../etc"
+check "rm -rf plain /tmp path still asks"         ask   "rm -rf /tmp/other"
+check "rm -rf unrelated var still asks"           ask   'rm -rf "$OUT/build"'
+check "var reassigned away from scratch asks"     ask   "SP=$SCR; SP=/etc; rm -rf \$SP/x"
+
+# Redirects into owned temp space overwrite the agent's own files.
+SCRF=$(mktemp -d)/existing.txt; printf x > "$SCRF"
+check "> into Claude scratch"                     allow "git diff > $SCR/diff.patch"
+check "> into /tmp/ensemble via var"              allow 'RUN=/tmp/ensemble/en-review/1; mkdir -p "$RUN" && git diff > "$RUN/diff.patch"'
+check '> into $TMPDIR'                            allow 'bash scripts/gen.sh > $TMPDIR/gen.log 2>&1'
+check "> to an existing literal temp file asks"   ask   "echo x > $SCRF"
+rm -f "$SCRF"
+
+# --- heredoc bodies are not shell unless a shell reads them ---
+check "python heredoc with > and a lone quote"    allow "$(printf 'python3 - <<%sEOF%s\nprint(\"it'"'"'s\" if a > b else c)\nEOF' "'" "'")"
+check "cat heredoc writing a migration with DROP" allow "$(printf 'cat > m.py <<%sEOF%s\nop.execute(\"DROP TABLE legacy\")\nEOF' "'" "'")"
+check "cat heredoc text mentioning rm -rf /"      allow "$(printf 'cat > notes.md <<EOF\nnever run rm -rf / here\nEOF')"
+check "bash heredoc body still analysed"          ask   "$(printf 'bash <<EOF\nrm -rf /var/data\nEOF')"
+check "ssh heredoc body still analysed"           ask   "$(printf 'ssh host <<%sEOF%s\ngit reset --hard HEAD~1\nEOF' "'" "'")"
+check "cat heredoc piped to bash still analysed"  ask   "$(printf 'cat <<EOF | bash\nrm -rf /var/data\nEOF')"
+check "python heredoc running DROP still asks"    ask   "$(printf 'python3 - <<EOF\ncur.execute(\"DROP TABLE users\")\nEOF')"
+check "psql heredoc still asks"                   ask   "$(printf 'psql -h prod <<EOF\nselect 1;\nEOF')"
+
+# --- quoted mentions are not commands ---
+check "grep for rm -rf"                           allow "grep -rn 'rm -rf' skills/"
+check "commit message mentioning TRUNCATE"        allow 'git commit -m "docs: explain why TRUNCATE is gated"'
+check "grep for TRUNCATE"                         allow "grep -n TRUNCATE app/models.py"
+check "python truncate() is not SQL"              allow "python3 -c 'open(\"f\",\"r+\").truncate()'"
+check "find -exec sh -c rm still asks"            ask   "find . -name x -exec sh -c 'rm -rf \"\$1\"' _ {} \;"
+check "command substitution rm still asks"        ask   'echo $(rm -rf /var/data)'
+# --- the narrowing must not open a way around it (security review, D128) ---
+check "sudo -u root rm -rf"                       ask   "sudo -u root rm -rf /var/data"
+check "timeout 30 rm -rf"                         ask   "timeout 30 rm -rf /var/data"
+check "rm -rf inside if/then"                     ask   "if true; then rm -rf /var/data; fi"
+check "rm -rf inside a for loop"                  ask   'for d in a b; do rm -rf /var/$d; done'
+check "rm -rf after a background &"               ask   "sleep 1 & rm -rf /var/data"
+check "heredoc marker inside quotes hides nothing" ask  "$(printf 'echo "a <<EOF"\nrm -rf /var/data\nEOF')"
+check "heredoc to an unknown reader stays shell"  ask   "$(printf 'mystery <<EOF\nrm -rf /var/data\nEOF')"
+check "python heredoc running rm -rf asks"        ask   "$(printf 'python3 - <<EOF\nimport os; os.system(\"rm -rf /var/data\")\nEOF')"
+check "conditional reassignment poisons the var"  ask   "SP=$SCR; false || SP=/etc; rm -rf \"\$SP/x\""
+check "reassignment in if/then poisons the var"   ask   "SP=$SCR; if x; then SP=/etc; fi; rm -rf \"\$SP/x\""
+check "assignment in a pipeline is not kept"      ask   "SP=$SCR | cat; rm -rf \"\$SP/x\""
+check "a filename containing local is not a setter" allow "SP=$SCR; cat x.local.ts > \"\$SP/out.log\""
+check "read builtin poisons the var"              ask   "SP=$SCR; read SP < /dev/null; rm -rf \"\$SP/x\""
+check "git switch -c with update in the name"     allow "git switch -c fix-crm-update-query-budget origin/main"
+check "loop variable poisons the var"             ask   "SP=$SCR; for SP in /etc; do :; done; rm -rf \"\$SP/x\""
+check "echo naming a force-push"                  allow 'echo "never git push --force here"'
+check "git tag -d is still not inert"             ask   "git tag -d v1.0.0"
+# Unset TMPDIR expands to nothing: `$TMPDIR/x` is `/x`.
+tu_out=$(printf '{"tool_input":{"command":"rm -rf \\"$TMPDIR/ensemble/x\\""}}' | env -u TMPDIR bash "$HOOK")
+echo "$tu_out" | grep -q '"permissionDecision":"ask"' \
+  && pass "[ask]   \$TMPDIR/x with TMPDIR unset" || fail "[ask]   \$TMPDIR/x with TMPDIR unset" "got: $tu_out"
+# A symlink inside owned temp space points outside it.
+LNK=$(mktemp -d); ln -s /etc "$LNK/link"; printf x > "$LNK/real"; ln -s "$LNK/real" "$LNK/flink"
+REL=${LNK#"${TMPDIR%/}"/}
+if [ "$REL" != "$LNK" ]; then
+  check "rm -rf through a symlink under \$TMPDIR"  ask   "rm -rf \"\$TMPDIR/$REL/link/\""
+  check "> through a symlink under \$TMPDIR"       ask   "echo x > \"\$TMPDIR/$REL/flink\""
+  check "> to a plain file under \$TMPDIR"         allow "echo x > \"\$TMPDIR/$REL/real\""
+else
+  pass "[skip]  TMPDIR symlink fixtures: mktemp is not under TMPDIR here"
+fi
+rm -rf "$LNK"
+check "DROP through a shell function still asks"  ask   "q(){ docker exec pg psql -d \"\$1\" -Atc \"\$2\"; }; q app 'drop table users;'"
+check "rm through an alias still asks"            ask   "alias nuke='rm -rf'; nuke /var/data"
+
+# --- one simple command at a time ---
+check "push then an unrelated -f"                 allow "git push origin feat && gh pr edit 12 -f body.md"
+check "force push after && still asks"            ask   "git fetch && git push -f origin main"
+check "psql -c after cd is not piped SQL"         allow "cd backend && psql -h prod -c 'select 1'"
+check "command -v psql is not a client"           allow "command -v psql | head -1"
+check "which psql then a query"                   allow "which psql; psql -h prod -Atc 'select 1'"
+check "piped SQL after cd still asks"             ask   "cd db && cat migrate.sql | psql -h prod"
+
 report

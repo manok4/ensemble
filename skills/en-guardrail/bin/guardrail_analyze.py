@@ -24,8 +24,37 @@ import sys, json, re, shlex, os
 ARTIFACTS = {"node_modules", ".next", "dist", "__pycache__", ".cache", "build", ".turbo", "coverage"}
 DB_CLIENTS = {"psql", "mysql", "mariadb", "mongosh", "sqlite3", "cockroach", "clickhouse-client", "usql"}
 WRAPPERS = {"env", "timeout", "gtimeout", "nice", "nohup", "stdbuf", "time", "sudo", "command", "xargs"}
+# Wrapper options that take a value, so `sudo -u root rm -rf /x` resolves to rm
+# and not to `root`; and wrappers with a positional argument before the command.
+WRAPPER_VALUE_OPTS = {
+    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T"},
+    "env": {"-u", "-C", "-S", "--unset", "--chdir", "--split-string"},
+    "nice": {"-n", "--adjustment"},
+    "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "gtimeout": {"-s", "-k", "--signal", "--kill-after"},
+    "xargs": {"-n", "-I", "-L", "-P", "-s", "-d", "-E", "-a", "--max-args", "--replace",
+              "--max-procs", "--delimiter", "--arg-file", "--max-chars", "--eof"},
+    "stdbuf": {"-i", "-o", "-e"},
+}
+WRAPPER_POSITIONAL = {"timeout": 1, "gtimeout": 1}
+# Reserved words that can open a simple command: `then rm -rf /x` is rm.
+SHELL_KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "(", "fi", "done", "}", ")", "exec"}
 SQL_FLAGS = ("-c", "--command", "-e", "--execute")
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+# A heredoc fed to one of these is shell, and is analysed as shell.
+SHELL_RUNNERS = {"bash", "sh", "zsh", "dash", "ksh", "ssh", "eval", "su", "docker", "podman", "kubectl"}
+# A heredoc fed to one of these is a program in another language: not parsed as
+# shell, but still scanned for `rm -r` and SQL DROP/TRUNCATE text.
+INTERPRETERS = {"python", "python3", "node", "ruby", "perl", "php", "deno", "bun", "uv", "tsx", "ts-node"} | DB_CLIENTS
+# Readers that never execute what they read: a heredoc fed to one of these, with
+# no pipe after it, is data and is dropped. Anything else keeps its body inline.
+DATA_READERS = {"cat", "tee", "git", "gh", "sponge", "wc", "jq", "pbcopy", "base64", "sort", "head", "tail"}
+# Commands whose arguments are never run: a `rm -rf`, `DROP` or `git push -f` in
+# a grep pattern, an echo or a commit message is text. Every other command, a
+# function call or anything unresolved, is scanned (fail closed).
+INERT = {"grep", "egrep", "fgrep", "rg", "ag", "ack", "echo", "printf", "gh", "jq", "cat", "head", "tail", "wc", "ls"}
+INERT_GIT = {"commit", "log", "grep", "show", "diff", "status", "blame", "shortlog"}
+MKTEMP_MARK, TMPDIR_MARK = "\x00MKTEMP", "\x00TMPDIR"
 
 
 def emit(pattern, message):
@@ -136,8 +165,74 @@ def targets_local_testdev(tokens):
 
 
 # --------------------------------------------------------- shell parse
-def split_simple(cmd):
-    segs, buf, i, quote = [], "", 0, None
+_ASSIGN_TOK = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def base(tok):
+    return tok.rsplit("/", 1)[-1]
+
+
+def command_index(tokens):
+    """Index of the word that runs: past reserved words, assignments, wrappers
+    and each wrapper's own options, so `sudo -u root rm -rf /x`, `then rm -rf /x`
+    and `timeout 30 psql` all resolve to the command they run."""
+    i, n = 0, len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok in SHELL_KEYWORDS or _ASSIGN_TOK.match(tok):
+            i += 1
+            continue
+        w = base(tok)
+        if w in WRAPPERS:
+            i += 1
+            opts, pos = WRAPPER_VALUE_OPTS.get(w, set()), WRAPPER_POSITIONAL.get(w, 0)
+            while i < n:
+                t = tokens[i]
+                if t == "--":
+                    i += 1
+                    break
+                if t.startswith("-") and t != "-":
+                    i += 2 if t in opts else 1
+                    continue
+                if w == "env" and _ASSIGN_TOK.match(t):
+                    i += 1
+                    continue
+                if pos:
+                    pos -= 1
+                    i += 1
+                    continue
+                break
+            continue
+        return i
+    return None
+
+
+def command_word(tokens):
+    i = command_index(tokens or [])
+    return None if i is None else tokens[i]
+
+
+def is_inert(tokens):
+    """True only for a command positively known never to run its arguments."""
+    i = command_index(tokens or [])
+    if i is None:
+        return False
+    w = base(tokens[i])
+    if w in INERT:
+        return True
+    if w == "git":
+        j = i + 1
+        while j < len(tokens) and tokens[j].startswith("-"):
+            j += 2 if tokens[j] in ("-C", "-c") else 1
+        return j < len(tokens) and tokens[j] in INERT_GIT
+    return False
+
+
+def split_ops(cmd):
+    """[(tokens|None, raw, op_before)] per simple command, split on `;`, newline,
+    `&&`, `||`, `|` and a background `&`. op_before is the operator that joined
+    the segment to the one before it (None for the first)."""
+    segs, buf, i, quote, op = [], "", 0, None, None
     n = len(cmd)
     while i < n:
         c = cmd[i]
@@ -148,17 +243,21 @@ def split_simple(cmd):
         elif c in ("'", '"'):
             quote = c; buf += c
         elif c in (";", "\n"):
-            segs.append(buf); buf = ""
+            segs.append((buf, op)); buf = ""; op = ";"
         elif cmd[i:i + 2] in ("&&", "||"):
-            segs.append(buf); buf = ""; i += 2; continue
+            segs.append((buf, op)); buf = ""; op = cmd[i:i + 2]; i += 2; continue
         elif c == "|":
-            segs.append(buf); buf = ""
+            segs.append((buf, op)); buf = ""; op = "|"
+            if cmd[i + 1:i + 2] == "&":                    # `|&` pipes stderr too
+                i += 1
+        elif c == "&" and cmd[i - 1:i] not in ("<", ">") and cmd[i + 1:i + 2] != ">":
+            segs.append((buf, op)); buf = ""; op = "&"     # background: a new command
         else:
             buf += c
         i += 1
-    segs.append(buf)
+    segs.append((buf, op))
     out = []
-    for seg in segs:
+    for seg, before in segs:
         seg = seg.strip()
         if not seg:
             continue
@@ -166,32 +265,198 @@ def split_simple(cmd):
             toks = shlex.split(seg, comments=False, posix=True)
         except ValueError:
             toks = None
-        out.append((toks, seg))
+        out.append((toks, seg, before))
     return out
 
 
-def base(tok):
-    return tok.rsplit("/", 1)[-1]
+def split_simple(cmd):
+    return [(toks, raw) for toks, raw, _ in split_ops(cmd)]
 
 
-def command_word(tokens):
-    """First token that is not an env-assignment or a known wrapper."""
-    for tok in tokens:
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok):
+_HEREDOC_AT = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][\w.-]*)\2")
+
+
+def _heredoc_kind(prefix, suffix):
+    """'shell', 'interp' or 'data' for a heredoc, from the command reading it.
+    Data only for a known non-executing reader with no pipe after the marker;
+    anything unknown stays shell, which is how it was analysed before."""
+    last = re.split(r"\|\||&&|[|;&]", prefix)[-1]
+    try:
+        toks = shlex.split(last, posix=True)
+    except ValueError:
+        toks = last.split()
+    word = base(command_word(toks) or "")
+    if word in INTERPRETERS or re.match(r"python3(\.\d+)?$", word):
+        return "interp"
+    piped = re.search(r"(^|[^|])\|(?!\|)", suffix)
+    if word in DATA_READERS and not piped:
+        return "data"
+    return "shell"
+
+
+def strip_heredocs(cmd):
+    """(shell_text, program_bodies). Scanned line by line with quote state carried
+    across lines, so a `<<X` inside quotes is text and swallows nothing. A body
+    read by a non-executing reader (`cat > f <<EOF`, `git commit -F -`) is file
+    content and is dropped; one read by an interpreter is returned for the text
+    scans; every other body stays inline and is analysed as shell. Parsed as
+    shell, an unbalanced quote in Python failed shlex and the raw fallback
+    flagged any `>`. An unterminated heredoc runs to the end, as the shell reads it."""
+    lines = cmd.split("\n")
+    out, programs, quote, i = [], [], None, 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        out.append(line)
+        markers, j = [], 0
+        while j < len(line):
+            c = line[j]
+            if quote:
+                if c == "\\" and quote == '"':
+                    j += 2
+                    continue
+                if c == quote:
+                    quote = None
+            elif c == "\\":
+                j += 2
+                continue
+            elif c in ("'", '"'):
+                quote = c
+            elif line.startswith("<<", j) and not line.startswith("<<<", j) and line[j - 1:j] != "<":
+                m = _HEREDOC_AT.match(line, j)
+                if m:
+                    markers.append((m.group(1) == "-", m.group(3), _heredoc_kind(line[:j], line[m.end():])))
+                    j = m.end()
+                    continue
+            j += 1
+        for strip_tabs, delim, kind in markers:
+            body = []
+            while i < len(lines):
+                cand = lines[i].lstrip("\t") if strip_tabs else lines[i]
+                i += 1
+                if cand == delim:
+                    break
+                body.append(lines[i - 1])
+            if kind == "shell":
+                out.extend(body)
+            elif kind == "interp":
+                programs.append("\n".join(body))
+    return "\n".join(out), programs
+
+
+_ASSIGN = re.compile(r"^(?:export\s+)?([A-Za-z_]\w*)=(.*)$", re.S)
+_MKTEMP = re.compile(r"""^["']?(\$\(\s*mktemp\b[^)]*\)|`\s*mktemp\b[^`]*`)["']?$""")
+
+
+def track_env(segs, shell):
+    """Per segment, the variables this command provably holds before it runs, so
+    `SP=/tmp/claude-501/x/scratchpad; rm -rf "$SP/out"` reads as the path it is.
+    Only an unconditional top-level assignment counts. A name assigned any other
+    way anywhere in the command (after `||`, in a pipeline, a subshell, a loop,
+    `read`, `declare`, `unset`) is dropped everywhere, so it reads as unresolved
+    and fails closed. A value from $(mktemp ...) becomes the MKTEMP marker."""
+    env, snaps, tracked, poisoned = {}, [], {}, set()
+    for k, (toks, raw, before) in enumerate(segs):
+        snaps.append(dict(env))
+        m = _ASSIGN.match(raw)
+        if not m:
             continue
-        if base(tok) in WRAPPERS:
+        name, val = m.group(1), m.group(2).strip()
+        tracked[name] = tracked.get(name, 0) + 1
+        piped_after = k + 1 < len(segs) and segs[k + 1][2] == "|"
+        if before in ("||", "|", "&") or piped_after:
+            poisoned.add(name)
             continue
-        return tok
-    return None
+        if _MKTEMP.match(val):
+            env[name] = MKTEMP_MARK
+        elif re.search(r"\s|\$\(|`", val.strip("'\"")):
+            env.pop(name, None)
+        else:
+            env[name] = expand(val.strip("'\""), env)
+    # Builtins that set a name, as the command word of a segment (not the word
+    # `local` inside `fr90-local.config.ts`). An unparseable segment that starts
+    # with one poisons every name it mentions.
+    setters = {"for", "select", "read", "declare", "local", "typeset", "readonly", "unset", "mapfile", "readarray", "getopts"}
+    for toks, raw, _ in segs:
+        words = toks if toks is not None else raw.split()
+        lead = [w for w in words if w not in SHELL_KEYWORDS][:1]
+        if lead and lead[0] in setters:
+            poisoned.update(n for n in tracked if re.search(r"\b%s\b" % re.escape(n), raw))
+    for name in tracked:
+        if len(re.findall(r"(?<![\w$])%s=" % re.escape(name), shell)) != tracked[name]:
+            poisoned.add(name)
+    return [{k: v for k, v in snap.items() if k not in poisoned} for snap in snaps]
 
 
-def rm_recursive_unsafe(tokens):
-    start = 0
-    for idx, tok in enumerate(tokens):
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tok) or base(tok) in WRAPPERS:
-            continue
-        start = idx
-        break
+def _tmpdir():
+    t = os.environ.get("TMPDIR", "").rstrip("/")
+    return t if t.startswith("/") and os.path.isdir(t) else ""
+
+
+def expand(word, env):
+    """Expand $NAME / ${NAME} from what this command assigned, and $TMPDIR to a
+    marker when the hook's own TMPDIR is a real directory (unset, it expands to
+    nothing and `$TMPDIR/x` is `/x`). Anything unknown stays as written."""
+    def sub(m):
+        name = m.group(1) or m.group(2)
+        if name in env:
+            return env[name]
+        if name == "TMPDIR" and _tmpdir():
+            return TMPDIR_MARK
+        return m.group(0)
+    return re.sub(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)", sub, word)
+
+
+def _safe_below(root, rel):
+    """No symlink anywhere from the real root down to the deepest part of the
+    path that exists, and the root, if it exists, is ours and not writable by
+    group or other. A link in scratch pointing at $HOME makes `rm -rf link/` or
+    `> link` act outside it."""
+    real = os.path.realpath(root)
+    if os.path.lexists(real):
+        try:
+            st = os.lstat(real)
+        except OSError:
+            return False
+        if st.st_uid != os.getuid() or st.st_mode & 0o022:
+            return False
+    cur = real
+    for comp in rel:
+        cur = os.path.join(cur, comp)
+        if os.path.islink(cur):
+            return False
+        if not os.path.exists(cur):
+            break
+    return True
+
+
+def owned_temp(word, env):
+    """True when the path is temp space the agent owns: Claude Code's session
+    scratch for this uid (/tmp/claude-<uid>/..., /tmp/claude/... on older
+    versions), Ensemble's run directories (/tmp/ensemble/...), a path written as
+    $TMPDIR/..., or one under a variable this command set from $(mktemp ...).
+    Always below the root, never through `..`, a glob, or a symlink. A literal
+    /var/folders/... path is not owned: nothing says the agent made it."""
+    p = expand(word, env)
+    if any(ch in p for ch in "$`*?[~"):
+        return False
+    if p.startswith(MKTEMP_MARK):
+        rest = [c for c in p[len(MKTEMP_MARK):].split("/") if c]
+        return ".." not in rest
+    if p.startswith(TMPDIR_MARK):
+        root, rest = _tmpdir(), [c for c in p[len(TMPDIR_MARK):].split("/") if c]
+        return bool(root) and bool(rest) and ".." not in rest and _safe_below(root, rest)
+    p = re.sub(r"^/private(?=/tmp/)", "", p)
+    for root in ("/tmp/claude-%d" % os.getuid(), "/tmp/claude", "/tmp/ensemble"):
+        if p.startswith(root + "/"):
+            rest = [c for c in p[len(root):].split("/") if c]
+            return bool(rest) and ".." not in rest and "." not in rest and _safe_below(root, rest)
+    return False
+
+
+def rm_recursive_unsafe(tokens, env=None):
+    env = env or {}
+    start = command_index(tokens) or 0
     recursive, targets, ddash = False, [], False
     for tok in tokens[start + 1:]:
         if tok == "--":
@@ -204,6 +469,8 @@ def rm_recursive_unsafe(tokens):
     if not recursive:
         return (False, False)
     for t in targets:
+        if owned_temp(t, env):
+            continue
         if t.startswith("/") or t.startswith("~") or any(ch in t for ch in "$`*?["):
             return (True, True)
         parts = [p for p in t.rstrip("/").split("/") if p]
@@ -212,16 +479,32 @@ def rm_recursive_unsafe(tokens):
     return (True, False)
 
 
-def redir_truncates(tokens, raw):
+_RAW_REDIR = re.compile(r"""(?<![<>&\d])(?:\d*|&)>(?![>&])\s*("[^"]*"|'[^']*'|[^\s;|&()<>]+)""")
+
+
+def redir_truncates(tokens, raw, env=None):
+    env = env or {}
     if tokens is None:
-        return bool(re.search(r"(^|[^>])>(?!>)", raw))
+        # Unparseable segment: find what the redirections write to. Owned temp
+        # targets are fine; any other target, or a `>` we cannot pin to one,
+        # fails closed.
+        if not re.search(r"(^|[^>])>(?![>&])", raw):
+            return False
+        targets = [t.strip("'\"") for t in _RAW_REDIR.findall(raw)]
+        return not targets or any(not owned_temp(t, env) for t in targets)
     for i, tok in enumerate(tokens):
         m = re.match(r"^([0-9]*|&)>(?!>)(.*)$", tok)
         if not m:
             continue
         target = m.group(2) or (tokens[i + 1] if i + 1 < len(tokens) else "")
-        if not target:
+        if not target or target.startswith("&"):
             continue
+        if owned_temp(target, env):
+            continue
+        # Expansion only ever proves a target is owned temp. Anything else under
+        # a variable stays unresolved, as before: `git show HEAD:$P > $P`
+        # overwrites a tracked file, and its relative path means nothing from
+        # the hook's working directory once the command has `cd`'d away.
         if any(ch in target for ch in "$`*?"):
             return True
         if os.path.islink(target) or os.path.isfile(target):
@@ -251,17 +534,22 @@ def sql_args(cmds):
 def seg_invokes_client(tokens):
     # A DB client appears as a bareword in the segment (conservative: wrappers
     # like `timeout 30 psql` and `env X=1 psql` consume args, so scan all tokens).
-    return bool(tokens) and any(base(t) in DB_CLIENTS for t in tokens)
+    # A lookup names the client without running it: `command -v psql`.
+    if not tokens:
+        return False
+    if tokens[0] in ("which", "type", "whereis", "hash") or (tokens[0] == "command" and tokens[1:2] in (["-v"], ["-V"])):
+        return False
+    return any(base(t) in DB_CLIENTS for t in tokens)
 
 
-def sql_from_uninspectable(cmds):
-    for idx, (toks, raw) in enumerate(cmds):
+def sql_from_uninspectable(segs):
+    for toks, raw, before in segs:
         if not seg_invokes_client(toks):
             continue
         for i, tok in enumerate(toks):
             if tok in ("-f", "--file") or tok.startswith("--file=") or (tok.startswith("-f") and len(tok) > 2 and not tok.startswith("--")):
                 return True
-        if idx > 0:                                        # receives a pipe
+        if before == "|":                                  # receives a pipe
             return True
         if re.search(r"(^|[^<])<(?!<)\s*\S", raw) or "<<" in raw:
             return True
@@ -310,40 +598,66 @@ TOOL_PATTERNS = [
 ]
 
 
-def analyze_shell(cmd):
-    cmds = split_simple(cmd)
+_SQL_TEXT = re.compile(r"""\bdrop\s+(table|database|schema)\b|\btruncate\s+(table\s+)?["`\w]""", re.I)
+_NESTED_RM = re.compile(r"\brm\b\s+(-[a-zA-Z]*r|--recursive)")
+_SUBST = re.compile(r"\$\(([^()]*)\)|`([^`]*)`|[<>]\(([^()]*)\)")
 
-    rm_seen = False
-    for toks, raw in cmds:
-        if toks and base(command_word(toks) or "") == "rm":
-            rm_seen = True
-            rec, unsafe = rm_recursive_unsafe(toks)
+
+def analyze_shell(cmd):
+    shell, programs = strip_heredocs(cmd)
+    segs = split_ops(shell)
+    envs = track_env(segs, shell)
+    cmds = [(toks, raw) for toks, raw, _ in segs]
+    substs = ["".join(g) for g in _SUBST.findall(shell)]
+    interp = {"python", "python3", "node", "ruby", "perl", "php", "deno", "bun", "tsx", "ts-node"}
+
+    # Text that may run: every simple command except one positively known never
+    # to run its arguments (grep, echo, `git commit`, ...), plus command and
+    # process substitutions and interpreter heredocs. Unresolved, unknown and
+    # function-call commands are scanned, which is how the whole-command scan
+    # treated them before D128.
+    def word(toks):
+        return base(command_word(toks) or "") if toks else ""
+    live = [(toks, raw) for toks, raw in cmds if not is_inert(toks)]
+
+    for (toks, raw), env in zip(cmds, envs):
+        if toks and word(toks) == "rm":
+            rec, unsafe = rm_recursive_unsafe(toks, env)
             if rec and unsafe:
                 emit("rm_recursive", "recursive delete (rm -r) of a non-artifact / out-of-tree path.")
-    # nested/embedded rm (e.g. ssh "rm -rf /data", bash -c "rm -rf x") — fail closed
-    if not rm_seen and re.search(r"\brm\b\s+(-[a-zA-Z]*r|--recursive)", cmd):
+    # rm -r that this command does not run directly: ssh "rm -rf /data",
+    # bash -c "...", find -exec, $(...), an alias or function, a program body.
+    nested = [raw for toks, raw in live if word(toks) != "rm"] + substs + programs
+    if any(_NESTED_RM.search(t) for t in nested):
         emit("rm_recursive", "recursive delete (rm -r) inside a nested/quoted command.")
 
-    for toks, raw in cmds:
-        if ">" in raw and redir_truncates(toks, raw):
+    for (toks, raw), env in zip(cmds, envs):
+        if ">" in raw and redir_truncates(toks, raw, env):
             emit("redir_truncate", "output redirection (>) truncates an existing file or symlink.")
 
+    # Per simple command, so `.*` cannot run across `&&` into the next one:
+    # `git push origin x && gh pr edit -f` is not a force-push.
     for name, pat, msg in TOOL_PATTERNS:                   # case-sensitive on raw (preserves -D vs -d)
-        if re.search(pat, cmd):
+        if any(re.search(pat, t) for t in [raw for _, raw in live] + substs):
             emit(name, msg)
 
     all_toks = [t for toks, _ in cmds if toks for t in toks]
     local = targets_local_testdev(all_toks)
 
-    for sa in sql_args(cmds):                              # SQL we can read (-c/-e), de-quoted
+    # SQL we can read (-c/-e), de-quoted. Skipped for commands whose -c/-e mean
+    # something else: `python3 -c` and `node -e` carry code, `git switch -c` a
+    # branch name (`fix-crm-update-...` read as an unparseable UPDATE).
+    not_sql = interp | {"git", "sed", "awk", "perl", "ruby", "make", "npm", "pnpm", "yarn", "npx", "bunx", "cargo", "go", "curl"}
+    sql_cmds = [(toks, raw) for toks, raw in live if word(toks) not in not_sql and not re.match(r"python3\.\d+$", word(toks))]
+    for sa in sql_args(sql_cmds):
         d = sql_destructive(sa)
         if d and not local:
             emit(d[0], d[1])
-    # nested DROP/TRUNCATE we couldn't extract as a -c arg (e.g. ssh "psql -c 'DROP ...'")
-    if re.search(r"\bdrop\s+(table|database|schema)\b|\btruncate\b", cmd, re.I) and not local:
+    # DROP/TRUNCATE we couldn't extract as a -c arg (e.g. ssh "psql -c 'DROP ...'").
+    if any(_SQL_TEXT.search(t) for t in [raw for _, raw in live] + substs + programs) and not local:
         emit("drop", "SQL DROP/TRUNCATE detected; confirm the target.")
 
-    if sql_from_uninspectable(cmds) and not local:
+    if sql_from_uninspectable(segs) and not local:
         emit("sql_from_file", "SQL from a file / stdin / pipe can't be inspected; may be destructive.")
 
 
