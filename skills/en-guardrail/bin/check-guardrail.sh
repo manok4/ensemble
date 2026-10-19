@@ -30,7 +30,7 @@ fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Fail closed: if the analyzer can't run, prompt (never silently allow).
-RESULT=$(printf '%s' "$INPUT" | python3 "$SCRIPT_DIR/guardrail_analyze.py" 2>/dev/null || printf 'ASK\tanalyzer_error\tguardrail analyzer failed; confirm the command is safe.')
+RESULT=$(printf '%s' "$INPUT" | python3 -I "$SCRIPT_DIR/guardrail_analyze.py" 2>/dev/null || printf 'ASK\tanalyzer_error\tguardrail analyzer failed; confirm the command is safe.')
 
 VERDICT=${RESULT%%$'\t'*}
 
@@ -60,7 +60,9 @@ PATTERN_ESCAPED=$(printf '%s' "$PATTERN" | sed 's/\\/\\\\/g; s/"/\\"/g')
 # 2026-10 review had to join 1,690 fires back to their commands by timestamp to
 # learn which were noise and whether any prompt was ever seen. The command is
 # hashed, never logged: commands carry tokens and connection strings.
-EXTRA=$(printf '%s' "$INPUT" | python3 -c '
+# `-I` on every Python call here: the hook runs in the agent's working tree,
+# and `python3 -c` would import a json.py or hashlib.py sitting there.
+EXTRA=$(printf '%s' "$INPUT" | python3 -I -c '
 import hashlib, json, sys
 try:
     d = json.load(sys.stdin)
@@ -70,7 +72,7 @@ ti = d.get("tool_input") if isinstance(d.get("tool_input"), dict) else {}
 cmd = ti.get("command") if isinstance(ti.get("command"), str) else json.dumps(ti, sort_keys=True)
 mode = d.get("permission_mode") if isinstance(d.get("permission_mode"), str) else ""
 tool = d.get("tool_name") if isinstance(d.get("tool_name"), str) else ""
-print(json.dumps({"mode": mode, "tool": tool, "cmd_sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})[1:-1])
+print(json.dumps({"mode": mode, "tool": tool, "cmd_sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]}, separators=(",", ":"))[1:-1])
 ' 2>/dev/null || printf '"mode":"","tool":"","cmd_sha":""')
 printf '{"event":"hook_fire","skill":"en-guardrail","pattern":"%s","ts":"%s","repo":"%s",%s}\n' \
   "$PATTERN_ESCAPED" "$TS" "$REPO" "$EXTRA" >> "$ANALYTICS_DIR/guardrail.jsonl" 2>/dev/null || true

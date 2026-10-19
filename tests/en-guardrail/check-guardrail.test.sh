@@ -487,4 +487,15 @@ printf '%s' "$rec" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.ex
   && pass "a fire records permission mode, tool and command hash" || fail "a fire records permission mode, tool and command hash" "$rec"
 case "$rec" in *s3cr3t*|*/var/data*) fail "the logged fire leaks the command" "$rec" ;; *) pass "the logged fire does not contain the command" ;; esac
 
+# --- the hook's Python cannot be hijacked from the working tree ---
+# It runs in the agent's checkout; `python3 -c` there would import a json.py
+# or hashlib.py the agent wrote. Every call is `python3 -I`.
+SHD=$(mktemp -d); printf 'raise SystemExit("shadowed")\n' > "$SHD/json.py"; cp "$SHD/json.py" "$SHD/hashlib.py"
+: > "$GL"
+sh_out=$(cd "$SHD" && printf '{"tool_name":"Bash","tool_input":{"command":"rm -rf /var/data"}}' | bash "$HOOK")
+echo "$sh_out" | grep -q '"permissionDecision":"ask"' && grep -q '"cmd_sha":"[0-9a-f]\{12\}"' "$GL" \
+  && pass "a json.py in the working tree does not shadow the hook's imports" \
+  || fail "a json.py in the working tree does not shadow the hook's imports" "out=$sh_out log=$(cat "$GL")"
+rm -rf "$SHD"
+
 report
