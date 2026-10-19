@@ -543,8 +543,10 @@ if [ "$QUIET" != "true" ]; then
   _smoke_dir=$(mktemp -d 2>/dev/null) || _smoke_dir=""
   (
     [ -z "$_smoke_dir" ] || cd "$_smoke_dir" || exit 0
-    $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "$_smoke_prompt"
-    $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --skip-git-repo-check --json "$_smoke_prompt"
+    # `if`, not `&&`: as the subshell's last command, a false `$HAS_CODEX_CLI`
+    # made it exit 1 and `set -e` ended a Claude-only setup there.
+    if $HAS_CLAUDE_CLI; then ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "$_smoke_prompt"; fi
+    if $HAS_CODEX_CLI; then ensemble_smoke_probe "Codex CLI" codex exec --skip-git-repo-check --json "$_smoke_prompt"; fi
   )
   [ -z "$_smoke_dir" ] || rm -rf "$_smoke_dir"
   log ""

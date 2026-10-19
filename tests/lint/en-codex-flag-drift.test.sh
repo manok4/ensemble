@@ -136,6 +136,14 @@ if ! grep -qE 'codex exec.*--max-turns' "$SETUP"; then
 else
   fail "setup Codex probe must not pass --max-turns"
 fi
+# The probes run in a subshell. Written as `$HAS_CODEX_CLI && probe`, the last
+# one returned 1 on a Claude-only machine and `set -e` ended setup there.
+if ! grep -qE '^\s*\$HAS_(CLAUDE|CODEX)_CLI && ensemble_smoke_probe' "$SETUP" \
+   && grep -qE 'if \$HAS_CODEX_CLI; then ensemble_smoke_probe' "$SETUP"; then
+  pass "setup probes cannot fail the subshell when a CLI is absent"
+else
+  fail "setup must guard each probe with if, not &&" "a missing CLI exits setup under set -e"
+fi
 # The build-orchestration clause is gone with the file. Its subject was the codex
 # WORKER's --max-turns guidance, and D52 removed worker dispatch entirely, so
 # there is no worker invocation left to carry a stale flag.
