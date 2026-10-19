@@ -20,6 +20,7 @@ mkdir -p "$W/repo/.ensemble" "$W/home/.ensemble" "$W/agents"
 printf -- '---\nname: repo-research\ndescription: "x"\nmodel: sonnet\n---\n# body\n' > "$W/agents/repo-research.md"
 printf -- '---\nname: web-research\ndescription: "x"\nmodel: sonnet\n---\n# body\n'  > "$W/agents/web-research.md"
 printf -- '---\nname: odd-agent\ndescription: "x"\nmodel: fable\n---\n# body\n'      > "$W/agents/odd-agent.md"
+printf -- '---\nname: dimension-reviewer\ndescription: "x"\nmodel: opus\n---\n# body\n' > "$W/agents/dimension-reviewer.md"
 
 res() {  # <agent> <host> [extra flags] -> eval and echo "tier|model|effort|source"
   local a="$1" h="$2"; shift 2
@@ -99,6 +100,24 @@ J '{"agent_effort_codex_evidence":"turbo","agent_model_codex_evidence":"gpt x"}'
 assert_eq "evidence|||inherit" "$(res repo-research codex)" "invalid Codex model and effort are both treated as unset"
 J '{"agent_model_codex_evidence":"gpt-x"}'
 assert_eq "evidence|gpt-x||tier" "$(res repo-research codex)" "a valid Codex ID with no effort key: model set, effort empty"
+
+# --- --tier: one agent file, a tier per dispatch ---
+# /en-review runs dimension-reviewer at the evidence tier for its lighter
+# dimensions. Operator keys still decide; the dispatcher only picks the tier.
+clear_cfg
+assert_eq "evidence|sonnet||dispatch"   "$(res dimension-reviewer claude-code --tier evidence)" "--tier below the file's: that tier's alias, source dispatch"
+assert_eq "ceiling|opus||frontmatter"   "$(res dimension-reviewer claude-code --tier ceiling)"  "--tier equal to the file's: unchanged, source frontmatter"
+J '{"agent_model_claude_evidence":"haiku","agent_model_claude_ceiling":"fable"}'
+assert_eq "evidence|haiku||tier"        "$(res dimension-reviewer claude-code --tier evidence)" "the requested tier's operator key wins over its default alias"
+assert_eq "ceiling|fable||tier"         "$(res dimension-reviewer claude-code)"                 "without --tier the file's own tier key still applies"
+J '{"agent_model_claude_evidence":"haiku","agent_model_override_dimension-reviewer_claude":"opus"}'
+assert_eq "evidence|opus||override"     "$(res dimension-reviewer claude-code --tier evidence)" "a per-agent override beats the requested tier"
+J '{"agent_model_codex_evidence":"gpt-e","agent_model_codex_ceiling":"gpt-c"}'
+assert_eq "evidence|gpt-e||tier"        "$(res dimension-reviewer codex --tier evidence)"       "Codex reports the requested tier's key"
+clear_cfg
+out=$("$R" --agent dimension-reviewer --host claude-code --agent-file "$W/agents/dimension-reviewer.md" --tier cheap 2>"$W/err"); rc=$?
+assert_exit_code 2 "$rc" "an unknown --tier exits 2"
+grep -q "unknown --tier" "$W/err" && pass "the bad-tier error names the flag" || fail "the bad-tier error names the flag" "$(cat "$W/err")"
 
 # --- errors and fail-soft ---
 out=$("$R" --agent nope --host claude-code --agent-file "$W/agents/missing.md" 2>"$W/err"); rc=$?

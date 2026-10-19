@@ -13,22 +13,51 @@ to look at, not the name of an agent to spawn.
 
 Fire on every `en-review` invocation regardless of diff content:
 
-| Dimension | Focus |
-|---|---|
-| `correctness` | Logic errors, edge cases, state bugs, error propagation, off-by-one |
-| `testing` | Coverage gaps, weak assertions, brittle tests, missing categories. `references/good-tests.md` is the shared definition of what a test is worth, anti-patterns and tells included; `/en-build` writes against the same file. |
-| `maintainability` | Coupling, complexity, naming, dead code, abstraction debt |
-| `standards` | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
+| Dimension | Tier | Focus |
+|---|---|---|
+| `correctness` | ceiling | Logic errors, edge cases, state bugs, error propagation, off-by-one |
+| `testing` | evidence | Coverage gaps, weak assertions, brittle tests, missing categories. `references/good-tests.md` is the shared definition of what a test is worth, anti-patterns and tells included; `/en-build` writes against the same file. |
+| `maintainability` | evidence | Coupling, complexity, naming, dead code, abstraction debt |
+| `standards` | evidence | CLAUDE.md / AGENTS.md compliance, file naming, frontmatter, IDs, paths |
 
 ## Conditional (3) — fire when diff matches
 
 Decide via diff content scan before dispatching:
 
-| Dimension | Fires when diff touches |
-|---|---|
-| `security` | Auth code, public endpoints, user-input handling, secret/token handling, permissions, CORS, CSP, cookie config |
-| `performance` | DB queries (raw SQL, ORM call patterns), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms |
-| `migrations` | Schema migration files, backfill scripts, data-isolation changes, multi-tenancy boundary changes |
+| Dimension | Tier | Fires when diff touches |
+|---|---|---|
+| `security` | ceiling | Auth code, public endpoints, user-input handling, secret/token handling, permissions, CORS, CSP, cookie config |
+| `performance` | evidence | DB queries (raw SQL, ORM call patterns), hot paths (request handlers, render loops), async/concurrency, caching, large data transforms |
+| `migrations` | ceiling | Schema migration files, backfill scripts, data-isolation changes, multi-tenancy boundary changes |
+
+## Which model each dimension runs on
+
+**The Tier column is the policy.** A dimension whose miss ships a bug or a breach
+(`correctness`, `security`, `migrations`) runs at the `ceiling` tier; one that
+checks against a stated rule or a visible pattern (`testing`, `maintainability`,
+`standards`, `performance`) runs at `evidence`. Before 2026-10 every dimension ran
+at the ceiling, which was 95% of 3,922 reviewer calls in the usage review.
+
+Resolve once per tier, before the batch, and pass the result on each call:
+
+```bash
+eval "$($SKILL_DIR/scripts/ensemble-agent-model --agent dimension-reviewer --host "$HOST" \
+  --agent-file "$SKILL_DIR/agents/dimension-reviewer.md" --tier ceiling)"; MODEL_CEILING=$AGENT_MODEL
+eval "$($SKILL_DIR/scripts/ensemble-agent-model --agent dimension-reviewer --host "$HOST" \
+  --agent-file "$SKILL_DIR/agents/dimension-reviewer.md" --tier evidence)"; MODEL_EVIDENCE=$AGENT_MODEL
+```
+
+The operator still decides: `agent_model_claude_<tier>` sets each tier, and
+`agent_model_override_dimension-reviewer_claude` pins every dimension to one
+model. **Never discard the resolver's stderr.** It exits 2 only on a caller bug
+(a missing `--agent-file`, an unknown flag); when it does, print its error line
+in the run summary as `host_model_error:` and dispatch with the tier's own alias
+(`opus` for ceiling, `sonnet` for evidence), never bare. A call that hid that
+error behind `2>/dev/null` ran every reviewer at the file's tier, unnoticed.
+
+On Codex the dimension's tier is not bound per call: `spawn_agent` takes the
+model from the agent's TOML that `./setup` renders for Codex (D103), so
+every dimension runs at that file's tier.
 
 ## Detection heuristics
 
@@ -53,7 +82,7 @@ Decide via diff content scan before dispatching:
 
 ## Conservative dispatch
 
-When in doubt, **fire** the conditional agent. Cost is low (mid-tier model, focused remit); missing a security finding is high.
+When in doubt, **fire** the conditional agent. Cost is bounded (a focused remit, and `performance` runs at the evidence tier); missing a security finding is high.
 
 The exception: don't fire a conditional agent on a doc-only diff. If `git diff --name-only` shows only `docs/` paths or `*.md` files, skip all three conditional reviewers.
 
@@ -64,11 +93,11 @@ All persona agents fire **in parallel** — single message, multiple `Agent` too
 In Claude Code:
 
 ```
-Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: correctness ..." })
-Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: testing ..." })
-Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: maintainability ..." })
-Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: standards ..." })
-Agent({ subagent_type: "dimension-reviewer", prompt: "dimension: security ..." })  // if matched
+Agent({ subagent_type: "dimension-reviewer", model: MODEL_CEILING,  prompt: "dimension: correctness ..." })
+Agent({ subagent_type: "dimension-reviewer", model: MODEL_EVIDENCE, prompt: "dimension: testing ..." })
+Agent({ subagent_type: "dimension-reviewer", model: MODEL_EVIDENCE, prompt: "dimension: maintainability ..." })
+Agent({ subagent_type: "dimension-reviewer", model: MODEL_EVIDENCE, prompt: "dimension: standards ..." })
+Agent({ subagent_type: "dimension-reviewer", model: MODEL_CEILING,  prompt: "dimension: security ..." })  // if matched
 // Plus learnings-research in the same parallel batch
 Agent({ subagent_type: "learnings-research", ... })
 // Plus the cross-agent peer, concurrently — NOT serialized after the roster:

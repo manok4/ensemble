@@ -11,6 +11,16 @@
 #   3. the agent file's own `model:`         (Claude only; it is a Claude alias)
 #   4. inherit                               (empty: the host decides)
 #
+# --tier <retrieval|evidence|ceiling> lets a dispatcher run one agent file at a
+# different tier per call. /en-review dispatches `dimension-reviewer` once per
+# dimension and runs the lighter dimensions at `evidence` (persona-dispatch.md):
+# 95% of 3,922 reviewer calls in the 2026-10 usage review ran at the ceiling.
+# Rungs 1 and 2 are unchanged, with rung 2 reading the requested tier's key;
+# rung 3 becomes that tier's own alias, with source `dispatch`, when it differs
+# from the file's. Claude only binds this per call: Codex binds a model per
+# agent file (D103), so on Codex the requested tier's key is reported but the
+# rendered TOML still decides.
+#
 # <host> is `claude` or `codex` in the key and `claude-code` or `codex` on the
 # command line. Keys are read through the sibling ensemble-config-get, so the
 # repo-then-global layering lives in one place. --global-only skips the repo
@@ -29,16 +39,19 @@
 #
 # Usage:
 #   ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path>
+#                        [--tier <retrieval|evidence|ceiling>]
 #                        [--repo-root <dir>] [--home <dir>] [--global-only]
 #
 # Emits eval-able lines (same contract as ensemble-detect-host):
 #   AGENT_TIER='retrieval|evidence|ceiling|'
 #   AGENT_MODEL='<alias|id|>'
 #   AGENT_EFFORT='<low|medium|high|xhigh|>'
-#   AGENT_MODEL_SOURCE='override|tier|frontmatter|inherit'
+#   AGENT_MODEL_SOURCE='override|tier|frontmatter|dispatch|inherit'
 #
 # Exit 0 on every config problem (fail-soft, like the reader). Exit 2 only for
-# a missing or unreadable --agent-file, an unknown --host, or missing flags.
+# a missing or unreadable --agent-file, an unknown --host or --tier, or missing
+# flags. Those are caller bugs, so callers must not discard stderr: a call site
+# that piped it to /dev/null ran every reviewer at the file's tier for weeks.
 
 set -u
 
@@ -47,10 +60,10 @@ set -u
 # current model of its tier. Add here when the host adds one.
 CLAUDE_ALIASES="haiku,sonnet,opus,fable"
 
-AGENT=""; HOST=""; AGENT_FILE=""; REPO_ROOT="."; HOME_DIR="${HOME:-}"; GLOBAL_ONLY=false
+AGENT=""; HOST=""; AGENT_FILE=""; REQ_TIER=""; REPO_ROOT="."; HOME_DIR="${HOME:-}"; GLOBAL_ONLY=false
 
 usage() {
-  echo "usage: ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path> [--repo-root <dir>] [--home <dir>] [--global-only]" >&2
+  echo "usage: ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path> [--tier <retrieval|evidence|ceiling>] [--repo-root <dir>] [--home <dir>] [--global-only]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -58,6 +71,7 @@ while [ $# -gt 0 ]; do
     --agent)       [ $# -ge 2 ] || { usage; exit 2; }; AGENT="$2"; shift 2 ;;
     --host)        [ $# -ge 2 ] || { usage; exit 2; }; HOST="$2"; shift 2 ;;
     --agent-file)  [ $# -ge 2 ] || { usage; exit 2; }; AGENT_FILE="$2"; shift 2 ;;
+    --tier)        [ $# -ge 2 ] || { usage; exit 2; }; REQ_TIER="$2"; shift 2 ;;
     --repo-root)   [ $# -ge 2 ] || { usage; exit 2; }; REPO_ROOT="$2"; shift 2 ;;
     --home)        [ $# -ge 2 ] || { usage; exit 2; }; HOME_DIR="$2"; shift 2 ;;
     --global-only) GLOBAL_ONLY=true; shift ;;
@@ -71,6 +85,10 @@ case "$HOST" in
   claude-code) HOST_KEY="claude" ;;
   codex)       HOST_KEY="codex" ;;
   *) echo "ensemble-agent-model: unknown --host '$HOST' (expected claude-code|codex)" >&2; exit 2 ;;
+esac
+case "$REQ_TIER" in
+  ''|retrieval|evidence|ceiling) ;;
+  *) echo "ensemble-agent-model: unknown --tier '$REQ_TIER' (expected retrieval|evidence|ceiling)" >&2; exit 2 ;;
 esac
 [ -r "$AGENT_FILE" ] || { echo "ensemble-agent-model: cannot read --agent-file $AGENT_FILE" >&2; exit 2; }
 
@@ -94,6 +112,20 @@ case "$FRONT_ALIAS" in
   opus)   TIER="ceiling" ;;
   *)      TIER="" ;;
 esac
+
+# A dispatcher's --tier replaces the file's tier, and the file's alias with the
+# requested tier's own, unless the two agree.
+if [ -n "$REQ_TIER" ] && [ "$REQ_TIER" != "$TIER" ]; then
+  TIER="$REQ_TIER"
+  case "$TIER" in
+    retrieval) FRONT_ALIAS="haiku" ;;
+    evidence)  FRONT_ALIAS="sonnet" ;;
+    ceiling)   FRONT_ALIAS="opus" ;;
+  esac
+  FRONT_SOURCE="dispatch"
+else
+  FRONT_SOURCE="frontmatter"
+fi
 
 # The reader warns once per invocation about an unparseable global file, and
 # this script invokes it several times; say it once here instead and keep the
@@ -140,7 +172,7 @@ if [ "$HOST_KEY" = claude ]; then
       # set the Agent tool accepts resolves to inherit rather than reaching a
       # dispatch (the eval-able surface stays narrow by construction).
       case ",$CLAUDE_ALIASES," in
-        *",$FRONT_ALIAS,"*) AGENT_MODEL="$FRONT_ALIAS"; AGENT_MODEL_SOURCE="frontmatter" ;;
+        *",$FRONT_ALIAS,"*) AGENT_MODEL="$FRONT_ALIAS"; AGENT_MODEL_SOURCE="$FRONT_SOURCE" ;;
       esac
     fi
   fi
