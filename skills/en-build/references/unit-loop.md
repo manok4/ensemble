@@ -4,6 +4,23 @@ What implementing one unit involves, what the checkpoint proves, and the bar eac
 gated category is drawn at. `SKILL.md` keeps the gates, the loop's shape and the
 exit codes it acts on; this file is read when the build enters step 8.
 
+## Context discipline
+
+Every call re-reads everything the session holds, and a build is the longest
+thing a session does: on one machine en-build started a median 319k tokens deep
+and auto-compacted 113 times, and `cat`/`sed` output alone put 6.1 MB into its
+context. Three habits keep that down (D132):
+
+- **Locate, then read the range.** `grep -n` (or `rg -n`) for the symbol, then
+  read only those lines, with the Read tool's offset and limit. Never `cat` a
+  whole file to find one function, and never re-read a file the unit has not
+  changed since the last read.
+- **Read this skill's references once per run.** After a compaction, re-read
+  only the step in progress, not every reference and not `SKILL.md` whole.
+- **Keep command output short.** Pipe a long listing through `head`, and let
+  `ensemble-unit-verify` hold test output in its log; read the log's tail only
+  when a check failed.
+
 ## Implementing one unit
 
 - **9c. Implement.** The host writes the code, in this session. No dispatch, no worker, no other agent. Say in one line which unit is starting and its goal before the first edit. Edit files surgically; rewrite one only when it is short or most of it changes. **The unit's scope is the deliverable.** A pre-existing bug, a performance concern or behaviour the unit does not mention is a `Note:` in the progress report and a follow-up, not a fix in this unit, unless the unit's own behaviour cannot work without it. Commit tests the unit's `Test scenarios` call for, sized like the neighbouring test files; scratch checks are not kept. **Read `references/good-tests.md` before writing the first one**: it defines what a test at the plan's seams is worth, and the five anti-patterns each carry the tell that catches them.

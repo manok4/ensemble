@@ -172,7 +172,10 @@ so resolving "the started one" picks arbitrarily between them and passes on whic
 happens to list them in the convenient order. The third state is spelled **In Review**; a bare
 "Review" does not exist on a correctly configured team.
 
-Each transition is a `save_issue` on that issue with the state resolved above.
+Each transition is a `save_issue` on that issue with the state resolved above, and
+**only the state**: never resend the description, and never fetch the issue again to
+confirm, since the call's reply is the confirmation. Each reply carries the whole
+issue, and on one machine those replies were 229 KB of a build's context (D132).
 
 | When | Transition |
 |---|---|
