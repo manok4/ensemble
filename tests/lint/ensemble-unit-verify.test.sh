@@ -103,10 +103,10 @@ test_changed_command: "vitest run --changed {base} -- {files}"
 MD
 (cd "$P" && git add -A && git commit -qm base && git branch -q -f basebr && printf 'x\n' > lib/other.js && git commit -qam second && printf 'y\n' >> lib/other.js) >/dev/null
 out=$(sel --working)
-assert_eq "vitest run --changed HEAD -- lib/other.js" "$(val "$out" TEST_SELECT_COMMAND)" "--working: {base} is HEAD and {files} the unit's changes"
+assert_eq "vitest run --changed HEAD -- 'lib/other.js'" "$(eval "$out"; printf '%s' "$TEST_SELECT_COMMAND")" "--working: {base} is HEAD and {files} the unit's changes"
 assert_eq "HEAD" "$(val "$out" TEST_SELECT_BASE)" "--working reports HEAD as its base"
 out=$(sel --range basebr..HEAD)
-assert_eq "vitest run --changed basebr -- lib/other.js" "$(val "$out" TEST_SELECT_COMMAND)" "--range a..b: {base} is a"
+assert_eq "vitest run --changed basebr -- 'lib/other.js'" "$(eval "$out"; printf '%s' "$TEST_SELECT_COMMAND")" "--range a..b: {base} is a"
 mb=$(cd "$P" && git merge-base basebr HEAD)
 out=$(sel --range basebr...HEAD)
 assert_eq "$mb" "$(val "$out" TEST_SELECT_BASE)" "--range a...b: {base} is their merge base"
@@ -127,6 +127,21 @@ printf 'printf "%%s|%%s" "$ENSEMBLE_TEST_BASE" "$ENSEMBLE_CHANGED_FILES" > env.o
 (cd "$P" && bash "$VER" --unit U9 --working --no-lint --no-typecheck --log-dir "$WORK/logs" >/dev/null)
 assert_eq "HEAD|lib/other.js" "$(cat "$P/env.out" 2>/dev/null)" "unit-verify exports the selection's base and changed files to the check"
 rm -f "$P/env.out"
+# A changed path is an argument, never a command, in {files} and {tests}.
+agents <<'MD'
+- **Test:** `true`
+
+```yaml
+test_changed_command: "ls {files}"
+lint_changed_command: "ls {files}"
+```
+MD
+(cd "$P" && git add AGENTS.md && git commit -qm "ls check" AGENTS.md) >/dev/null
+evil='x;touch PWNED;y.js'
+: > "$P/$evil"
+(cd "$P" && bash "$VER" --unit U8 --working --no-typecheck --log-dir "$WORK/logs" >/dev/null 2>&1)
+[ -e "$P/PWNED" ] && fail "a changed file name is never run as a command" "PWNED was created" || pass "a changed file name is never run as a command"
+rm -f "$P/$evil" "$P/PWNED"
 (cd "$P" && git checkout -q -- lib/other.js)
 
 # --- 3. the cheap-suite escape hatch, and that it is opt-in ------------------

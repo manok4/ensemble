@@ -221,6 +221,15 @@ if [ "$PREFER_FULL" = true ] && [ -n "$TEST_CMD" ] && [ -n "$FULL_SECONDS" ]; th
 fi
 
 # --- tier 1: the project's own graph tool ------------------------------------
+# Each path single-quoted for the shell the command runs in: a changed file
+# named `a;rm -rf x.js` must arrive as one argument, never as a command.
+_shq_lines() {
+  local p
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    printf "'%s' " "$(printf '%s' "$p" | sed "s/'/'\\\\''/g")"
+  done
+}
 _subst() {  # <text> <placeholder> <value>
   printf '%s' "$1" | sed "s|$2|$(printf '%s' "$3" | sed 's/[&|\\]/\\&/g')|g"
 }
@@ -232,7 +241,7 @@ if [ -n "$CHANGED_CMD" ]; then
   esac
   case "$gcmd" in *"{files}"*)
     [ -n "$CHANGED" ] || emit empty "$TEST_CMD" "" 0 "" "no-changed-files"
-    gcmd=$(_subst "$gcmd" "{files}" "$(printf '%s' "$CHANGED" | tr '\n' ' ' | sed 's/ $//')") ;;
+    gcmd=$(_subst "$gcmd" "{files}" "$(printf '%s\n' "$CHANGED" | _shq_lines | sed 's/ $//')") ;;
   esac
   emit graph "$gcmd" "" "" "" "test_changed_command"
 fi
