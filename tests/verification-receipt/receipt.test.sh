@@ -396,7 +396,16 @@ rcp verify --requires nothing-recorded >/dev/null 2>&1
 assert_exit_code 1 $? "an unrecorded check still exits 1"
 assert_eq "check-not-recorded" "$(last | jq -r '.reason')" "and records that reason"
 
-rcp verify --ttl 0 >/dev/null 2>&1
+# Backdated, not raced: `--ttl 0` expires only an age above zero, and a fast
+# runner wrote and verified within the same second (CI, 2026-10-19).
+python3 - "$RD/.git/ensemble/receipt.json" <<'PY'
+import json, sys, time
+p = sys.argv[1]
+r = json.load(open(p))
+r['written_at'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() - 120))
+json.dump(r, open(p, 'w'), indent=2, sort_keys=True)
+PY
+rcp verify --ttl 1 >/dev/null 2>&1
 assert_exit_code 1 $? "an expired receipt still exits 1"
 assert_eq "expired" "$(last | jq -r '.reason')" "and records expired"
 
