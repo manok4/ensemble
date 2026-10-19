@@ -117,6 +117,28 @@ printf 'untracked\n' > "$F4/fresh.txt"
 assert_eq "?? fresh.txt" "$(cd "$F4" && git status --porcelain)" \
   "fingerprinting leaves the real index untouched"
 
+# --- submodule content counts ------------------------------------------------
+# The parent tree holds a submodule only as its HEAD commit, so an edit inside
+# one left the parent fingerprint unchanged and the receipt read as valid.
+SUBSRC=$(new_repo sub-src)
+SM=$(new_repo super)
+( cd "$SM" && git -c protocol.file.allow=always submodule add -q "$SUBSRC" lib \
+    && git commit -qm "add submodule" ) >/dev/null 2>&1
+if [ -f "$SM/lib/src.txt" ]; then
+  ( cd "$SM" && "$R" write --check full_suite=passed ) >/dev/null
+  assert_eq "0 ok" "$(verdict "$SM")" "a repo with a submodule still gets a valid receipt"
+  printf 'two\n' >> "$SM/lib/src.txt"
+  assert_eq "1 fingerprint-mismatch" "$(verdict "$SM")" \
+    "editing a file inside a submodule invalidates the receipt"
+  git -C "$SM/lib" checkout -q -- src.txt; printf 'new\n' > "$SM/lib/added.txt"
+  assert_eq "1 fingerprint-mismatch" "$(verdict "$SM")" \
+    "an untracked file inside a submodule invalidates the receipt"
+  rm -f "$SM/lib/added.txt"
+  assert_eq "0 ok" "$(verdict "$SM")" "restoring the submodule restores the receipt"
+else
+  fail "submodule fixture could not be built"
+fi
+
 # --- base moved --------------------------------------------------------------
 G=$(new_repo base)
 ( cd "$G" && git branch -q base-ref && "$R" write --check full_suite=passed --base base-ref ) >/dev/null

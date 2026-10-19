@@ -45,7 +45,10 @@ checked content leaves the receipt valid. The first version hashed
 every ship. Untracked content matters most: a brand-new source file is exactly
 where a stale receipt would be most wrong, because the tests that would cover it
 do not exist in the committed tree at all. Ignored files are excluded, or every
-build artifact would invalidate the receipt it was meant to preserve.
+build artifact would invalidate the receipt it was meant to preserve. Each
+checked-out submodule is fingerprinted the same way and hashed in with the
+parent tree, which records a submodule only as its HEAD commit and so missed
+edits inside one.
 
 The **TTL** is the one input not derivable from the tree. A toolchain can move
 under an unchanged tree — someone upgrades a runtime, a service restarts — and no

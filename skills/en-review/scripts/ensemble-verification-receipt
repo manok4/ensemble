@@ -107,22 +107,49 @@ RECEIPT="$RECEIPT_DIR/receipt.json"
 # `git add` writes their blobs into the object store; they are unreferenced and
 # `git gc` collects them, the same as `git stash` leaves behind.
 #
+# A submodule enters the parent tree only as its HEAD commit, so an edit inside
+# one would leave the parent tree unchanged. Each checked-out submodule is
+# fingerprinted the same way and the lines are hashed together. A repo without
+# submodules keeps the bare tree id.
+#
 # Any failure prints a value no receipt can hold, so a tree that cannot be
 # fingerprinted reads as a mismatch and the caller runs its checks.
-fingerprint() {
-  local tmpd idx tree
-  tmpd=$(mktemp -d 2>/dev/null) || { printf 'unfingerprintable-%s\n' "$$-$RANDOM"; return; }
-  idx=$(git rev-parse --git-path index 2>/dev/null)
+tree_of() {  # $1=worktree top -> content tree id, or fails
+  local tmpd idx tree rc=1
+  tmpd=$(mktemp -d 2>/dev/null) || return 1
+  idx=$(git -C "$1" rev-parse --git-path index 2>/dev/null)
+  case "$idx" in ""|/*) ;; *) idx="$1/$idx" ;; esac
   # git rejects an empty index file, so copy the real one or start from none.
   [ -n "$idx" ] && [ -f "$idx" ] && cp "$idx" "$tmpd/index" 2>/dev/null
-  if GIT_INDEX_FILE="$tmpd/index" git -C "$REPO_TOP" add -A -- . >/dev/null 2>&1 \
-     && tree=$(GIT_INDEX_FILE="$tmpd/index" git -C "$REPO_TOP" write-tree 2>/dev/null) \
+  if GIT_INDEX_FILE="$tmpd/index" git -C "$1" add -A -- . >/dev/null 2>&1 \
+     && tree=$(GIT_INDEX_FILE="$tmpd/index" git -C "$1" write-tree 2>/dev/null) \
      && [ -n "$tree" ]; then
-    printf '%s\n' "$tree"
-  else
-    printf 'unfingerprintable-%s\n' "$$-$RANDOM"
+    printf '%s\n' "$tree"; rc=0
   fi
   rm -rf "$tmpd"
+  return $rc
+}
+
+fingerprint() {
+  local top subs sm smtree lines
+  if top=$(tree_of "$REPO_TOP") \
+     && subs=$(git -C "$REPO_TOP" submodule foreach --quiet --recursive pwd 2>/dev/null); then
+    if [ -z "$subs" ]; then
+      printf '%s\n' "$top"; return
+    fi
+    lines="$top"
+    while IFS= read -r sm; do
+      smtree=$(tree_of "$sm") || { lines=; break; }
+      lines="$lines
+${sm#"$REPO_TOP"/} $smtree"
+    done <<SUBS
+$subs
+SUBS
+    if [ -n "$lines" ]; then
+      printf '%s\n' "$lines" | git hash-object --stdin; return
+    fi
+  fi
+  printf 'unfingerprintable-%s\n' "$$-$RANDOM"
 }
 
 hash_file() {  # $1=path -> sha256, or "absent"
