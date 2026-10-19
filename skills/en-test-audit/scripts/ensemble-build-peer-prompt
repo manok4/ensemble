@@ -13,6 +13,14 @@
 #     --artifact-file <path>           # OR --artifact-stdin (read from stdin)
 #     [--peer-mode <cross-agent|single-agent-fallback>]   # default: cross-agent
 #     [--iteration-context-file <path>]                   # optional re-review context
+#     [--max-diff-bytes <n>]   # default $ENSEMBLE_PEER_DIFF_MAX_BYTES or 100000; 0 = no cap
+#
+# A unified diff over the cap is inlined whole file by whole file, in order,
+# until the budget is spent; the files left over are listed by path and size
+# for the peer to read from the tree (D81 gives a code peer read access). The
+# median code-review payload grew from 28k to 93k input tokens in two months
+# (2026-10 usage review), most of it hunks the peer never cited. An artifact
+# that is not a diff is never cut.
 #
 # Output: the assembled prompt to stdout. Exit 0 on success.
 #
@@ -90,6 +98,7 @@ ARTIFACT_FILE=""
 ARTIFACT_STDIN="false"
 PEER_MODE="cross-agent"
 ITERATION_CONTEXT_FILE=""
+MAX_DIFF_BYTES="${ENSEMBLE_PEER_DIFF_MAX_BYTES:-100000}"
 
 usage() {
   sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,1\}//'
@@ -105,6 +114,7 @@ while [ $# -gt 0 ]; do
     --artifact-stdin)           ARTIFACT_STDIN="true"; shift ;;
     --peer-mode)                PEER_MODE="$2"; shift 2 ;;
     --iteration-context-file)   ITERATION_CONTEXT_FILE="$2"; shift 2 ;;
+    --max-diff-bytes)           MAX_DIFF_BYTES="$2"; shift 2 ;;
     -h|--help)                  usage ;;
     *) echo "unknown flag: $1" >&2; usage ;;
   esac
@@ -117,6 +127,7 @@ done
 if [ -z "$ARTIFACT_FILE" ] && [ "$ARTIFACT_STDIN" != "true" ]; then
   echo "missing --artifact-file or --artifact-stdin" >&2; exit 2
 fi
+case "$MAX_DIFF_BYTES" in ''|*[!0-9]*) echo "invalid --max-diff-bytes: $MAX_DIFF_BYTES" >&2; exit 2 ;; esac
 case "$PEER_MODE" in
   cross-agent|single-agent-fallback) ;;
   *) echo "invalid --peer-mode: $PEER_MODE (use cross-agent or single-agent-fallback)" >&2; exit 2 ;;
@@ -130,6 +141,33 @@ else
     echo "artifact file not found: $ARTIFACT_FILE" >&2; exit 2
   fi
   ARTIFACT_BODY=$(cat "$ARTIFACT_FILE")
+fi
+
+# Cap a large diff (see the header). Whole file diffs or none, never a cut hunk.
+if [ "$MAX_DIFF_BYTES" -gt 0 ] && [ "${#ARTIFACT_BODY}" -gt "$MAX_DIFF_BYTES" ] \
+   && printf '%s\n' "$ARTIFACT_BODY" | grep -q '^diff --git '; then
+  ARTIFACT_BODY=$(printf '%s' "$ARTIFACT_BODY" | python3 -I -c '
+import re, sys
+budget, text = int(sys.argv[1]), sys.stdin.read()
+parts = re.split(r"(?m)^(?=diff --git )", text)
+head = "" if parts[0].startswith("diff --git ") else parts[0]
+kept, left, used = [], [], len(head)
+for b in (p for p in parts if p.startswith("diff --git ")):
+    if used + len(b) <= budget:
+        kept.append(b); used += len(b); continue
+    m = re.match(r"diff --git a/(\S+) b/(\S+)", b)
+    lines = b.splitlines()
+    left.append((m.group(2) if m else "?",
+                 sum(1 for l in lines if l.startswith("+") and not l.startswith("+++")),
+                 sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))))
+out = head + "".join(kept)
+if left:
+    out += ("\nNOT INLINED: this diff is over %d bytes, so the hunks for the files below\n"
+            "are left out. They are in the working tree under review: read the ones your\n"
+            "access allows, and name any you did not review in coverage.not_reviewed.\n") % budget
+    out += "".join("  %s (+%d -%d)\n" % f for f in left)
+sys.stdout.write(out)
+' "$MAX_DIFF_BYTES") || { echo "peer prompt: could not cap the diff" >&2; exit 2; }
 fi
 
 # Conditional: single-agent fallback note
@@ -177,6 +215,9 @@ ARTIFACT:
 ---
 $ARTIFACT_BODY
 ---
+If you can read the tree, spend those reads on the changed code, its direct
+callers and its tests, and stop well short of your turn limit: a review cut off
+at the limit returns nothing at all.
 $( [ -n "$ITERATION_CONTEXT" ] && printf '\n## Previous review context\n\nFindings you raised on an earlier pass, and what the host did with each:\n\n%s\n' "$ITERATION_CONTEXT" )
 
 SEVERITY — use these, do not invent your own:
