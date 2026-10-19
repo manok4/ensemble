@@ -28,6 +28,7 @@ Finds tests that cost more than they protect and removes them, one owner-boundar
 ## Process
 
 1. **Preflight.** If `ENSEMBLE_PEER_REVIEW=true`, stop: this skill never runs inside a peer subprocess. Then `bash "$SKILL_DIR/scripts/ensemble-test-audit-preflight" --scope <path>`. Exit 2 stops the run with the reason it printed: default branch, dirty tree, missing scope, or no Test command in AGENTS.md. Keep its `baseline_sha=` and `test_command=`. **`baseline=red` is a finding, not a licence:** report each failing test as a probable product bug, reproduce it, and leave it alone. A test that fails on the baseline is never deleted to make the suite pass.
+1a. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-test-audit`. Fire-and-forget; `references/run-metrics.md` states the contract.
 2. **Read the maps.** Root and scoped `AGENTS.md` / `CLAUDE.md` files for the scope, and the project's test conventions.
 3. **Discover, read-only.** Nothing is edited until step 6. Pick the files to judge, preferring a few high-confidence files over a long speculative inventory. For a broad scope, split discovery by owner boundary (core packages, plugins or services, UI and tooling, a cross-cutting pattern sweep) and run the lanes in parallel. Hunt for the anti-patterns in `references/good-tests.md`, and for:
    - duplicate invocations of the same contract, or a provider-local replay of a shared helper's tests;
@@ -55,6 +56,7 @@ Finds tests that cost more than they protect and removes them, one owner-boundar
    - who did the preservation review (the ledger's `preservation_review`), and each finding with its decision;
    - production and tooling lines changed, reported separately from test and test-support lines (`git diff --numstat`);
    - named follow-ups: the next batch's candidates and any product bugs found.
+14. **Close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. **Every terminal path closes the run**, a stopped preflight and a failed review included.
 
 ## Retention bar
 

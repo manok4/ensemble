@@ -56,8 +56,24 @@ REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || ec
 # PATTERN is escaped like MESSAGE below. It was not, and a label containing a
 # quote or backslash wrote a line no reader could parse.
 PATTERN_ESCAPED=$(printf '%s' "$PATTERN" | sed 's/\\/\\\\/g; s/"/\\"/g')
-printf '{"event":"hook_fire","skill":"en-guardrail","pattern":"%s","ts":"%s","repo":"%s"}\n' \
-  "$PATTERN_ESCAPED" "$TS" "$REPO" >> "$ANALYTICS_DIR/guardrail.jsonl" 2>/dev/null || true
+# mode, tool and cmd_sha make a fire explainable without the transcript: the
+# 2026-10 review had to join 1,690 fires back to their commands by timestamp to
+# learn which were noise and whether any prompt was ever seen. The command is
+# hashed, never logged: commands carry tokens and connection strings.
+EXTRA=$(printf '%s' "$INPUT" | python3 -c '
+import hashlib, json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+ti = d.get("tool_input") if isinstance(d.get("tool_input"), dict) else {}
+cmd = ti.get("command") if isinstance(ti.get("command"), str) else json.dumps(ti, sort_keys=True)
+mode = d.get("permission_mode") if isinstance(d.get("permission_mode"), str) else ""
+tool = d.get("tool_name") if isinstance(d.get("tool_name"), str) else ""
+print(json.dumps({"mode": mode, "tool": tool, "cmd_sha": hashlib.sha256(cmd.encode()).hexdigest()[:12]})[1:-1])
+' 2>/dev/null || printf '"mode":"","tool":"","cmd_sha":""')
+printf '{"event":"hook_fire","skill":"en-guardrail","pattern":"%s","ts":"%s","repo":"%s",%s}\n' \
+  "$PATTERN_ESCAPED" "$TS" "$REPO" "$EXTRA" >> "$ANALYTICS_DIR/guardrail.jsonl" 2>/dev/null || true
 
 MSG_ESCAPED=$(printf '%s' "$MESSAGE" | sed 's/\\/\\\\/g; s/"/\\"/g')
 printf '{"permissionDecision":"ask","message":"[guardrail] %s"}\n' "$MSG_ESCAPED"

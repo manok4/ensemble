@@ -42,6 +42,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
    - **Who invoked this run.** `--orchestrated` means another skill is driving (today, `/en-ship`'s watch loop). Absent it, a human is at the keyboard. This single fact changes four behaviours below — escalation, cycling, auto-merge, and blocking — so resolve it first and state it in the summary. Getting it wrong in the unattended direction is the expensive error: it stalls a loop nobody is watching.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit — peer subprocesses don't run this skill.
+2a. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-resolve-pr`. Under `/en-ship` it records as a child of the ship. Fire-and-forget; `references/run-metrics.md` states the contract.
 3. **Resolve PR number.** No arg → `gh pr view --json number -q .number`. URL → parse owner/repo/PR + comment ID; use `$SKILL_DIR/scripts/get-thread-for-comment` to map to a thread.
 4. **Fetch comments.** Run `$SKILL_DIR/scripts/get-pr-comments <PR>`. Returns three buckets plus a `cross_invocation` envelope:
    - `review_threads` — unresolved inline threads (with `isOutdated` flag)
@@ -105,6 +106,7 @@ Handle incoming PR review feedback — triage, fix, reply, resolve. Pairs with `
     If `--enable-auto-merge` was passed but `repo_allows_auto_merge` is false: surface "Repo does not allow auto-merge. Enable in Settings → General → 'Allow auto-merge', then re-run."
 
 15. **Summary report** in the shape `references/resolve-pr-reporting.md` gives: grouped by verdict, one line per item, then Validation and Merge readiness.
+16. **Close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. **Every terminal path closes the run**, a `needs-human` stop included.
 
     For `needs-human` items, include each item's `decision_context` (quoted feedback / what was found / why it needs decision / options with tradeoffs / the agent's lean).
 

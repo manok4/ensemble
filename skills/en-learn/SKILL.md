@@ -23,6 +23,8 @@ Maintain `docs/learnings/` as a compounding interlinked wiki — not a flat fold
 | `--migrate` | A project still on the retired `bugs/`/`patterns/`/`decisions/` layout | Entries moved to the artifact-type layout; legacy decisions converted to ADRs |
 | `--enforce-audit` | Adopting the router, or a map file grew | TD entries for prose rules a check should hold; `references/enforce-audit.md` |
 
+**Run ledger, every mode.** Open it first with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-learn` and close it last with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. A gate that writes nothing still closes the run; `references/run-metrics.md` states the contract.
+
 ## Always-on behaviors
 
 After every write:

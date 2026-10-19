@@ -478,4 +478,13 @@ check "command -v psql is not a client"           allow "command -v psql | head 
 check "which psql then a query"                   allow "which psql; psql -h prod -Atc 'select 1'"
 check "piped SQL after cd still asks"             ask   "cd db && cat migrate.sql | psql -h prod"
 
+# --- each fire records mode, tool and a command hash, never the command (D129) ---
+GL="$ENSEMBLE_ANALYTICS_DIR/guardrail.jsonl"; : > "$GL"
+printf '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"rm -rf /var/data --token=s3cr3t"}}' | bash "$HOOK" >/dev/null
+rec=$(tail -1 "$GL")
+want=$(printf '%s' 'rm -rf /var/data --token=s3cr3t' | python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest()[:12])')
+printf '%s' "$rec" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if (d["mode"],d["tool"],d["cmd_sha"])==("auto","Bash",sys.argv[1]) else 1)' "$want" \
+  && pass "a fire records permission mode, tool and command hash" || fail "a fire records permission mode, tool and command hash" "$rec"
+case "$rec" in *s3cr3t*|*/var/data*) fail "the logged fire leaks the command" "$rec" ;; *) pass "the logged fire does not contain the command" ;; esac
+
 report
