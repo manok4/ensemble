@@ -34,6 +34,11 @@
 # the same lint over one changed file is 3s. A runner whose targeted form is not
 # `<test command> <paths>` declares `test_paths_command:` with `{tests}` in it.
 #
+# Every check also runs with ENSEMBLE_TEST_BASE (the selection's base: HEAD
+# under --working, the range's base under --range) and ENSEMBLE_CHANGED_FILES
+# in its environment, for a project script that scopes itself and would rather
+# read a variable than take a placeholder (D130).
+#
 # Exit codes:
 #   0  every check that could run passed
 #   1  a check failed (the tail of it is on stdout; the whole log is on disk)
@@ -99,7 +104,7 @@ LOG="$LOG_DIR/$UNIT-$(date -u +%Y%m%dT%H%M%SZ).log"
 
 # --- the test selection ------------------------------------------------------
 TEST_SELECT_TIER=""; TEST_SELECT_COMMAND=""; TEST_SELECT_PATHS=""
-TEST_SELECT_COUNT=""; TEST_SELECT_TOTAL=""; TEST_SELECT_REASON=""; TEST_SELECT_CHANGED=""
+TEST_SELECT_COUNT=""; TEST_SELECT_TOTAL=""; TEST_SELECT_REASON=""; TEST_SELECT_CHANGED=""; TEST_SELECT_BASE=""
 # Always resolved, even under --no-tests: the changed list is what `{files}`
 # substitutes into, so an incremental lint needs it too.
 sel_cmd="$SELF_DIR/ensemble-test-select --repo-root $REPO_ROOT --agents-file $AGENTS_FILE"
@@ -160,7 +165,8 @@ run_check() {  # <label> <command>
   {
     printf '\n===== %s =====\n$ %s\n' "$label" "$cmd"
   } >> "$LOG" 2>/dev/null
-  sh -c "$cmd" >> "$LOG" 2>&1 </dev/null
+  ENSEMBLE_TEST_BASE="${TEST_SELECT_BASE:-}" ENSEMBLE_CHANGED_FILES="${TEST_SELECT_CHANGED:-}" \
+    sh -c "$cmd" >> "$LOG" 2>&1 </dev/null
   rc=$?
   end=$(date +%s)
   RAN=$((RAN + 1))
