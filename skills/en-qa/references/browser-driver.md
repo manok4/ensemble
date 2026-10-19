@@ -23,6 +23,36 @@ whose earlier evidence describes a session that no longer exists. Falling back
 is allowed only before the first flow is exercised; after that, a driver failure
 ends Phase 2 and is reported.
 
+## Which host-native surface
+
+Use the browser of the harness the run is in: **T3 Code's preview tools** in T3
+Code (`preview_open`, `preview_navigate`, `preview_snapshot`, `preview_click`,
+`preview_type`, `preview_wait_for`, `preview_evaluate`, under the host's MCP
+prefix), the **browser pane** in the Claude desktop app, and Playwright MCP only
+when neither is there. On one machine, en-qa runs used all three in one month
+(about 400, 250 and 250 actions), with 20 to 28 failed actions on each (D135).
+Most of those failures came from three habits, and the rules below are their
+inverse; they apply to every driver, Playwright included.
+
+**One dependent action per message.** Snapshot, act on a ref from that snapshot,
+then snapshot again to see what happened. Sending a click, a type and a wait in
+one parallel batch acts on refs the first action already invalidated: on the
+other machine 33 of 36 failed preview actions were dependent steps batched
+together. Batch only reads that do not depend on each other, such as console
+messages beside a screenshot.
+
+**Make the dev server reachable before opening the browser.** Start it bound to
+an address the surface can reach (most dev servers take `--host 127.0.0.1`), then
+confirm with one bounded wait, `timeout 60 sh -c 'until curl -sf <url> >/dev/null;
+do sleep 1; done'`, never a series of separate `sleep` calls. A preview that
+cannot reach `localhost` fails every action that follows, and each failure looks
+like a page bug.
+
+**Retry a failed action once, after a fresh snapshot.** A bare "failed on client"
+or a timeout usually means a stale ref or a page still settling. If the same
+action fails again, the driver is not working: record it, end Phase 2 under the
+one-driver rule above, and say which action failed.
+
 ## Playwright MCP patterns
 
 Only when selection landed on Playwright MCP. Its tools appear under the host's
