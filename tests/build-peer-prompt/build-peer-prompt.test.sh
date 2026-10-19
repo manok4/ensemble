@@ -301,6 +301,9 @@ assert_contains "$big" "src/f1.js" "the first files are inlined"
 printf '%s\n' "$big" | grep -q '^  src/f6.js (+200 -0)$' && pass "a left-out file is listed with its size" || fail "a left-out file is listed with its size" "$(printf '%s' "$big" | grep -A8 'NOT INLINED')"
 inlined=$(printf '%s\n' "$big" | grep -c '^+const line_' || true)
 [ $((inlined % 200)) -eq 0 ] && [ "$inlined" -gt 0 ] && pass "files are inlined whole, never cut mid-hunk ($inlined lines)" || fail "files are inlined whole" "$inlined lines"
+# A path with a space makes the header ambiguous; the summary must still name it.
+spaced=$( { mkdiff 1 200; printf 'diff --git a/docs/a b.md b/docs/a b.md\n--- a/docs/a b.md\t\n+++ b/docs/a b.md\t\n@@ -1 +1,300 @@\n'; seq 1 300 | sed 's/^/+x/'; } | cprompt --max-diff-bytes 5000)
+printf '%s\n' "$spaced" | grep -qF '  docs/a b.md (+300 -0)' && pass "a left-out path with a space is named" || fail "a left-out path with a space is named" "$(printf '%s' "$spaced" | grep -A4 'NOT INLINED')"
 small=$(mkdiff 2 5 | cprompt)
 case "$small" in *"NOT INLINED"*) fail "a small diff is not capped" ;; *) pass "a small diff is not capped" ;; esac
 plain=$(seq 1 5000 | sed 's/^/prose line /' | cprompt --max-diff-bytes 1000)

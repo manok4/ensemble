@@ -152,12 +152,25 @@ budget, text = int(sys.argv[1]), sys.stdin.read()
 parts = re.split(r"(?m)^(?=diff --git )", text)
 head = "" if parts[0].startswith("diff --git ") else parts[0]
 kept, left, used = [], [], len(head)
+def diff_path(lines):
+    # The header is ambiguous when a path has a space ("a/x y b/x y"), so read
+    # the +++ / --- / rename lines first, then split a header whose halves match.
+    for l in lines[1:]:
+        if l.startswith("@@"):
+            break
+        for pre in ("+++ b/", "rename to ", "--- a/"):
+            if l.startswith(pre):
+                return l[len(pre):].rstrip("\t")
+    rest = lines[0][len("diff --git "):]
+    n = (len(rest) - 5) // 2
+    if rest.startswith("a/") and rest[2 + n:] == " b/" + rest[2:2 + n]:
+        return rest[2:2 + n]
+    return "?"
 for b in (p for p in parts if p.startswith("diff --git ")):
     if used + len(b) <= budget:
         kept.append(b); used += len(b); continue
-    m = re.match(r"diff --git a/(\S+) b/(\S+)", b)
     lines = b.splitlines()
-    left.append((m.group(2) if m else "?",
+    left.append((diff_path(lines),
                  sum(1 for l in lines if l.startswith("+") and not l.startswith("+++")),
                  sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))))
 out = head + "".join(kept)
