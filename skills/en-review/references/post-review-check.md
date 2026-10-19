@@ -56,6 +56,15 @@ verification-receipt reference and is not repeated here.
   a full run here re-proves files the fix never touched, and `/en-build` and CI
   own that run. An empty selection is reported as empty, never as a pass.
 
+### With `--defer-tests`
+
+The caller runs the tests next, on this tree plus whatever it changes: `/en-build`
+passes the flag at 10.3 because its 10.4 full suite follows within minutes. Run
+lint and typecheck only, revert the applied edits on failure as below, report
+`post_review_check: ran (tests deferred to caller)`, and **write no receipt**: a
+receipt records what ran, and the tests did not. Before this, one build ran the
+branch's tests in the simplify pass, again here, and again at 10.4 (D131).
+
 ## 3. Act on the outcome
 
 - **Failure after an applied fix.** Revert the applied edits (restore from the
