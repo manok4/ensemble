@@ -538,8 +538,15 @@ if [ "$QUIET" != "true" ]; then
   # reaches for a tool, --max-turns 1 cuts it off, and the CLI exits non-zero
   # having parsed every flag correctly.
   _smoke_prompt='Reply with the single word ok and nothing else.'
-  $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "$_smoke_prompt"
-  $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --json "$_smoke_prompt"
+  # From an empty directory: run here, each CLI loaded this checkout's
+  # AGENTS.md and CLAUDE.md to answer one word, 26-36k input tokens a probe.
+  _smoke_dir=$(mktemp -d 2>/dev/null) || _smoke_dir=""
+  (
+    [ -z "$_smoke_dir" ] || cd "$_smoke_dir" || exit 0
+    $HAS_CLAUDE_CLI && ensemble_smoke_probe "Claude CLI" claude -p --output-format json --max-turns 1 "$_smoke_prompt"
+    $HAS_CODEX_CLI && ensemble_smoke_probe "Codex CLI" codex exec --skip-git-repo-check --json "$_smoke_prompt"
+  )
+  [ -z "$_smoke_dir" ] || rm -rf "$_smoke_dir"
   log ""
 fi
 

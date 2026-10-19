@@ -284,4 +284,30 @@ else
   pass "[envsubst-doc] envsubst not installed; static checks above are sufficient"
 fi
 
+# --- code variant: a large diff is capped at file boundaries (D134) ----------
+CBIN="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
+CBRIEF="$REPO_ROOT/skills/en-review/references/peer-brief.md"
+mkdiff() {  # <files> <lines per file>
+  local i j
+  for i in $(seq 1 "$1"); do
+    printf 'diff --git a/src/f%s.js b/src/f%s.js\n--- a/src/f%s.js\n+++ b/src/f%s.js\n@@ -1 +1,%s @@\n' "$i" "$i" "$i" "$i" "$2"
+    for j in $(seq 1 "$2"); do printf '+const line_%s_%s = %s;\n' "$i" "$j" "$j"; done
+  done
+}
+cprompt() { "$CBIN" --brief "$CBRIEF" --project-context P --goal G --artifact-stdin "$@"; }
+big=$(mkdiff 6 200 | cprompt --max-diff-bytes 12000)
+assert_contains "$big" "NOT INLINED" "a diff over the cap says what it left out"
+assert_contains "$big" "src/f1.js" "the first files are inlined"
+printf '%s\n' "$big" | grep -q '^  src/f6.js (+200 -0)$' && pass "a left-out file is listed with its size" || fail "a left-out file is listed with its size" "$(printf '%s' "$big" | grep -A8 'NOT INLINED')"
+inlined=$(printf '%s\n' "$big" | grep -c '^+const line_' || true)
+[ $((inlined % 200)) -eq 0 ] && [ "$inlined" -gt 0 ] && pass "files are inlined whole, never cut mid-hunk ($inlined lines)" || fail "files are inlined whole" "$inlined lines"
+small=$(mkdiff 2 5 | cprompt)
+case "$small" in *"NOT INLINED"*) fail "a small diff is not capped" ;; *) pass "a small diff is not capped" ;; esac
+plain=$(seq 1 5000 | sed 's/^/prose line /' | cprompt --max-diff-bytes 1000)
+case "$plain" in *"NOT INLINED"*) fail "an artifact that is not a diff is never cut" ;; *) pass "an artifact that is not a diff is never cut" ;; esac
+off=$(mkdiff 6 200 | cprompt --max-diff-bytes 0)
+case "$off" in *"NOT INLINED"*) fail "--max-diff-bytes 0 disables the cap" ;; *) pass "--max-diff-bytes 0 disables the cap" ;; esac
+assert_contains "$small" "stop well short of your turn limit" "the code peer is told to stop before its turn cap"
+if mkdiff 1 1 | cprompt --max-diff-bytes lots >/dev/null 2>&1; then fail "a non-numeric cap is refused"; else pass "a non-numeric cap is refused"; fi
+
 report
