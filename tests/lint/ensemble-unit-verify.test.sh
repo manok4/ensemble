@@ -90,6 +90,45 @@ out=$(sel --files lib/other.js)
 assert_eq "graph" "$(val "$out" TEST_SELECT_TIER)" "a declared graph command wins over the map"
 assert_eq "jest --findRelatedTests" "$(val "$out" TEST_SELECT_COMMAND)" "the graph command is passed through verbatim"
 
+# --- 2b. {base} and {files} in the graph command (D130) ----------------------
+# A command that hardcoded origin/main re-tested the whole branch at every unit
+# gate. `{base}` is this selection's base: HEAD for a unit's uncommitted work,
+# the range's base for a checkpoint or a ship.
+agents <<'MD'
+- **Test:** `vitest run`
+
+```yaml
+test_changed_command: "vitest run --changed {base} -- {files}"
+```
+MD
+(cd "$P" && git add -A && git commit -qm base && git branch -q -f basebr && printf 'x\n' > lib/other.js && git commit -qam second && printf 'y\n' >> lib/other.js) >/dev/null
+out=$(sel --working)
+assert_eq "vitest run --changed HEAD -- lib/other.js" "$(val "$out" TEST_SELECT_COMMAND)" "--working: {base} is HEAD and {files} the unit's changes"
+assert_eq "HEAD" "$(val "$out" TEST_SELECT_BASE)" "--working reports HEAD as its base"
+out=$(sel --range basebr..HEAD)
+assert_eq "vitest run --changed basebr -- lib/other.js" "$(val "$out" TEST_SELECT_COMMAND)" "--range a..b: {base} is a"
+mb=$(cd "$P" && git merge-base basebr HEAD)
+out=$(sel --range basebr...HEAD)
+assert_eq "$mb" "$(val "$out" TEST_SELECT_BASE)" "--range a...b: {base} is their merge base"
+out=$(sel --files lib/other.js)
+assert_eq "empty" "$(val "$out" TEST_SELECT_TIER)" "--files has no base, so a {base} command reports empty rather than guess"
+assert_contains "$(val "$out" TEST_SELECT_REASON)" "base-unresolved" "and says why"
+out=$(sel --range 'basebr;rm..HEAD')
+assert_eq "empty" "$(val "$out" TEST_SELECT_TIER)" "a base that is not a plain ref is refused, never pasted into a command"
+agents <<'MD'
+- **Test:** `true`
+
+```yaml
+test_changed_command: "sh ./envcheck.sh"
+```
+MD
+printf 'printf "%%s|%%s" "$ENSEMBLE_TEST_BASE" "$ENSEMBLE_CHANGED_FILES" > env.out\n' > "$P/envcheck.sh"
+(cd "$P" && git add AGENTS.md envcheck.sh && git commit -qm "env check" AGENTS.md envcheck.sh) >/dev/null
+(cd "$P" && bash "$VER" --unit U9 --working --no-lint --no-typecheck --log-dir "$WORK/logs" >/dev/null)
+assert_eq "HEAD|lib/other.js" "$(cat "$P/env.out" 2>/dev/null)" "unit-verify exports the selection's base and changed files to the check"
+rm -f "$P/env.out"
+(cd "$P" && git checkout -q -- lib/other.js)
+
 # --- 3. the cheap-suite escape hatch, and that it is opt-in ------------------
 # THE EN16 DEFECT. A test that greps a file's content is unreachable from the
 # path that changed. A suite this cheap should just run.
