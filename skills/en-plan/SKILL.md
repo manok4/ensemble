@@ -144,7 +144,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
 20. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning.
-21. **Hand off to `/en-build`.** Close the run first: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.
+21. **Hand off to `/en-build`, in a fresh session**: the plan is the handoff. Close the run first: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build <that path>`?"
 
 ## Flags
