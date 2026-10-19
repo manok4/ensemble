@@ -22,7 +22,13 @@ HOOK="$REPO_ROOT/skills/en-guardrail/bin/check-guardrail.sh"
 # as another: this suite, not anybody's actual destructive commands.
 ANALYTICS_TMP=$(mktemp -d)
 export ENSEMBLE_ANALYTICS_DIR="$ANALYTICS_TMP"
-trap 'rm -rf "$ANALYTICS_TMP"' EXIT
+# The $TMPDIR allow cases need a real TMPDIR. macOS sets one; a Linux runner
+# usually does not, and unset it expands to nothing (`$TMPDIR/x` is `/x`).
+OWN_TMPDIR=
+if [ -z "${TMPDIR:-}" ] || [ ! -d "$TMPDIR" ]; then
+  OWN_TMPDIR=$(mktemp -d); export TMPDIR="$OWN_TMPDIR"
+fi
+trap 'rm -rf "$ANALYTICS_TMP" ${OWN_TMPDIR:+"$OWN_TMPDIR"}' EXIT
 
 # Pipe one synthetic Bash tool-input through the hook and assert the verdict.
 check() {
@@ -402,6 +408,8 @@ check 'rm -rf $TMPDIR child'                      allow 'rm -rf "$TMPDIR/ensembl
 check 'rm -rf var assigned from $TMPDIR'          allow 'RUN=$TMPDIR/ensemble/x; rm -rf $RUN/peer'
 check "rm -rf a mktemp dir"                       allow 'T=$(mktemp -d); rm -rf "$T"'
 check 'rm -rf $TMPDIR itself still asks'          ask   'rm -rf "$TMPDIR"'
+check "a shadowed mktemp is not temp space"       ask   'mktemp(){ printf /etc; }; T=$(mktemp -d); rm -rf "$T/x"'
+check "mktemp after a PATH change is not temp"    ask   'PATH=/opt/evil:$PATH; T=$(mktemp -d); rm -rf "$T/x"'
 check "rm -rf the scratch root still asks"        ask   "rm -rf /tmp/claude-$(id -u)"
 check "another uid's scratch still asks"         ask   "rm -rf /tmp/claude-$(( $(id -u) + 1 ))/x/scratchpad"
 check "rm -rf escaping scratch via .. asks"       ask   "rm -rf $SCR/../../../etc"
@@ -443,6 +451,8 @@ check "rm -rf after a background &"               ask   "sleep 1 & rm -rf /var/d
 check "heredoc marker inside quotes hides nothing" ask  "$(printf 'echo "a <<EOF"\nrm -rf /var/data\nEOF')"
 check "heredoc to an unknown reader stays shell"  ask   "$(printf 'mystery <<EOF\nrm -rf /var/data\nEOF')"
 check "python heredoc running rm -rf asks"        ask   "$(printf 'python3 - <<EOF\nimport os; os.system(\"rm -rf /var/data\")\nEOF')"
+check "python heredoc running git reset asks"     ask   "$(printf 'python3 - <<EOF\nimport os; os.system(\"git reset --hard HEAD~1\")\nEOF')"
+check "cat heredoc naming git reset is data"      allow "$(printf 'cat > notes.md <<EOF\nnever git reset --hard\nEOF')"
 check "conditional reassignment poisons the var"  ask   "SP=$SCR; false || SP=/etc; rm -rf \"\$SP/x\""
 check "reassignment in if/then poisons the var"   ask   "SP=$SCR; if x; then SP=/etc; fi; rm -rf \"\$SP/x\""
 check "assignment in a pipeline is not kept"      ask   "SP=$SCR | cat; rm -rf \"\$SP/x\""
@@ -467,6 +477,16 @@ else
   pass "[skip]  TMPDIR symlink fixtures: mktemp is not under TMPDIR here"
 fi
 rm -rf "$LNK"
+# A temp root that is itself a symlink, even to a directory of ours, is not owned:
+# following it first hid the link from every check.
+LROOT=$(mktemp -d); mkdir "$LROOT/real"; ln -s "$LROOT/real" "$LROOT/root"
+lr_out=$(printf '{"tool_input":{"command":"rm -rf \\"$TMPDIR/x\\""}}' | TMPDIR="$LROOT/root" bash "$HOOK")
+echo "$lr_out" | grep -q '"permissionDecision":"ask"' \
+  && pass "[ask]   \$TMPDIR that is a symlink" || fail "[ask]   \$TMPDIR that is a symlink" "got: $lr_out"
+lr_out=$(printf '{"tool_input":{"command":"rm -rf \\"$TMPDIR/x\\""}}' | TMPDIR="$LROOT/real" bash "$HOOK")
+[ "$lr_out" = "{}" ] \
+  && pass "[allow] \$TMPDIR that is a real dir" || fail "[allow] \$TMPDIR that is a real dir" "got: $lr_out"
+rm -rf "$LROOT"
 check "DROP through a shell function still asks"  ask   "q(){ docker exec pg psql -d \"\$1\" -Atc \"\$2\"; }; q app 'drop table users;'"
 check "rm through an alias still asks"            ask   "alias nuke='rm -rf'; nuke /var/data"
 

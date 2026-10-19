@@ -346,6 +346,9 @@ def strip_heredocs(cmd):
 
 _ASSIGN = re.compile(r"^(?:export\s+)?([A-Za-z_]\w*)=(.*)$", re.S)
 _MKTEMP = re.compile(r"""^["']?(\$\(\s*mktemp\b[^)]*\)|`\s*mktemp\b[^`]*`)["']?$""")
+# Anything in the command that could make `mktemp` run something else: a
+# function or alias of that name, a PATH change, a hashed path.
+_MKTEMP_SHADOW = re.compile(r"""(?<![\w-])mktemp\s*\(\s*\)|\bfunction\s+mktemp\b|\balias\b[^;&|\n]*\bmktemp=|(?<![\w$])PATH\+?=|\bhash\s+-p\b""")
 
 
 def track_env(segs, shell):
@@ -354,8 +357,10 @@ def track_env(segs, shell):
     Only an unconditional top-level assignment counts. A name assigned any other
     way anywhere in the command (after `||`, in a pipeline, a subshell, a loop,
     `read`, `declare`, `unset`) is dropped everywhere, so it reads as unresolved
-    and fails closed. A value from $(mktemp ...) becomes the MKTEMP marker."""
+    and fails closed. A value from $(mktemp ...) becomes the MKTEMP marker,
+    unless the command could have redefined what `mktemp` runs."""
     env, snaps, tracked, poisoned = {}, [], {}, set()
+    real_mktemp = not _MKTEMP_SHADOW.search(shell)
     for k, (toks, raw, before) in enumerate(segs):
         snaps.append(dict(env))
         m = _ASSIGN.match(raw)
@@ -368,7 +373,10 @@ def track_env(segs, shell):
             poisoned.add(name)
             continue
         if _MKTEMP.match(val):
-            env[name] = MKTEMP_MARK
+            if real_mktemp:
+                env[name] = MKTEMP_MARK
+            else:
+                env.pop(name, None)
         elif re.search(r"\s|\$\(|`", val.strip("'\"")):
             env.pop(name, None)
         else:
@@ -408,11 +416,16 @@ def expand(word, env):
 
 
 def _safe_below(root, rel):
-    """No symlink anywhere from the real root down to the deepest part of the
-    path that exists, and the root, if it exists, is ours and not writable by
-    group or other. A link in scratch pointing at $HOME makes `rm -rf link/` or
-    `> link` act outside it."""
-    real = os.path.realpath(root)
+    """No symlink anywhere from the root down to the deepest part of the path
+    that exists, and the root, if it exists, is ours and not writable by group
+    or other. A link in scratch pointing at $HOME makes `rm -rf link/` or
+    `> link` act outside it. The root itself is checked before it is resolved:
+    /tmp/claude-<uid> planted as a link to a directory of ours would pass every
+    check once followed. Only its parent is resolved, since /tmp and /var are
+    system links on macOS."""
+    real = os.path.join(os.path.realpath(os.path.dirname(root)), os.path.basename(root))
+    if os.path.islink(real):
+        return False
     if os.path.lexists(real):
         try:
             st = os.lstat(real)
@@ -636,9 +649,10 @@ def analyze_shell(cmd):
             emit("redir_truncate", "output redirection (>) truncates an existing file or symlink.")
 
     # Per simple command, so `.*` cannot run across `&&` into the next one:
-    # `git push origin x && gh pr edit -f` is not a force-push.
+    # `git push origin x && gh pr edit -f` is not a force-push. Interpreter
+    # bodies are scanned whole: `os.system("git reset --hard")` runs it.
     for name, pat, msg in TOOL_PATTERNS:                   # case-sensitive on raw (preserves -D vs -d)
-        if any(re.search(pat, t) for t in [raw for _, raw in live] + substs):
+        if any(re.search(pat, t) for t in [raw for _, raw in live] + substs + programs):
             emit(name, msg)
 
     all_toks = [t for toks, _ in cmds if toks for t in toks]
