@@ -50,7 +50,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
    **An interface that only ever existed in this unshipped scope is not behavior.** A compatibility shim, an intermediate signature, a data shape introduced earlier in the very work being simplified — none of it is protected once you have verified it has no deployed, persisted, public, external, dependent-branch, or in-repo caller outside the scope. Remove it only when every caller update it requires fits inside the mutation boundary above; otherwise keep it. Without this rule the pass preserves scaffolding it watched being built twenty minutes ago. Before each fix, confirm it preserves behavior (same output/errors/side-effects/ordering); if it can't clear that, skip. **Never simplify away a safety check** — input validation at trust boundaries, error handling that prevents data loss, security checks (authz, escaping, sanitization), and accessibility affordances are not removable boilerplate even when a finding frames them as redundant.
 6. **Verify behavior preserved.**
    - Run typecheck + lint over the project, in the same message as the scoped tests below since none depends on another (fast; catches broken imports, dropped narrowings, dead code other modules reference).
-   - Run tests scoped to the changed paths; broaden when the change has obvious wide reach (heavily-imported utility rewritten, shared code consolidated). If the runner has no scoping, run the full suite.
+   - Unless `--defer-tests`, run tests scoped to the changed paths; broaden when the change has obvious wide reach (heavily-imported utility rewritten, shared code consolidated). If the runner has no scoping, run the full suite.
    - On a break: identify which applied fix caused it, **revert that specific change**, not the whole pass, continue with the rest, and surface the reverted finding in the summary. **Do not** relax assertions, weaken types, or skip tests to make checks pass. A simplification that cannot survive the project's own checks is not a simplification.
    - If no test/lint/typecheck is configured, state that explicitly; don't silently skip verification.
 7. **Summarize by dimension.** Report what was applied per dimension (reuse / quality / efficiency), how many findings were skipped as false-positive, and the behavior-preservation result (checks run + outcome). Example: *"Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass."* Do not headline a net-lines-removed figure — the measure is what improved and that behavior held, not how much code shrank. If there were no findings, confirm the code didn't need changes.
@@ -62,6 +62,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 |---|---|
 | `--scope <path>` | Override scope resolution; simplify only this path. |
 | `--no-verify` | Skip step 6 verification (rare; surface a warning that behavior preservation is unverified). |
+| `--defer-tests` | Step 6 runs typecheck and lint only; the caller runs the tests next. `/en-build` passes it because its 10.4 full suite follows within minutes, after review. Report `tests: deferred to caller`. A break the suite then finds is the caller's to attribute and revert (D131). |
 
 ## Commit policy
 

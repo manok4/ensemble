@@ -47,9 +47,11 @@ a word.
 
 ## The checkpoint (9f)
 
-- **Before the first `risk: destructive` or `gated: true` unit, and once after the last unit commits**, run `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit checkpoint --range <first-unit-commit>^..HEAD --prefer-full-when-cheap`: lint, typecheck, and the tests covering everything built so far. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** enter the unit the checkpoint was guarding.
+- **Before the first `risk: destructive` or `gated: true` unit**, run `bash "$SKILL_DIR/scripts/ensemble-unit-verify" --unit checkpoint --range <first-unit-commit>^..HEAD --prefer-full-when-cheap`: lint, typecheck, and the tests covering everything built so far. On failure: stop; surface failing tests; offer investigate / commit-as-WIP-via-`--commit-wip` / abort. Do **not** enter the unit the checkpoint was guarding.
 
   **Why here and not everywhere (D108).** The checkpoint used to fire at each phase boundary, which meant it fired on a schedule the risk did not follow. Attaching it to the risk event is the same protection with none of the grouping: everything reversible is proven immediately before anything irreversible runs. Every unit is already verified at 9d, so the checkpoint's job is cross-unit breakage, not the unit's own logic.
+
+  **Why not once more after the last unit (D131).** It did run there, and 10.4 then ran the full suite over the same branch minutes later, with simplify and review in between re-testing it twice more. Four test runs of one tree is three too many; 10.4 is the one that counts, because it runs after remediation.
 
   **Why targeted rather than full (D53).** The full suite runs once, at 10.4, after remediation. The trade, named rather than hidden: a change that breaks an earlier unit's test outside the targeted set surfaces at 10.4 instead of at the checkpoint.
 
