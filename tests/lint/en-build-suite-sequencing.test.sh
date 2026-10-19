@@ -126,7 +126,8 @@ fi
 # --- 7. one test run after the units, not four (D131) ---
 # Simplify and review each re-ran the branch's tests minutes before 10.4 ran the
 # full suite on the same tree, and the 9f checkpoint ran once more at the end.
-if grep -qF '/en-simplify --defer-tests' "$SKILL" && grep -qE 'en-review --cross --mode headless --base <merge-base> --defer-tests' "$SKILL"; then
+if grep -qF '/en-simplify --defer-tests' "$SKILL" && grep -qE 'en-review --cross --mode headless --base <merge-base> --defer-tests' "$SKILL" \
+   && grep -qF 'en-review --verify <envelope-path> --mode headless --defer-tests' "$SKILL"; then
   pass "simplify and review defer their tests to the 10.4 suite"
 else
   fail "en-build must pass --defer-tests to /en-simplify and /en-review" "they re-test the tree 10.4 is about to test"
