@@ -8,11 +8,14 @@ description: "Test the work like a real user: lint, typecheck, tests, then Playw
 
 System checks plus live browser end-to-end testing. Bug fixes commit atomically with regression tests.
 
+> **Running a bundled script.** Anchor every call to this skill's own directory: `SKILL_DIR="<absolute path of the directory containing this SKILL.md>"; bash "$SKILL_DIR/scripts/<name>"`. The trailing `;` is load-bearing. See `references/script-invocation.md`.
+
 ## Process
 
 1. **Resolve context.** Establish once: the branch and its base, the changed files, and **whether a human is driving**. A caller (`/en-build`, `/en-loop`) drives this unattended; a person invoking it directly does not. This skill is model-invocable on purpose: a `disable-model-invocation: true` flag would let only a person run it and leave those callers with nothing to invoke. That single fact changes what happens at every prompt below, so resolve it first and state it in the report.
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocess shouldn't QA in CI).
+2a. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-qa`. Fire-and-forget; it never blocks a run, and `references/run-metrics.md` states the contract.
 3. **Phase 1 — system checks.** Run in this order; stop on first failure:
    - Project lint (the lint command `AGENTS.md` declares).
    - Typecheck if applicable.
@@ -65,6 +68,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 8a. **Done means every in-scope flow has an outcome.** The run ends one of two ways: a report in which **every flow selected at step 7 is marked Pass, Fail, or Skip with its reason**, or a preflight blocker that stopped QA before any flow could run, named alongside what would clear it. Ending in neither, or dropping a flow from the report because nothing could reach it, is the failure this bar exists to prevent — an absent flow reads as a flow that passed.
 
 9. **Output QA report**, from the flow ledger: system-check status, flows exercised, bugs found and fixed, follow-ups recorded, regression tests added, screenshot paths, skipped flows with reasons.
+10. **Close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. **Every terminal path closes the run**: a failed Phase 1, a lost driver and a pause for judgement each end here.
 
 ## Flags
 

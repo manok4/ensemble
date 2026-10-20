@@ -9,7 +9,8 @@ Read at the output-report step. This file is the **single owner of the envelope 
   "verdict": "approve | revise | reject",
   "summary": "<2-3 sentence overall>",
   "personas": ["correctness", "testing", "maintainability", "standards", "security"],
-  "host_model": "<the resolver's model for dimension-reviewer> | null",
+  "host_model": "<the resolver's model for dimension-reviewer at the ceiling tier> | null",
+  "host_model_evidence": "<the same at the evidence tier, for testing, maintainability, standards, performance> | null",
   "mode": "interactive | headless | report-only",
   "lite_gate": {"outcome": "applied | overridden | not-requested", "reasons": []},
   "verification_pass": {"outcome": "clean | new-findings | not-run", "reason": "no-p0-p1-addressed | peer-failure | null", "finding_ids": []},
@@ -64,7 +65,7 @@ Always emit a markdown summary alongside the JSON, even in `headless`/`report-on
 ## Code review — FR07-auth-rotation
 
 **Verdict:** revise (3 findings)
-**Personas fired:** correctness, testing, maintainability, standards, security (host_model: opus)
+**Personas fired:** correctness, testing, maintainability, standards, security (host_model: opus; evidence-tier dimensions: sonnet)
 **Pre-flight lint:** clean
 **Auto-applied:** 3 safe_auto fixes
 lite_gate: not-requested

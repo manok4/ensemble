@@ -35,17 +35,28 @@ and the cost of being wrong is asymmetric: a needless re-run costs minutes, a
 wrongly-skipped run costs a broken main branch. When anything is unclear the
 command exits non-zero and the caller runs the checks.
 
-The **fingerprint** covers the committed tree, every tracked modification staged
-or unstaged, and the *content* of untracked non-ignored files. That last part
-matters most: a brand-new source file is exactly where a stale receipt would be
-most wrong, because the tests that would cover it do not exist in the committed
-tree at all. Ignored files are excluded, or every build artifact would invalidate
-the receipt it was meant to preserve.
+The **fingerprint** is the tree a commit of everything would produce: tracked
+files as they sit on disk, staged or not, plus the *content* of untracked
+non-ignored files. It is built in a throwaway copy of the index and named by
+`git write-tree`, so it hashes content, not commit state: committing exactly the
+checked content leaves the receipt valid. The first version hashed
+`HEAD^{tree}` plus `git diff HEAD`, both of which move on commit, so the receipt
+`/en-build` wrote before its final commit was refused by `/en-ship` on nearly
+every ship. Untracked content matters most: a brand-new source file is exactly
+where a stale receipt would be most wrong, because the tests that would cover it
+do not exist in the committed tree at all. Ignored files are excluded, or every
+build artifact would invalidate the receipt it was meant to preserve. Each
+checked-out submodule is fingerprinted the same way and hashed in with the
+parent tree, which records a submodule only as its HEAD commit and so missed
+edits inside one.
 
 The **TTL** is the one input not derivable from the tree. A toolchain can move
 under an unchanged tree — someone upgrades a runtime, a service restarts — and no
-fingerprint can see that. Age is the proxy. Default 120 minutes, overridable with
-`--ttl <minutes>` or `ENSEMBLE_RECEIPT_TTL_MINUTES`.
+fingerprint can see that. Age is the proxy. Default 24 hours (1440 minutes),
+overridable with `--ttl <minutes>` or `ENSEMBLE_RECEIPT_TTL_MINUTES`. It was 120
+minutes, which expired before the usual gap between a build and its ship; the
+content, base and lockfile clauses already refuse on everything the tree can
+show.
 
 ## Writes accumulate; a tree change resets
 

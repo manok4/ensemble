@@ -18,6 +18,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
 ## Process
 
 1. **Resolve the subagent primitive.** `Agent` with `subagent_type` on Claude Code, `spawn_agent` on Codex. That is the only host fact this skill needs — it invokes no peer, so it carries none of the peer-detection machinery.
+1a. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-simplify`. Inside `/en-build` it records as a child of the build's run. Fire-and-forget; `references/run-metrics.md` states the contract.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit — a peer subprocess does not run simplification passes. This skill only *reads* that variable; it never invokes a peer and never sets it, so it carries none of the protocol for doing so.
 3. **Resolve scope** (first match wins):
    1. **User-named scope** (a file, directory, "the function I just wrote", "this morning's changes") — authoritative; do not widen it.
@@ -53,6 +54,7 @@ Behavior-preserving simplification of recently changed code. Reviews the change 
    - On a break: identify which applied fix caused it, **revert that specific change**, not the whole pass, continue with the rest, and surface the reverted finding in the summary. **Do not** relax assertions, weaken types, or skip tests to make checks pass. A simplification that cannot survive the project's own checks is not a simplification.
    - If no test/lint/typecheck is configured, state that explicitly; don't silently skip verification.
 7. **Summarize by dimension.** Report what was applied per dimension (reuse / quality / efficiency), how many findings were skipped as false-positive, and the behavior-preservation result (checks run + outcome). Example: *"Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass."* Do not headline a net-lines-removed figure — the measure is what improved and that behavior held, not how much code shrank. If there were no findings, confirm the code didn't need changes.
+8. **Close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. **Every terminal path closes the run**, a preflight that found nothing to simplify included.
 
 ## Flags
 

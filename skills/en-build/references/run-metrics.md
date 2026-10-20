@@ -13,8 +13,10 @@ beside the verification receipt. Never committed, no `.gitignore` entry, gone
 with the clone. **One JSON object per line, appended**, so parallel dispatches
 cannot lose each other's events and reading a run is a line scan.
 
-Carried by `/en-plan`, `/en-build`, `/en-review`, `/en-ship` and
-`/en-foundation` — every skill that opens a run.
+Carried by `/en-plan`, `/en-build`, `/en-review`, `/en-ship`, `/en-foundation`,
+`/en-simplify`, `/en-qa`, `/en-learn`, `/en-resolve-pr` and `/en-test-audit` —
+every skill that opens a run. The last five joined in 2026-10 (D129): without a
+run record their wall time was unknowable.
 
 ## Addressing: a file, not an environment variable
 

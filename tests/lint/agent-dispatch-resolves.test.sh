@@ -264,4 +264,35 @@ done
   && pass "every agent declares a tier rather than inheriting by omission" \
   || fail "every agent declares a tier rather than inheriting by omission" "$notier"
 
+# Every documented resolver call passes --agent-file, the flag it exits 2
+# without. en-review/SKILL.md named the call without it, a transcript hid the
+# exit behind 2>/dev/null, and every reviewer ran at the file's tier for weeks
+# while the operator's tier keys went unread (2026-10 usage review).
+# A shell continuation joins the next line first, so a call split across lines
+# is checked whole.
+noflag=$(for f in "$REPO_ROOT"/skills/*/SKILL.md "$REPO_ROOT"/skills/*/references/*.md; do
+  awk -v f="${f#$REPO_ROOT/}" '{ while (sub(/\\$/, "") && (getline nx) > 0) $0 = $0 " " nx }
+    /ensemble-agent-model --agent/ && !/--agent-file/ { print f ": " $0 }' "$f"
+done)
+[ -z "$noflag" ] \
+  && pass "every documented ensemble-agent-model call passes --agent-file" \
+  || fail "every documented ensemble-agent-model call passes --agent-file" "$noflag"
+
+# Each review dimension declares the tier it is dispatched at, from the set the
+# resolver accepts; a dimension with no tier would be dispatched at whatever the
+# orchestrator happened to pass.
+PD="$REPO_ROOT/skills/en-review/references/persona-dispatch.md"
+for d in correctness testing maintainability standards security performance migrations; do
+  # The first table naming the dimension is the roster; a later one is the
+  # token budget, whose third column is not a tier.
+  t=$(grep -E "^\| \`$d\` \|" "$PD" | head -1 | awk -F'|' '{gsub(/ /,"",$3); print $3}')
+  case "$t" in
+    ceiling|evidence|retrieval) pass "dimension $d declares tier $t" ;;
+    *) fail "dimension $d declares a tier" "got '$t'" ;;
+  esac
+done
+grep -q -- '--tier ceiling' "$PD" && grep -q -- '--tier evidence' "$PD" \
+  && pass "persona dispatch resolves each tier through the resolver" \
+  || fail "persona dispatch resolves each tier through the resolver"
+
 report
