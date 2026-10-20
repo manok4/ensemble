@@ -16,7 +16,13 @@
 #                path heuristic can find.
 #   graph        AGENTS.md `test_changed_command:` — the project's own
 #                dependency-graph tool (jest --findRelatedTests, pytest-testmon,
-#                nx affected). It wins outright.
+#                nx affected). It wins outright. `{base}` in it becomes the base
+#                of THIS selection and `{files}` the changed paths, so one
+#                declaration serves a unit gate and a ship: under `--working`
+#                the base is HEAD (the unit's uncommitted work), under
+#                `--range a..b` it is `a`, under `a...b` their merge base. A
+#                command hardcoding `origin/main` re-tested the whole branch on
+#                every unit: 109 unit gates at a median 204s on one project.
 #   impact-map   AGENTS.md `test_impact:` prefix map, source prefix -> test prefix.
 #   sibling      same path with .test. / .spec. / _test. inserted, or test_<base>.
 #                The fallback for projects that declared nothing.
@@ -43,6 +49,7 @@
 #   TEST_SELECT_TOTAL='<test files in the repo, empty when not counted>'
 #   TEST_SELECT_REASON='<why this tier>'
 #   TEST_SELECT_CHANGED='<the changed files the selection was derived from>'
+#   TEST_SELECT_BASE='<HEAD | the range's base | empty under --files>'
 #
 # Fail-soft: every resolution problem exits 0 with a tier that says so. Exit 2
 # only for a usage error, so a caller never loses its selection to a typo.
@@ -98,8 +105,10 @@ _record_select() {  # <tier> <reason> <count> <total>
   local rm="$_SELF_DIR/ensemble-run-metrics" r c t
   [ -n "$_SELF_DIR" ] && [ -x "$rm" ] || return 0
   r=$(printf '%s' "${2:-}" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  case "${3:-}" in ''|*[!0-9]*) c=0 ;; *) c="$3" ;; esac
-  case "${4:-}" in ''|*[!0-9]*) t=0 ;; *) t="$4" ;; esac
+  # null, not 0, when the tier did not count: a graph or full-suite run that
+  # recorded 0 of 0 read as "selected nothing" in every later report.
+  case "${3:-}" in ''|*[!0-9]*) c=null ;; *) c="$3" ;; esac
+  case "${4:-}" in ''|*[!0-9]*) t=null ;; *) t="$4" ;; esac
   bash "$rm" emit --kind select \
     --json "$(printf '{"tier":"%s","reason":"%s","count":%s,"total":%s}' "${1:-}" "$r" "$c" "$t")" \
     >/dev/null || true
@@ -113,6 +122,7 @@ emit() {  # <tier> <command> <paths> <count> <total> <reason>
   printf "TEST_SELECT_TOTAL='%s'\n"   "$(sq "$5")"
   printf "TEST_SELECT_REASON='%s'\n"  "$(sq "$6")"
   printf "TEST_SELECT_CHANGED='%s'\n" "$(sq "$(printf '%s' "$CHANGED" | tr '\n' ' ')")"
+  printf "TEST_SELECT_BASE='%s'\n"    "$(sq "$SELECT_BASE")"
   _record_select "$1" "$6" "$4" "$5"
   exit 0
 }
@@ -167,6 +177,21 @@ changed_files() {
   esac
 }
 
+# The base `{base}` stands for. A ref or SHA only: anything else is refused
+# rather than pasted into a shell command.
+SELECT_BASE=""
+case "$MODE" in
+  working) SELECT_BASE="HEAD" ;;
+  range)
+    case "$RANGE" in
+      *...*) l=${RANGE%%...*}; r=${RANGE#*...}
+             SELECT_BASE=$(git merge-base "$l" "${r:-HEAD}" 2>/dev/null) || SELECT_BASE="$l" ;;
+      *..*)  SELECT_BASE=${RANGE%%..*} ;;
+      *)     SELECT_BASE="$RANGE" ;;
+    esac ;;
+esac
+case "$SELECT_BASE" in *[!A-Za-z0-9._/@^~-]*) SELECT_BASE="" ;; esac
+
 # Only paths that still exist: a deleted file cannot be linted or tested by
 # path, and `{files}` consumers would choke on it.
 CHANGED=$(changed_files | awk 'NF' | sort -u | while IFS= read -r p; do [ -e "$p" ] && printf '%s\n' "$p"; done)
@@ -196,7 +221,30 @@ if [ "$PREFER_FULL" = true ] && [ -n "$TEST_CMD" ] && [ -n "$FULL_SECONDS" ]; th
 fi
 
 # --- tier 1: the project's own graph tool ------------------------------------
-[ -n "$CHANGED_CMD" ] && emit graph "$CHANGED_CMD" "" "" "" "test_changed_command"
+# Each path single-quoted for the shell the command runs in: a changed file
+# named `a;rm -rf x.js` must arrive as one argument, never as a command.
+_shq_lines() {
+  local p
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    printf "'%s' " "$(printf '%s' "$p" | sed "s/'/'\\\\''/g")"
+  done
+}
+_subst() {  # <text> <placeholder> <value>
+  printf '%s' "$1" | sed "s|$2|$(printf '%s' "$3" | sed 's/[&|\\]/\\&/g')|g"
+}
+if [ -n "$CHANGED_CMD" ]; then
+  gcmd="$CHANGED_CMD"
+  case "$gcmd" in *"{base}"*)
+    [ -n "$SELECT_BASE" ] || emit empty "$TEST_CMD" "" 0 "" "base-unresolved:{base}-needs---working-or---range"
+    gcmd=$(_subst "$gcmd" "{base}" "$SELECT_BASE") ;;
+  esac
+  case "$gcmd" in *"{files}"*)
+    [ -n "$CHANGED" ] || emit empty "$TEST_CMD" "" 0 "" "no-changed-files"
+    gcmd=$(_subst "$gcmd" "{files}" "$(printf '%s\n' "$CHANGED" | _shq_lines | sed 's/ $//')") ;;
+  esac
+  emit graph "$gcmd" "" "" "" "test_changed_command"
+fi
 
 if [ -z "$TEST_CMD" ] && [ -z "$CHANGED_CMD" ]; then
   emit none-declared "" "" 0 "" "no-test-command-in-agents-md"

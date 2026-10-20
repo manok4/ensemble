@@ -55,6 +55,10 @@ fi
 # --- after a fix: the graph-selected set, then record targeted_tests --------
 has "$R" 'test_changed_command' "the post-fix run uses the project's graph-selected set"
 has "$R" 'selection: graph' "the selection tier is reported"
+# Run as written, `{base}` reached pytest literally (`--parent-branch={base}`).
+has "$R" 'scripts/ensemble-test-select" --range "$(git merge-base <base> HEAD)"' "the set is resolved by ensemble-test-select, which fills in {base}"
+[ -x "$REPO_ROOT/skills/en-review/scripts/ensemble-test-select" ] \
+  && pass "en-review carries ensemble-test-select" || fail "en-review carries ensemble-test-select"
 has "$R" 'Revert the applied edits' "a regression reverts the fix"
 has "$R" '--check targeted_tests=passed --base origin/<base> --by en-review' "a passing run records targeted_tests as en-review"
 lacks "$R" 'full_suite=passed' "en-review never claims full_suite"

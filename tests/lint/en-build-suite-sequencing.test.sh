@@ -54,7 +54,7 @@ fi
 
 # --- 3. phase boundaries are targeted ---
 # D108 moved this from a phase boundary to the 9f checkpoint, which fires before
-# the first irreversible unit and once at the end. Targeted either way.
+# the first irreversible unit (D131 dropped the end-of-build one). Targeted.
 if grep -qiE 'tests covering everything built so far' "$LOOP" \
    && grep -qF 'ensemble-unit-verify" --unit checkpoint' "$SKILL"; then
   pass "the checkpoint is targeted, not the full suite"
@@ -122,5 +122,24 @@ if grep -qF 'Only on a passing suite, and never fatal' "$EN_BUILD_SKILL" "$PB"; 
 else
   fail "the receipt is written only on a pass, and a failed write is not fatal"
 fi
+
+# --- 7. one test run after the units, not four (D131) ---
+# Simplify and review each re-ran the branch's tests minutes before 10.4 ran the
+# full suite on the same tree, and the 9f checkpoint ran once more at the end.
+if grep -qF '/en-simplify --defer-tests' "$SKILL" && grep -qE 'en-review --cross --mode headless --base <merge-base> --defer-tests' "$SKILL" \
+   && grep -qF 'en-review --verify <envelope-path> --mode headless --defer-tests' "$SKILL"; then
+  pass "simplify and review defer their tests to the 10.4 suite"
+else
+  fail "en-build must pass --defer-tests to /en-simplify and /en-review" "they re-test the tree 10.4 is about to test"
+fi
+if grep -qiE 'once after the last unit commits' "$SKILL" "$LOOP"; then
+  fail "the end-of-build checkpoint is gone" "10.4 runs the suite minutes later"
+else
+  pass "the 9f checkpoint runs before the risk only"
+fi
+PRC="$REPO_ROOT/skills/en-review/references/post-review-check.md"
+grep -qF 'write no receipt' "$PRC" && grep -qF -- '--defer-tests' "$PRC" \
+  && pass "a deferred post-review check writes no receipt for tests it did not run" \
+  || fail "a deferred post-review check must write no receipt"
 
 report

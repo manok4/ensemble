@@ -50,11 +50,30 @@ verification-receipt reference and is not repeated here.
 
 - The project's `lint` command from `AGENTS.md`.
 - Its `typecheck` command, if applicable.
-- Tests: `test_changed_command` from `AGENTS.md`, the graph-selected set;
-  report `selection: graph`. When the project declares none, the unit suite
-  (the `test` command), reported `selection: approximate`. Not the full suite:
-  a full run here re-proves files the fix never touched, and `/en-build` and CI
-  own that run. An empty selection is reported as empty, never as a pass.
+- Tests: the set `ensemble-test-select` resolves against the review's base,
+  the same helper `/en-build` and `/en-ship` call, so `{base}` and `{files}` in
+  `test_changed_command` are filled in rather than reaching the test runner as
+  written:
+
+  ```bash
+  eval "$(bash "$SKILL_DIR/scripts/ensemble-test-select" --range "$(git merge-base <base> HEAD)")"
+  ```
+
+  A single ref, not `a..b`, so the selection covers the applied fixes in the
+  working tree too. Run `TEST_SELECT_COMMAND` when it is set, otherwise the
+  `test` command on `TEST_SELECT_PATHS`. Report `selection: graph` for the
+  `graph` tier and `selection: approximate` for the path tiers. Not the full
+  suite: a full run here re-proves files the fix never touched, and `/en-build`
+  and CI own that run. An empty selection is reported as empty, never as a pass.
+
+### With `--defer-tests`
+
+The caller runs the tests next, on this tree plus whatever it changes: `/en-build`
+passes the flag at 10.3 because its 10.4 full suite follows within minutes. Run
+lint and typecheck only, revert the applied edits on failure as below, report
+`post_review_check: ran (tests deferred to caller)`, and **write no receipt**: a
+receipt records what ran, and the tests did not. Before this, one build ran the
+branch's tests in the simplify pass, again here, and again at 10.4 (D131).
 
 ## 3. Act on the outcome
 
