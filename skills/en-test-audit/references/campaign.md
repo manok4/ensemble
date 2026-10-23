@@ -38,8 +38,11 @@ exactly one lane.
 
 ## 3. A read-only ledger per lane
 
-Give each lane to its own read-only sub-agent (the host's read-only explore
-agent; no agent file is carried for this), in one parallel batch. Each reads
+Give each lane to its own `test-lane-auditor` agent (`agents/test-lane-auditor.md`,
+evidence tier), resolved and dispatched per `references/agent-dispatch.md`, in one
+parallel batch, with the retention bar and `references/good-tests.md` passed
+verbatim. Never a general-purpose dispatch: it inherits the session's model, and
+one campaign ran 72 lanes on the ceiling tier that way (D133). Each reads
 every assigned test in full, including parameter tables, and the production
 owners with their entry points, callers, history and CI routing. It returns one
 row per declaration with a mark and an evidence line; a parameterised test is one

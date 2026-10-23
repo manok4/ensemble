@@ -33,7 +33,8 @@ TEST_NAME="research dispatch parity"
 #   is not among them: it dispatches only learnings-research, and carries the
 #   matrix for that row and for the dossier protocol.
 # web-research.md 2: en-brainstorm, en-plan.
-# agent-dispatch.md 8: every skill that dispatches any agent at all.
+# agent-dispatch.md 9: every skill that dispatches any agent at all (en-test-audit
+# joined with test-lane-auditor, D133).
 while IFS='|' read -r rel expected; do
   [ -n "$rel" ] || continue
 
@@ -54,7 +55,7 @@ while IFS='|' read -r rel expected; do
   assert_eq "$skew" "0" "$rel: all carried copies are byte-identical"
 done <<'CARRIERS'
 references/research-dispatch.md|7
-references/agent-dispatch.md|8
+references/agent-dispatch.md|9
 agents/repo-research.md|4
 agents/web-research.md|2
 CARRIERS

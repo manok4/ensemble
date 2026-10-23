@@ -141,4 +141,14 @@ grep -qiE 'never pushes, never opens a PR, never merges' "$SK" \
   && pass "it never pushes, opens a PR or merges" \
   || fail "SKILL.md must leave push, PR and merge to /en-ship"
 
+# Codex review on PR #132: step 3 resolved the lane auditor's model with
+# --host "$HOST" while the only host detection sat at step 10, so the resolver
+# got an empty host and exited 2. $HOST must be set where it is first used.
+first_use=$(grep -nF -- '--host "$HOST"' "$SK" | head -1 | cut -d: -f1)
+first_set=$(grep -nE '`\$HOST` set first|ensemble-detect-host' "$SK" | head -1 | cut -d: -f1)
+[ -n "$first_use" ] && [ -n "$first_set" ] && [ "$first_set" -le "$first_use" ] \
+  && pass "\$HOST is set no later than its first use" \
+  || fail "\$HOST is used before anything sets it" \
+          "first use line ${first_use:-none}, first set line ${first_set:-none}; ensemble-agent-model exits 2 on an empty --host"
+
 report

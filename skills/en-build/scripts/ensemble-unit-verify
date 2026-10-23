@@ -34,6 +34,11 @@
 # the same lint over one changed file is 3s. A runner whose targeted form is not
 # `<test command> <paths>` declares `test_paths_command:` with `{tests}` in it.
 #
+# Every check also runs with ENSEMBLE_TEST_BASE (the selection's base: HEAD
+# under --working, the range's base under --range) and ENSEMBLE_CHANGED_FILES
+# in its environment, for a project script that scopes itself and would rather
+# read a variable than take a placeholder (D130).
+#
 # Exit codes:
 #   0  every check that could run passed
 #   1  a check failed (the tail of it is on stdout; the whole log is on disk)
@@ -99,7 +104,7 @@ LOG="$LOG_DIR/$UNIT-$(date -u +%Y%m%dT%H%M%SZ).log"
 
 # --- the test selection ------------------------------------------------------
 TEST_SELECT_TIER=""; TEST_SELECT_COMMAND=""; TEST_SELECT_PATHS=""
-TEST_SELECT_COUNT=""; TEST_SELECT_TOTAL=""; TEST_SELECT_REASON=""; TEST_SELECT_CHANGED=""
+TEST_SELECT_COUNT=""; TEST_SELECT_TOTAL=""; TEST_SELECT_REASON=""; TEST_SELECT_CHANGED=""; TEST_SELECT_BASE=""
 # Always resolved, even under --no-tests: the changed list is what `{files}`
 # substitutes into, so an incremental lint needs it too.
 sel_cmd="$SELF_DIR/ensemble-test-select --repo-root $REPO_ROOT --agents-file $AGENTS_FILE"
@@ -131,6 +136,13 @@ test_command() {
   esac
 }
 
+# Quote each space-separated word for the shell the check runs in, so a path
+# with shell metacharacters is an argument, never a command.
+_shq_words() {
+  local w
+  for w in $1; do printf "'%s' " "$(printf '%s' "$w" | sed "s/'/'\\\\''/g")"; done
+}
+
 # --- run one check -----------------------------------------------------------
 FAILED=""; RAN=0; LINES=""; CHECKS_JSON=""
 
@@ -144,7 +156,7 @@ run_check() {  # <label> <command>
         LINES="$LINES
   $label: skipped (nothing changed)"; return 0
       fi
-      cmd=$(printf '%s' "$cmd" | sed "s|{files}|$(printf '%s' "$TEST_SELECT_CHANGED" | sed 's/[&|\\]/\\&/g')|g")
+      cmd=$(printf '%s' "$cmd" | sed "s|{files}|$(_shq_words "$TEST_SELECT_CHANGED" | sed 's/ $//; s/[&|\\]/\\&/g')|g")
       ;;
   esac
   case "$cmd" in
@@ -153,14 +165,15 @@ run_check() {  # <label> <command>
         LINES="$LINES
   $label: skipped (no test paths selected)"; return 0
       fi
-      cmd=$(printf '%s' "$cmd" | sed "s|{tests}|$(printf '%s' "$TEST_SELECT_PATHS" | sed 's/[&|\\]/\\&/g')|g")
+      cmd=$(printf '%s' "$cmd" | sed "s|{tests}|$(_shq_words "$TEST_SELECT_PATHS" | sed 's/ $//; s/[&|\\]/\\&/g')|g")
       ;;
   esac
   start=$(date +%s)
   {
     printf '\n===== %s =====\n$ %s\n' "$label" "$cmd"
   } >> "$LOG" 2>/dev/null
-  sh -c "$cmd" >> "$LOG" 2>&1 </dev/null
+  ENSEMBLE_TEST_BASE="${TEST_SELECT_BASE:-}" ENSEMBLE_CHANGED_FILES="${TEST_SELECT_CHANGED:-}" \
+    sh -c "$cmd" >> "$LOG" 2>&1 </dev/null
   rc=$?
   end=$(date +%s)
   RAN=$((RAN + 1))

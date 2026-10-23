@@ -284,4 +284,65 @@ else
   pass "[envsubst-doc] envsubst not installed; static checks above are sufficient"
 fi
 
+# --- code variant: a large diff is capped at file boundaries (D134) ----------
+CBIN="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
+CBRIEF="$REPO_ROOT/skills/en-review/references/peer-brief.md"
+mkdiff() {  # <files> <lines per file>
+  local i j
+  for i in $(seq 1 "$1"); do
+    printf 'diff --git a/src/f%s.js b/src/f%s.js\n--- a/src/f%s.js\n+++ b/src/f%s.js\n@@ -1 +1,%s @@\n' "$i" "$i" "$i" "$i" "$2"
+    for j in $(seq 1 "$2"); do printf '+const line_%s_%s = %s;\n' "$i" "$j" "$j"; done
+  done
+}
+cprompt() { "$CBIN" --brief "$CBRIEF" --project-context P --goal G --artifact-stdin "$@"; }
+# The cap leaves a file out only when the peer can read it from the tree, so
+# these run in a real repo where the post-image hashes can be checked.
+CREPO=$(mktemp -d)
+git -C "$CREPO" init -q
+git -C "$CREPO" config user.email t@example.com; git -C "$CREPO" config user.name t
+mkdir -p "$CREPO/src" "$CREPO/docs"
+for i in 1 2 3 4 5 6; do seq 1 200 | sed "s/^/const line_${i}_/; s/\$/ = 1;/" > "$CREPO/src/f$i.js"; done
+seq 1 300 | sed 's/^/x/' > "$CREPO/docs/a b.md"
+seq 1 2000 | sed 's/^/gone /' > "$CREPO/src/old.js"
+git -C "$CREPO" add -A; git -C "$CREPO" commit -qm base
+for i in 1 2 3 4 5 6; do seq 1 200 | sed "s/^/const line_${i}_/; s/\$/ = 2;/" > "$CREPO/src/f$i.js"; done
+seq 1 300 | sed 's/^/y/' > "$CREPO/docs/a b.md"
+git -C "$CREPO" rm -q src/old.js
+git -C "$CREPO" add -A; git -C "$CREPO" commit -qm change
+CBASE=$(git -C "$CREPO" rev-parse HEAD~1); CTIP=$(git -C "$CREPO" rev-parse HEAD)
+cdiff() { git -C "$CREPO" diff "$CBASE" "$CTIP" -- "$@"; }
+cin() { ( cd "$CREPO" && cprompt "$@" ); }
+
+big=$(cdiff src/f1.js src/f2.js src/f3.js src/f4.js src/f5.js src/f6.js | cin --max-diff-bytes 12000)
+assert_contains "$big" "NOT INLINED" "a diff over the cap says what it left out"
+assert_contains "$big" "src/f1.js" "the first files are inlined"
+printf '%s\n' "$big" | grep -q '^  src/f6.js (+200 -200)$' && pass "a left-out file is listed with its size" || fail "a left-out file is listed with its size" "$(printf '%s' "$big" | grep -A8 'NOT INLINED')"
+inlined=$(printf '%s\n' "$big" | grep -c '^+const line_' || true)
+[ $((inlined % 200)) -eq 0 ] && [ "$inlined" -gt 0 ] && pass "files are inlined whole, never cut mid-hunk ($inlined lines)" || fail "files are inlined whole" "$inlined lines"
+# A path with a space makes the header ambiguous; the summary must still name it.
+spaced=$(cdiff src/f1.js "docs/a b.md" | cin --max-diff-bytes 1000)
+printf '%s\n' "$spaced" | grep -qF '  docs/a b.md (+300 -300)' && pass "a left-out path with a space is named" || fail "a left-out path with a space is named" "$(printf '%s' "$spaced" | grep -A4 'NOT INLINED')"
+# Codex review on PR #132: a left-out hunk the tree cannot show is lost to the
+# peer. A deleted file is absent from the tree, so it stays inline past the cap.
+gone=$(cdiff src/f1.js src/old.js | cin --max-diff-bytes 5000)
+printf '%s\n' "$gone" | grep -q '^-gone 2000$' && pass "a deleted file over the cap stays inline" || fail "a deleted file over the cap stays inline" "$(printf '%s' "$gone" | grep -A4 'NOT INLINED')"
+# Reviewing a ref that is not checked out: the tree holds other content, so
+# the hunk is inlined rather than pointed at.
+git -C "$CREPO" checkout -q "$CBASE"
+stale=$(cdiff src/f1.js src/f2.js | cin --max-diff-bytes 5000)
+case "$stale" in *"NOT INLINED"*) fail "a file whose tree content differs is not left out" "$(printf '%s' "$stale" | grep -A4 'NOT INLINED')" ;; *) pass "a file whose tree content differs is not left out" ;; esac
+git -C "$CREPO" checkout -q -
+# Outside any repo nothing is readable, so a synthetic diff is never cut.
+synth=$(mkdiff 6 200 | ( cd "$(mktemp -d)" && cprompt --max-diff-bytes 12000 ))
+case "$synth" in *"NOT INLINED"*) fail "a diff with no readable tree is never cut" ;; *) pass "a diff with no readable tree is never cut" ;; esac
+rm -rf "$CREPO"
+small=$(mkdiff 2 5 | cprompt)
+case "$small" in *"NOT INLINED"*) fail "a small diff is not capped" ;; *) pass "a small diff is not capped" ;; esac
+plain=$(seq 1 5000 | sed 's/^/prose line /' | cprompt --max-diff-bytes 1000)
+case "$plain" in *"NOT INLINED"*) fail "an artifact that is not a diff is never cut" ;; *) pass "an artifact that is not a diff is never cut" ;; esac
+off=$(mkdiff 6 200 | cprompt --max-diff-bytes 0)
+case "$off" in *"NOT INLINED"*) fail "--max-diff-bytes 0 disables the cap" ;; *) pass "--max-diff-bytes 0 disables the cap" ;; esac
+assert_contains "$small" "stop well short of your turn limit" "the code peer is told to stop before its turn cap"
+if mkdiff 1 1 | cprompt --max-diff-bytes lots >/dev/null 2>&1; then fail "a non-numeric cap is refused"; else pass "a non-numeric cap is refused"; fi
+
 report

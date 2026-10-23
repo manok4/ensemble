@@ -71,7 +71,7 @@ JSON shape:
 
 ## Token economy
 
-Your dispatcher has a token budget. Stay under it:
+Your dispatcher has a token budget. Stay under it. **The read counts below are a hard cap on tool calls, not a guide:** count every call, and at the cap for your depth stop and return what you have, naming the questions you did not get to in `summary`. Agents dispatched as Standard averaged 38 calls against a cap of 30 (D136).
 
 - **Lightweight task** — 5K tokens of input, 2K tokens of output. 5–15 file reads, focused.
 - **Standard task** — 15K of input, 5K of output. 15–30 file reads, broader.

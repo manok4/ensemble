@@ -27,7 +27,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - Local dev server detection (e.g., `localhost:3000` if a dev server is responsive).
    - User asks if none found.
 5. **Select a browser driver, then keep it.** Per `references/browser-driver.md`. In order:
-   1. **A host-native browser surface**, if the harness has one that can navigate, inspect rendered state, click and type, screenshot, and read console errors. Prefer it: it needs no install and is already permitted.
+   1. **A host-native browser surface**, if the harness has one that can navigate, inspect rendered state, click and type, screenshot, and read console errors: T3 Code's preview tools, or the Claude desktop app's browser pane. Prefer it: it needs no install and is already permitted. Act one dependent step per message and make the dev server reachable first (`references/browser-driver.md`).
    2. **Playwright MCP**, when present.
    3. Neither → Phase 1 only, and say which drivers were looked for.
 

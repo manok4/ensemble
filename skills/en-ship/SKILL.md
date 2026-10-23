@@ -11,6 +11,8 @@ description: "Push clean changes with a conventional commit and a PR: preflight 
 
 Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/en-qa` have already passed.
 
+**Runs cold.** Everything it reads is on disk: the branch, the verification receipt in `.git/ensemble/`, and the plan trailer on the commits. Nothing comes from the conversation, so start it in a fresh session after a build; carried into one, it began a median 166k tokens deep and every call re-read that (D132).
+
 ## Process
 
 1. **Resolve context.** Establish, once, what this run is operating on, with the three reads below issued in one message since none depends on another; every later step reads these rather than re-deriving them:

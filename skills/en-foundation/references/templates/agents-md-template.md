@@ -79,8 +79,16 @@ that layout and useless for any other.*
 Either give a command, which wins outright:
 
 ```yaml
-test_changed_command: "pytest --picked --parent-branch=origin/main"
+test_changed_command: "pytest --picked --parent-branch={base}"
 ```
+
+`{base}` is the base of the change being verified: `HEAD` for one unit's
+uncommitted work in `/en-build`, the branch's base for a checkpoint or for
+`/en-ship`. `{files}` is the changed paths. Hardcode `origin/main` instead and
+every unit gate re-tests the whole branch; one project paid a median 204s per
+unit for that. The same two values reach the command's environment as
+`ENSEMBLE_TEST_BASE` and `ENSEMBLE_CHANGED_FILES`, for a wrapper script that
+scopes itself rather than take a placeholder.
 
 Or map source prefixes to test prefixes:
 
