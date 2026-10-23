@@ -126,11 +126,20 @@ else
     at_base=$(git show "$base":"$F" 2>/dev/null \
               | grep -oE '^- \*\*D[0-9]+\.' | grep -oE '[0-9]+' | sort -un)
 
+    # A number main already holds is a collision only when main holds a
+    # different decision under it. A branch forked before a squash merge
+    # carries the same entries main received through the squash, and those
+    # are one decision, not two; comparing the bold title tells them apart.
+    title() { grep -oE "^- \*\*D$1\.[^*]*\*\*" | head -1; }
+    main_log=$(git show origin/main:"$F" 2>/dev/null)
+
     taken=""
     for n in $nums; do
       # Added on this branch: present now, absent at the fork point.
       printf '%s\n' "$at_base" | grep -qx "$n" && continue
-      printf '%s\n' "$on_main" | grep -qx "$n" && taken="$taken D$n"
+      printf '%s\n' "$on_main" | grep -qx "$n" || continue
+      [ "$(title "$n" < "$F")" = "$(printf '%s\n' "$main_log" | title "$n")" ] && continue
+      taken="$taken D$n"
     done
     [ -z "$taken" ] \
       && pass "no decision number this branch adds is already taken on main" \
