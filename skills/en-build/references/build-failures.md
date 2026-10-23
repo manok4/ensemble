@@ -1,16 +1,16 @@
 # Failure protocol (`/en-build`)
 
 One row per failure the build can hit, and what it does about each. `SKILL.md`
-keeps the four that stop a build mid-flight; this file is the whole table and is
+keeps the five met mid-build; this file is the whole table and is
 read when something fails.
 
-Every row shares one rule: a failure surfaces, it never auto-reverts, auto-commits
+Every row that stops shares one rule: a failure surfaces, it never auto-reverts, auto-commits
 or auto-stashes, and the user decides what happens next.
 
 | Failure | Behavior |
 |---|---|
 | Plan has unmet dependency (`Depends: U7` but U7 not present) | Stop; surface; suggest plan revision |
-| Unit needs files outside its `Files` list | **Stop before making the change.** Name what the unit needs and why the listed scope cannot deliver it, then ask: widen this unit, split the work into a new one, or abort. Do not quietly widen — the `Files` list is what the plan was reviewed against, and silent sprawl is invisible until step 10 reads a diff nobody scoped. |
+| Unit needs files outside its `Files` list | **Widen without asking when the unit's own Goal cannot be met without them.** Make the change, stage the added files with the unit, and record each one as a `Scope widened: <path>, <why>` line in the unit's commit body, repeated as a `Note:` in the progress report. The record is the point: the `Files` list is what the plan was reviewed against, and an unrecorded widening stays invisible until step 10 reads a diff nobody scoped. The plan file is not edited, so its hash stays the baseline. **Stop and ask (split into a new unit, or abort) only when** the extra work is a deliverable of its own that the Goal does not need, or it is work 8b would gate (a migration, a destructive data change, production state). Widening never carries gated or destructive work past 9a. |
 | Unit's `Approach` is too thin to implement | Stop and ask. Pre-flight checks the field is present, not that it is sufficient, and a guessed interpretation of a thin unit is the expensive kind of wrong: it passes tests written to match the guess. |
 | A `risk: destructive` unit precedes a non-destructive one | Refuse and name the units. `/en-plan`'s `unit.destructive-order` lint catches this at plan time; reaching the build means the plan was written or edited past it. |
 | Plan in `status: draft` with unresolved `peer_review_resolutions:` | Refuse build; list unresolved findings; suggest `/en-plan --resume`. |

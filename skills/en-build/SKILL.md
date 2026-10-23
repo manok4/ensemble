@@ -134,11 +134,11 @@ Execute a plan, unit by unit. **The host implements every unit**: the session ru
 
 ## Failure protocol
 
-**`references/build-failures.md` owns the table**: one row per failure, what to do, and the rule they share — a failure surfaces, never auto-reverts, auto-commits or auto-stashes, and the user decides. Five of them stop the build where it stands:
+**`references/build-failures.md` owns the table**: one row per failure, what to do, and the rule they share — a failure surfaces, never auto-reverts, auto-commits or auto-stashes, and the user decides. Five of them come up mid-build:
 
 | Failure | Behavior |
 |---|---|
-| Unit needs files outside its `Files` list | **Stop before making the change.** Name what the unit needs and why its scope cannot deliver it, then ask: widen, split, or abort. Do not quietly widen: the `Files` list is what the plan was reviewed against. |
+| Unit needs files outside its `Files` list | **Widen without asking** when the unit's Goal cannot be met without them, and record each added path and why as a `Scope widened:` line in the commit body. **Stop and ask** only when the extra work is a deliverable of its own, or gated or destructive work, which must not skip 9a. |
 | Unit's `Approach` is too thin to implement | Stop and ask. Pre-flight checks the field is present, not that it is sufficient, and a guessed interpretation passes tests written to match the guess. |
 | Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
 | A 9f checkpoint fails | Stop. Do **not** enter the gated or destructive unit it was guarding. Surface failing tests; offer investigate / `--commit-wip` / abort. |

@@ -10,8 +10,13 @@
 # surface, and both are silent when they go wrong:
 #
 #   SCOPE. A unit that needs files outside its `Files` list. The list is what
-#   the plan was reviewed against, so quiet widening is invisible until step 10
-#   reads a diff nobody scoped.
+#   the plan was reviewed against. This one no longer stops by default: asking
+#   "widen?" every time the plan missed a file was a pause the user always
+#   answered yes, so the build widens on its own when the unit's Goal needs it.
+#   What must not go silent is the widening itself, so each added path is
+#   recorded in the commit body, and two cases still stop: a separate
+#   deliverable (split territory) and gated or destructive work, which would
+#   otherwise ride a widening past the 9a gate.
 #
 #   THIN APPROACH. Pre-flight checks the `Approach` field is PRESENT, never that
 #   it is sufficient. A guessed interpretation passes the tests written to match
@@ -29,15 +34,36 @@ TEST_NAME="en-build stop conditions"
 
 SKILL="$REPO_ROOT/skills/en-build/SKILL.md"
 
-# --- 1. both conditions exist, and both say stop BEFORE acting ---
-if grep -qiE 'Unit needs files outside its .Files. list' "$SKILL" \
-   && grep -qiE 'Stop before making the change' "$SKILL" \
-   && grep -qiE 'Do not quietly widen' "$SKILL"; then
-  pass "scope expansion stops before the change, not after"
-else
-  fail "a unit needing files outside its scope must stop before widening" \
-       "silent sprawl is invisible until step 10 reads a diff nobody scoped"
-fi
+# --- 1. scope widening is autonomous, recorded, and bounded ---
+# Checked in SKILL.md and the full failure table, so the two cannot drift into
+# one widening silently and the other still asking.
+FAILURES="$REPO_ROOT/skills/en-build/references/build-failures.md"
+for f in "$SKILL" "$FAILURES"; do
+  name="${f#$REPO_ROOT/}"
+  if grep -qiE 'Unit needs files outside its .Files. list' "$f" \
+     && grep -qiE 'Widen without asking' "$f" \
+     && grep -qiE 'Scope widened:' "$f" \
+     && grep -qiE 'commit body' "$f"; then
+    pass "$name: scope widening proceeds and is recorded in the commit"
+  else
+    fail "$name: a unit needing files outside its scope must widen and record it" \
+         "an unrecorded widening is invisible until step 10 reads a diff nobody scoped"
+  fi
+  if grep -qiE 'deliverable of its own' "$f" \
+     && grep -qiE 'gated or destructive' "$f" \
+     && grep -qiE 'skip 9a|past 9a' "$f"; then
+    pass "$name: widening still stops for a separate deliverable or gated work"
+  else
+    fail "$name: widening must stop for a separate deliverable or gated/destructive work" \
+         "otherwise a widening carries gated work past the 9a safety gate"
+  fi
+  if grep -qiE 'ask: widen' "$f"; then
+    fail "$name: the old widen/split/abort prompt is back" \
+         "the build decides a needed widening itself"
+  else
+    pass "$name: no widen prompt survives"
+  fi
+done
 
 if grep -qiE "Approach. is too thin to implement" "$SKILL" \
    && grep -qiE 'present, not that it is sufficient' "$SKILL"; then
