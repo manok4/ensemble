@@ -17,7 +17,12 @@
 #
 # A unified diff over the cap is inlined whole file by whole file, in order,
 # until the budget is spent; the files left over are listed by path and size
-# for the peer to read from the tree (D81 gives a code peer read access). The
+# for the peer to read from the tree (D81 gives a code peer read access). Only
+# a file the peer can actually read is left out: its working-tree blob must
+# match the post-image hash on the diff's `index` line. A deleted file, a ref
+# that is not checked out, or a block with no `index` line stays inline even
+# past the budget, because the peer reads with Read/Grep/Glob and has no other
+# way to see that content. The
 # median code-review payload grew from 28k to 93k input tokens in two months
 # (2026-10 usage review), most of it hunks the peer never cited. An artifact
 # that is not a diff is never cut.
@@ -147,7 +152,7 @@ fi
 if [ "$MAX_DIFF_BYTES" -gt 0 ] && [ "${#ARTIFACT_BODY}" -gt "$MAX_DIFF_BYTES" ] \
    && printf '%s\n' "$ARTIFACT_BODY" | grep -q '^diff --git '; then
   ARTIFACT_BODY=$(printf '%s' "$ARTIFACT_BODY" | python3 -I -c '
-import re, sys
+import re, subprocess, sys
 budget, text = int(sys.argv[1]), sys.stdin.read()
 parts = re.split(r"(?m)^(?=diff --git )", text)
 head = "" if parts[0].startswith("diff --git ") else parts[0]
@@ -166,10 +171,26 @@ def diff_path(lines):
     if rest.startswith("a/") and rest[2 + n:] == " b/" + rest[2:2 + n]:
         return rest[2:2 + n]
     return "?"
+root = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                      capture_output=True, text=True).stdout.strip()
+def readable(lines, path):
+    # True only when the tree holds exactly the post-image this block shows.
+    for l in lines[1:]:
+        if l.startswith("@@"):
+            break
+        m = re.match(r"index [0-9a-f]+\.\.([0-9a-f]+)", l)
+        if m:
+            new = m.group(1)
+            if not root or path == "?" or set(new) == {"0"}:
+                return False
+            r = subprocess.run(["git", "hash-object", "--", path], cwd=root,
+                               capture_output=True, text=True)
+            return r.returncode == 0 and r.stdout.strip().startswith(new)
+    return False
 for b in (p for p in parts if p.startswith("diff --git ")):
-    if used + len(b) <= budget:
-        kept.append(b); used += len(b); continue
     lines = b.splitlines()
+    if used + len(b) <= budget or not readable(lines, diff_path(lines)):
+        kept.append(b); used += len(b); continue
     left.append((diff_path(lines),
                  sum(1 for l in lines if l.startswith("+") and not l.startswith("+++")),
                  sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))))
