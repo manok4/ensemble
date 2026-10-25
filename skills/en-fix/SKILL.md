@@ -45,7 +45,7 @@ One change that needs no plan, a bug fix or an improvement, from request to a re
 5. **Understand the change.**
    - **Bug:** invoke `/en-debug` with the user's words plus the resolved issue or tracker text, per its contract. It asks nothing and returns a `verdict`. Only `convergent` proceeds. On `divergent`, `design-problem` or `unresolved`, show the diagnosis, make no edit, and stop; on `design-problem`, also suggest `/en-brainstorm`.
    - **Improvement:** no `/en-debug`, because nothing is broken to trace. Print a three-line spec: the change, the test that proves it, and the files. Ask for confirmation only when triage marked the request ambiguous. If the work turns up behaviour that is actually broken, invoke `/en-debug` on it then, under the same rules.
-6. **Change, test-first.** Write a failing test that captures the bug or the new behaviour, and confirm it fails for the right reason. Make the minimal change, with no drive-by refactors, and confirm the test passes. Work in the order a reviewer should read it: a part that stands alone, such as a refactor that makes room for the change, is committed per the Commit step once its checks pass, before the next part starts. Run the targeted tests, lint and typecheck, then self-review the diff.
+6. **Change, test-first.** Write a failing test that captures the bug or the new behaviour, and confirm it fails for the right reason. Make the minimal change, with no drive-by refactors, and confirm the test passes. Work in the order a reviewer should read it: a part that stands alone, such as a refactor that makes room for the change, is committed per the Commit step once its checks pass and Triage's plan check holds on the diff so far, before the next part starts. Run the targeted tests, lint and typecheck, then self-review the diff.
    - **A failing test may be asserting behaviour that is correct.** Before changing an existing assertion, establish that it encodes the bug and not a decision. When that is unclear, stop and ask.
    - **On a failed attempt**, explicitly invalidate the current theory before forming the next. No retry variants.
    - **Three failed attempts is a signal about the design, not a reason for a fourth.** Stop, say so, and suggest `/en-plan`.
@@ -60,7 +60,7 @@ One change that needs no plan, a bug fix or an improvement, from request to a re
 
 ## Stops and resuming
 
-Every stop leaves the branch as it is and names the next command. Every stop, and the end of the Ship step, closes the run with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`; **every terminal path closes the run**. A run that dies after its first commit resumes with `/en-review --lite` or `/en-ship` on the same branch, never a fresh `/en-fix`, which would re-triage work that is already committed.
+Every stop leaves the branch as it is and names the next command. Every stop, and the end of the Ship step, closes the run with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`; **every terminal path closes the run**. A run that stops after committing a part, with the change unfinished, names what remains; `/en-fix <the remaining part>` on the same branch finishes it, since `/en-review` checks no requirements when there is no plan. A run that dies after the change is complete and committed resumes with `/en-review --lite` or `/en-ship` on the same branch, never a fresh `/en-fix`, which would re-triage work that is already committed.
 
 ## What this skill never does
 

@@ -193,6 +193,19 @@ grep -qF 'commit every review edit' <<<"$rev_text" \
 grep -qF 'run the Risk re-check again' <<<"$rev_text" \
   && pass "review edits re-run the risk check" \
   || fail "step $rev must re-run the Risk re-check after review edits"
+# /en-fix "add retries to the webhook sender": the refactor that makes room
+# turns out to change the payload schema. It must hit the Risk re-check before
+# it is committed, or the /en-plan handoff inherits a committed contract change.
+grep -qF "Triage's plan check holds on the diff so far" <<<"$chg_text" \
+  && pass "a part committed early passes Triage's plan check first" \
+  || fail "step $chg must run Triage's plan check before committing a part"
+# The same run stops after that first commit. Resuming at /en-review would
+# skip the unbuilt change, because a plan-free review checks no requirements.
+stops=$(awk '/^## Stops and resuming/{on=1; next} /^## /{on=0} on' "$SK")
+grep -qF 'with the change unfinished, names what remains' <<<"$stops" \
+  && grep -qF 'on the same branch finishes it' <<<"$stops" \
+  && pass "a stop between parts resumes the change, not the review" \
+  || fail "Stops and resuming must resume an unfinished change before review"
 rcp_text=$(step_text "$rcp")
 grep -qF 'ensemble-verification-receipt" verify' <<<"$rcp_text" && grep -qF 'do not invoke `/en-ship`' <<<"$rcp_text" \
   && pass "a failed receipt stops the run before the ship" \
