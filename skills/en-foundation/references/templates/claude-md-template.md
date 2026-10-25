@@ -36,7 +36,7 @@ This file is **Claude-Code-specific only**. Anything readable by Codex (project 
 
 ## Slash command preferences
 
-- Prefer `/en-plan` before `/en-build` for any feature touching > 3 files.
+- Route by what a plan settles, not by size. Use `/en-plan` when the work has an open decision, touches a risk surface (auth, payments, migrations, external contracts, destructive data), has parts that must land in order, spans more than one session, or comes from a design doc. Otherwise suggest `/en-fix <request>`, whatever the file count. It is manual-invoke, so name the command rather than starting a plan.
 - Use `/en-review --peer <path>` for ad-hoc peer review; it takes a file, a ref, a branch, or nothing.
 - For routine refactors that fall under sweep's purview, let `/en-sweep` run on the next merge — don't open a bespoke PR.
 
