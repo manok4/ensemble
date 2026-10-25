@@ -35,7 +35,7 @@ One change that needs no plan, a bug fix or an improvement, from request to a re
 
 ## Process
 
-1. **Preflight.** If `ENSEMBLE_PEER_REVIEW=true`, stop: this skill never runs inside a peer subprocess. Resolve `$QUESTION_TOOL`: `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`), `request_user_input` on Codex. Read the Test, Lint and Typecheck commands from `AGENTS.md`.
+1. **Preflight.** If `ENSEMBLE_PEER_REVIEW=true`, stop: this skill never runs inside a peer subprocess. Resolve `$QUESTION_TOOL`: `AskUserQuestion` on Claude Code (a deferred tool; preload it via `ToolSearch`), `request_user_input` on Codex. Read the Test, Lint and Typecheck commands from `AGENTS.md`. Then `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-fix`; the skills it invokes record as children. Fire-and-forget; `references/run-metrics.md` states the contract.
 2. **Intake.** Turn the request into a problem statement: the user's words plus whatever an identifier resolved to (the issue's title, description and comments, or the tracker entry). An issue or `TD<N>` that does not exist stops the run and names it.
 3. **Triage.** Make three calls and state them to the user in one line before any work.
    - **Bug or improvement.** The user's explicit word ("this is an improvement") beats a Linear `Bug` label, which beats your own call from the description.
@@ -60,7 +60,7 @@ One change that needs no plan, a bug fix or an improvement, from request to a re
 
 ## Stops and resuming
 
-Every stop leaves the branch as it is and names the next command. A run that dies after its first commit resumes with `/en-review --lite` or `/en-ship` on the same branch, never a fresh `/en-fix`, which would re-triage work that is already committed.
+Every stop leaves the branch as it is and names the next command. Every stop, and the end of the Ship step, closes the run with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`; **every terminal path closes the run**. A run that dies after its first commit resumes with `/en-review --lite` or `/en-ship` on the same branch, never a fresh `/en-fix`, which would re-triage work that is already committed.
 
 ## What this skill never does
 

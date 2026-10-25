@@ -14,9 +14,10 @@ with the clone. **One JSON object per line, appended**, so parallel dispatches
 cannot lose each other's events and reading a run is a line scan.
 
 Carried by `/en-plan`, `/en-build`, `/en-review`, `/en-ship`, `/en-foundation`,
-`/en-simplify`, `/en-qa`, `/en-learn`, `/en-resolve-pr` and `/en-test-audit` —
-every skill that opens a run. The last five joined in 2026-10 (D129): without a
-run record their wall time was unknowable.
+`/en-simplify`, `/en-qa`, `/en-learn`, `/en-resolve-pr`, `/en-test-audit` and
+`/en-fix`, every skill that opens a run. Five joined in 2026-10 (D129): without a
+run record their wall time was unknowable. `/en-fix` followed (D138), so plan-free
+work can be timed against planned work.
 
 ## Addressing: a file, not an environment variable
 
