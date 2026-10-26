@@ -12,6 +12,8 @@
 #   BUG PATH ONLY          /en-debug is invoked for a bug, never up front for an
 #                          improvement, and only a convergent verdict proceeds.
 #   PRECEDENCE             the user's word beats a Linear Bug label.
+#   ONE LIST               triage and the re-check read plan-or-fix.md, the
+#                          list /en-plan routes by, never a file or commit count.
 #   STOPS                  three failed attempts, a P0 or a second blocked review,
 #                          a risk surface after review, a failed receipt.
 #   CLEAN START            tracked edits refuse the run, since /en-ship stages
@@ -139,6 +141,15 @@ grep -qE "explicit word.*beats a Linear \`Bug\` label" <<<"$tri_text" \
 grep -qF 'references/diff-signal-detection.md' <<<"$tri_text" && grep -qF 'suggest `/en-plan`' <<<"$tri_text" \
   && pass "triage checks the shared risk surface and suggests /en-plan when it fails" \
   || fail "step $tri must use references/diff-signal-detection.md and suggest /en-plan"
+# /en-fix "rename fetchUser to loadUser across the client" touches eight files
+# and needs no plan. A size test would send it to /en-plan (D138).
+grep -qF 'Test it against `references/plan-or-fix.md`' <<<"$tri_text" \
+  && grep -qF 'no line, file or commit count' <<<"$tri_text" \
+  && pass "triage tests the request against plan-or-fix.md, with no size count" \
+  || fail "step $tri must test against references/plan-or-fix.md and rule out a size count"
+[ -f "$REPO_ROOT/skills/en-fix/references/plan-or-fix.md" ] \
+  && pass "the shared list is carried" \
+  || fail "skills/en-fix/references/plan-or-fix.md must be carried"
 grep -qF '**Is it ambiguous?**' <<<"$tri_text" \
   && pass "triage makes the ambiguity call the Improvement bullet depends on" \
   || fail "step $tri must mark whether the request is ambiguous"
@@ -152,14 +163,14 @@ grep -qF 'may be asserting behaviour that is correct' <<<"$chg_text" && grep -qF
   && grep -qF 'explicitly invalidate the current theory' <<<"$chg_text" \
   && pass "an existing assertion is changed only once it is shown to encode the bug (D62)" \
   || fail "step $chg must guard existing assertions and invalidate failed theories (D62)"
-grep -qF "Run Triage's size check again" <<<"$(step_text "$rsk")" && grep -qF 'stop with the change uncommitted' <<<"$(step_text "$rsk")" \
-  && pass "the risk re-check reruns Triage's size check and stops before the commit" \
-  || fail "step $rsk must rerun Triage's size check and stop uncommitted"
+grep -qF "Run Triage's plan check again on the actual diff" <<<"$(step_text "$rsk")" && grep -qF 'stop with the change uncommitted' <<<"$(step_text "$rsk")" \
+  && pass "the risk re-check reruns Triage's plan check on the diff and stops before the commit" \
+  || fail "step $rsk must rerun Triage's plan check on the actual diff and stop uncommitted"
 
 # --- /en-fix EMB-42 again: what the commit carries ---
 com_text=$(step_text "$com")
 missing=""
-for need in 'fix-owned files only' 'never `git add -A`' 'Fixes <IDENT>' '## Resolved'; do
+for need in 'fix-owned files only' 'never `git add -A`' 'One is the default' 'a part that stands alone' 'Fixes <IDENT>' '## Resolved'; do
   grep -qF -- "$need" <<<"$com_text" || missing="$missing '$need'"
 done
 [ -z "$missing" ] \
@@ -182,6 +193,19 @@ grep -qF 'commit every review edit' <<<"$rev_text" \
 grep -qF 'run the Risk re-check again' <<<"$rev_text" \
   && pass "review edits re-run the risk check" \
   || fail "step $rev must re-run the Risk re-check after review edits"
+# /en-fix "add retries to the webhook sender": the refactor that makes room
+# turns out to change the payload schema. It must hit the Risk re-check before
+# it is committed, or the /en-plan handoff inherits a committed contract change.
+grep -qF "Triage's plan check holds on the diff so far" <<<"$chg_text" \
+  && pass "a part committed early passes Triage's plan check first" \
+  || fail "step $chg must run Triage's plan check before committing a part"
+# The same run stops after that first commit. Resuming at /en-review would
+# skip the unbuilt change, because a plan-free review checks no requirements.
+stops=$(awk '/^## Stops and resuming/{on=1; next} /^## /{on=0} on' "$SK")
+grep -qF 'with the change unfinished, names what remains' <<<"$stops" \
+  && grep -qF 'on the same branch finishes it' <<<"$stops" \
+  && pass "a stop between parts resumes the change, not the review" \
+  || fail "Stops and resuming must resume an unfinished change before review"
 rcp_text=$(step_text "$rcp")
 grep -qF 'ensemble-verification-receipt" verify' <<<"$rcp_text" && grep -qF 'do not invoke `/en-ship`' <<<"$rcp_text" \
   && pass "a failed receipt stops the run before the ship" \

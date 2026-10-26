@@ -43,7 +43,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    **Read `references/plan-intake.md` here.** It owns the bounded foundation read (`docs/foundation.md` runs past 2,000 lines and is never read whole: section index first, then the sections you need), the rule that a matching design doc's decisions are already settled and must not be re-asked, the context-sufficiency check that offers `/en-brainstorm`, and the brainstorm soft-nudge. Proceeding is always allowed; neither is a hard gate.
 
    **Infer `plan_type`**: `feature` (net-new behavior), `improvement` (refactor, perf, DX, TD) or `bug`. Default `feature`, and confirm when the request is ambiguous.
-5. **Right-size depth.**
+5. **Route, then right-size depth.** Before any research, test the request against `references/plan-or-fix.md`. When none of its conditions holds, offer `/en-fix` instead, naming why: "Nothing here needs a plan: <reason>. `/en-fix <request>` takes it to a PR without one. Plan anyway?" If they take it, close the run as the hand-off does and stop: **no file, no U-IDs, no peer review**, and `/en-build` cannot run, since it consumes a plan file. Never offer it on a `--resume` or `--from-legacy` run, when the user asked for a plan file, or when a condition holds; **a risk surface (authentication, payments, migrations, external contracts) always gets the plan**, however small.
    - Lightweight: 1–3 units, a file or two, no architecture changes.
    - Standard: 3–10 units, several files, possible new components.
    - Deep: 10+ units, structural change, multi-week work.
@@ -86,20 +86,14 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 11. **Auto-increment plan number.** Scan `docs/plans/active/` and `docs/plans/completed/` for the highest number under the *current* `plan_id_prefix`. Legacy `FR` plans count toward `FR` only, so a new `EN` project starts at `EN01` even if `FR99` exists. Zero-pad to 2 digits, 3 once `99` is reached.
 
 12. **Confidence check.** Name the sections you are least sure of and offer to deepen them with one more research dispatch, or to leave each as a stated assumption in `## Decisions, assumptions & risks`. Before the write, not after: `peer_review_plan_hash` covers Approach and Files, so a deepening edit made after promotion looks like tampering to `/en-build`.
-13. **Pre-write plan-quality review.** Read `references/plan-prewrite.md` and run its five checks over the plan you are about to write: test-scenario completeness, decisions/assumptions/risks capture, the technical-design audit, name and signature consistency, and no placeholders. It also owns the warranted-file gate the write step calls. These catch the gaps peer review would otherwise spend an iteration on.
+13. **Pre-write plan-quality review.** Read `references/plan-prewrite.md` and run its five checks over the plan you are about to write: test-scenario completeness, decisions/assumptions/risks capture, the technical-design audit, name and signature consistency, and no placeholders. These catch the gaps peer review would otherwise spend an iteration on.
 14. **Default-branch checkpoint.** Resolve the target branch BEFORE the plan file is written, so a resume run never hits "untracked working tree file would be overwritten" on `git checkout`.
 
     On any branch that is not the detected default (a feature branch, failed detection, detached HEAD), stay put and skip the checkpoint. On the default branch it **fires**: read `references/plan-default-branch-checkpoint.md`, which owns detection, the prompt, the four response handlers and the non-interactive `--branch-on-default` flag. Like `references/plan-from-legacy.md` it is gated, read only when its step's gate fires, never up front.
 
     Record the outcome as `default_branch_checkpoint: <auto_branched | no_commit_requested | committed_to_default_branch>` in the report.
 
-15. **Write the plan.** Two preconditions first, and either can end the step.
-
-    **Is a plan file warranted?** Offer the no-file path only when **all** of these hold: depth is **Lightweight**, the work is **one unit**, its `risk:` is **low**, nothing is `gated: true`, this is not a `--resume` or `--from-legacy` run, **no design doc was consumed**, and the user did not ask for a plan file. `references/plan-prewrite.md` owns the offer's wording and why the design-doc condition is not about size.
-
-    If they take the no-file path, state the change concretely and suggest `/en-fix`: **no file, no U-IDs, no peer review**, and `/en-build` cannot run, since it consumes a plan file. Say that plainly rather than implying a handoff that cannot happen.
-
-    **Never offer the skip** when the work touches a risk surface, authentication, payments, migrations or external contracts, however small it looks. Those are exactly the one-unit changes that earn a written plan and a peer pass.
+15. **Write the plan.** One precondition first, and it can end the step.
 
     **Tracked sources, under `plan_store: linear`.** Before anything is written, resolve `plan_store` as the Linear publish step does and, on `linear`, run `references/linear-publish.md`'s tracked-source check on the plan. A tracked source refuses here, while the tree is still clean.
 

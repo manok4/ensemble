@@ -128,8 +128,9 @@ shared with the team and with CI, and `config.local.yaml` is gitignored.
 
 ## Working with this project
 
-- **Start a new feature** → `/en-plan`
+- **Work with an open decision, a risk surface or ordered parts** → `/en-plan`
 - **Implement a plan** → `/en-build <plan-path>`
+- **Bug fix or improvement that needs no plan** → `/en-fix <request>`
 - **Review code** → `/en-review`
 - **End-to-end test in browser** → `/en-qa`
 - **Capture a learning after a fix** → `/en-learn capture`
