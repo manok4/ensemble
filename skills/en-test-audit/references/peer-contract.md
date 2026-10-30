@@ -78,10 +78,17 @@ every copy of this file together.
 
 When a host records what it did with a finding, exactly one of:
 
-`applied` · `deferred` · `disagreed` · `superseded`
+`applied` · `deferred` · `disagreed` · `superseded` · `escalated`
 
-`deferred`, `disagreed` and `superseded` each require a stated rationale.
-`applied` does not, because the change itself is the record.
+`deferred`, `disagreed`, `superseded` and `escalated` each require a stated
+rationale. `applied` does not, because the change itself is the record.
+
+Rejecting a finding follows four rules:
+
+1. A `disagreed` rationale cites something the peer could read: a `file:line`, a plan section or unit, or a decision ID (`D<N>`).
+2. When the evidence exists only outside that, such as a verbal decision or a team convention, the status is `escalated`, and the rationale names what the user must decide. An escalation joins a question the run already asks, or is listed in the run report; it never adds a stop and never blocks.
+3. A host that thinks a finding's severity is wrong disagrees with the finding and says why; it never lowers the severity silently.
+4. Context is not added to an artifact only to satisfy a reviewer that lacked it; escalate instead.
 
 ## Where degradation is handled
 

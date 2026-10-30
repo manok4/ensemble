@@ -60,6 +60,7 @@ everywhere. What follows is this skill's policy.
 | P1, confidence < 7 | Surface; the user decides. |
 | P2 | Apply if the edit is cheap and local; otherwise record as `deferred` with a rationale. |
 | P3 | Record as `deferred` unless it costs nothing to fix. |
+| Disagree without evidence the peer could read | Record as `escalated`, naming what the user must decide (`references/finalize-loop.md`). |
 
 **A plan is prose, so every fix is an edit to the plan file.** There is no code
 to re-verify, which is why en-plan's policy has no re-verification step at all —

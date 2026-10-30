@@ -20,6 +20,8 @@ Authorization comes FIRST, so the frozen set never changes after mutation begins
 
 **Record.** Derive `applied_fixes[]` from the ACTUAL before-vs-after tree delta (baseline vs post-review), excluding pre-existing changes, never from intent.
 
+**Escalations.** A finding the host would reject on evidence the peer could not read is `escalated`, not `disagreed` (`references/peer-contract.md`). In `interactive` it is listed in the authorization question Phase 1 already asks; in `headless` and `report-only` it is listed in the report. It never adds a stop.
+
 ## The verification pass
 
 **Previous-review context.** Write `<run-dir>/previous-review.md` from the envelope: each P0/P1 finding as `applied — verify the fix landed`, each P2/P3 as `deferred — do not re-flag`, with `finding_id`, severity, title and location. Pass it to `$SKILL_DIR/scripts/ensemble-build-peer-prompt` with `--iteration-context-file`; the peer reuses the original ids (`references/outside-voice.md`).

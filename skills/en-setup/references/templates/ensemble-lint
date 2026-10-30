@@ -932,7 +932,7 @@ check_plan_destructive_order() {
 
 # --- Rule: peer-review-resolutions.schema ---
 # Each entry under peer_review_resolutions: must carry finding_id, iteration,
-# severity, title, status. rationale required when status is deferred/disagreed/superseded.
+# severity, title, status. rationale required when status is deferred/disagreed/superseded/escalated.
 check_plan_resolutions_schema() {
   case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
   local file="$1"
@@ -982,7 +982,7 @@ check_plan_resolutions_schema() {
     fi
     case "$status" in
       applied) ;;
-      deferred|disagreed|superseded)
+      deferred|disagreed|superseded|escalated)
         if [ -z "$rat" ]; then
           emit "peer-review-resolutions.schema" "$file" "" "P1" \
             "Resolution entry $fid has status '$status' but no rationale" \
@@ -993,7 +993,7 @@ check_plan_resolutions_schema() {
       *)
         emit "peer-review-resolutions.schema" "$file" "" "P1" \
           "Resolution entry $fid has invalid status: '$status'" \
-          "Use one of: applied, deferred, disagreed, superseded" ;;
+          "Use one of: applied, deferred, disagreed, superseded, escalated" ;;
     esac
     case "$sev" in
       ""|P0|P1|P2|P3) ;;
