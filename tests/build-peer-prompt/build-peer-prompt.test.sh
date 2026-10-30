@@ -65,6 +65,24 @@ else
   fail "[cross-agent/plan] plan-specific block missing"
 fi
 
+# EN24 U3: the peer checks for decisions a unit leaves to the implementer, at
+# impact-based severity. A brief that capped H0 at P2 would demote a missing
+# cross-unit signature, which is P1 everywhere else in the brief.
+h0=$(printf '%s\n' "$out" | grep '^H0\. Decisions left to the implementer\.')
+assert_contains "$h0" "P1 when the open choice changes a signature another unit consumes, or is a bet the plan states nowhere" "[plan] H0 is P1 for a cross-unit signature or an unstated bet"
+assert_contains "$h0" "P2 otherwise" "[plan] H0 is P2 otherwise"
+
+# EN24 U5: check H flags over-building. A goal-less unit is check A's, at A's
+# severity, so H must not carry a cap that would demote it.
+hh=$(printf '%s\n' "$out" | grep '^H\. Builds more than the goal needs\.')
+assert_contains "$hh" "caching, queues or partitioning with no stated bottleneck" "[plan] check H names speculative build-out"
+assert_contains "$hh" "A unit that serves no stated goal is not H; report it under A, at A's severity." "[plan] goal-less units route to check A"
+assert_not_contains "$hh" "never P1" "[plan] check H carries no cap"
+
+# EN24 U6: a plan peer's summary is a paraphrase the host checks against the
+# goals; a code peer's is still an assessment.
+assert_contains "$out" "is what this plan builds, in your own words" "[plan] summary is a paraphrase of the plan"
+
 if echo "$out" | grep -q "fake plan body"; then
   pass "[cross-agent/plan] artifact body included"
 else
@@ -113,6 +131,8 @@ if echo "$out2" | grep -q "### correctness"; then
 else
   fail "[code/single] code dimensions missing"
 fi
+assert_not_contains "$out2" "is what this plan builds, in your own words" "[code] summary stays an assessment"
+
 if echo "$out2" | grep -q "Plan review dimensions:"; then
   fail "[code/single] plan dimensions leaked into a code review"
 else
@@ -344,5 +364,53 @@ off=$(mkdiff 6 200 | cprompt --max-diff-bytes 0)
 case "$off" in *"NOT INLINED"*) fail "--max-diff-bytes 0 disables the cap" ;; *) pass "--max-diff-bytes 0 disables the cap" ;; esac
 assert_contains "$small" "stop well short of your turn limit" "the code peer is told to stop before its turn cap"
 if mkdiff 1 1 | cprompt --max-diff-bytes lots >/dev/null 2>&1; then fail "a non-numeric cap is refused"; else pass "a non-numeric cap is refused"; fi
+
+
+# --- --plan-before: the re-review sees what the fixes changed (EN24 U7) ---
+# Counts alone cannot tell an added section from a rewritten one, so the
+# builder renders the counts and a capped unified diff, and only on a re-review.
+PB=$(mktemp -d)
+printf '## Previous review context (iteration 1)\nApplied: 1-1, Missing test\n' > "$PB/ctx"
+printf '# Plan\n\n### U1. One\n\nbody\n' > "$PB/before"
+printf '# Plan\n\n### U1. One\n\nbody\n\n## Rollout\n\nship it\n' > "$PB/after"
+pb() { "$BIN" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context X --goal Y "$@"; }
+
+grown=$(pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx" --plan-before "$PB/before")
+assert_contains "$grown" "## Plan changes since the last pass" "[plan-before] the section is rendered"
+assert_contains "$grown" "Units: 1 before, 1 now." "[plan-before] unit counts before and after"
+assert_contains "$grown" "+## Rollout" "[plan-before] the diff shows the added section"
+assert_contains "$grown" "no applied finding required. Severity P2." "[plan-before] the growth instruction is P2"
+
+same=$(pb --artifact-file "$PB/before" --iteration-context-file "$PB/ctx" --plan-before "$PB/before")
+assert_contains "$same" "No changes." "[plan-before] an identical plan says no changes"
+
+# Same byte length, no unit added: counts are equal, so only the diff shows it.
+printf '# Plan\n\n### U1. One\n\nydob\n' > "$PB/swapped"
+swapped=$(pb --artifact-file "$PB/swapped" --iteration-context-file "$PB/ctx" --plan-before "$PB/before")
+assert_contains "$swapped" "Bytes: 26 before, 26 now." "[plan-before] a same-size rewrite has equal counts"
+assert_contains "$swapped" "+ydob" "[plan-before] and the diff still shows the replaced line"
+
+seq 1 450 | sed 's/^/line /' > "$PB/long-before"; seq 1 450 | sed 's/^/LINE /' > "$PB/long-after"
+long=$(pb --artifact-file "$PB/long-after" --iteration-context-file "$PB/ctx" --plan-before "$PB/long-before")
+total=$(diff -u "$PB/long-before" "$PB/long-after" | wc -l | tr -d ' ')
+assert_contains "$long" "($((total - 200)) lines not shown)" "[plan-before] a long diff is capped at 200 lines and says how much was cut"
+assert_eq 200 "$(printf '%s\n' "$long" | sed -n '/^```diff$/,/^```$/p' | sed '1d;$d' | wc -l | tr -d ' ')" "[plan-before] exactly 200 diff lines are rendered"
+
+# Frontmatter and the iteration log are bookkeeping on every pass: a change
+# confined to them is no change to the plan.
+printf -- '---\npeer_review_iterations: 1\n---\n# Plan\n\n### U1. One\n\nbody\n\n## Iteration log\n\n> pass 1\n' > "$PB/fm-before"
+printf -- '---\npeer_review_iterations: 2\n---\n# Plan\n\n### U1. One\n\nbody\n\n## Iteration log\n\n> pass 1\n> pass 2\n' > "$PB/fm-after"
+fmonly=$(pb --artifact-file "$PB/fm-after" --iteration-context-file "$PB/ctx" --plan-before "$PB/fm-before")
+assert_contains "$fmonly" "No changes." "[plan-before] frontmatter and iteration-log bookkeeping is not a plan change"
+
+pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx" --plan-before /nonexistent/plan.md >/dev/null 2>"$PB/err"
+assert_exit_code 2 $? "[plan-before] an unreadable before-file exits 2"
+assert_contains "$(cat "$PB/err")" "/nonexistent/plan.md" "[plan-before] the error names the path"
+pb --artifact-file "$PB/after" --plan-before "$PB/before" >/dev/null 2>&1
+assert_exit_code 2 $? "[plan-before] without --iteration-context-file exits 2"
+
+plain=$(pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx")
+assert_not_contains "$plain" "Plan changes since" "[plan-before] no flag, no section"
+rm -rf "$PB"
 
 report

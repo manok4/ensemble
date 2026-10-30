@@ -39,7 +39,7 @@ Body.
 - **Reversibility:** trivial
 - **Gated:** false
 - **Dependencies:** none
-- **Files:** src/helper.ts
+- **Files:** `src/helper.ts` (create)
 - **Approach:** add a function
 - **Test scenarios:**
   - Happy path: valid input -> helper returns the expected value
@@ -54,7 +54,7 @@ Body.
 - **Reversibility:** reversible
 - **Gated:** false
 - **Dependencies:** U1
-- **Files:** src/main.ts
+- **Files:** `src/main.ts` (create)
 - **Approach:** call the helper
 - **Test scenarios:**
   - Happy path: main path calls the helper and uses its result

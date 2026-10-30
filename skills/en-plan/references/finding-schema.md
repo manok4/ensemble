@@ -26,7 +26,9 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
   "coverage": {
     "reviewed": "<what the reviewer actually examined>",
     "not_reviewed": "<anything skipped, truncated, or run short on; empty string if none>"
-  }
+  },
+  "status": "complete | incomplete",
+  "unreadable": ["<path the reviewer could not read>"]
 }
 ```
 
@@ -36,7 +38,7 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 |---|---|---|
 | `verdict` | yes | Top-level decision. `approve` = nothing material; `revise` = walk findings; `reject` = pause and surface to user. |
 | `peer_mode` | yes when peer-call | Echo of the mode the host passed in (`cross-agent` or `single-agent-fallback`). Reviewer agents that aren't peer calls omit this field. |
-| `summary` | yes | 2–3 sentences. The host renders this in progress reports verbatim. |
+| `summary` | yes | 2–3 sentences. The host renders this in progress reports verbatim. A skill's peer brief may ask for a paraphrase of the artifact here instead of an assessment. |
 | `findings` | yes | Array; can be empty when verdict = approve. |
 | `findings[].severity` | yes | `P0`–`P3` as defined in `references/peer-contract.md`. |
 | `findings[].confidence` | yes | Integer 1–10. <5 should be suppressed unless severity is P0. |
@@ -48,6 +50,8 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 | `findings[].u_id` | optional | Plan unit ID this finding relates to (e.g., `U3`). Used by `en-build` per-unit dispatch. |
 | `findings[].covers_requirement` | optional | Foundation requirement ID this finding relates to (e.g., `R7`). Used by traceability lints. |
 | `coverage` | recommended | What the reviewer actually examined, and what it did not. A large artifact can exhaust a single-shot peer's attention silently; without this the host cannot tell a thorough `approve` from an exhausted one. Absent → the host treats coverage as unknown, never as complete. |
+| `status` | optional | `complete` or `incomplete`; absent means `complete`. A reviewer that could not read the diff file or a reference its prompt named returns `incomplete` with `findings: []`, never with `verdict: approve`: an empty array from a review that never saw its inputs would read as a clean pass. The host drops an `incomplete` response, names it in the run report, and does not retry it. |
+| `unreadable` | with `incomplete` | Array of the paths the reviewer could not read. |
 | `findings[].finding_id` | required | `<pass>-<index>` (e.g. `1-3` = third finding of pass 1). Used by `/en-plan`'s resolution log (`peer_review_resolutions:`). **The peer must reuse the original id when re-raising a finding from `## Previous review context`** — a re-minted id breaks same-finding suppression, which is the mechanism that stops a capped loop from re-litigating settled points. The host still mints one if absent, but cannot recover the linkage. |
 
 ## Validation rules the host applies

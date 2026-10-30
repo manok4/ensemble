@@ -299,6 +299,10 @@ check_kind child    '{"run_id":"r1","skill":"en-review","ledger":"/tmp/x.jsonl"}
 check_kind verify   '{"unit":"U3","tier":"graph","ran":3,"failed":0,"rc":0,"checks":[]}'
 check_kind receipt  '{"op":"verify","result":"hit","reason":"ok","age_s":42,"checks":["full_suite"]}'
 check_kind outcome  '{"verdict":"revise","findings_total":9,"peer_only":3,"corroborated":4,"host_only":2,"applied":6,"deferred":2,"disagreed":1}'
+# EN24 U9: an escalation count is kept, not dropped at the write. Before the
+# change this same emit dropped the key and named it on stderr.
+check_kind outcome  '{"verdict":"revise","findings_total":9,"peer_only":3,"corroborated":4,"host_only":2,"applied":5,"deferred":2,"disagreed":1,"escalated":2}'
+assert_eq "2" "$(last | jq -r '.escalated')" "an outcome's escalated count reaches the ledger"
 
 # The explicit-file form filters identically; one allowlist, not two.
 rm_ event "$L12" --kind lint --json '{"scope":"docs","cwd":"/Users/someone"}' 2>/dev/null

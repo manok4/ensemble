@@ -12,6 +12,8 @@ Hermetic test suite for Ensemble's bash tooling and doc-shape contracts. No live
 
 Exits 0 if all pass, non-zero otherwise.
 
+Two opt-in tests make real model calls and pass as skipped unless switched on, so CI stays hermetic: `ENSEMBLE_LIVE_HOST_TEST=1` runs `tests/portability/live-anchor-hosts.test.sh` (one short run per host), and `ENSEMBLE_LIVE_BEHAVIOUR_TEST=1` runs `tests/portability/live-behaviour.test.sh` (about nine model runs across Claude Code and Codex, two of them report-only reviews, so expect several minutes and real token cost).
+
 ## Layout
 
 ```

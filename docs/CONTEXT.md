@@ -58,9 +58,10 @@ performance, migrations. A persona describes what to examine, not who examines i
 
 ### Finding
 One defect a review reports, graded **P0**–**P3** and carrying a confidence. A
-finding is resolved by being applied, deferred, disagreed with, or superseded —
-and a disagreement must record its reasoning, so declining is a decision rather
-than an omission.
+finding is resolved by being applied, deferred, disagreed with, superseded or
+escalated. A disagreement must record reasoning the reviewer could read, so
+declining is a decision rather than an omission; when that reasoning lives
+outside what the reviewer could see, the finding is escalated to the user.
 
 ### Gate
 A check that stops work when it fails. A gate that cannot fail is decorative, so

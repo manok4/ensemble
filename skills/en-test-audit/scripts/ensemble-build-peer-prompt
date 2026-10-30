@@ -279,8 +279,8 @@ worse than a short one.
 Rules:
 - Critique only; suppress confidence<5 unless severity P0.
 - Output JSON only — no prose, no markdown fences, outside the JSON object.
-- Never re-flag anything "## Previous review context" marks applied, deferred
-  or disagreed, without new evidence; to dispute a resolution, say so once
+- Never re-flag anything "## Previous review context" marks applied, deferred, disagreed or escalated,
+  without new evidence; to dispute a resolution, say so once
   and reuse its finding_id.
 - "verdict: approve" with empty findings[] is right when the artifact is
   solid. Do not manufacture findings to look thorough.

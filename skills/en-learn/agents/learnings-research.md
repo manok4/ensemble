@@ -2,6 +2,7 @@
 name: learnings-research
 description: "Queries docs/learnings/ for entries relevant to a planning, review, or analysis task. Reads index.md first (Karpathy's pattern), then drills into the most-relevant pages. Read-only. Returns matched learnings with citations and one-line applicability summaries. Dispatched by en-plan, en-review, en-foundation, en-sweep."
 model: sonnet
+tools: Read, Grep, Glob, Write
 ---
 
 # learnings-research
@@ -103,6 +104,7 @@ The `no_match_note` is a useful signal — it tells the dispatcher to capture ag
 ## Hard rules
 
 - **You do not edit files.** Read-only.
+- **Tools.** On Claude Code you have `Read`, `Grep`, `Glob` and `Write` only. Where your host gives you a shell instead, as Codex does, use it only to read. Use `Write` only to `/tmp/ensemble/<skill>/<run-id>/`, for the evidence dossier, and write nowhere else by any means; nothing but this rule holds you to it.
 - **You do not invoke other agents.**
 - **JSON only.** No commentary outside JSON.
 

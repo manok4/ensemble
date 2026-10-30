@@ -811,6 +811,115 @@ check_plan_unit_test_scenarios() {
   )
 }
 
+# --- Helper: one line per Files: path, "uid|path|marker" in plan order ---
+# A path is a backticked span that opens an entry: the start of a nested
+# bullet, or the start of a comma-separated item on the inline line. A span
+# later in the entry is description (`bin/x` (modify): adds the `--fast` flag),
+# not a path. A value with no backticks is split on commas. The marker is the
+# parenthesised word right after the path: create, modify or delete, with new
+# read as create, and an annotation may follow it inside the parentheses
+# ((new, executable)). Anything else, or nothing, is an empty marker.
+extract_unit_files() {
+  awk '
+    function marker(rest,   m) {
+      if (match(rest, /^[[:space:]]*\((create|modify|delete|new)[),;:]/)) {
+        m = substr(rest, RSTART, RLENGTH); gsub(/[^a-z]/, "", m)
+        return (m == "new") ? "create" : m
+      }
+      return ""
+    }
+    function take(s,   p, lead, rest, n, i, parts, t, m) {
+      if (index(s, "`")) {
+        while (match(s, /`[^`]+`/)) {
+          p = substr(s, RSTART + 1, RLENGTH - 2); lead = substr(s, 1, RSTART - 1)
+          rest = substr(s, RSTART + RLENGTH)
+          if (lead ~ /^[[:space:],]*$/) {
+            m = marker(rest)
+            printf "%s|%s|%s\n", uid, p, m
+            if (m != "") rest = substr(rest, index(rest, ")") + 1)
+          }
+          s = rest
+        }
+        return
+      }
+      n = split(s, parts, ",")
+      for (i = 1; i <= n; i++) {
+        t = parts[i]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+        if (t == "" || t == "none") continue
+        p = t; m = ""
+        if (match(t, /[[:space:]]+\((create|modify|delete|new)\)$/)) {
+          p = substr(t, 1, RSTART - 1); m = marker(substr(t, RSTART))
+        }
+        printf "%s|%s|%s\n", uid, p, m
+      }
+    }
+    /^### U[0-9]+/ { match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH); inf = 0; next }
+    /^## / { uid = ""; inf = 0; next }
+    uid && /^- \*\*Files:\*\*/ { inf = 1; s = $0; sub(/^- \*\*Files:\*\*[[:space:]]*/, "", s); if (s != "") take(s); next }
+    inf && /^[[:space:]]+[-*][[:space:]]/ { s = $0; sub(/^[[:space:]]+[-*][[:space:]]+/, "", s); take(s); next }
+    inf && /^- / { inf = 0 }
+  ' "$1"
+}
+
+# --- Rule: unit.files-missing (P1) / unit.files-unmarked (P2) ---
+# A plan that cites a file to modify or delete that does not exist hands the
+# build a unit it cannot implement as written (EN24 U4). Plan order is build
+# order, so a path an earlier unit marks (create) may be modified later; one
+# created only by a later unit is reported as modified before it is created.
+# (create) paths are never checked: proposed files are not findings.
+# Completed plans are skipped: they predate the markers, and the files they
+# name may since have moved. Existence is checked only while the plan is a
+# proposal (draft or open): once the build starts, a unit's own (delete), or a
+# later unit's, removes a path the plan still correctly names.
+files_match() {  # <newline list> <path or glob> -> 0 when any listed path matches
+  local c
+  while IFS= read -r c; do
+    # shellcheck disable=SC2053 # the right side is a pattern on purpose
+    [ -n "$c" ] && [[ "$c" == $2 ]] && return 0
+  done <<< "$1"
+  return 1
+}
+check_plan_unit_files() {
+  case "$1" in docs/plans/active/*.md) ;; *) return 0 ;; esac
+  local file="$1" rows uid path mark created="" all_created="" unmarked=0 first_unmarked="" status
+  status="$(get_field "$file" status)"
+  [ "$status" = "completed" ] && return 0
+  rows=$(extract_unit_files "$file")
+  [ -z "$rows" ] && return 0
+  while IFS='|' read -r uid path mark; do
+    [ "$mark" = create ] && all_created="${all_created}${path}
+"
+  done <<< "$rows"
+  while IFS='|' read -r uid path mark; do
+    [ -z "$path" ] && continue
+    case "$mark" in
+      "")
+        unmarked=$((unmarked + 1)); [ -z "$first_unmarked" ] && first_unmarked="$uid" ;;
+      create)
+        created="${created}${path}
+" ;;
+      modify|delete)
+        case "$status" in ""|draft|open) ;; *) continue ;; esac
+        # compgen -G expands a glob path itself; -e covers a literal one.
+        if compgen -G "$path" >/dev/null 2>&1 || [ -e "$path" ]; then continue; fi
+        files_match "$created" "$path" && continue
+        if files_match "$all_created" "$path"; then
+          emit "unit.files-missing" "$file" "" "P1" \
+            "Unit $uid marks \`$path\` ($mark) before the unit that creates it" \
+            "Units build in plan order: move the creating unit earlier, or mark the path (create) here"
+        else
+          emit "unit.files-missing" "$file" "" "P1" \
+            "Unit $uid marks \`$path\` ($mark) but no such file exists and no earlier unit creates it" \
+            "Fix the path, or mark it (create) if this unit makes it"
+        fi ;;
+    esac
+  done <<< "$rows"
+  [ "$unmarked" -gt 0 ] && emit "unit.files-unmarked" "$file" "" "P2" \
+    "$unmarked Files path(s) carry no (create|modify|delete) marker, first in $first_unmarked" \
+    "Mark each path: \`path\` (create), (modify) or (delete); (new) reads as (create)"
+  return 0
+}
+
 # --- Rule: unit.destructive-order ---
 # Irreversible work runs last, so everything reversible is proven before it.
 #
@@ -843,7 +952,7 @@ check_plan_destructive_order() {
 
 # --- Rule: peer-review-resolutions.schema ---
 # Each entry under peer_review_resolutions: must carry finding_id, iteration,
-# severity, title, status. rationale required when status is deferred/disagreed/superseded.
+# severity, title, status. rationale required when status is deferred/disagreed/superseded/escalated.
 check_plan_resolutions_schema() {
   case "$1" in docs/plans/active/*.md|docs/plans/completed/*.md) ;; *) return 0 ;; esac
   local file="$1"
@@ -893,7 +1002,7 @@ check_plan_resolutions_schema() {
     fi
     case "$status" in
       applied) ;;
-      deferred|disagreed|superseded)
+      deferred|disagreed|superseded|escalated)
         if [ -z "$rat" ]; then
           emit "peer-review-resolutions.schema" "$file" "" "P1" \
             "Resolution entry $fid has status '$status' but no rationale" \
@@ -904,7 +1013,7 @@ check_plan_resolutions_schema() {
       *)
         emit "peer-review-resolutions.schema" "$file" "" "P1" \
           "Resolution entry $fid has invalid status: '$status'" \
-          "Use one of: applied, deferred, disagreed, superseded" ;;
+          "Use one of: applied, deferred, disagreed, superseded, escalated" ;;
     esac
     case "$sev" in
       ""|P0|P1|P2|P3) ;;
@@ -974,6 +1083,7 @@ while IFS= read -r file; do
   check_plan_unit_category_enum "$file"
   check_plan_unit_test_scenarios "$file"
   check_plan_destructive_order "$file"
+  check_plan_unit_files "$file"
   check_plan_resolutions_schema "$file"
   check_td_enforce_layer "$file"
   check_cross_links "$file"

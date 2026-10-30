@@ -106,4 +106,24 @@ assert_eq "3" "$(printf '%s' "$j" | jq -r '.rows[0].peer_only')"    "and reports
 assert_eq "4" "$(printf '%s' "$j" | jq -r '.rows[0].corroborated')" "the corroborated count"
 assert_eq "2" "$(printf '%s' "$j" | jq -r '.rows[0].host_only')"    "and the host-only count"
 
+
+# --- EN24 U9: escalations are counted only when there are any ---------------
+# The common review escalates nothing, so its payload must stay exactly what it
+# was: the documented template carries no escalated key, and a sentence adds it
+# only when the count is above zero.
+grep -qF -- "--json '{\"verdict\":\"<approve|revise|reject>\",\"findings_total\":<n>,\"peer_only\":<n>,\"corroborated\":<n>,\"host_only\":<n>,\"applied\":<n>,\"deferred\":<n>,\"disagreed\":<n>}'" "$SK" \
+  && pass "a review with no escalations emits the same payload as before" \
+  || fail "a review with no escalations emits the same payload as before" "the documented template changed"
+grep -qF 'add `"escalated":<n>` only when n > 0, as absent means zero' "$SK" \
+  && pass "escalated is emitted only when above zero" \
+  || fail "escalated is emitted only when above zero"
+L2=$( cd "$W" && bash "$RM" start --skill en-review )
+( cd "$W" && bash "$RM" emit --kind outcome \
+    --json '{"verdict":"revise","findings_total":9,"peer_only":3,"corroborated":4,"host_only":2,"applied":5,"deferred":2,"disagreed":1,"escalated":2}' )
+( cd "$W" && bash "$RM" finish "$L2" )
+assert_eq "2" "$(tail -1 "$roll" | jq -r '.outcome.escalated')" "the rollup carries an escalated count"
+j=$("$MET" --peer-value --json --repo "$(basename "$W")" --analytics-dir "$ENSEMBLE_ANALYTICS_DIR")
+assert_eq "2" "$(printf '%s' "$j" | jq -r '.runs_scored')" "--peer-value reads a run with escalations"
+assert_eq "4" "$(printf '%s' "$j" | jq -r '.rows[1].corroborated')" "and loses none of its other counts"
+
 report

@@ -116,7 +116,7 @@ The concurrency is therefore **licensed by the blind-peer invariant**, not by co
 
 After all personas return:
 
-1. **Validate each response** — must parse as JSON, must follow `references/finding-schema.md`. Drop malformed responses with a stderr log; don't fail the whole review.
+1. **Validate each response** — must parse as JSON, must follow `references/finding-schema.md`. Drop malformed responses with a stderr log; don't fail the whole review. A response with `"status": "incomplete"` is a failed persona, not a clean one: drop it and name the persona and its `unreadable` paths in the summary, as for a timeout.
 2. **Collect findings** — flatten into one list with the persona attribution preserved (`finding.persona = "correctness"`) and the originating side tagged (`finding.source = "host"`).
 3. **Dedup within the host set** — findings with the same `location` AND title-similarity ≥ 0.7 are duplicates. Keep the highest-severity, highest-confidence variant; merge `personas` field.
 4. **Boost confidence on same-source overlap** — if two personas independently surfaced the same finding, boost confidence by +1 (capped at 10). Note this is *same-stack* agreement; cross-source agreement is weighted higher (see Two-source reconciliation).
@@ -238,6 +238,7 @@ Whatever the mode, **en-review must not implement findings outside the mode-perm
 | Failure | Behavior |
 |---|---|
 | One persona times out | Drop its findings; note in summary; continue |
+| One persona returns `incomplete` | Drop; name the persona and its unreadable paths in the summary; no retry (a retry cannot make a missing file readable) |
 | One persona returns malformed JSON | Drop; retry once with "respond with valid JSON only"; if it fails again, drop |
 | All personas fail | `verdict: error`; surface to user; do not commit |
 | Diff is too large to fit in one persona's context | Split by file; run persona per file; merge findings (rare; bound by per-unit discipline) |

@@ -13,6 +13,7 @@
 #     --artifact-file <path>           # OR --artifact-stdin (read from stdin)
 #     [--peer-mode <cross-agent|single-agent-fallback>]   # default: cross-agent
 #     [--iteration-context-file <path>]                   # optional re-review context
+#     [--plan-before <path>]   # re-review only: the plan as the last pass saw it
 #
 # Output: the assembled prompt to stdout. Exit 0 on success.
 #
@@ -90,6 +91,7 @@ ARTIFACT_FILE=""
 ARTIFACT_STDIN="false"
 PEER_MODE="cross-agent"
 ITERATION_CONTEXT_FILE=""
+PLAN_BEFORE=""
 
 usage() {
   sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,1\}//'
@@ -105,6 +107,7 @@ while [ $# -gt 0 ]; do
     --artifact-stdin)           ARTIFACT_STDIN="true"; shift ;;
     --peer-mode)                PEER_MODE="$2"; shift 2 ;;
     --iteration-context-file)   ITERATION_CONTEXT_FILE="$2"; shift 2 ;;
+    --plan-before)              PLAN_BEFORE="$2"; shift 2 ;;
     -h|--help)                  usage ;;
     *) echo "unknown flag: $1" >&2; usage ;;
   esac
@@ -161,6 +164,34 @@ if [ -n "$ITERATION_CONTEXT_FILE" ]; then
   ITERATION_CONTEXT=$(cat "$ITERATION_CONTEXT_FILE")
 fi
 
+# Optional, re-review only: what the applied fixes changed. Counts alone cannot
+# tell an added section from a rewritten one, so the peer gets the diff too,
+# capped so a large rewrite cannot crowd out the plan itself (EN24 U7). Only the
+# plan body is compared: the frontmatter and the iteration log change on every
+# pass as bookkeeping, and would spend the cap on hunks no finding asked for.
+PLAN_CHANGES=""
+if [ -n "$PLAN_BEFORE" ]; then
+  [ -n "$ITERATION_CONTEXT_FILE" ] || { echo "--plan-before needs --iteration-context-file: plan changes exist only on a re-review" >&2; exit 2; }
+  { [ -f "$PLAN_BEFORE" ] && [ -r "$PLAN_BEFORE" ]; } || { echo "plan-before file not readable: $PLAN_BEFORE" >&2; exit 2; }
+  CHANGES_TMP=$(mktemp -d) || exit 2
+  trap 'rm -rf "$CHANGES_TMP"' EXIT
+  plan_body() { awk 'NR==1 && /^---$/ { fm=1; next } fm { if (/^---$/) fm=0; next } /^## Iteration log/ { exit } { print }' "$1"; }
+  plan_body "$PLAN_BEFORE" > "$CHANGES_TMP/before"
+  if [ -n "$ARTIFACT_FILE" ]; then plan_body "$ARTIFACT_FILE"; else printf '%s\n' "$ARTIFACT_BODY" | plan_body /dev/stdin; fi > "$CHANGES_TMP/after"
+  BEFORE="$CHANGES_TMP/before"; AFTER="$CHANGES_TMP/after"
+  diff -u -L "plan (last pass)" -L "plan (now)" "$BEFORE" "$AFTER" > "$CHANGES_TMP/diff"
+  total=$(wc -l < "$CHANGES_TMP/diff" | tr -d ' ')
+  if [ "$total" -eq 0 ]; then
+    hunks="No changes."
+  else
+    hunks=$(printf '```diff\n%s\n```' "$(head -n 200 "$CHANGES_TMP/diff")")
+    [ "$total" -gt 200 ] && hunks=$(printf '%s\n(%s lines not shown)' "$hunks" "$((total - 200))")
+  fi
+  PLAN_CHANGES=$(printf '\n## Plan changes since the last pass\n\nUnits: %s before, %s now. Bytes: %s before, %s now.\n\n%s\n\nEach hunk should trace to a finding in the previous review context. Flag any added unit, component or section that no applied finding required. Severity P2.\n' \
+    "$(grep -c '^### U[0-9]' "$BEFORE")" "$(grep -c '^### U[0-9]' "$AFTER")" \
+    "$(wc -c < "$BEFORE" | tr -d ' ')" "$(wc -c < "$AFTER" | tr -d ' ')" "$hunks")
+fi
+
 # Location hint and u_id field are artifact-type aware: a plan's findings anchor
 # to units (en-build dispatches per-unit off u_id), code anchors to file:line.
   LOCATION_HINT='Use the unit id (e.g. "U3") when the finding is about a unit, the section name for plan-level issues, or "global".'
@@ -182,7 +213,7 @@ ARTIFACT:
 ---
 $ARTIFACT_BODY
 ---
-$( [ -n "$ITERATION_CONTEXT" ] && printf '\n## Previous review context\n\nFindings you raised on an earlier pass, and what the host did with each:\n\n%s\n' "$ITERATION_CONTEXT" )
+$( [ -n "$ITERATION_CONTEXT" ] && printf '\n## Previous review context\n\nFindings you raised on an earlier pass, and what the host did with each:\n\n%s\n' "$ITERATION_CONTEXT" )$( [ -n "$PLAN_CHANGES" ] && printf '\n%s\n' "$PLAN_CHANGES" )
 
 SEVERITY — use these, do not invent your own:
   P0 blocking: data loss, security hole, broken core flow, unmigrated API break
@@ -209,8 +240,8 @@ worse than a short one.
 Rules:
 - Critique only; suppress confidence<5 unless severity P0.
 - Output JSON only — no prose, no markdown fences, outside the JSON object.
-- Never re-flag anything "## Previous review context" marks applied, deferred
-  or disagreed, without new evidence; to dispute a resolution, say so once
+- Never re-flag anything "## Previous review context" marks applied, deferred, disagreed or escalated,
+  without new evidence; to dispute a resolution, say so once
   and reuse its finding_id.
 - "verdict: approve" with empty findings[] is right when the artifact is
   solid. Do not manufacture findings to look thorough.

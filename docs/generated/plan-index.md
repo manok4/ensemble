@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-09-28
-total_entries: 22
+updated: 2026-10-30
+total_entries: 23
 ---
 
 # Plans — index
@@ -38,3 +38,4 @@ _(none)_
 - [`EN21-feature_test-audit.md`](../plans/completed/EN21-feature_test-audit.md) — **EN21** /en-test-audit, audit and prune an existing test suite with evidence before every deletion (shipped 2026-09-26)
 - [`EN22-feature_correction-router.md`](../plans/completed/EN22-feature_correction-router.md) — **EN22** Correction router, route each correction to the strongest enforcement layer (shipped 2026-09-26)
 - [`EN23-feature_en-fix.md`](../plans/completed/EN23-feature_en-fix.md) — **EN23** /en-fix, small bug fixes and improvements from request to PR without a plan (shipped 2026-09-27)
+- [`EN24-improvement_egm-review-adaptations.md`](../plans/completed/EN24-improvement_egm-review-adaptations.md) — **EN24** Adapt the useful parts of the Elephant-Goldfish Model into review and planning (shipped 2026-10-30)

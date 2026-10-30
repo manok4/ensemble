@@ -37,7 +37,7 @@ peer_review_iterations: 0
 peer_review_last_run:
 peer_review_plan_hash:
 # Machine-readable resolution log written by /en-plan as findings are
-# applied/deferred/disagreed/superseded. /en-build pre-flight reads this
+# applied/deferred/disagreed/superseded/escalated. /en-build pre-flight reads this
 # directly — never the iteration-log prose.
 peer_review_resolutions: []
 # Optional audit marker — set to `true` only when the user explicitly
@@ -96,7 +96,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Interfaces:** *(omit unless a later unit calls something this one creates)*
   - *Produces:* <exact names, signatures, return shapes later units call>
   - *Consumes:* <exact names this unit calls from earlier units>
-- **Files:** <repo-relative paths the unit will touch>
+- **Files:** <repo-relative paths the unit will touch, each marked (create|modify|delete)>
 - **Approach:** <how this unit will be implemented>
 - **Risk:** low | medium | high | destructive
 - **Category:** feature | observability | diagnostics | api-additive | migration-additive | migration | backfill | schema-evolution | deletion | drop | removal | other
@@ -147,8 +147,8 @@ Resolution log lives in frontmatter (`peer_review_resolutions`). Each entry:
     iteration: <N>
     severity: P0 | P1 | P2 | P3
     title: <short title from peer>
-    status: applied | deferred | disagreed | superseded
-    rationale: <one-line reason; required for deferred/disagreed/superseded>
+    status: applied | deferred | disagreed | superseded | escalated
+    rationale: <one-line reason; required for deferred/disagreed/superseded/escalated>
     location: <file:line or section name>
 
 The iteration log above remains the human-readable narrative; the
@@ -215,9 +215,10 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
   Gated units pause `/en-build` regardless of any flag. No flag disables this, and nothing group-confirms it: every gate is per unit.
 
 - **Files field:**
-  - Repo-relative paths only.
-  - List the files the unit will touch; OK to include "newly created" files.
-  - Glob patterns acceptable for clear cases (`tests/auth/refresh.*.test.ts`).
+  - Repo-relative paths only, each in backticks and followed by one marker: `(create)`, `(modify)` or `(delete)`. `(new)` reads as `(create)`.
+  - List the files the unit will touch, newly created ones included.
+  - A `(modify)` or `(delete)` path must exist, or be marked `(create)` by an earlier unit: units build in plan order. `(create)` paths are never checked.
+  - Glob patterns acceptable for clear cases (`tests/auth/refresh.*.test.ts`); a `(modify)` or `(delete)` glob must match something.
 
 ## Lint rules
 
@@ -235,8 +236,10 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 - `unit.risk-class` — every unit MUST declare `risk:` (one of `low|medium|high|destructive`). Plans drafted before this rule landed get a P3 advisory and fall under `/en-build`'s ordered-classifier inference; new plans get a P1 error.
 - `unit.gated-flag` — every unit MUST declare `gated: true|false`. Defaults to `false` if absent (P3 advisory).
 - `unit.category-enum` — `category:` must be one of the documented values when present.
-- `peer-review-resolutions.schema` — each entry must carry `finding_id`, `iteration`, `severity`, `title`, `status`. `rationale` required when `status` is `deferred | disagreed | superseded`.
+- `peer-review-resolutions.schema` — each entry must carry `finding_id`, `iteration`, `severity`, `title`, `status`. `rationale` required when `status` is `deferred | disagreed | superseded | escalated`.
 - `unit.destructive-order` — a `risk: destructive` unit listed before a non-destructive one. Irreversible work runs last, so everything reversible is proven first (D108).
+- `unit.files-missing` (P1): a `(modify)` or `(delete)` path that does not exist and that no earlier unit marks `(create)`. Skipped for completed plans, whose files may since have moved.
+- `unit.files-unmarked` (P2): Files paths with no marker; reported once per plan, naming the count and the first unit.
 
 ## Lifecycle
 
@@ -247,7 +250,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 
 `abandoned` is a terminal state available at any earlier stage; the file stays in `active/` (or is moved to an archive at the project's discretion).
 
-**Recovery from `draft + revise`:** If the user runs `/en-build` on a plan in `status: draft` with `peer_review_verdict: revise` and all entries in `peer_review_resolutions` resolved (`applied | deferred | disagreed | superseded`), `/en-build`'s pre-flight offers a single recovery prompt: re-run the peer pass, flip to `open` on approve, auto-commit, and proceed. Unresolved findings refuse the build. Plans without the new frontmatter fields fall under legacy inference.
+**Recovery from `draft + revise`:** If the user runs `/en-build` on a plan in `status: draft` with `peer_review_verdict: revise` and all entries in `peer_review_resolutions` resolved (`applied | deferred | disagreed | superseded | escalated`), `/en-build`'s pre-flight offers a single recovery prompt: re-run the peer pass, flip to `open` on approve, auto-commit, and proceed. Unresolved findings refuse the build. Plans without the new frontmatter fields fall under legacy inference.
 
 ## Worked excerpt
 

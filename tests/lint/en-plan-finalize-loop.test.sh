@@ -91,4 +91,43 @@ else
   fail "the built peer prompt must carry the severity block"
 fi
 
+
+# --- 5. the paraphrase check is the host's own, and starts no re-review (EN24 U6) ---
+grep -qF 'A host finding never re-invokes the peer by itself' "$PLAN" \
+  && pass "a host paraphrase finding never re-invokes the peer" \
+  || fail "a host paraphrase finding never re-invokes the peer" "it would be a re-review trigger the latency rule forbids"
+grep -qF 'Before acting on any verdict, `approve` included, check the paraphrase' "$PLAN" \
+  && pass "the paraphrase is checked before an approve exits the loop" \
+  || fail "the paraphrase is checked before an approve exits the loop" "an approving peer could skip it"
+grep -qF "a goal no unit covers is check A's **P1**" "$PLAN" \
+  && pass "an uncovered goal is P1 under check A, not capped at P2" \
+  || fail "an uncovered goal is P1 under check A, not capped at P2"
+# The host-finding id form must pass the resolution schema lint.
+LT=$(mktemp -d); mkdir -p "$LT/docs/plans/active"
+cat > "$LT/docs/plans/active/EN91-improvement_host.md" <<EOF
+---
+type: plan
+plan_type: improvement
+plan_id: EN91
+title: Host finding fixture
+status: open
+location: active
+created: 2026-10-29
+covers_requirements: []
+requirements_pending: false
+peer_review_resolutions:
+  - finding_id: 1-h1
+    iteration: 1
+    severity: P1
+    title: Paraphrase misses the rollout goal
+    status: applied
+---
+
+# EN91
+EOF
+out=$(cd "$LT" && "$REPO_ROOT/bin/ensemble-lint" --scope docs/plans/active 2>&1)
+rm -rf "$LT"
+case "$out" in *peer-review-resolutions*) fail "a host finding id <iteration>-h<index> passes the resolution lint" "$out" ;;
+  *) pass "a host finding id <iteration>-h<index> passes the resolution lint" ;; esac
+
 report

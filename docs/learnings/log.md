@@ -14,3 +14,4 @@ updated: 2026-09-26
 ## [2026-09-26] capture | A gate over a git file listing passes silently when the listing fails | 1090308
 ## [2026-09-26] capture | routed TD36 (L4): carried file and its citation belong in one plan unit | 99ba3b0
 ## [2026-09-27] capture | routed TD39 (L4): cite a callee's side effects at plan time | 88c6409
+## [2026-10-30] capture | A live-test control that contradicts the agent's own instructions never fires | fc82d4b

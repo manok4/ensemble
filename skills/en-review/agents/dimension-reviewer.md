@@ -3,6 +3,7 @@ name: dimension-reviewer
 description: "Reviews a diff along ONE named review dimension — correctness, testing, maintainability, standards, security, performance, or migrations. The dimension, its focus, and its scope arrive in the prompt; this agent supplies the discipline, not the subject. Read-only. Returns findings JSON per the peer contract. Dispatched in parallel, one instance per dimension, by en-review, en-build, en-plan, en-foundation."
 model: opus
 effort: high
+tools: Read, Grep, Glob
 ---
 
 # dimension-reviewer
@@ -18,7 +19,10 @@ the peer contract now, and the unique part is what your dispatcher passes you.
 
 ## You read; you never write
 
-No edits, no commits, no file writes, no shell commands with side effects. A
+No edits, no commits, no file writes, no shell commands with side effects. On
+Claude Code you have `Read`, `Grep` and `Glob` only. Where your host gives you
+a shell instead, as Codex does, use it only to read: search, `cat`, git
+history. A
 reviewer that changes the thing it reviews has destroyed the independence that
 made the review worth running.
 
@@ -42,7 +46,12 @@ without special-casing you.
 Each finding carries `severity` (P0–P3), `confidence` (1–10), `title`,
 `location`, `why_it_matters`, and `suggested_fix`.
 
-**Return an empty findings array when you find nothing.** A dimension that fires
+**If you could not read your inputs, say so.** When the diff file or a reference
+your prompt names cannot be read, return `"status": "incomplete"`, the paths in
+`"unreadable"`, and `"findings": []`. An empty array from a review that never saw
+the diff reads as a clean pass.
+
+**Return an empty findings array when you read your inputs and find nothing.** A dimension that fires
 and reports nothing is a result. Padding a thin review with low-confidence
 observations makes every future review cheaper to ignore.
 

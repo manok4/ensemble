@@ -17,7 +17,7 @@ If any are missing, **fail at start with a clear error** — do not proceed with
 
 ## Which plan states are buildable
 
-**Pre-flight sub-state matrix** — read `peer_review_verdict` and the count of unresolved entries in `peer_review_resolutions:` (an entry is "unresolved" when its `status` is absent or anything other than `applied | deferred | disagreed | superseded`):
+**Pre-flight sub-state matrix** — read `peer_review_verdict` and the count of unresolved entries in `peer_review_resolutions:` (an entry is "unresolved" when its `status` is absent or anything other than `applied | deferred | disagreed | superseded | escalated`):
 
 | status | verdict | unresolved findings | git tracked | Pre-flight action |
 |---|---|---|---|---|
@@ -30,6 +30,8 @@ If any are missing, **fail at start with a clear error** — do not proceed with
 | `draft` | `null` | n/a | any | Refuse; peer review never ran. Suggest `/en-plan --resume <plan-path>`. |
 | `draft` | `reject` | any | any | Refuse; user must take over. Surface `peer_review_resolutions:` for context. |
 | `completed` / `abandoned` | any | any | any | Refuse |
+
+**An `escalated` entry never blocks and never adds a prompt.** It counts as resolved, like `disagreed`: the host judged the finding wrong on evidence the peer could not read (`references/peer-contract.md`). Pre-flight lists open escalations in the summary it prints before the first unit, and in the recovery prompt when that fires for other reasons, so the user can still overrule.
 
 **Legacy inference** (a plan with no `peer_review_verdict` field at all): read `references/build-legacy-plans.md`, which owns the inference table; it maps the old iteration-log signals onto the matrix above or refuses.
 

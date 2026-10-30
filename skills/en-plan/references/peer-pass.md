@@ -38,8 +38,11 @@ bash "$SKILL_DIR/scripts/ensemble-build-peer-prompt" --brief "$SKILL_DIR/referen
   --peer-mode "$PEER_MODE" > "$D/prompt.md"
 ```
 
-On a re-loop, add `--iteration-context-file <path>` with the previous review
-context (`references/outside-voice.md`).
+Before applying a pass's fixes, `cp "<plan-path>" "$D/plan-before.md"`. On a
+re-loop, build into that same `$D` rather than a new one, and add
+`--iteration-context-file <path>` with the previous review context
+(`references/outside-voice.md`) and `--plan-before "$D/plan-before.md"`, so the
+peer sees exactly what the fixes changed.
 
 ## 4. Run the pass
 
