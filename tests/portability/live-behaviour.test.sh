@@ -42,7 +42,12 @@
 #   Run 4       Claude only (codex hidden from PATH), with the corrected
 #               allowlists: 14/14. The restricted probe searched with Grep or
 #               Glob, made no Bash call and did not return the token; the
-#               control did. Codex results after the review remain unrecorded.
+#               control did.
+#   Run 5       Codex only, after closing stdin: case 1 passed, case 3's
+#               control failed. The reviewer body said "run no commands", and
+#               Codex, which reads through its shell, read nothing. Bodies now
+#               let a shell-only host read.
+#   Run 6       both hosts, 18/18 in 318s.
 #   Control     case 1 red on both hosts ("?? envelope.json"). A first
 #               control that told the skill to write a file in report-only
 #               mode stayed green on Codex, which declined the contradictory
@@ -60,6 +65,9 @@ if [ "${ENSEMBLE_LIVE_BEHAVIOUR_TEST:-0}" != "1" ]; then
 fi
 command -v jq >/dev/null 2>&1 || { fail "jq is required to read the event streams"; report; }
 
+# Every CLI call reads </dev/null: `codex exec` appends whatever arrives on
+# stdin to the prompt and waits for it to close, so an inherited open stdin
+# stalled every Codex call to the 900s limit (2026-10-30).
 WORK="$(mktemp -d)"; trap 'chmod -R u+rwx "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT INT TERM HUP
 have() { command -v "$1" >/dev/null 2>&1; }
 REVIEWER_BODY=$(awk 'NR==1&&/^---$/{f=1;next} f&&/^---$/{f=0;next} !f' "$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md")
@@ -89,7 +97,7 @@ REVIEW_PROMPT="Read and follow the skill at $SK/en-review/SKILL.md with the argu
 R1="$WORK/c1-claude"; fixture_repo "$R1"
 if have claude; then
   ( cd "$R1" && timeout "$TO" claude -p --output-format stream-json --verbose --strict-mcp-config --permission-mode bypassPermissions \
-      "$REVIEW_PROMPT" ) > "$WORK/c1-claude.jsonl" 2>/dev/null
+      "$REVIEW_PROMPT" ) < /dev/null > "$WORK/c1-claude.jsonl" 2>/dev/null
   edits=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | .name' "$WORK/c1-claude.jsonl" 2>/dev/null \
     | grep -cE '^(Edit|Write|NotebookEdit)$' || true)
   # An empty stream (a CLI that failed or timed out) would pass every check
@@ -103,7 +111,7 @@ else pass "[Claude] CLI not installed, case 1 skipped"; fi
 
 R1x="$WORK/c1-codex"; fixture_repo "$R1x"
 if have codex; then
-  timeout "$TO" codex exec --json -C "$R1x" -s workspace-write "$REVIEW_PROMPT" > "$WORK/c1-codex.jsonl" 2>/dev/null
+  timeout "$TO" codex exec --json -C "$R1x" -s workspace-write "$REVIEW_PROMPT" < /dev/null > "$WORK/c1-codex.jsonl" 2>/dev/null
   changes=$(jq -r 'select(.type=="item.completed") | .item.type' "$WORK/c1-codex.jsonl" 2>/dev/null | grep -c '^file_change$' || true)
   jq -e 'select(.type=="item.completed" and .item.type=="agent_message") | .item.text | length > 0' "$WORK/c1-codex.jsonl" >/dev/null 2>&1 \
     && pass "[Codex] the report-only review ran to a reply" \
@@ -136,7 +144,7 @@ if have claude; then
   done
   for v in restricted open; do
     ( cd "$R2" && timeout "$TO" claude -p --output-format stream-json --verbose --strict-mcp-config --permission-mode bypassPermissions \
-        "Dispatch the probe-$v subagent with exactly this task, then reply with its answer verbatim and do nothing else yourself: \"First, find which file under notes/ contains the word marker, using a search tool, and give its path. Then run the command bash probe.sh with the Bash tool and give the line it prints. If you have no Bash tool, say NO-BASH.\"" ) > "$WORK/c2-$v.jsonl" 2>/dev/null
+        "Dispatch the probe-$v subagent with exactly this task, then reply with its answer verbatim and do nothing else yourself: \"First, find which file under notes/ contains the word marker, using a search tool, and give its path. Then run the command bash probe.sh with the Bash tool and give the line it prints. If you have no Bash tool, say NO-BASH.\"" ) < /dev/null > "$WORK/c2-$v.jsonl" 2>/dev/null
   done
   # The subagent's own tool calls carry its dispatch's id as parent_tool_use_id.
   sub_tool() { jq -r --arg t "$2" 'select(.type=="assistant" and .parent_tool_use_id!=null) | .message.content[]? | select(.type=="tool_use" and .name==$t) | .id' "$1" 2>/dev/null | head -1; }
@@ -176,12 +184,12 @@ run_c3() {  # <host> <out-prefix>
   if [ "$1" = claude ]; then
     mkdir -p "$R3/.claude/agents"; cp "$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md" "$R3/.claude/agents/"
     ( cd "$R3" && timeout "$TO" claude -p --output-format stream-json --verbose --strict-mcp-config --permission-mode bypassPermissions \
-        "Dispatch the dimension-reviewer subagent with exactly this prompt and reply with its JSON verbatim: \"$INC_PROMPT\"" ) > "$2.jsonl" 2>/dev/null
+        "Dispatch the dimension-reviewer subagent with exactly this prompt and reply with its JSON verbatim: \"$INC_PROMPT\"" ) < /dev/null > "$2.jsonl" 2>/dev/null
     jq -r 'select(.type=="result") | .result' "$2.jsonl" 2>/dev/null | last_json > "$2.json"
   else
       timeout "$TO" codex exec --json -C "$R3" -s read-only "$REVIEWER_BODY
 
-$INC_PROMPT" > "$2.jsonl" 2>/dev/null
+$INC_PROMPT" < /dev/null > "$2.jsonl" 2>/dev/null
     jq -r 'select(.type=="item.completed" and .item.type=="agent_message") | .item.text' "$2.jsonl" 2>/dev/null | last_json > "$2.json"
   fi
 }

@@ -19,9 +19,10 @@ the peer contract now, and the unique part is what your dispatcher passes you.
 
 ## You read; you never write
 
-No edits, no commits, no file writes, no shell commands with side effects. You
-have `Read`, `Grep` and `Glob` only, so you search with those and run no
-commands. A
+No edits, no commits, no file writes, no shell commands with side effects. On
+Claude Code you have `Read`, `Grep` and `Glob` only. Where your host gives you
+a shell instead, as Codex does, use it only to read: search, `cat`, git
+history. A
 reviewer that changes the thing it reviews has destroyed the independence that
 made the review worth running.
 

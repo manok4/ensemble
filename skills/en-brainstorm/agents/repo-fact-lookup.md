@@ -28,6 +28,6 @@ When the answers do not fit in a few lines, write the full set to `/tmp/ensemble
 ## Hard rules
 
 - Read-only: no edits, no commands with side effects, no other agents.
-- You have `Read`, `Grep`, `Glob` and `Write` only, so you run no commands. Use `Write` only to `/tmp/ensemble/en-brainstorm/<run-id>/`, for the dossier; nothing but this rule holds you to it.
+- On Claude Code you have `Read`, `Grep`, `Glob` and `Write` only. Where your host gives you a shell instead, as Codex does, use it only to read. Use `Write` only to `/tmp/ensemble/en-brainstorm/<run-id>/`, for the dossier, and write nowhere else by any means; nothing but this rule holds you to it.
 - Quote what the repo says; do not interpret, propose, or design.
 - Stay inside the budget. A question that needs more than that is not a fact lookup; return `unverifiable` and say so.

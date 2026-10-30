@@ -507,7 +507,8 @@ Deviations from the units above, each recorded in its commit:
 - **U1** research agents shipped as an allowlist, `tools: Read, Grep, Glob, Write`, not the planned `disallowedTools: Edit, NotebookEdit, Bash`, and code-simplifier as `tools: Read, Bash`. On macOS and Linux, Claude Code leaves Grep and Glob out by default and restores them only for a subagent whose `tools` list names them without Bash, so the planned denylist left the research agents no search. The pure readers kept the planned `Read, Grep, Glob`. The allowlists also drop every MCP tool. (The branch-review commit briefly moved everyone to Bash on a wrong reading of the tool list; the follow-up commit restored this.)
 - **U4** skips both Files rules on completed plans, and checks existence only while a plan is draft or open: lint exits non-zero on any finding, and a built (delete) removes a path its own plan names.
 - **U8** put en-review's rule in `references/mutation-protocol.md`, not `SKILL.md`, which had 52 bytes left under its budget. `script-parity` does not pin the code-review builder copies, so the new test does.
-- **U10** case 2 tests the shipped tools line against `Write`, with a neutral probe body. Codex results after the review are unrecorded: every Codex call timed out on the re-run.
+- **U10** case 2 probes the shipped tools line with a neutral body: the restricted copy must search with Grep or Glob and cannot run Bash. Every CLI call closes stdin, because `codex exec` waits on an open one. The final run passed 18/18 on both hosts (2026-10-30).
+- **Agent bodies** name the Claude tools and let a shell-only host read: Codex renders the body as instructions and reads through its shell, so a body forbidding every command left its reviewer reading nothing.
 
 ## Iteration log
 

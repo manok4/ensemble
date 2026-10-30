@@ -41,6 +41,7 @@
 #   - set dimension-reviewer.md to `tools: Read, Grep, Bash` (Grep not restored)
 #   - deleted the `/tmp/ensemble/` sentence from web-research.md
 #   - deleted the `Bash` sentence from code-simplifier.md (2026-10-30)
+#   - put "so you run no commands" back in repo-research.md (2026-10-30)
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -60,6 +61,7 @@ PURE="dimension-reviewer test-lane-auditor"
 RESEARCH="repo-research learnings-research repo-fact-lookup"
 WRITE_SENTENCE='`Write` only to `/tmp/ensemble/'
 BASH_SENTENCE='Use `Bash` only to read'
+SHELL_SENTENCE='Where your host gives you a shell instead, as Codex does, use it only to read'
 
 checked=0
 for f in "$REPO_ROOT"/skills/*/agents/*.md; do
@@ -84,6 +86,13 @@ for f in "$REPO_ROOT"/skills/*/agents/*.md; do
         || fail "$rel: body limits Bash to reading" "missing: $BASH_SENTENCE"
     elif has_tool "$tools" Grep || has_tool "$tools" Glob; then
       pass "$rel: the allowlist keeps a way to search (Grep/Glob, restored without Bash)"
+      # Codex renders this body as the agent's instructions and has no Read,
+      # Grep or Glob: it reads through its shell. A body that forbids every
+      # command left the Codex reviewer reading nothing (live run, 2026-10-30).
+      tr '\n' ' ' < "$f" | grep -qF "$SHELL_SENTENCE" && pass "$rel: body lets a shell-only host read" \
+        || fail "$rel: body lets a shell-only host read" "missing: $SHELL_SENTENCE"
+      grep -qiE 'run no commands' "$f" && fail "$rel: body does not forbid every command" "a Codex agent then cannot read its inputs" \
+        || pass "$rel: body does not forbid every command"
     else
       fail "$rel: the allowlist keeps a way to search" "got: $tools; name Grep and Glob, or Bash"
     fi
