@@ -365,4 +365,45 @@ case "$off" in *"NOT INLINED"*) fail "--max-diff-bytes 0 disables the cap" ;; *)
 assert_contains "$small" "stop well short of your turn limit" "the code peer is told to stop before its turn cap"
 if mkdiff 1 1 | cprompt --max-diff-bytes lots >/dev/null 2>&1; then fail "a non-numeric cap is refused"; else pass "a non-numeric cap is refused"; fi
 
+
+# --- --plan-before: the re-review sees what the fixes changed (EN24 U7) ---
+# Counts alone cannot tell an added section from a rewritten one, so the
+# builder renders the counts and a capped unified diff, and only on a re-review.
+PB=$(mktemp -d)
+printf '## Previous review context (iteration 1)\nApplied: 1-1 — Missing test\n' > "$PB/ctx"
+printf '# Plan\n\n### U1. One\n\nbody\n' > "$PB/before"
+printf '# Plan\n\n### U1. One\n\nbody\n\n## Rollout\n\nship it\n' > "$PB/after"
+pb() { "$BIN" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context X --goal Y "$@"; }
+
+grown=$(pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx" --plan-before "$PB/before")
+assert_contains "$grown" "## Plan changes since the last pass" "[plan-before] the section is rendered"
+assert_contains "$grown" "Units: 1 before, 1 now." "[plan-before] unit counts before and after"
+assert_contains "$grown" "+## Rollout" "[plan-before] the diff shows the added section"
+assert_contains "$grown" "no applied finding required. Severity P2." "[plan-before] the growth instruction is P2"
+
+same=$(pb --artifact-file "$PB/before" --iteration-context-file "$PB/ctx" --plan-before "$PB/before")
+assert_contains "$same" "No changes." "[plan-before] an identical plan says no changes"
+
+# Same byte length, no unit added: counts are equal, so only the diff shows it.
+printf '# Plan\n\n### U1. One\n\nydob\n' > "$PB/swapped"
+swapped=$(pb --artifact-file "$PB/swapped" --iteration-context-file "$PB/ctx" --plan-before "$PB/before")
+assert_contains "$swapped" "Bytes: 26 before, 26 now." "[plan-before] a same-size rewrite has equal counts"
+assert_contains "$swapped" "+ydob" "[plan-before] and the diff still shows the replaced line"
+
+seq 1 450 | sed 's/^/line /' > "$PB/long-before"; seq 1 450 | sed 's/^/LINE /' > "$PB/long-after"
+long=$(pb --artifact-file "$PB/long-after" --iteration-context-file "$PB/ctx" --plan-before "$PB/long-before")
+total=$(diff -u "$PB/long-before" "$PB/long-after" | wc -l | tr -d ' ')
+assert_contains "$long" "($((total - 200)) lines not shown)" "[plan-before] a long diff is capped at 200 lines and says how much was cut"
+assert_eq 200 "$(printf '%s\n' "$long" | sed -n '/^```diff$/,/^```$/p' | sed '1d;$d' | wc -l | tr -d ' ')" "[plan-before] exactly 200 diff lines are rendered"
+
+pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx" --plan-before /nonexistent/plan.md >/dev/null 2>"$PB/err"
+assert_exit_code 2 $? "[plan-before] an unreadable before-file exits 2"
+assert_contains "$(cat "$PB/err")" "/nonexistent/plan.md" "[plan-before] the error names the path"
+pb --artifact-file "$PB/after" --plan-before "$PB/before" >/dev/null 2>&1
+assert_exit_code 2 $? "[plan-before] without --iteration-context-file exits 2"
+
+plain=$(pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx")
+assert_not_contains "$plain" "Plan changes since" "[plan-before] no flag, no section"
+rm -rf "$PB"
+
 report
