@@ -504,7 +504,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 
 Deviations from the units above, each recorded in its commit:
 
-- **U1** shipped as allowlists that keep Bash: readers carry `tools: Read, Bash`, the repo research agents `tools: Read, Bash, Write`, web-research keeps its denylist. Claude Code 2.1.312 exposes no Grep or Glob tool, so the planned `Read, Grep, Glob` left agents unable to search (branch review). The allowlists also drop every MCP tool; Bash stays bounded by prose.
+- **U1** research agents shipped as an allowlist, `tools: Read, Grep, Glob, Write`, not the planned `disallowedTools: Edit, NotebookEdit, Bash`, and code-simplifier as `tools: Read, Bash`. On macOS and Linux, Claude Code leaves Grep and Glob out by default and restores them only for a subagent whose `tools` list names them without Bash, so the planned denylist left the research agents no search. The pure readers kept the planned `Read, Grep, Glob`. The allowlists also drop every MCP tool. (The branch-review commit briefly moved everyone to Bash on a wrong reading of the tool list; the follow-up commit restored this.)
 - **U4** skips both Files rules on completed plans, and checks existence only while a plan is draft or open: lint exits non-zero on any finding, and a built (delete) removes a path its own plan names.
 - **U8** put en-review's rule in `references/mutation-protocol.md`, not `SKILL.md`, which had 52 bytes left under its budget. `script-parity` does not pin the code-review builder copies, so the new test does.
 - **U10** case 2 tests the shipped tools line against `Write`, with a neutral probe body. Codex results after the review are unrecorded: every Codex call timed out on the re-run.

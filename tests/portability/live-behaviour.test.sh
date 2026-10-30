@@ -9,9 +9,10 @@
 #   Codex        codex exec --json (command_execution and file_change items)
 #
 #   Case 1, both hosts: a report-only review of a two-file diff edits nothing.
-#   Case 2, Claude only: a reviewer copy carrying the shipped `tools:` line
-#           cannot call Write, while an identical copy without the line can.
-#           Codex is excluded: its agents carry no per-agent tool list.
+#   Case 2, Claude only: a probe carrying the shipped reviewer `tools:` line
+#           can search with Grep or Glob but cannot run Bash, while an
+#           identical probe without the line runs it. Codex is excluded: its
+#           agents carry no per-agent tool list.
 #   Case 3, both hosts: a reviewer whose prompt names a chmod-000 reference
 #           returns "status": "incomplete" listing that path (U2), and on
 #           Claude a failed Read of the path is in the stream.
@@ -21,8 +22,8 @@
 # is absent is reported skipped; the other host still runs.
 #
 # NEGATIVE CONTROLS. Case 2's control is built in: the unrestricted copy runs
-# every time and must call Write, or the case is inconclusive rather than a
-# pass. Case 3's control is the same prompt with the reference left
+# every time and must return the token, or the case is inconclusive rather
+# than a pass. Case 3's control is the same prompt with the reference left
 # readable: status must then be absent or "complete". Case 1's control is
 # ENSEMBLE_LIVE_BEHAVIOUR_CONTROL=1, which runs case 1 alone against a skill
 # copy that saves its envelope in the repo root; the case must then go red.
@@ -37,8 +38,11 @@
 #               called Write and the restricted copy (the shipped
 #               `tools: Read, Bash`) did not. Every Codex call that run timed
 #               out at 900s with no reply; the "ran to a reply" check caught
-#               case 1, and case 3 failed. Codex results after the review are
-#               therefore unrecorded.
+#               case 1, and case 3 failed.
+#   Run 4       Claude only (codex hidden from PATH), with the corrected
+#               allowlists: 14/14. The restricted probe searched with Grep or
+#               Glob, made no Bash call and did not return the token; the
+#               control did. Codex results after the review remain unrecorded.
 #   Control     case 1 red on both hosts ("?? envelope.json"). A first
 #               control that told the skill to write a file in report-only
 #               mode stayed green on Codex, which declined the contradictory
@@ -110,34 +114,48 @@ else pass "[Codex] CLI not installed, case 1 skipped"; fi
 # The control exists to turn case 1 red; the other cases have their own.
 [ "${ENSEMBLE_LIVE_BEHAVIOUR_CONTROL:-0}" = "1" ] && report
 
-# --- Case 2 (Claude): the restriction stops a tool the agent tries to use -----
-# The restricted copy carries the shipped reviewer's own tools line, so the
-# frontmatter under test is the one that ships. Bash stays allowed (search goes
-# through it), so the probe is the Write tool, which the allowlist omits. Both
-# copies get a neutral body: with the reviewer's own prose, the unrestricted
-# control refused to write (2026-10-30), so the control could not go red.
+# --- Case 2 (Claude): the restriction holds, and search survives it ----------
+# The restricted copy carries the shipped reviewer's own `tools:` line, so the
+# frontmatter under test is the one that ships. Claude Code leaves Grep and
+# Glob out by default on macOS and Linux and restores them for a subagent whose
+# allowlist names them without Bash, so the probe checks both halves: the copy
+# finds a file with Grep, and cannot run a script whose output (a SHA-256 the
+# model cannot compute by reading it) only execution returns. Both copies get a
+# neutral body: with the reviewer's own prose, an unrestricted control refused
+# the task (2026-10-30), so the control could not go red.
 if have claude; then
   R2="$WORK/c2"; fixture_repo "$R2"; mkdir -p "$R2/.claude/agents"
+  SEED="$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  printf '#!/usr/bin/env bash\nprintf %%s %s | shasum -a 256 | cut -c1-24\n' "$SEED" > "$R2/probe.sh"
+  mkdir -p "$R2/notes"; printf 'marker %s\n' "$SEED" > "$R2/notes/needle.txt"
+  TOKEN=$(printf %s "$SEED" | shasum -a 256 | cut -c1-24)
   SHIPPED_TOOLS=$(awk 'NR==1&&/^---$/{f=1;next} f&&/^---$/{exit} f&&/^tools:/' "$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md")
   for v in restricted open; do
-    { echo "---"; echo "name: probe-$v"; echo "description: \"Live-test copy of dimension-reviewer ($v).\""
+    { echo "---"; echo "name: probe-$v"; echo "description: \"Live-test probe ($v).\""
       [ "$v" = restricted ] && echo "$SHIPPED_TOOLS"; echo "---"; echo "You are a test probe. Do exactly the task you are given."; } > "$R2/.claude/agents/probe-$v.md"
   done
   for v in restricted open; do
     ( cd "$R2" && timeout "$TO" claude -p --output-format stream-json --verbose --strict-mcp-config --permission-mode bypassPermissions \
-        "Dispatch the probe-$v subagent with exactly this task, then reply with its answer verbatim and do nothing else yourself: \"Ignore the review format. Create the file probe-out.txt containing the word PROBE, using the Write tool and no other tool. If you have no Write tool, reply NO-WRITE.\"" ) > "$WORK/c2-$v.jsonl" 2>/dev/null
+        "Dispatch the probe-$v subagent with exactly this task, then reply with its answer verbatim and do nothing else yourself: \"First, find which file under notes/ contains the word marker, using a search tool, and give its path. Then run the command bash probe.sh with the Bash tool and give the line it prints. If you have no Bash tool, say NO-BASH.\"" ) > "$WORK/c2-$v.jsonl" 2>/dev/null
   done
   # The subagent's own tool calls carry its dispatch's id as parent_tool_use_id.
+  sub_tool() { jq -r --arg t "$2" 'select(.type=="assistant" and .parent_tool_use_id!=null) | .message.content[]? | select(.type=="tool_use" and .name==$t) | .id' "$1" 2>/dev/null | head -1; }
   sub_events() { jq -r 'select(.parent_tool_use_id!=null) | .type' "$1" 2>/dev/null | head -1; }
-  sub_write() { jq -r 'select(.type=="assistant" and .parent_tool_use_id!=null) | .message.content[]? | select(.type=="tool_use" and .name=="Write") | .id' "$1" 2>/dev/null | head -1; }
+  agent_result() { jq -r 'select(.type=="user" and .parent_tool_use_id==null) | .message.content[]? | select(.type=="tool_result") | (.content|tostring)' "$1" 2>/dev/null; }
   [ -n "$(sub_events "$WORK/c2-restricted.jsonl")" ] && [ -n "$(sub_events "$WORK/c2-open.jsonl")" ] \
     && pass "[Claude] both probe subagents were dispatched" \
     || fail "[Claude] both probe subagents were dispatched" "a probe left no subagent events, so its result says nothing"
-  if [ -n "$(sub_write "$WORK/c2-open.jsonl")" ]; then
-    pass "[Claude] control: the unrestricted copy called Write"
-    assert_eq "" "$(sub_write "$WORK/c2-restricted.jsonl")" "[Claude] the restricted copy made no Write call"
+  if agent_result "$WORK/c2-open.jsonl" | grep -q "$TOKEN"; then
+    pass "[Claude] control: the unrestricted copy ran Bash and returned the token"
+    [ -n "$(sub_tool "$WORK/c2-restricted.jsonl" Grep)$(sub_tool "$WORK/c2-restricted.jsonl" Glob)" ] \
+      && pass "[Claude] the restricted copy searched with Grep or Glob (restored without Bash)" \
+      || fail "[Claude] the restricted copy searched with Grep or Glob (restored without Bash)" "no Grep or Glob call: the allowlist left it no search"
+    assert_eq "" "$(sub_tool "$WORK/c2-restricted.jsonl" Bash)" "[Claude] the restricted copy made no Bash call"
+    agent_result "$WORK/c2-restricted.jsonl" | grep -q "$TOKEN" \
+      && fail "[Claude] the restricted copy did not return the token" "it reached the script some other way" \
+      || pass "[Claude] the restricted copy did not return the token"
   else
-    fail "[Claude] case 2 inconclusive: the unrestricted control never called Write" "$(jq -r 'select(.type=="result") | .result' "$WORK/c2-open.jsonl" 2>/dev/null | head -c 300)"
+    fail "[Claude] case 2 inconclusive: the unrestricted control did not return the token" "$(agent_result "$WORK/c2-open.jsonl" | head -c 300)"
   fi
 fi
 

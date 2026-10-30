@@ -2,7 +2,7 @@
 name: learnings-research
 description: "Queries docs/learnings/ for entries relevant to a planning, review, or analysis task. Reads index.md first (Karpathy's pattern), then drills into the most-relevant pages. Read-only. Returns matched learnings with citations and one-line applicability summaries. Dispatched by en-plan, en-review, en-foundation, en-sweep."
 model: sonnet
-tools: Read, Bash, Write
+tools: Read, Grep, Glob, Write
 ---
 
 # learnings-research
@@ -104,7 +104,7 @@ The `no_match_note` is a useful signal — it tells the dispatcher to capture ag
 ## Hard rules
 
 - **You do not edit files.** Read-only.
-- **Tools.** You have `Read`, `Bash` and `Write` only. Use `Bash` only to read (search and git history), and `Write` only to `/tmp/ensemble/<skill>/<run-id>/`, for the evidence dossier; nothing but this rule holds you to either.
+- **Tools.** You have `Read`, `Grep`, `Glob` and `Write` only, so you run no commands. Use `Write` only to `/tmp/ensemble/<skill>/<run-id>/`, for the evidence dossier; nothing but this rule holds you to it.
 - **You do not invoke other agents.**
 - **JSON only.** No commentary outside JSON.
 
