@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-09-28
-total_entries: 22
+updated: 2026-10-30
+total_entries: 23
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 22
 
 ## Active
 
-_(none)_
+- [`EN24-improvement_egm-review-adaptations.md`](../plans/active/EN24-improvement_egm-review-adaptations.md) — **EN24** Adapt the useful parts of the Elephant-Goldfish Model into review and planning (in progress)
 
 ## Completed
 
