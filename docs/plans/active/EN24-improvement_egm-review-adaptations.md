@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN24
 title: Adapt the useful parts of the Elephant-Goldfish Model into review and planning
-status: open
+status: in_progress
 location: active
 created: 2026-10-29
 shipped:
