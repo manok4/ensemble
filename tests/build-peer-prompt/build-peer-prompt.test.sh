@@ -72,6 +72,13 @@ h0=$(printf '%s\n' "$out" | grep '^H0\. Decisions left to the implementer\.')
 assert_contains "$h0" "P1 when the open choice changes a signature another unit consumes, or is a bet the plan states nowhere" "[plan] H0 is P1 for a cross-unit signature or an unstated bet"
 assert_contains "$h0" "P2 otherwise" "[plan] H0 is P2 otherwise"
 
+# EN24 U5: check H flags over-building. A goal-less unit is check A's, at A's
+# severity, so H must not carry a cap that would demote it.
+hh=$(printf '%s\n' "$out" | grep '^H\. Builds more than the goal needs\.')
+assert_contains "$hh" "caching, queues or partitioning with no stated bottleneck" "[plan] check H names speculative build-out"
+assert_contains "$hh" "A unit that serves no stated goal is not H; report it under A, at A's severity." "[plan] goal-less units route to check A"
+assert_not_contains "$hh" "never P1" "[plan] check H carries no cap"
+
 if echo "$out" | grep -q "fake plan body"; then
   pass "[cross-agent/plan] artifact body included"
 else
