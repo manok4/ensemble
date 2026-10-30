@@ -811,6 +811,95 @@ check_plan_unit_test_scenarios() {
   )
 }
 
+# --- Helper: one line per Files: path, "uid|path|marker" in plan order ---
+# Paths are the backticked spans of the Files field, inline or in nested
+# bullets; a value with no backticks is split on commas. The marker is the
+# parenthesised word right after the path: create, modify or delete, with new
+# read as create. Anything else, or nothing, is an empty marker.
+extract_unit_files() {
+  awk '
+    function marker(rest) {
+      if (match(rest, /^[[:space:]]*\((create|modify|delete|new)\)/)) {
+        m = substr(rest, RSTART, RLENGTH); gsub(/[[:space:]()]/, "", m)
+        return (m == "new") ? "create" : m
+      }
+      return ""
+    }
+    function take(s,   p, rest, n, i, parts, t) {
+      if (index(s, "`")) {
+        while (match(s, /`[^`]+`/)) {
+          p = substr(s, RSTART + 1, RLENGTH - 2); rest = substr(s, RSTART + RLENGTH)
+          printf "%s|%s|%s\n", uid, p, marker(rest)
+          s = rest
+        }
+        return
+      }
+      n = split(s, parts, ",")
+      for (i = 1; i <= n; i++) {
+        t = parts[i]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+        if (t == "" || t == "none") continue
+        p = t; m = ""
+        if (match(t, /[[:space:]]+\((create|modify|delete|new)\)$/)) {
+          p = substr(t, 1, RSTART - 1); m = marker(substr(t, RSTART))
+        }
+        printf "%s|%s|%s\n", uid, p, m
+      }
+    }
+    /^### U[0-9]+/ { match($0, /U[0-9]+/); uid = substr($0, RSTART, RLENGTH); inf = 0; next }
+    /^## / { uid = ""; inf = 0; next }
+    uid && /^- \*\*Files:\*\*/ { inf = 1; s = $0; sub(/^- \*\*Files:\*\*[[:space:]]*/, "", s); if (s != "") take(s); next }
+    inf && /^[[:space:]]+[-*][[:space:]]/ { s = $0; sub(/^[[:space:]]+[-*][[:space:]]+/, "", s); take(s); next }
+    inf && /^- / { inf = 0 }
+  ' "$1"
+}
+
+# --- Rule: unit.files-missing (P1) / unit.files-unmarked (P2) ---
+# A plan that cites a file to modify or delete that does not exist hands the
+# build a unit it cannot implement as written (EN24 U4). Plan order is build
+# order, so a path an earlier unit marks (create) may be modified later; one
+# created only by a later unit is reported as modified before it is created.
+# (create) paths are never checked: proposed files are not findings.
+# Completed plans are skipped: they predate the markers, and the files they
+# name may since have moved.
+check_plan_unit_files() {
+  case "$1" in docs/plans/active/*.md) ;; *) return 0 ;; esac
+  local file="$1" rows uid path mark created="" later="" unmarked=0 first_unmarked=""
+  [ "$(extract_frontmatter "$file" | awk '/^status:/{sub(/^status:[[:space:]]*/,""); print; exit}')" = "completed" ] && return 0
+  rows=$(extract_unit_files "$file")
+  [ -z "$rows" ] && return 0
+  while IFS='|' read -r uid path mark; do
+    [ "$mark" = create ] && later="${later}${uid}|${path}
+"
+  done <<< "$rows"
+  while IFS='|' read -r uid path mark; do
+    [ -z "$path" ] && continue
+    case "$mark" in
+      "")
+        unmarked=$((unmarked + 1)); [ -z "$first_unmarked" ] && first_unmarked="$uid" ;;
+      create)
+        created="${created}${path}
+" ;;
+      modify|delete)
+        # shellcheck disable=SC2086 # a glob path must expand
+        if compgen -G "$path" >/dev/null 2>&1 || [ -e "$path" ]; then continue; fi
+        printf '%s' "$created" | grep -qxF -- "$path" && continue
+        if printf '%s' "$later" | cut -d'|' -f2- | grep -qxF -- "$path"; then
+          emit "unit.files-missing" "$file" "" "P1" \
+            "Unit $uid marks \`$path\` ($mark) before the unit that creates it" \
+            "Units build in plan order: move the creating unit earlier, or mark the path (create) here"
+        else
+          emit "unit.files-missing" "$file" "" "P1" \
+            "Unit $uid marks \`$path\` ($mark) but no such file exists and no earlier unit creates it" \
+            "Fix the path, or mark it (create) if this unit makes it"
+        fi ;;
+    esac
+  done <<< "$rows"
+  [ "$unmarked" -gt 0 ] && emit "unit.files-unmarked" "$file" "" "P2" \
+    "$unmarked Files path(s) carry no (create|modify|delete) marker, first in $first_unmarked" \
+    "Mark each path: \`path\` (create), (modify) or (delete); (new) reads as (create)"
+  return 0
+}
+
 # --- Rule: unit.destructive-order ---
 # Irreversible work runs last, so everything reversible is proven before it.
 #
@@ -974,6 +1063,7 @@ while IFS= read -r file; do
   check_plan_unit_category_enum "$file"
   check_plan_unit_test_scenarios "$file"
   check_plan_destructive_order "$file"
+  check_plan_unit_files "$file"
   check_plan_resolutions_schema "$file"
   check_td_enforce_layer "$file"
   check_cross_links "$file"

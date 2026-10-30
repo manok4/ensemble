@@ -96,7 +96,7 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Interfaces:** *(omit unless a later unit calls something this one creates)*
   - *Produces:* <exact names, signatures, return shapes later units call>
   - *Consumes:* <exact names this unit calls from earlier units>
-- **Files:** <repo-relative paths the unit will touch>
+- **Files:** <repo-relative paths the unit will touch, each marked (create|modify|delete)>
 - **Approach:** <how this unit will be implemented>
 - **Risk:** low | medium | high | destructive
 - **Category:** feature | observability | diagnostics | api-additive | migration-additive | migration | backfill | schema-evolution | deletion | drop | removal | other
@@ -215,9 +215,10 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
   Gated units pause `/en-build` regardless of any flag. No flag disables this, and nothing group-confirms it: every gate is per unit.
 
 - **Files field:**
-  - Repo-relative paths only.
-  - List the files the unit will touch; OK to include "newly created" files.
-  - Glob patterns acceptable for clear cases (`tests/auth/refresh.*.test.ts`).
+  - Repo-relative paths only, each in backticks and followed by one marker: `(create)`, `(modify)` or `(delete)`. `(new)` reads as `(create)`.
+  - List the files the unit will touch, newly created ones included.
+  - A `(modify)` or `(delete)` path must exist, or be marked `(create)` by an earlier unit: units build in plan order. `(create)` paths are never checked.
+  - Glob patterns acceptable for clear cases (`tests/auth/refresh.*.test.ts`); a `(modify)` or `(delete)` glob must match something.
 
 ## Lint rules
 
@@ -237,6 +238,8 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 - `unit.category-enum` — `category:` must be one of the documented values when present.
 - `peer-review-resolutions.schema` — each entry must carry `finding_id`, `iteration`, `severity`, `title`, `status`. `rationale` required when `status` is `deferred | disagreed | superseded`.
 - `unit.destructive-order` — a `risk: destructive` unit listed before a non-destructive one. Irreversible work runs last, so everything reversible is proven first (D108).
+- `unit.files-missing` (P1) — a `(modify)` or `(delete)` path that does not exist and that no earlier unit marks `(create)`. Skipped for completed plans, whose files may since have moved.
+- `unit.files-unmarked` (P2) — Files paths with no marker; reported once per plan, naming the count and the first unit.
 
 ## Lifecycle
 

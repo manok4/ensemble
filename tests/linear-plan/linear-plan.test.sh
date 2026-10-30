@@ -328,7 +328,7 @@ data_scale: small
 ### U1. Nested lists and code
 
 - **Goal:** survive the trip
-- **Files:** `a.sh`, `b.py`
+- **Files:** `a.sh` (modify), `b.py` (create)
 - **Approach:** handle `--flag` and `{a,b}`:
   - first, a nested bullet
     - and a deeper one
@@ -372,6 +372,11 @@ assert_eq "$(fm "$WORK/awkward.md")" "$(fm "$WORK/awkward-rt.md")" \
   "a frontmatter list survives the rewrite inside the contract block"
 grep -q '^    - and a deeper one$' "$WORK/awkward-rt.md" && pass "nested-list indentation survives" \
   || fail "nested-list indentation survives"
+# EN24 U4: Files markers sit inside the field's value, so the parser's
+# `- **Files:**` anchor is unchanged and the marked value survives the trip.
+files_of() { bash "$H" --canon "$1" | awk '/^U:U1$/{f=1; next} /^U:/{f=0} f && /^Files:/'; }
+assert_eq 'Files:32:`a.sh` (modify), `b.py` (create)' "$(files_of "$WORK/awkward.md")" "a marked Files line is read as one field value"
+assert_eq "$(files_of "$WORK/awkward.md")" "$(files_of "$WORK/awkward-rt.md")" "the marked Files value survives the Linear round trip"
 
 # --- 7b. idempotent round trip (EN19 U6) -----------------------------------------
 # An amend materializes the published plan and later re-renders it. If render

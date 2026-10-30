@@ -1215,4 +1215,93 @@ fi
 sed -i.bak 's/See also U7 and FR50 U9\./FR50 U5 is ours too./' "$TMP/docs/plans/active/FR50-test.md" && rm -f "$TMP/docs/plans/active/FR50-test.md.bak"
 assert_rule_fires "U5 cited but no" "a unit also cited with this plan's own ID"
 
+
+# --- unit.files-missing / unit.files-unmarked (EN24 U4) ---
+# A plan citing a file to modify that does not exist hands the build a unit it
+# cannot implement as written. Plan order is build order, so a modify of a file
+# an earlier unit creates is fine and one only a later unit creates is not.
+files_plan() {  # <plan-id> <status> <dir> ; units on stdin
+  local id="$1" st="$2" dir="$3"
+  { cat <<EOF
+---
+type: plan
+plan_type: feature
+plan_id: $id
+title: Files fixture
+status: $st
+location: $dir
+created: 2026-10-29
+covers_requirements: [R1]
+requirements_pending: false
+peer_review_resolutions: []
+---
+
+# $id
+
+EOF
+    cat; } > "$TMP/docs/plans/$dir/$id-feature_files.md"
+}
+files_unit() {  # <n> <files-line>
+  printf '### U%s. Unit\n\n- **Goal:** do something\n- **Risk:** low\n- **Category:** other\n- **Gated:** false\n- **Files:** %s\n- **Approach:** ok\n\n' "$1" "$2"
+}
+files_lint() { result=$(run_lint); output="${result%%|||*}"; }
+mk_tree() { mkdir -p "$TMP/bin" "$TMP/tests"; : > "$TMP/bin/ensemble-lint"; }
+
+setup_minimum; mk_tree
+files_unit 1 '`bin/ensemble-lint` (modify), `tests/new.test.sh` (create)' | files_plan EN70 open active
+files_lint
+echo "$output" | grep -q 'unit\.files-' \
+  && fail "marked existing and created paths fire nothing" "$(echo "$output" | grep 'unit\.files-')" \
+  || pass "marked existing and created paths fire nothing"
+
+setup_minimum; mk_tree
+files_unit 1 '`bin/does-not-exist` (modify)' | files_plan EN71 open active
+files_lint
+echo "$output" | grep -q '\[P1\] unit.files-missing.*U1.*bin/does-not-exist' \
+  && pass "a missing (modify) path is P1, naming the unit and path" \
+  || fail "a missing (modify) path is P1, naming the unit and path" "$output"
+
+setup_minimum; mk_tree
+{ files_unit 1 '`tests/made.test.sh` (create)'; files_unit 2 '`tests/made.test.sh` (modify)'; } | files_plan EN72 open active
+files_lint
+echo "$output" | grep -q 'unit\.files-missing' \
+  && fail "a modify of a file an earlier unit creates passes" "$(echo "$output" | grep files-missing)" \
+  || pass "a modify of a file an earlier unit creates passes"
+
+setup_minimum; mk_tree
+{ files_unit 2 '`tests/later.test.sh` (modify)'; files_unit 3 '`tests/later.test.sh` (create)'; } | files_plan EN73 open active
+files_lint
+echo "$output" | grep -q '\[P1\] unit.files-missing.*before the unit that creates it' \
+  && pass "a modify before the creating unit is P1" \
+  || fail "a modify before the creating unit is P1" "$output"
+
+setup_minimum; mk_tree
+files_unit 1 '`skills/*/agents/nope-*.md` (delete)' | files_plan EN74 open active
+files_lint
+echo "$output" | grep -q '\[P1\] unit.files-missing' \
+  && pass "a (delete) glob matching nothing is P1" \
+  || fail "a (delete) glob matching nothing is P1" "$output"
+
+setup_minimum; mk_tree
+{ files_unit 1 'src/a.ts, src/b.ts'; files_unit 2 '`src/c.ts`, `src/d.ts`'; files_unit 3 '`src/e.ts`'; } | files_plan EN75 open active
+files_lint
+assert_eq 1 "$(echo "$output" | grep -c 'unit\.files-unmarked')" "five unmarked paths across three units give one P2"
+echo "$output" | grep -q '\[P2\] unit.files-unmarked.*5 Files path.*first in U1' \
+  && pass "the unmarked advisory names the count and the first unit" \
+  || fail "the unmarked advisory names the count and the first unit" "$(echo "$output" | grep files-unmarked)"
+
+setup_minimum; mk_tree
+printf '### U1. Unit\n\n- **Goal:** x\n- **Risk:** low\n- **Category:** other\n- **Gated:** false\n- **Files:**\n  - `src/x.ts` (new)\n  - `bin/ensemble-lint` (modify)\n- **Approach:** ok\n' | files_plan EN76 open active
+files_lint
+echo "$output" | grep -q 'unit\.files-' \
+  && fail "nested bullets parse, and (new) reads as (create)" "$(echo "$output" | grep 'unit\.files-')" \
+  || pass "nested bullets parse, and (new) reads as (create)"
+
+setup_minimum; mk_tree
+files_unit 1 '`src/gone.ts` (modify)' | files_plan EN77 completed completed
+files_lint
+echo "$output" | grep -q 'unit\.files-' \
+  && fail "a completed plan's since-deleted path fires nothing" "$(echo "$output" | grep 'unit\.files-')" \
+  || pass "a completed plan's since-deleted path fires nothing"
+
 report
