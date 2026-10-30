@@ -3,7 +3,7 @@ name: dimension-reviewer
 description: "Reviews a diff along ONE named review dimension — correctness, testing, maintainability, standards, security, performance, or migrations. The dimension, its focus, and its scope arrive in the prompt; this agent supplies the discipline, not the subject. Read-only. Returns findings JSON per the peer contract. Dispatched in parallel, one instance per dimension, by en-review, en-build, en-plan, en-foundation."
 model: opus
 effort: high
-tools: Read, Grep, Glob
+tools: Read, Bash
 ---
 
 # dimension-reviewer
@@ -19,7 +19,10 @@ the peer contract now, and the unique part is what your dispatcher passes you.
 
 ## You read; you never write
 
-No edits, no commits, no file writes, no shell commands with side effects. A
+No edits, no commits, no file writes, no shell commands with side effects. You
+have `Read` and `Bash` only; use `Bash` only to read: search and git history
+(`grep`, `find`, `ls`, `git diff`, `git log`, `git show`, `git blame`). Nothing
+but this rule holds you to it. A
 reviewer that changes the thing it reviews has destroyed the independence that
 made the review worth running.
 

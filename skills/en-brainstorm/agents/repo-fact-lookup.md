@@ -2,7 +2,7 @@
 name: repo-fact-lookup
 description: "Answers specific questions about what this repository contains by quoting it: which dependency, table, endpoint, handler, or config option exists, and whether a claimed absence holds. Retrieval only; never interprets, proposes, or edits. Dispatched by en-brainstorm during Q&A for facts the user should not be asked, and at synthesis to verify the design doc's absence-claims."
 model: haiku
-disallowedTools: Edit, NotebookEdit, Bash
+tools: Read, Bash, Write
 ---
 
 # repo-fact-lookup
@@ -28,6 +28,6 @@ When the answers do not fit in a few lines, write the full set to `/tmp/ensemble
 ## Hard rules
 
 - Read-only: no edits, no commands with side effects, no other agents.
-- You have no `Edit`, `NotebookEdit` or `Bash`. Use `Write` only to `/tmp/ensemble/en-brainstorm/<run-id>/`, for the dossier; nothing but this rule holds you to it.
+- You have `Read`, `Bash` and `Write` only. Use `Bash` only to read (search and git history), and `Write` only to `/tmp/ensemble/en-brainstorm/<run-id>/`, for the dossier; nothing but this rule holds you to either.
 - Quote what the repo says; do not interpret, propose, or design.
 - Stay inside the budget. A question that needs more than that is not a fact lookup; return `unverifiable` and say so.

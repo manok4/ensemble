@@ -7,27 +7,36 @@
 # independence that made the review worth running. The restriction now lives
 # in frontmatter, which Claude Code enforces, in three groups:
 #
-#   - pure readers (dimension-reviewer, test-lane-auditor): `tools: Read, Grep, Glob`.
-#   - research agents that write an evidence dossier: `disallowedTools: Edit,
-#     NotebookEdit, Bash`. A denylist, so web-research keeps its Context7 MCP
-#     tools, whose names differ between plugin and standalone installs.
-#   - code-simplifier: `disallowedTools: Edit, Write, NotebookEdit`, keeping Bash
-#     for `git blame`.
+#   - readers (dimension-reviewer, test-lane-auditor, code-simplifier):
+#     `tools: Read, Bash`.
+#   - research agents that search the repo and write an evidence dossier
+#     (repo-research, learnings-research, repo-fact-lookup): `tools: Read,
+#     Bash, Write`.
+#   - web-research: `disallowedTools: Edit, NotebookEdit, Bash`. A denylist, so
+#     it keeps its Context7 MCP tools, whose names differ between plugin and
+#     standalone installs.
 #
-# WHAT THIS DOES NOT ENFORCE. Claude Code has no path-scoped `tools` form and
-# ignores frontmatter hooks for plugin-installed subagents, so the research
-# agents can still Write anywhere and code-simplifier can still run any Bash.
-# For those two tools the body sentence asserted below is the control, and the
-# plan records the residual (EN24, Decisions). Codex agent TOML has no tools
+# WHY BASH STAYS. Claude Code 2.1.312 exposes no Grep or Glob tool; all search
+# goes through Bash. The first cut of this unit gave readers `Read, Grep, Glob`
+# and denied research agents Bash, which on that host left them unable to
+# search at all (branch review, 2026-10-30). Every allowlist must therefore
+# keep a way to search, and that is asserted below.
+#
+# WHAT THIS DOES NOT ENFORCE. Claude Code has no path- or command-scoped
+# `tools` form and ignores frontmatter hooks for plugin-installed subagents, so
+# Bash can still write and the research agents can still Write anywhere. For
+# those the body sentence asserted below is the control. web-research's
+# denylist also leaves it any MCP tool the session has. Codex agent TOML has no tools
 # field at all. tests/install/codex-toml-agents.test.sh renders these same files
 # and owns that check; running it from here would cost six more minutes per suite.
 #
 # NEGATIVE CONTROLS (run by hand 2026-10-29, each turned the test red):
 #   - removed the `tools:` line from dimension-reviewer.md
 #   - added Edit to test-lane-auditor.md's `tools:` list
-#   - dropped NotebookEdit from repo-research.md's `disallowedTools:`
+#   - dropped NotebookEdit from web-research.md's `disallowedTools:`
+#   - set repo-research.md to `tools: Read, Write` (no way to search)
 #   - deleted the `/tmp/ensemble/` sentence from web-research.md
-#   - deleted the `git blame` sentence from code-simplifier.md
+#   - deleted the `Bash` sentence from code-simplifier.md
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -43,10 +52,10 @@ has_tool() {  # <comma list> <tool>
   printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qx "$2"
 }
 
-PURE="dimension-reviewer test-lane-auditor"
-RESEARCH="repo-research learnings-research web-research repo-fact-lookup"
-WRITE_SENTENCE='Use `Write` only to `/tmp/ensemble/'
-BASH_SENTENCE='Use `Bash` only for `git blame`, `git log` and `git show`'
+READERS="dimension-reviewer test-lane-auditor code-simplifier"
+RESEARCH="repo-research learnings-research repo-fact-lookup"
+WRITE_SENTENCE='`Write` only to `/tmp/ensemble/'
+BASH_SENTENCE='Use `Bash` only to read'
 
 checked=0
 for f in "$REPO_ROOT"/skills/*/agents/*.md; do
@@ -61,9 +70,15 @@ for f in "$REPO_ROOT"/skills/*/agents/*.md; do
   tools="$(fm "$f" tools)"; deny="$(fm "$f" disallowedTools)"
 
   if [ -n "$tools" ]; then
-    bad=""; for t in Edit Write NotebookEdit Bash; do has_tool "$tools" "$t" && bad="$bad $t"; done
-    [ -z "$bad" ] && pass "$rel: tools allowlist grants no mutating tool" \
-      || fail "$rel: tools allowlist grants no mutating tool" "grants:$bad"
+    bad=""; for t in Edit NotebookEdit; do has_tool "$tools" "$t" && bad="$bad $t"; done
+    case "$tools" in *mcp__*) bad="$bad mcp" ;; esac
+    [ -z "$bad" ] && pass "$rel: tools allowlist grants no edit or MCP tool" \
+      || fail "$rel: tools allowlist grants no edit or MCP tool" "grants:$bad"
+    { has_tool "$tools" Bash || has_tool "$tools" Grep; } \
+      && pass "$rel: the allowlist keeps a way to search" \
+      || fail "$rel: the allowlist keeps a way to search" "got: $tools; a host without a Grep tool searches through Bash"
+    grep -qiF "$BASH_SENTENCE" "$f" && pass "$rel: body limits Bash to reading" \
+      || fail "$rel: body limits Bash to reading" "missing: $BASH_SENTENCE"
   elif [ -n "$deny" ]; then
     has_tool "$deny" Edit && has_tool "$deny" NotebookEdit \
       && pass "$rel: disallowedTools removes Edit and NotebookEdit" \
@@ -73,26 +88,23 @@ for f in "$REPO_ROOT"/skills/*/agents/*.md; do
     continue
   fi
 
-  case " $PURE " in *" $name "*)
-    assert_eq "Read, Grep, Glob" "$tools" "$rel: pure reader carries exactly Read, Grep, Glob" ;;
+  case " $READERS " in *" $name "*)
+    assert_eq "Read, Bash" "$tools" "$rel: reader carries exactly Read, Bash" ;;
   esac
   case " $RESEARCH " in *" $name "*)
-    has_tool "$deny" Bash && pass "$rel: research agent has no Bash" || fail "$rel: research agent has no Bash" "got: $deny"
+    assert_eq "Read, Bash, Write" "$tools" "$rel: research agent carries exactly Read, Bash, Write" ;;
+  esac
+  case " $RESEARCH web-research " in *" $name "*)
     grep -qF "$WRITE_SENTENCE" "$f" && pass "$rel: body limits Write to the dossier directory" \
       || fail "$rel: body limits Write to the dossier directory" "missing: $WRITE_SENTENCE" ;;
   esac
-  if [ "$name" = code-simplifier ]; then
-    has_tool "$deny" Write && pass "$rel: code-simplifier has no Write" || fail "$rel: code-simplifier has no Write" "got: $deny"
-    grep -qF "$BASH_SENTENCE" "$f" && pass "$rel: body limits Bash to git history reads" \
-      || fail "$rel: body limits Bash to git history reads" "missing: $BASH_SENTENCE"
-  fi
 done
 [ "$checked" -ge 13 ] && pass "found all $checked read-only agent files" \
   || fail "found the 13 read-only agent files" "only $checked matched"
 
 # Copies of one agent stay byte-identical, so a restriction cannot land in one.
-for n in $PURE $RESEARCH code-simplifier; do
-  sums=$(for f in "$REPO_ROOT"/skills/*/agents/"$n".md; do cksum < "$f"; done | sort -u | wc -l | tr -d ' ')
+for n in $READERS $RESEARCH web-research; do
+  sums=$(for f in "$REPO_ROOT"/skills/*/agents/"$n".md; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
   assert_eq 1 "$sums" "every copy of $n is byte-identical"
 done
 
@@ -105,7 +117,7 @@ echo '{"agent_effort_claude_evidence":"medium","agent_effort_claude_ceiling":"hi
 assert_exit_code 0 $? "setup --copy with effort keys exits 0"
 rr="$H/.claude/agents/repo-research.md"
 assert_eq "medium" "$(fm "$rr" effort)" "rendered repo-research carries the injected effort"
-assert_eq "Edit, NotebookEdit, Bash" "$(fm "$rr" disallowedTools)" "rendered repo-research keeps its disallowedTools"
-assert_eq "Read, Grep, Glob" "$(fm "$H/.claude/agents/dimension-reviewer.md" tools)" "rendered dimension-reviewer keeps its tools"
+assert_eq "Read, Bash, Write" "$(fm "$rr" tools)" "rendered repo-research keeps its tools"
+assert_eq "Read, Bash" "$(fm "$H/.claude/agents/dimension-reviewer.md" tools)" "rendered dimension-reviewer keeps its tools"
 
 report

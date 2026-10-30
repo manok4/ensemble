@@ -5,6 +5,7 @@
 
 ## Verdict handling
 
+- Before acting on any verdict, `approve` included, check the paraphrase (below): an approving peer whose summary shows a goal no unit covers still leaves a host finding to apply before the status flip.
 - On `approve` → exit; go to the status flip. On `reject` → pause, surface, leave `status: draft`, no re-loop. A timeout or malformed JSON after one retry behaves the same way.
 - On `revise` → walk findings, apply / defer / disagree per `references/peer-brief.md`, each application a surgical edit to the plan file, never a rewrite of it. Record each in `peer_review_resolutions:` (entry schema in `references/templates/plan-template.md`) and keep the narrative iteration log in sync. Run `bin/ensemble-lint --scope <plan-path>` so a broken citation surfaces now, not at promotion. Then re-invoke with a `## Previous review context` section assembled into a tempfile **from `peer_review_resolutions:`, never from the iteration-log prose**, passed as `--iteration-context-file <path>`, with `--plan-before` naming the copy of the plan taken before the first edit (`references/peer-pass.md`). The builder renders the unit and byte counts and a diff capped at 200 lines, and the peer flags any growth no applied finding required, at P2, so it cannot start a third pass.
 

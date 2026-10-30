@@ -85,7 +85,7 @@ rationale. `applied` does not, because the change itself is the record.
 
 Rejecting a finding follows four rules:
 
-1. A `disagreed` rationale cites something the peer could read: a `file:line`, a plan section or unit, or a decision ID (`D<N>`).
+1. A `disagreed` rationale cites something the peer could read: a `file:line`, a plan section or unit, or a decision ID (`D<N>`). A user's answer to an escalation is recorded as `user decision <date>` and counts as that evidence.
 2. When the evidence exists only outside that, such as a verbal decision or a team convention, the status is `escalated`, and the rationale names what the user must decide. An escalation joins a question the run already asks, or is listed in the run report; it never adds a stop and never blocks.
 3. A host that thinks a finding's severity is wrong disagrees with the finding and says why; it never lowers the severity silently.
 4. Context is not added to an artifact only to satisfy a reviewer that lacked it; escalate instead.

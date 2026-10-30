@@ -28,7 +28,7 @@ cd "$REPO_ROOT"
 # --- the schema: five carriers, identical, each documenting both fields ---
 n=$(ls skills/*/references/finding-schema.md | wc -l | tr -d ' ')
 assert_eq 5 "$n" "finding-schema.md has five carriers"
-sums=$(for f in skills/*/references/finding-schema.md; do cksum < "$f"; done | sort -u | wc -l | tr -d ' ')
+sums=$(for f in skills/*/references/finding-schema.md; do hash_file "$f"; done | sort -u | wc -l | tr -d ' ')
 assert_eq 1 "$sums" "every finding-schema.md copy is byte-identical"
 S=skills/en-review/references/finding-schema.md
 grep -q '^| `status` | optional |' "$S" && grep -q 'absent means `complete`' "$S" \

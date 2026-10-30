@@ -238,8 +238,8 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 - `unit.category-enum` — `category:` must be one of the documented values when present.
 - `peer-review-resolutions.schema` — each entry must carry `finding_id`, `iteration`, `severity`, `title`, `status`. `rationale` required when `status` is `deferred | disagreed | superseded | escalated`.
 - `unit.destructive-order` — a `risk: destructive` unit listed before a non-destructive one. Irreversible work runs last, so everything reversible is proven first (D108).
-- `unit.files-missing` (P1) — a `(modify)` or `(delete)` path that does not exist and that no earlier unit marks `(create)`. Skipped for completed plans, whose files may since have moved.
-- `unit.files-unmarked` (P2) — Files paths with no marker; reported once per plan, naming the count and the first unit.
+- `unit.files-missing` (P1): a `(modify)` or `(delete)` path that does not exist and that no earlier unit marks `(create)`. Skipped for completed plans, whose files may since have moved.
+- `unit.files-unmarked` (P2): Files paths with no marker; reported once per plan, naming the count and the first unit.
 
 ## Lifecycle
 

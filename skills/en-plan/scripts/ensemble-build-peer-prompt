@@ -166,15 +166,20 @@ fi
 
 # Optional, re-review only: what the applied fixes changed. Counts alone cannot
 # tell an added section from a rewritten one, so the peer gets the diff too,
-# capped so a large rewrite cannot crowd out the plan itself (EN24 U7).
+# capped so a large rewrite cannot crowd out the plan itself (EN24 U7). Only the
+# plan body is compared: the frontmatter and the iteration log change on every
+# pass as bookkeeping, and would spend the cap on hunks no finding asked for.
 PLAN_CHANGES=""
 if [ -n "$PLAN_BEFORE" ]; then
   [ -n "$ITERATION_CONTEXT_FILE" ] || { echo "--plan-before needs --iteration-context-file: plan changes exist only on a re-review" >&2; exit 2; }
   { [ -f "$PLAN_BEFORE" ] && [ -r "$PLAN_BEFORE" ]; } || { echo "plan-before file not readable: $PLAN_BEFORE" >&2; exit 2; }
   CHANGES_TMP=$(mktemp -d) || exit 2
   trap 'rm -rf "$CHANGES_TMP"' EXIT
-  if [ -n "$ARTIFACT_FILE" ]; then AFTER="$ARTIFACT_FILE"; else AFTER="$CHANGES_TMP/after"; printf '%s\n' "$ARTIFACT_BODY" > "$AFTER"; fi
-  diff -u -L "plan (last pass)" -L "plan (now)" "$PLAN_BEFORE" "$AFTER" > "$CHANGES_TMP/diff"
+  plan_body() { awk 'NR==1 && /^---$/ { fm=1; next } fm { if (/^---$/) fm=0; next } /^## Iteration log/ { exit } { print }' "$1"; }
+  plan_body "$PLAN_BEFORE" > "$CHANGES_TMP/before"
+  if [ -n "$ARTIFACT_FILE" ]; then plan_body "$ARTIFACT_FILE"; else printf '%s\n' "$ARTIFACT_BODY" | plan_body /dev/stdin; fi > "$CHANGES_TMP/after"
+  BEFORE="$CHANGES_TMP/before"; AFTER="$CHANGES_TMP/after"
+  diff -u -L "plan (last pass)" -L "plan (now)" "$BEFORE" "$AFTER" > "$CHANGES_TMP/diff"
   total=$(wc -l < "$CHANGES_TMP/diff" | tr -d ' ')
   if [ "$total" -eq 0 ]; then
     hunks="No changes."
@@ -183,8 +188,8 @@ if [ -n "$PLAN_BEFORE" ]; then
     [ "$total" -gt 200 ] && hunks=$(printf '%s\n(%s lines not shown)' "$hunks" "$((total - 200))")
   fi
   PLAN_CHANGES=$(printf '\n## Plan changes since the last pass\n\nUnits: %s before, %s now. Bytes: %s before, %s now.\n\n%s\n\nEach hunk should trace to a finding in the previous review context. Flag any added unit, component or section that no applied finding required. Severity P2.\n' \
-    "$(grep -c '^### U[0-9]' "$PLAN_BEFORE")" "$(grep -c '^### U[0-9]' "$AFTER")" \
-    "$(wc -c < "$PLAN_BEFORE" | tr -d ' ')" "$(wc -c < "$AFTER" | tr -d ' ')" "$hunks")
+    "$(grep -c '^### U[0-9]' "$BEFORE")" "$(grep -c '^### U[0-9]' "$AFTER")" \
+    "$(wc -c < "$BEFORE" | tr -d ' ')" "$(wc -c < "$AFTER" | tr -d ' ')" "$hunks")
 fi
 
 # Location hint and u_id field are artifact-type aware: a plan's findings anchor

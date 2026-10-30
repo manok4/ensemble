@@ -1250,9 +1250,7 @@ mk_tree() { mkdir -p "$TMP/bin" "$TMP/tests"; : > "$TMP/bin/ensemble-lint"; }
 setup_minimum; mk_tree
 files_unit 1 '`bin/ensemble-lint` (modify), `tests/new.test.sh` (create)' | files_plan EN70 open active
 files_lint
-echo "$output" | grep -q 'unit\.files-' \
-  && fail "marked existing and created paths fire nothing" "$(echo "$output" | grep 'unit\.files-')" \
-  || pass "marked existing and created paths fire nothing"
+assert_not_contains "$output" "unit.files-" "marked existing and created paths fire nothing"
 
 setup_minimum; mk_tree
 files_unit 1 '`bin/does-not-exist` (modify)' | files_plan EN71 open active
@@ -1264,9 +1262,7 @@ echo "$output" | grep -q '\[P1\] unit.files-missing.*U1.*bin/does-not-exist' \
 setup_minimum; mk_tree
 { files_unit 1 '`tests/made.test.sh` (create)'; files_unit 2 '`tests/made.test.sh` (modify)'; } | files_plan EN72 open active
 files_lint
-echo "$output" | grep -q 'unit\.files-missing' \
-  && fail "a modify of a file an earlier unit creates passes" "$(echo "$output" | grep files-missing)" \
-  || pass "a modify of a file an earlier unit creates passes"
+assert_not_contains "$output" "unit.files-missing" "a modify of a file an earlier unit creates passes"
 
 setup_minimum; mk_tree
 { files_unit 2 '`tests/later.test.sh` (modify)'; files_unit 3 '`tests/later.test.sh` (create)'; } | files_plan EN73 open active
@@ -1293,15 +1289,38 @@ echo "$output" | grep -q '\[P2\] unit.files-unmarked.*5 Files path.*first in U1'
 setup_minimum; mk_tree
 printf '### U1. Unit\n\n- **Goal:** x\n- **Risk:** low\n- **Category:** other\n- **Gated:** false\n- **Files:**\n  - `src/x.ts` (new)\n  - `bin/ensemble-lint` (modify)\n- **Approach:** ok\n' | files_plan EN76 open active
 files_lint
-echo "$output" | grep -q 'unit\.files-' \
-  && fail "nested bullets parse, and (new) reads as (create)" "$(echo "$output" | grep 'unit\.files-')" \
-  || pass "nested bullets parse, and (new) reads as (create)"
+assert_not_contains "$output" "unit.files-" "nested bullets parse, and (new) reads as (create)"
+
+# Branch review, 2026-10-30: a built (delete) removes the path its own plan
+# names, so existence is checked only while the plan is a proposal.
+setup_minimum; mk_tree
+files_unit 1 '`bin/old-tool` (delete)' | files_plan EN78 in_progress active
+files_lint
+assert_not_contains "$output" "unit.files-missing" "an in_progress plan whose (delete) already ran fires nothing"
+
+# A backticked span later in an entry is description, not an unmarked path;
+# an annotation may follow the marker inside its parentheses.
+setup_minimum; mk_tree
+printf '### U1. Unit\n\n- **Goal:** x\n- **Risk:** low\n- **Category:** other\n- **Gated:** false\n- **Files:**\n  - `bin/ensemble-lint` (modify): adds the `--fast` flag\n  - `bin/new-tool` (new, executable)\n- **Approach:** ok\n' | files_plan EN79 open active
+files_lint
+assert_not_contains "$output" "unit.files-" "description spans and annotated markers fire nothing"
+
+# A (modify) glob is satisfied by a file an earlier unit creates, and not by
+# one only a later unit creates.
+setup_minimum; mk_tree
+{ files_unit 1 '`src/made.ts` (create)'; files_unit 2 '`src/*.ts` (modify)'; } | files_plan EN80 open active
+files_lint
+assert_not_contains "$output" "unit.files-missing" "a glob matching an earlier unit's creation passes"
+setup_minimum; mk_tree
+{ files_unit 1 '`src/*.ts` (modify)'; files_unit 2 '`src/made.ts` (create)'; } | files_plan EN81 open active
+files_lint
+echo "$output" | grep -q '\[P1\] unit.files-missing.*before the unit that creates it' \
+  && pass "a glob matched only by a later creation is P1" \
+  || fail "a glob matched only by a later creation is P1" "$output"
 
 setup_minimum; mk_tree
 files_unit 1 '`src/gone.ts` (modify)' | files_plan EN77 completed completed
 files_lint
-echo "$output" | grep -q 'unit\.files-' \
-  && fail "a completed plan's since-deleted path fires nothing" "$(echo "$output" | grep 'unit\.files-')" \
-  || pass "a completed plan's since-deleted path fires nothing"
+assert_not_contains "$output" "unit.files-" "a completed plan's since-deleted path fires nothing"
 
 report

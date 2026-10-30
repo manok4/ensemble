@@ -812,24 +812,32 @@ check_plan_unit_test_scenarios() {
 }
 
 # --- Helper: one line per Files: path, "uid|path|marker" in plan order ---
-# Paths are the backticked spans of the Files field, inline or in nested
-# bullets; a value with no backticks is split on commas. The marker is the
+# A path is a backticked span that opens an entry: the start of a nested
+# bullet, or the start of a comma-separated item on the inline line. A span
+# later in the entry is description (`bin/x` (modify): adds the `--fast` flag),
+# not a path. A value with no backticks is split on commas. The marker is the
 # parenthesised word right after the path: create, modify or delete, with new
-# read as create. Anything else, or nothing, is an empty marker.
+# read as create, and an annotation may follow it inside the parentheses
+# ((new, executable)). Anything else, or nothing, is an empty marker.
 extract_unit_files() {
   awk '
-    function marker(rest) {
-      if (match(rest, /^[[:space:]]*\((create|modify|delete|new)\)/)) {
-        m = substr(rest, RSTART, RLENGTH); gsub(/[[:space:]()]/, "", m)
+    function marker(rest,   m) {
+      if (match(rest, /^[[:space:]]*\((create|modify|delete|new)[),;:]/)) {
+        m = substr(rest, RSTART, RLENGTH); gsub(/[^a-z]/, "", m)
         return (m == "new") ? "create" : m
       }
       return ""
     }
-    function take(s,   p, rest, n, i, parts, t) {
+    function take(s,   p, lead, rest, n, i, parts, t, m) {
       if (index(s, "`")) {
         while (match(s, /`[^`]+`/)) {
-          p = substr(s, RSTART + 1, RLENGTH - 2); rest = substr(s, RSTART + RLENGTH)
-          printf "%s|%s|%s\n", uid, p, marker(rest)
+          p = substr(s, RSTART + 1, RLENGTH - 2); lead = substr(s, 1, RSTART - 1)
+          rest = substr(s, RSTART + RLENGTH)
+          if (lead ~ /^[[:space:],]*$/) {
+            m = marker(rest)
+            printf "%s|%s|%s\n", uid, p, m
+            if (m != "") rest = substr(rest, index(rest, ")") + 1)
+          }
           s = rest
         }
         return
@@ -860,15 +868,26 @@ extract_unit_files() {
 # created only by a later unit is reported as modified before it is created.
 # (create) paths are never checked: proposed files are not findings.
 # Completed plans are skipped: they predate the markers, and the files they
-# name may since have moved.
+# name may since have moved. Existence is checked only while the plan is a
+# proposal (draft or open): once the build starts, a unit's own (delete), or a
+# later unit's, removes a path the plan still correctly names.
+files_match() {  # <newline list> <path or glob> -> 0 when any listed path matches
+  local c
+  while IFS= read -r c; do
+    # shellcheck disable=SC2053 # the right side is a pattern on purpose
+    [ -n "$c" ] && [[ "$c" == $2 ]] && return 0
+  done <<< "$1"
+  return 1
+}
 check_plan_unit_files() {
   case "$1" in docs/plans/active/*.md) ;; *) return 0 ;; esac
-  local file="$1" rows uid path mark created="" later="" unmarked=0 first_unmarked=""
-  [ "$(extract_frontmatter "$file" | awk '/^status:/{sub(/^status:[[:space:]]*/,""); print; exit}')" = "completed" ] && return 0
+  local file="$1" rows uid path mark created="" all_created="" unmarked=0 first_unmarked="" status
+  status="$(get_field "$file" status)"
+  [ "$status" = "completed" ] && return 0
   rows=$(extract_unit_files "$file")
   [ -z "$rows" ] && return 0
   while IFS='|' read -r uid path mark; do
-    [ "$mark" = create ] && later="${later}${uid}|${path}
+    [ "$mark" = create ] && all_created="${all_created}${path}
 "
   done <<< "$rows"
   while IFS='|' read -r uid path mark; do
@@ -880,10 +899,11 @@ check_plan_unit_files() {
         created="${created}${path}
 " ;;
       modify|delete)
-        # shellcheck disable=SC2086 # a glob path must expand
+        case "$status" in ""|draft|open) ;; *) continue ;; esac
+        # compgen -G expands a glob path itself; -e covers a literal one.
         if compgen -G "$path" >/dev/null 2>&1 || [ -e "$path" ]; then continue; fi
-        printf '%s' "$created" | grep -qxF -- "$path" && continue
-        if printf '%s' "$later" | cut -d'|' -f2- | grep -qxF -- "$path"; then
+        files_match "$created" "$path" && continue
+        if files_match "$all_created" "$path"; then
           emit "unit.files-missing" "$file" "" "P1" \
             "Unit $uid marks \`$path\` ($mark) before the unit that creates it" \
             "Units build in plan order: move the creating unit earlier, or mark the path (create) here"

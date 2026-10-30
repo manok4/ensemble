@@ -370,7 +370,7 @@ if mkdiff 1 1 | cprompt --max-diff-bytes lots >/dev/null 2>&1; then fail "a non-
 # Counts alone cannot tell an added section from a rewritten one, so the
 # builder renders the counts and a capped unified diff, and only on a re-review.
 PB=$(mktemp -d)
-printf '## Previous review context (iteration 1)\nApplied: 1-1 — Missing test\n' > "$PB/ctx"
+printf '## Previous review context (iteration 1)\nApplied: 1-1, Missing test\n' > "$PB/ctx"
 printf '# Plan\n\n### U1. One\n\nbody\n' > "$PB/before"
 printf '# Plan\n\n### U1. One\n\nbody\n\n## Rollout\n\nship it\n' > "$PB/after"
 pb() { "$BIN" --brief "$REPO_ROOT/skills/en-plan/references/peer-brief.md" --project-context X --goal Y "$@"; }
@@ -395,6 +395,13 @@ long=$(pb --artifact-file "$PB/long-after" --iteration-context-file "$PB/ctx" --
 total=$(diff -u "$PB/long-before" "$PB/long-after" | wc -l | tr -d ' ')
 assert_contains "$long" "($((total - 200)) lines not shown)" "[plan-before] a long diff is capped at 200 lines and says how much was cut"
 assert_eq 200 "$(printf '%s\n' "$long" | sed -n '/^```diff$/,/^```$/p' | sed '1d;$d' | wc -l | tr -d ' ')" "[plan-before] exactly 200 diff lines are rendered"
+
+# Frontmatter and the iteration log are bookkeeping on every pass: a change
+# confined to them is no change to the plan.
+printf -- '---\npeer_review_iterations: 1\n---\n# Plan\n\n### U1. One\n\nbody\n\n## Iteration log\n\n> pass 1\n' > "$PB/fm-before"
+printf -- '---\npeer_review_iterations: 2\n---\n# Plan\n\n### U1. One\n\nbody\n\n## Iteration log\n\n> pass 1\n> pass 2\n' > "$PB/fm-after"
+fmonly=$(pb --artifact-file "$PB/fm-after" --iteration-context-file "$PB/ctx" --plan-before "$PB/fm-before")
+assert_contains "$fmonly" "No changes." "[plan-before] frontmatter and iteration-log bookkeeping is not a plan change"
 
 pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx" --plan-before /nonexistent/plan.md >/dev/null 2>"$PB/err"
 assert_exit_code 2 $? "[plan-before] an unreadable before-file exits 2"

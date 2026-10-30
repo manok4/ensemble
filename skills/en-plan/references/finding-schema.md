@@ -38,7 +38,7 @@ Canonical JSON shape returned by every reviewer agent and every Outside Voice pe
 |---|---|---|
 | `verdict` | yes | Top-level decision. `approve` = nothing material; `revise` = walk findings; `reject` = pause and surface to user. |
 | `peer_mode` | yes when peer-call | Echo of the mode the host passed in (`cross-agent` or `single-agent-fallback`). Reviewer agents that aren't peer calls omit this field. |
-| `summary` | yes | 2–3 sentences. The host renders this in progress reports verbatim. |
+| `summary` | yes | 2–3 sentences. The host renders this in progress reports verbatim. A skill's peer brief may ask for a paraphrase of the artifact here instead of an assessment. |
 | `findings` | yes | Array; can be empty when verdict = approve. |
 | `findings[].severity` | yes | `P0`–`P3` as defined in `references/peer-contract.md`. |
 | `findings[].confidence` | yes | Integer 1–10. <5 should be suppressed unless severity is P0. |

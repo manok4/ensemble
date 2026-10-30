@@ -44,6 +44,9 @@ grep -qE '^4\. Context is not added to an artifact only to satisfy a reviewer' "
   && pass "rule 4: no context added only for the reviewer" || fail "rule 4: no context added only for the reviewer"
 
 # --- every other enum site ---
+grep -qF '`applied` · `deferred` · `disagreed` · `superseded` · `escalated`' skills/en-plan/CONTRACT.md \
+  && pass "en-plan's CONTRACT.md lists escalated among the statuses callers branch on" \
+  || fail "en-plan's CONTRACT.md lists escalated among the statuses callers branch on"
 for t in skills/en-plan/references/templates/plan-template.md skills/en-foundation/references/templates/plan-template.md; do
   grep -qF 'status: applied | deferred | disagreed | superseded | escalated' "$t" \
     && pass "$t: the resolution schema lists escalated" || fail "$t: the resolution schema lists escalated"
@@ -57,6 +60,14 @@ for b in skills/*/scripts/ensemble-build-peer-prompt; do
     && pass "$b: the peer is told not to re-flag an escalation" \
     || fail "$b: the peer is told not to re-flag an escalation"
 done
+# What the peer actually receives: en-plan's re-review prompt, built from a
+# context that lists an escalation, tells it not to re-flag one.
+CTX=$(mktemp); printf 'Escalated: 1-2, Team convention on X (user to confirm)\n' > "$CTX"
+built=$(printf 'plan v2\n' | bash skills/en-plan/scripts/ensemble-build-peer-prompt --brief skills/en-plan/references/peer-brief.md \
+  --project-context X --goal Y --artifact-stdin --iteration-context-file "$CTX")
+rm -f "$CTX"
+assert_contains "$built" "Escalated: 1-2" "the built re-review prompt carries the escalation"
+assert_contains "$built" "marks applied, deferred, disagreed or escalated" "the built re-review prompt tells the peer not to re-flag it"
 # script-parity lists the builder as a per-artifact variant, so nothing else
 # holds the two code-review copies together.
 cmp -s skills/en-review/scripts/ensemble-build-peer-prompt skills/en-test-audit/scripts/ensemble-build-peer-prompt \
@@ -113,9 +124,14 @@ EOF
 }
 mk '    rationale: team convention on X, user to confirm'
 out=$(cd "$TMP" && "$REPO_ROOT/bin/ensemble-lint" --scope docs/plans/active 2>&1)
+assert_contains "$out" "ensemble-lint" "lint ran over the fixture"
 assert_not_contains "$out" "peer-review-resolutions.schema" "lint accepts escalated with a rationale"
 mk ''
 out=$(cd "$TMP" && "$REPO_ROOT/bin/ensemble-lint" --scope docs/plans/active 2>&1)
 assert_contains "$out" "has status 'escalated' but no rationale" "lint refuses escalated without a rationale"
+mk '    rationale: close enough'
+sed -i.bak 's/status: escalated$/status: escalated-ish/' "$TMP/docs/plans/active/EN90-improvement_esc.md"
+out=$(cd "$TMP" && "$REPO_ROOT/bin/ensemble-lint" --scope docs/plans/active 2>&1)
+assert_contains "$out" "Use one of: applied, deferred, disagreed, superseded, escalated" "lint refuses a status near escalated, naming the five"
 
 report

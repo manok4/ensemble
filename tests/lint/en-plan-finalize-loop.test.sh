@@ -96,6 +96,9 @@ fi
 grep -qF 'A host finding never re-invokes the peer by itself' "$PLAN" \
   && pass "a host paraphrase finding never re-invokes the peer" \
   || fail "a host paraphrase finding never re-invokes the peer" "it would be a re-review trigger the latency rule forbids"
+grep -qF 'Before acting on any verdict, `approve` included, check the paraphrase' "$PLAN" \
+  && pass "the paraphrase is checked before an approve exits the loop" \
+  || fail "the paraphrase is checked before an approve exits the loop" "an approving peer could skip it"
 grep -qF "a goal no unit covers is check A's **P1**" "$PLAN" \
   && pass "an uncovered goal is P1 under check A, not capped at P2" \
   || fail "an uncovered goal is P1 under check A, not capped at P2"
