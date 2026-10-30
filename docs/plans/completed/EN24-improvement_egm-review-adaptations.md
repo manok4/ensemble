@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN24
 title: Adapt the useful parts of the Elephant-Goldfish Model into review and planning
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-10-29
-shipped:
+shipped: 2026-10-30
 deepened:
 covers_requirements: []
 requirements_pending: false
@@ -499,6 +499,15 @@ Each unit has a stable U-ID. Never renumbered after assignment.
 - **Risk:** A `disallowedTools` or `tools` line the installed Claude Code version does not understand could stop an agent launching. **Mitigation:** U1's integration scenario installs into a temp HOME; U10 Case 2 confirms a real launch.
 - **Risk:** Research agents keep `Write` and `code-simplifier` keeps `Bash`, so U1 does not make them read-only (peer finding 1-1). **Mitigation:** each body names the one permitted use; en-guardrail's Bash hook still applies inside subagents. **Alternative rejected:** per-agent `PreToolUse` hooks limiting `Write` to `/tmp/ensemble/` and `Bash` to `git blame|log|show`. Claude Code ignores frontmatter hooks for plugin-installed subagents, the hook command would need an install-path-dependent location, and a Bash allowlist needs a real parser per the guardrail lessons; that is more machinery than this gap warrants today.
 - **Risk:** The bundled-definition fallback in `references/agent-dispatch.md` (a lone skill directory with no registered agent) passes the definition as a prompt, where frontmatter is not enforced. **Mitigation:** none in this plan; the registered path is the normal one. Recorded so the gap is visible.
+
+## As built (2026-10-30)
+
+Deviations from the units above, each recorded in its commit:
+
+- **U1** shipped as allowlists that keep Bash: readers carry `tools: Read, Bash`, the repo research agents `tools: Read, Bash, Write`, web-research keeps its denylist. Claude Code 2.1.312 exposes no Grep or Glob tool, so the planned `Read, Grep, Glob` left agents unable to search (branch review). The allowlists also drop every MCP tool; Bash stays bounded by prose.
+- **U4** skips both Files rules on completed plans, and checks existence only while a plan is draft or open: lint exits non-zero on any finding, and a built (delete) removes a path its own plan names.
+- **U8** put en-review's rule in `references/mutation-protocol.md`, not `SKILL.md`, which had 52 bytes left under its budget. `script-parity` does not pin the code-review builder copies, so the new test does.
+- **U10** case 2 tests the shipped tools line against `Write`, with a neutral probe body. Codex results after the review are unrecorded: every Codex call timed out on the re-run.
 
 ## Iteration log
 
