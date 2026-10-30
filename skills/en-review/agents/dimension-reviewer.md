@@ -43,7 +43,12 @@ without special-casing you.
 Each finding carries `severity` (P0–P3), `confidence` (1–10), `title`,
 `location`, `why_it_matters`, and `suggested_fix`.
 
-**Return an empty findings array when you find nothing.** A dimension that fires
+**If you could not read your inputs, say so.** When the diff file or a reference
+your prompt names cannot be read, return `"status": "incomplete"`, the paths in
+`"unreadable"`, and `"findings": []`. An empty array from a review that never saw
+the diff reads as a clean pass.
+
+**Return an empty findings array when you read your inputs and find nothing.** A dimension that fires
 and reports nothing is a result. Padding a thin review with low-confidence
 observations makes every future review cheaper to ignore.
 
