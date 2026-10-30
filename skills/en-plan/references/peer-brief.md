@@ -24,6 +24,8 @@ G. Stated assumptions. Flag anything the plan bets on without saying so, especia
 H0. Decisions left to the implementer. Flag a unit buildable only after the implementer chooses a schema, API path or signature, dependency, or edge-case or error policy the plan does not fix. P1 when the open choice changes a signature another unit consumes, or is a bet the plan states nowhere; P2 otherwise. Either way, the fix names the decision to write in.
 H. Builds more than the goal needs. Flag work that serves the goal but is bigger than the goal needs: a unit or design element for a future or speculative need, caching, queues or partitioning with no stated bottleneck, configuration nobody asked for, an abstraction the plan gives a single caller. A unit that serves no stated goal is not H; report it under A, at A's severity. H leaves the right thing built, so it is P2 when cutting it removes a unit or component and P3 otherwise. Reuse is not part of H: you have no repo access.
 
+`summary`, for a plan, is what this plan builds, in your own words, 2-3 sentences: not an overall assessment. The host compares it with the plan's Context and Goals, and a paraphrase that misses a goal shows the gap better than a verdict sentence does.
+
 ### Severity on a plan
 
 The wire scale is `references/peer-contract.md`; this is what each level means when the artifact is a plan, so the routing below has something to route on. Severity is set by impact and evidence alone. There is no quota and no per-unit ratio: a cap would demote real P1s and would bias the counts the loop-cap decision reads.

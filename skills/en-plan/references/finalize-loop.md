@@ -8,6 +8,10 @@
 - On `approve` → exit; go to the status flip. On `reject` → pause, surface, leave `status: draft`, no re-loop. A timeout or malformed JSON after one retry behaves the same way.
 - On `revise` → walk findings, apply / defer / disagree per `references/peer-brief.md`, each application a surgical edit to the plan file, never a rewrite of it. Record each in `peer_review_resolutions:` (entry schema in `references/templates/plan-template.md`) and keep the narrative iteration log in sync. Run `bin/ensemble-lint --scope <plan-path>` so a broken citation surfaces now, not at promotion. Then re-invoke with a `## Previous review context` section assembled into a tempfile **from `peer_review_resolutions:`, never from the iteration-log prose**, passed as `--iteration-context-file <path>`.
 
+## Checking the paraphrase
+
+For a plan review the peer's `summary` is a paraphrase of what the plan builds (`references/peer-brief.md`), not an assessment, and progress reports label it as a paraphrase. After parsing, compare it with the plan's Context and each unit's Goal. A mismatch the plan's wording caused is a host finding, `finding_id` `<iteration>-h<index>`, fixed by editing the plan and recorded like any other: a goal no unit covers is check A's **P1**, a wording or framing gap **P2**. A mismatch from the peer misreading goes in the iteration log only. A host finding never re-invokes the peer by itself; the re-review runs only on the peer's own P0/P1, as below.
+
 ## Severity gate on the re-loop
 
 Re-invoke **only if at least one finding this pass was `P0` or `P1`**. A pass returning only `P2`/`P3` applies what is cheap, records the rest, and exits with `reloop_skipped: advisory-only`; a second full pass to confirm a typo fix is not worth its latency.

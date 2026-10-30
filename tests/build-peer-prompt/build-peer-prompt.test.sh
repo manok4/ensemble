@@ -79,6 +79,10 @@ assert_contains "$hh" "caching, queues or partitioning with no stated bottleneck
 assert_contains "$hh" "A unit that serves no stated goal is not H; report it under A, at A's severity." "[plan] goal-less units route to check A"
 assert_not_contains "$hh" "never P1" "[plan] check H carries no cap"
 
+# EN24 U6: a plan peer's summary is a paraphrase the host checks against the
+# goals; a code peer's is still an assessment.
+assert_contains "$out" "is what this plan builds, in your own words" "[plan] summary is a paraphrase of the plan"
+
 if echo "$out" | grep -q "fake plan body"; then
   pass "[cross-agent/plan] artifact body included"
 else
@@ -127,6 +131,8 @@ if echo "$out2" | grep -q "### correctness"; then
 else
   fail "[code/single] code dimensions missing"
 fi
+assert_not_contains "$out2" "is what this plan builds, in your own words" "[code] summary stays an assessment"
+
 if echo "$out2" | grep -q "Plan review dimensions:"; then
   fail "[code/single] plan dimensions leaked into a code review"
 else
