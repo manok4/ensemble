@@ -112,7 +112,7 @@ recorded with `emit`, like everything else; the call points are the table below.
 
 | Kind | Keys | Call point |
 |---|---|---|
-| `outcome` | `verdict`, `findings_total`, `peer_only`, `corroborated`, `host_only`, `applied`, `deferred`, `disagreed` | `/en-review`, after reconciliation, in its output-report step |
+| `outcome` | `verdict`, `findings_total`, `peer_only`, `corroborated`, `host_only`, `applied`, `deferred`, `disagreed`, `escalated` (only when above zero; absent means zero) | `/en-review`, after reconciliation, in its output-report step |
 | `dispatch` | `agent`, `host`, `model`, `model_source`, `started`, `ended` | `/en-plan` and `/en-build`, once each research or persona agent returns |
 | `findings` | `iteration`, `P0`, `P1`, `P2`, `P3` | `/en-plan`, after parsing each peer pass's findings |
 | `lint` | `scope`, `seconds` | `/en-plan` and `/en-build`, after each lint run |
