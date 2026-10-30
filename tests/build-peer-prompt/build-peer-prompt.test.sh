@@ -65,6 +65,13 @@ else
   fail "[cross-agent/plan] plan-specific block missing"
 fi
 
+# EN24 U3: the peer checks for decisions a unit leaves to the implementer, at
+# impact-based severity. A brief that capped H0 at P2 would demote a missing
+# cross-unit signature, which is P1 everywhere else in the brief.
+h0=$(printf '%s\n' "$out" | grep '^H0\. Decisions left to the implementer\.')
+assert_contains "$h0" "P1 when the open choice changes a signature another unit consumes, or is a bet the plan states nowhere" "[plan] H0 is P1 for a cross-unit signature or an unstated bet"
+assert_contains "$h0" "P2 otherwise" "[plan] H0 is P2 otherwise"
+
 if echo "$out" | grep -q "fake plan body"; then
   pass "[cross-agent/plan] artifact body included"
 else

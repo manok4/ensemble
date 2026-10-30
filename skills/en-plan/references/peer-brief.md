@@ -21,6 +21,7 @@ D. risk: correctness. Cross-check against each unit's approach (DROP/TRUNCATE/ma
 E. Ordering violations (a `risk: destructive` unit listed before a non-destructive one).
 F. gated: correctness. gated is for production-state-changing units only (customer-facing flag flips, production backfills, real-side-effect 3rd-party APIs, API contract breaks, production config changes). Flag gated:true on an internal/UI rename, refactor, test addition, or new code behind an off flag — over-gating trains users to autopilot through prompts and erodes signal value. Equally flag missing gated:true on units that DO change production state.
 G. Stated assumptions. Flag anything the plan bets on without saying so, especially claims that something does not already exist.
+H0. Decisions left to the implementer. Flag a unit buildable only after the implementer chooses a schema, API path or signature, dependency, or edge-case or error policy the plan does not fix. P1 when the open choice changes a signature another unit consumes, or is a bet the plan states nowhere; P2 otherwise. Either way, the fix names the decision to write in.
 
 ### Severity on a plan
 
