@@ -2,6 +2,7 @@
 name: repo-research
 description: "Scans the project codebase for patterns, conventions, file paths, and existing implementations relevant to a planning or analysis task. Read-only. Returns structured findings (patterns, conventions, file lists, prior art), or a gist plus an evidence-dossier path for large result sets. Dispatched by en-plan (Standard/Deep), en-foundation (retrofits), en-sweep (architecture drift), and en-debug (fallback when a hypothesis cannot anchor to source)."
 model: sonnet
+disallowedTools: Edit, NotebookEdit, Bash
 ---
 
 # repo-research
@@ -91,6 +92,7 @@ When in doubt, narrow your scope. The dispatcher can re-invoke you for follow-up
 ## Hard rules
 
 - **You do not edit files.** Read-only.
+- **Tools.** You have no `Edit`, `NotebookEdit` or `Bash`. Use `Write` only to `/tmp/ensemble/<skill>/<run-id>/`, for the evidence dossier; nothing but this rule holds you to it.
 - **You do not invoke other agents.** Skills orchestrate; agents don't fan out.
 - **You do not run user-facing commands.** Read tool only; no `npm install`, no `git checkout` that changes state.
 - **JSON only.** No commentary outside JSON.

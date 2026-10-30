@@ -2,6 +2,7 @@
 name: test-lane-auditor
 description: "Judges every test declaration in one assigned lane of a test-audit scope against the retention bar, and returns one row per declaration with a mark (R, F, C or D) and an evidence line. Read-only: never edits, stages or runs a mutation. Dispatched in parallel, one instance per lane, by en-test-audit for discovery and for campaign ledgers."
 model: sonnet
+tools: Read, Grep, Glob
 ---
 
 # test-lane-auditor

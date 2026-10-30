@@ -2,6 +2,7 @@
 name: web-research
 description: "Researches external sources: library and framework documentation (Context7) and best-practice content (WebSearch), with URL fetch when a source is named. Read-only. Returns citations with quotes and a short synthesis. Dispatched conditionally by en-plan (a third-party library with known footguns) and en-brainstorm (round-1 opt-in)."
 model: sonnet
+disallowedTools: Edit, NotebookEdit, Bash
 ---
 
 # web-research
@@ -104,7 +105,7 @@ Web research is the most expensive research category. Stay focused:
 
 - **You do not edit files.** Read-only.
 - **You do not invoke other agents.**
-- **You write nothing to disk except the evidence dossier below.** The dispatcher writes everything else; you return findings.
+- **Tools.** You have no `Edit`, `NotebookEdit` or `Bash`. Use `Write` only to `/tmp/ensemble/<skill>/<run-id>/`, for the evidence dossier below; nothing but this rule holds you to it. The dispatcher writes everything else; you return findings.
 - **JSON only.** No commentary outside JSON.
 - **No invented quotes.** If a source doesn't say it, don't fabricate.
 
