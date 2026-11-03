@@ -1,0 +1,27 @@
+{
+  "skill": "en-resolve-pr",
+  "positive": [
+    {
+      "prompt": "Reviewers left feedback on my PR, go through the comments and fix them",
+      "top_k": 3
+    },
+    {
+      "prompt": "Resolve the open review threads on pull request 212",
+      "top_k": 3
+    },
+    {
+      "prompt": "Handle the CodeRabbit comments on this PR and reply to each",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Open a PR for this branch",
+      "owner": "en-ship"
+    },
+    {
+      "prompt": "Do a code review of my changes",
+      "owner": "en-review"
+    }
+  ]
+}

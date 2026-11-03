@@ -1,0 +1,28 @@
+{
+  "skill": "en-ship",
+  "positive": [
+    {
+      "prompt": "Commit this and open a PR",
+      "top_k": 3
+    },
+    {
+      "prompt": "Ship it: push the branch and create the pull request",
+      "top_k": 3
+    },
+    {
+      "prompt": "Send this for review on GitHub",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Review my changes before I push",
+      "owner": "en-review",
+      "known_gap": "'review', 'changes' and 'push' appear in both descriptions; the order of intent is semantic"
+    },
+    {
+      "prompt": "Fix the review comments on the open PR",
+      "owner": "en-resolve-pr"
+    }
+  ]
+}

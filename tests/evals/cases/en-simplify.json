@@ -1,0 +1,27 @@
+{
+  "skill": "en-simplify",
+  "positive": [
+    {
+      "prompt": "Simplify this module, it works but it's hard to read",
+      "top_k": 3
+    },
+    {
+      "prompt": "Tidy up the branch diff before I open the PR",
+      "top_k": 3
+    },
+    {
+      "prompt": "Do a refactor pass to remove duplication without changing behaviour",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Find the bug that makes totals off by a cent",
+      "owner": "en-debug"
+    },
+    {
+      "prompt": "Review my branch for correctness issues",
+      "owner": "en-review"
+    }
+  ]
+}

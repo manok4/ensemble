@@ -1,0 +1,27 @@
+{
+  "skill": "en-plan",
+  "positive": [
+    {
+      "prompt": "Write up a plan before we build the CSV export",
+      "top_k": 3
+    },
+    {
+      "prompt": "Turn this bug report into implementation units with risk levels",
+      "top_k": 3
+    },
+    {
+      "prompt": "I want a peer-reviewed plan for the auth refactor before any code",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Build the plan we approved yesterday",
+      "owner": "en-build"
+    },
+    {
+      "prompt": "Help me think through two designs for notifications",
+      "owner": "en-brainstorm"
+    }
+  ]
+}

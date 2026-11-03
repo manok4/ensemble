@@ -1,0 +1,27 @@
+{
+  "skill": "en-brainstorm",
+  "positive": [
+    {
+      "prompt": "I'm torn between a queue and a cron job for this, can we weigh the options?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Before we commit to anything, help me explore a few approaches to offline sync",
+      "top_k": 3
+    },
+    {
+      "prompt": "What would it look like if we let users bring their own storage bucket?",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Write the implementation plan with units for the export feature",
+      "owner": "en-plan"
+    },
+    {
+      "prompt": "Review the diff on my branch before I merge",
+      "owner": "en-review"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "skill": "en-foundation",
+  "positive": [
+    {
+      "prompt": "We're starting a new product, write the PRD and the architecture doc",
+      "top_k": 3
+    },
+    {
+      "prompt": "This repo has no foundation doc yet, retrofit one from the code",
+      "top_k": 3
+    },
+    {
+      "prompt": "Draft the product requirements and technical direction for the app",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Plan the next feature for the billing page",
+      "owner": "en-plan"
+    },
+    {
+      "prompt": "Record that we chose Postgres over Mongo and why",
+      "owner": "en-learn"
+    }
+  ]
+}

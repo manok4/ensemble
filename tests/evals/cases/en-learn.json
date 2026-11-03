@@ -1,0 +1,27 @@
+{
+  "skill": "en-learn",
+  "positive": [
+    {
+      "prompt": "Capture what we learned about the flaky cache test so the next agent knows",
+      "top_k": 3
+    },
+    {
+      "prompt": "Save this decision to the knowledge store: we retry webhooks at most three times",
+      "top_k": 3
+    },
+    {
+      "prompt": "Check the health of our learnings wiki and fix broken links",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Explore whether we should move to event sourcing",
+      "owner": "en-brainstorm"
+    },
+    {
+      "prompt": "Address the comments reviewers left on my pull request",
+      "owner": "en-resolve-pr"
+    }
+  ]
+}

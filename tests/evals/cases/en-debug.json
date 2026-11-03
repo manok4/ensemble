@@ -1,0 +1,27 @@
+{
+  "skill": "en-debug",
+  "positive": [
+    {
+      "prompt": "Checkout fails in production with a 500, find out why",
+      "top_k": 3
+    },
+    {
+      "prompt": "This error started yesterday, trace the stack and tell me the root cause",
+      "top_k": 3
+    },
+    {
+      "prompt": "Walk the logs for request id 4f2a and explain what went wrong",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Clean up the nested conditionals in this module without changing behaviour",
+      "owner": "en-simplify"
+    },
+    {
+      "prompt": "Click through the signup flow in a browser and confirm it works",
+      "owner": "en-qa"
+    }
+  ]
+}

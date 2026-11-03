@@ -47,6 +47,8 @@ for f in "$@"; do
     # A test file always selects itself.
     tests/*.test.sh|tests/*/*.test.sh)
         add "$(basename "$f" .test.sh)" ;;
+    # The ranker, its cases and the graders select their own tests.
+    tests/evals/*) add "trigger"; add "grade" ;;
     tests/lib/*|tests/run.sh|tests/select-for.sh)
         # The harness itself, and this file: nothing is safe to approximate when
         # the thing that runs or selects tests is what changed. --print must
@@ -56,7 +58,7 @@ for f in "$@"; do
     # A skill's own tests are named after it, and every skill change can move
     # the payload, the size budget or a parity hash.
     skills/*/SKILL.md|skills/*/CONTRACT.md)
-        s=${f#skills/}; add "${s%%/*}"; skills_touched=true ;;
+        s=${f#skills/}; add "${s%%/*}"; add "trigger"; skills_touched=true ;;
     skills/*/scripts/*)
         add "$(basename "$f")"; s=${f#skills/}; add "${s%%/*}"; skills_touched=true ;;
     skills/*/references/*|skills/*/agents/*)

@@ -1,0 +1,27 @@
+{
+  "skill": "en-build",
+  "positive": [
+    {
+      "prompt": "Go ahead and implement the plan in docs/plans/active, unit by unit",
+      "top_k": 3
+    },
+    {
+      "prompt": "Start building EN12 now that the plan is approved",
+      "top_k": 3
+    },
+    {
+      "prompt": "Execute the approved plan and commit each unit",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Break this feature into units before anyone writes code",
+      "owner": "en-plan"
+    },
+    {
+      "prompt": "Open a pull request for what's on this branch",
+      "owner": "en-ship"
+    }
+  ]
+}

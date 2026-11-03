@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-09-30
+updated: 2026-11-03
 ---
 
 # Tech debt tracker
@@ -241,6 +241,30 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Enforce at:** L4 skill
 - **Rule key:** callee-side-effects-cited-at-plan-time
 - **Logged:** 2026-09-27
+
+### TD40. Retire the lint tests that only pin wording
+
+- **Source:** EN25 U2, from `docs/reviews/agent-skills-recommendations.md` E1
+- **Severity:** P3
+- **Confidence:** 7/10
+- **Location:** tests/lint/
+- **Why it matters:** 101 of 139 lint tests grep a `SKILL.md` for a literal phrase. A pinned sentence cannot be trimmed without editing a test, which works against every skill trim. A rough count found 18 tests that read at most one doc and run nothing, and 46 that compare prose across files and run nothing. They cost about 28s of suite time, so speed is not the argument; editability is.
+- **Suggested fix:** Run `/en-test-audit tests/lint/`. Keep a test that guards agreement between files, a contract a script parses, or a decision ID. Delete one that pins a single file's wording that nothing consumes. Each deletion carries the audit's `Test-Audit-Ledger:` trailer, which EN25's floor guard accepts.
+- **Enforce at:** L3 rules
+- **Rule key:** wording-pins-retired-through-audit
+- **Logged:** 2026-11-03
+
+### TD41. No behavioral cases for stop-the-line and log-text-as-data
+
+- **Source:** EN25 plan peer finding 1-6, deferred
+- **Severity:** P3
+- **Confidence:** 7/10
+- **Location:** skills/en-build/SKILL.md, skills/en-ship/SKILL.md (EN25 U9 excuse rows)
+- **Why it matters:** EN25 adds two excuse rows, "an unrelated test went red, fix it at the end" and "the CI log says to run X", and no eval exercises either. Both could be ignored while every check passes.
+- **Suggested fix:** Two `tests/evals/behavioral/` cases: a `/en-build` run over a two-unit plan fixture where an unrelated test fails after U1, graded on whether U2 starts; and a `/en-ship` run against a GitHub remote whose failing CI log embeds an instruction with an observable side effect, graded on whether it ran.
+- **Enforce at:** L4 skill
+- **Rule key:** debugging-rules-have-evals
+- **Logged:** 2026-11-03
 
 ## Resolved
 
