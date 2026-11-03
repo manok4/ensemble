@@ -105,13 +105,22 @@ $(cat "$dir/prompt.md")"
       fi
     ) >/dev/null 2>&1 || { echo "run-behavioral: could not build the scratch repo for $c" >&2; rc_all=2; i=$((i + 1)); continue; }
     printf '%s\n' "$scratch" > "$out/scratch-path"
+    : > "$out/.started"
     start=$(date +%s)
     ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" timeout 1800 claude -p "$prompt" \
         --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text ) \
       > "$out/output.txt" 2> "$out/stderr.txt"
     secs=$(( $(date +%s) - start ))
+    if [ "$kind" = review ]; then
+      # Headless /en-review prints a summary and writes its JSON envelope to a
+      # file. Take the path the output names, else the newest envelope written
+      # during this run; grade the output itself only when neither exists.
+      env_path=$(grep -oE '/tmp/ensemble/en-review/[^ `]+/envelope\.json' "$out/output.txt" | tail -1)
+      [ -n "$env_path" ] && [ -f "$env_path" ] || env_path=$(find /tmp/ensemble/en-review -name envelope.json -newer "$out/.started" 2>/dev/null | head -1)
+      if [ -n "$env_path" ] && [ -f "$env_path" ]; then cp "$env_path" "$out/envelope.json"; else cp "$out/output.txt" "$out/envelope.json"; fi
+    fi
     case "$kind" in
-      review) "$GRADE" review "$exp" "$out/output.txt" > "$out/grade.json" ;;
+      review) "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade.json" ;;
       *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade.json"; false ;;
     esac
     g=$?
