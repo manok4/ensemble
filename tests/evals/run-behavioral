@@ -4,7 +4,10 @@
 # so tests/run.sh never calls this (it is not named *.test.sh).
 #
 # Usage:
-#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--dry-run]
+#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--no-mcp] [--dry-run]
+#
+# --no-mcp runs the session with no MCP servers (an empty --mcp-config, strict),
+# so a case can check what a skill does when Context7 is unavailable.
 #
 # Each case is tests/evals/behavioral/<case>/ holding prompt.md, expect.json
 # (the v1 contract in tests/evals/grade) and base/ (or base_from). A review case
@@ -29,16 +32,17 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 CASES="$HERE/behavioral"
 GRADE="$HERE/grade"
 
-usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--dry-run]" >&2; exit 2; }
+usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--no-mcp] [--dry-run]" >&2; exit 2; }
 
 [ $# -ge 1 ] || usage
 target="$1"; shift
-mode=""; runs=3; dry=0
+mode=""; runs=3; dry=0; mcp_flags=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) [ $# -ge 2 ] || usage; mode="$2"; shift 2 ;;
     --runs) [ $# -ge 2 ] || usage; runs="$2"; shift 2 ;;
     --dry-run) dry=1; shift ;;
+    --no-mcp) mcp_flags="--strict-mcp-config --mcp-config {\"mcpServers\":{}}"; shift ;;
     *) usage ;;
   esac
 done
@@ -93,7 +97,7 @@ $(cat "$dir/prompt.md")"
       echo "== $c run $i (kind $kind${case_mode:+, mode $case_mode})"
       echo "   scratch: copy $(printf '%s' "$base" | sed "s|$ROOT/||") -> git init -b main, commit"
       [ "$kind" = review ] && echo "   then: branch feature, overlay $(printf '%s' "$dir/change" | sed "s|$ROOT/||"), commit"
-      echo "   claude -p <prompt> --plugin-dir $ROOT --permission-mode bypassPermissions --output-format text"
+      echo "   claude -p <prompt> --plugin-dir $ROOT --permission-mode bypassPermissions --output-format text${mcp_flags:+ $mcp_flags}"
       printf '%s\n' "$prompt" | sed 's/^/   | /'
       i=$((i + 1)); continue
     fi
@@ -111,7 +115,7 @@ $(cat "$dir/prompt.md")"
     : > "$out/.started"
     start=$(date +%s)
     ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" timeout 1800 claude -p "$prompt" \
-        --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text ) \
+        --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text $mcp_flags ) \
       > "$out/output.txt" 2> "$out/stderr.txt"
     secs=$(( $(date +%s) - start ))
     if [ "$kind" = review ]; then

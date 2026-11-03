@@ -97,7 +97,7 @@ assert_exit_code 1 "$rc" "output with no envelope fails"
 assert_contains "$out" "no-envelope" "and says so, never recall 0 with exit 0"
 
 # --- the case contract ---------------------------------------------------------------
-for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure; do
+for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure fix-docs-grounding fix-internal-only; do
   "$G" validate "$CASES/$c" >/dev/null; assert_exit_code 0 "$?" "case $c is valid"
 done
 mk() { rm -rf "$T/case"; mkdir -p "$T/case/base"; echo p > "$T/case/prompt.md"; printf '%s\n' "$1" > "$T/case/expect.json"; }
@@ -115,6 +115,8 @@ out=$(PATH="$T/nobin:/usr/bin:/bin" "$RB" review-logic --dry-run --runs 1 2>&1);
 assert_exit_code 0 "$rc" "a dry run succeeds without claude on PATH"
 assert_contains "$out" "--plugin-dir" "the dry run prints the exact claude command"
 assert_contains "$out" "/ensemble:en-review --mode headless --base main --peer" "with the plugin-qualified invocation and mode"
+out=$("$RB" fix-docs-grounding --dry-run --runs 1 --no-mcp 2>&1)
+assert_contains "$out" "--strict-mcp-config" "--no-mcp runs the session with no MCP servers"
 
 # --- grade fix: revert the source, keep the tests -------------------------------------
 fixrepo() {  # $1=name $2=variant -> path. main: a counter that adds 1; variant edits the branch

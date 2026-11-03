@@ -84,6 +84,8 @@ Host review findings:
 | `Fixes: #<n>` | Closes a GitHub issue |
 | `Addresses peer finding: <title>` | Inline in body, not a trailer; cited when a peer finding was applied |
 | `Reverts: <commit-sha>` | Standard conventional-commits revert |
+| `Docs: <library>@<version> <source>` | The docs a library call was checked against: a Context7 id, a URL, a source file, or `unverified` (`/en-fix`, `/en-build`) |
+| `Floor-Exception: <move> <path>: <reason>` | A floor-guard move the user approved, with their reason (`references/floor-guard.md`) |
 
 ## What NOT to include
 

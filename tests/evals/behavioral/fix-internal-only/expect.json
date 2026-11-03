@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "base_from": "fix-plain",
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test",
+  "trailers": [
+    {
+      "key": "Docs",
+      "absent": true
+    }
+  ]
+}
