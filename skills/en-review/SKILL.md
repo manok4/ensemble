@@ -148,3 +148,14 @@ Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}
 | Mode is `report-only` but `safe_auto` would apply | Note "Would apply N safe_auto fixes (skipped — report-only mode)" in summary; don't apply |
 | Re-verification fails after applying findings | Revert; surface to user; do not commit |
 | Verification pass peer times out or returns malformed JSON | `verification_pass: not-run (peer-failure)`; the initial verdict stands, flagged as unverified |
+
+## Excuses
+
+Each row is an excuse an agent reaches for at this skill's weak points, with the answer.
+
+| Excuse | Answer |
+|---|---|
+| "The peer timed out, so the review is clean." | A failed peer is `peer: "off"` with its reason. Report it as that, never as a clean pass. |
+| "I'm unsure, but a higher confidence makes it stick." | Inflated confidence moves a weak finding into the tier people act on. |
+| "It's a real bug, but P2 sounds less harsh." | Severity follows impact. A softened P1 is a wrong answer, not a kind one. |
+| "Host and peer disagree, so drop it." | Disagreement is the `conflicting` bucket, and it goes to the user. |

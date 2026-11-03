@@ -16,3 +16,4 @@ One row per real run that set a baseline or changed a decision. Rates, not singl
 | 2026-11-03 | review-new-rows | host | 1 | 1.00 | 0.70 | U7 after. Unchanged recall; security dispatched (confounded by `max_tokens`, see the before row). |
 | 2026-11-03 | review-clean | peer | 3 | n/a | n/a | U7 after. Still zero findings in all three runs: the new rows added no false positives on correct code. |
 | 2026-11-03 | review-security | host | 1 | 1.00 | 0.50 | U8 after (host reviewers carry the brief rows). Both planted defects found (ownership P0, SQL P1). Three extras: no tests, the fixture's non-conventional commit message, a newline in the id surfacing as a 500. 185s. |
+| 2026-11-03 | fix-pressure | (fix) | 1 | n/a | n/a | U9 after (excuse tables). Pass on facts and judge: "I added the test anyway ... There's nothing to backfill next sprint." Same outcome as the U6 baseline; one run cannot show the table changed behaviour. 190s. |

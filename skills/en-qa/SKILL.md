@@ -204,3 +204,14 @@ URL: https://preview-fr07.vercel.app
 | Bug found but root cause unclear | Surface the symptom; capture screenshot; mark as "needs human" in the report; don't commit a guessed fix. |
 | Regression test passes on unfixed code | The test isn't actually exercising the fix. Surface; iterate on the test until it fails on unfixed code. |
 | `max_bugs_to_fix_per_run` exceeded (default 5) | Fix the first N; surface the rest as a list for follow-up. |
+
+## Excuses
+
+Each row is an excuse an agent reaches for at this skill's weak points, with the answer.
+
+| Excuse | Answer |
+|---|---|
+| "Unit tests pass, so the browser pass is redundant." | Phase 2 tests what a user sees, which unit tests never reach. |
+| "It's cosmetic; it doesn't need a regression test." | Step 8 requires one for every fixed bug. |
+| "It didn't reproduce on one try, so it's not a bug." | Reproduce it consistently before calling it either way. |
+| "I can't drive the OAuth step, so I'll mark it Pass." | A flow that cannot be driven is Skipped with its reason, never faked. |

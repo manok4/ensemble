@@ -143,3 +143,15 @@ Execute a plan, unit by unit. **The host implements every unit**: the session ru
 | Unit verification fails (9d) | Fix and re-run. **After two failed attempts on the same unit, stop** — show the output and ask: retry, skip the unit, or abort. Guessing a third time is how a unit gets "fixed" by weakening its test. |
 | A 9f checkpoint fails | Stop. Do **not** enter the gated or destructive unit it was guarding. Surface failing tests; offer investigate / `--commit-wip` / abort. |
 | Ctrl-C or abort mid-unit | **Stop cleanly. No signal-time git operations.** Surface branch, current unit, dirty files, last successful commit and the resume command (`--from U<N>`). WIP capture is opt-in via `--commit-wip`, never automatic. |
+
+## Excuses
+
+Each row is an excuse an agent reaches for at this skill's weak points, with the answer.
+
+| Excuse | Answer |
+|---|---|
+| "Tests pass; I'll fix lint in the next unit." | 9e commits only after 9d exits 0 on the same tree. |
+| "This pre-existing bug blocks the unit, so I'll fix it here." | The unit's scope is the deliverable. Note it and follow up, unless the unit cannot work without it. |
+| "The plan is thin here; I'll improvise." | Stop and ask, per the failure protocol. A guessed reading passes tests written to match the guess. |
+| "The selected tests passed, so the suite is fine." | The selection is approximate. 10.4 runs the full suite, and only that run counts. |
+| "A test outside this unit went red; I'll fix it at the end." | Stop the line. Every unit built after an unexplained failure stands on it. Fix it now, or stop and surface it. |

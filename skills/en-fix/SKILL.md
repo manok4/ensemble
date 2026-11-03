@@ -69,3 +69,15 @@ Every stop leaves the branch as it is and names the next command. Every stop, an
 - **Never ships unreviewed work.** The Receipt gate is the check, not this sentence.
 - **Never auto-merges** unless `--auto-merge` was passed.
 - **Never writes Linear state or comments.**
+
+## Excuses
+
+Each row is an excuse an agent reaches for at this skill's weak points, with the answer.
+
+| Excuse | Answer |
+|---|---|
+| "The bug is obvious; the test is ceremony." | Step 6's red run is the only proof the fix touched the bug, and the receipt gate refuses without it. |
+| "The new test passed on its first run." | `red` exits `red-test-passed`: the test does not capture the bug. Rewrite it until it fails on the unfixed code. |
+| "While I'm here, this nearby code needs tidying." | A drive-by. Record it as a follow-up or a `TD<N>`, never in this diff. |
+| "Triage said small, so the risk re-check can go." | Step 7 exists because a migration or a contract change can appear only once the code exists. |
+| "`--lite` review found nothing, so it is safe." | Lite runs fewer reviewers. Its silence is weaker evidence than a full review, and the receipt gate still runs. |
