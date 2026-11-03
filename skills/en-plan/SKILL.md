@@ -72,7 +72,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Tightly-coupled changes batch into one unit; independent concerns split. Auth, payments and migrations always get their own unit even when small.
    - **Never renumber after assignment** (per `references/stable-ids.md`).
 
-   **Wide refactors are the exception to all of the above**, because one mechanical change whose blast radius fans across the codebase cannot be a single unit that lands green. Sequence it expand → migrate → contract per `references/wide-refactors.md`, which owns the batching and the risk split.
+   **Wide refactors are the exception to all of the above**, because one mechanical change whose blast radius fans across the codebase cannot be a single unit that lands green. Sequence it expand → migrate → contract per `references/wide-refactors.md`, which owns the batching and the risk split. A breaking schema change (a rename, a type change, a dropped column) is the same exception, with the concurrency-safe sequence in that file's *Breaking schema changes* section.
 
 9. **Per-unit metadata.** `references/templates/plan-template.md` carries every field, its enum and the test-scenario categories; fill each unit from there. Four calls it cannot make for you:
 

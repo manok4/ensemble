@@ -181,8 +181,12 @@ assert_exit_code 1 "$rc" "a unit listed after its before target fails"
 assert_contains "$out" "U3 is not before U2" "and names the order"
 pcheck "$P" '[{"unit_matching":"drain","before":"backfill"}]'
 assert_contains "$out" "unit-not-found drain" "a unit pattern matching nothing fails as unit-not-found"
-pcheck "$P" '[{"unit_matching":"dual","before":"column"}]'
-assert_contains "$out" "unit-ambiguous column" "a before pattern matching two units fails as unit-ambiguous"
+pcheck "$P" '[{"unit_matching":"expand","before":"column"}]'
+assert_exit_code 0 "$rc" "with several matches, before compares the first unit of each pattern"
+pcheck "$P" '[{"unit_matching":"column","before":"expand"}]'
+assert_contains "$out" "U2 is not before U1" "and fails when the first match comes later"
+pcheck "$P" '[{"unit_matching":"column","risk":"destructive"}]'
+assert_contains "$out" "U2 risk is medium, want destructive" "risk must hold for every matching unit"
 pcheck "$P" '[{"unit_matching":"expand","must_contain":["Interfaces:"]}]'
 assert_exit_code 1 "$rc" "a matching unit missing a required string fails"
 assert_contains "$out" "U1 missing" "and names the unit"

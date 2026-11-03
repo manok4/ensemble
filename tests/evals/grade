@@ -330,32 +330,30 @@ def grade_plan(expect_path, repo):
                 res["why"].append("plan missing %s" % missing)
         elif not idx:
             res["why"].append("unit-not-found %s" % c["unit_matching"])
-        elif positional and len(idx) > 1:
-            res["why"].append("unit-ambiguous %s: %s" % (c["unit_matching"], ", ".join(units[i][0] for i in idx)))
         else:
-            # A content check passes when any matching unit carries every string;
-            # a positional check needs exactly one unit to be about.
+            # Real plans split one step across units ("API writes both columns",
+            # "job writes both columns"), so a pattern may match several. Content
+            # passes when any matching unit carries every string; `before` compares
+            # the FIRST unit of each pattern (the step starts in the right order);
+            # `last` takes the last matching unit; `risk` must hold for every match.
             def carries(i):
                 return all(m.lower() in units[i][2].lower() for m in c.get("must_contain") or [])
-            hits = [i for i in idx if carries(i)]
-            if not hits:
+            if c.get("must_contain") and not any(carries(i) for i in idx):
                 res["why"].append("%s missing %s" % (",".join(units[i][0] for i in idx), c.get("must_contain")))
-            target = (hits or idx)[0]
             if "risk" in c:
-                m = re.search(r"\*\*Risk:\*\*\s*(\w+)", units[target][2])
-                got = m.group(1) if m else None
-                if got != c["risk"]:
-                    res["why"].append("%s risk is %s, want %s" % (units[target][0], got, c["risk"]))
-            if c.get("last") and target != len(units) - 1:
-                res["why"].append("%s is not the last unit" % units[target][0])
+                for i in idx:
+                    m = re.search(r"\*\*Risk:\*\*\s*(\w+)", units[i][2])
+                    got = m.group(1) if m else None
+                    if got != c["risk"]:
+                        res["why"].append("%s risk is %s, want %s" % (units[i][0], got, c["risk"]))
+            if c.get("last") and idx[-1] != len(units) - 1:
+                res["why"].append("%s is not the last unit" % units[idx[-1]][0])
             if "before" in c:
                 other = find_units(units, c["before"])
                 if not other:
                     res["why"].append("unit-not-found %s" % c["before"])
-                elif len(other) > 1:
-                    res["why"].append("unit-ambiguous %s: %s" % (c["before"], ", ".join(units[i][0] for i in other)))
-                elif not target < other[0]:
-                    res["why"].append("%s is not before %s" % (units[target][0], units[other[0]][0]))
+                elif not idx[0] < other[0]:
+                    res["why"].append("%s is not before %s" % (units[idx[0]][0], units[other[0]][0]))
         res["pass"] = not res["why"]
         reasons += res["why"]
         checks.append(res)

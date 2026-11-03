@@ -46,7 +46,7 @@ A review run passes when recall meets `bars.min_recall` (default 1.0), every `pe
 - **`last`:** the unit comes last in the plan.
 - **`before`:** the unit precedes the one matching that regex.
 
-The positional checks (`risk`, `last`, `before`) need exactly one matching unit. Plan cases run `/en-plan --no-peer`, and the prompt tells it to take its recommended answers, since nobody answers questions in a headless run. The judge reads the session output and the plan file together.
+A pattern may match several units, because real plans split one step across units. `before` compares the first unit each pattern matches, `last` takes the last match, and `risk` must hold for every match. Plan cases run `/en-plan --no-peer`, and the prompt tells it to take its recommended answers, since nobody answers questions in a headless run. The judge reads the session output and the plan file together.
 
 **The judge** rules only on what no fact can settle, such as "the reply did not agree to skip the test". The transcript goes to `claude -p` on stdin, fenced as untrusted data. A verdict counts only when its quoted evidence appears in the transcript. A run passes only when both the facts and the judge pass, and `grade.json` keeps each part separately.
 
