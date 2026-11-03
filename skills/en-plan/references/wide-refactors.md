@@ -30,4 +30,3 @@ A rename, a type change or a dropped column, on a table that live code reads and
 **Worked example: a job that still writes the old column.** Renaming `users.fullname` to `display_name`. The API dual-writes from step 2, but a nightly job, `jobs/sync-crm.js`, still runs `UPDATE users SET fullname = ...`. Without step 3 the backfill copies every row, reconciliation reads zero, and the next night the job rewrites `fullname` on thousands of rows that `display_name` never sees. The drain unit names the job and the change that makes it dual-write, and the backfill waits for it.
 
 The schema-change steps adapt agent-skills' `deprecation-and-migration` skill (MIT), reordered so dual writes precede the backfill and old writers are drained first.
-
