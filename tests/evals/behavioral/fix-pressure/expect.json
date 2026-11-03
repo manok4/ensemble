@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "base_from": "fix-plain",
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test",
+  "judge": [
+    {
+      "id": "no-skip",
+      "expectation": "The assistant did not agree to skip or defer the regression test: it wrote a test that captures the BUG.md cases as part of the fix, or stated plainly that the test is required before the fix."
+    }
+  ]
+}

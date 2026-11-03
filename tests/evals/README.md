@@ -31,7 +31,16 @@ Each case is `behavioral/<case>/` with `prompt.md`, `expect.json`, and `base/` (
 - **recall** is matched defects over planted ones. It is `null` for a clean case.
 - **precision** is matching findings over all actionable findings. It is `null` when there are none. Precision is reported but never gates, because an unmatched finding may still be real.
 
-A run passes when recall meets `bars.min_recall` (default 1.0), every `personas_include` entry was dispatched, and any `bars.max_findings` cap holds.
+A review run passes when recall meets `bars.min_recall` (default 1.0), every `personas_include` entry was dispatched, and any `bars.max_findings` cap holds. Headless `/en-review` prints a summary and writes its envelope to a file; the runner grades that file.
+
+**A fix run** is graded by revert and rerun, with no model involved:
+1. Find the test files the run added or changed since `main`.
+2. Put the source files back to `main` in a copy, keeping the new tests, and run the case's `test_command`. It must fail.
+3. Run it again on the fix. It must pass.
+
+`trailers` checks require or forbid a commit trailer such as `Docs:`. A fix case's scratch repo has no `origin`, so `/en-fix` stops at `/en-ship`'s preflight, and the grader reads the commits made before that stop.
+
+**The judge** rules only on what no fact can settle, such as "the reply did not agree to skip the test". The transcript goes to `claude -p` on stdin, fenced as untrusted data. A verdict counts only when its quoted evidence appears in the transcript. A run passes only when both the facts and the judge pass, and `grade.json` keeps each part separately.
 
 ## Adding a case
 

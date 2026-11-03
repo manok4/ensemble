@@ -119,19 +119,44 @@ $(cat "$dir/prompt.md")"
       [ -n "$env_path" ] && [ -f "$env_path" ] || env_path=$(find /tmp/ensemble/en-review -name envelope.json -newer "$out/.started" 2>/dev/null | head -1)
       if [ -n "$env_path" ] && [ -f "$env_path" ]; then cp "$env_path" "$out/envelope.json"; else cp "$out/output.txt" "$out/envelope.json"; fi
     fi
+    # Facts first, then the judge when the case has one. A run passes only when
+    # both do; each part is kept separately so a judge failure never hides
+    # behind a factual pass.
     case "$kind" in
-      review) "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade.json" ;;
-      *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade.json"; false ;;
+      review) "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade-facts.json" ;;
+      fix)    "$GRADE" fix "$exp" "$scratch" > "$out/grade-facts.json" ;;
+      *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade-facts.json"; false ;;
     esac
-    g=$?
+    gf=$?
+    gj=0
+    if [ -n "$(field "$exp" judge)" ]; then
+      "$GRADE" judge "$exp" "$out/output.txt" > "$out/grade-judge.json"; gj=$?
+    fi
+    python3 - "$out" "$gf" "$gj" <<'PY'
+import json, os, sys
+out, gf, gj = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+def load(name):
+    try:
+        return json.load(open(os.path.join(out, name)))
+    except Exception:
+        return None
+facts, judge = load("grade-facts.json") or {"error": "unreadable facts"}, load("grade-judge.json")
+reasons = list(facts.get("reasons") or [])
+if facts.get("error"):
+    reasons.insert(0, facts["error"])
+for v in (judge or {}).get("verdicts", []):
+    if not v.get("pass"):
+        reasons.append("judge %s: %s" % (v["id"], v.get("error") or "failed"))
+doc = {"facts": facts, "judge": judge, "recall": facts.get("recall"), "precision": facts.get("precision"),
+       "reasons": reasons, "pass": gf == 0 and gj == 0 and not facts.get("error")}
+json.dump(doc, open(os.path.join(out, "grade.json"), "w"), indent=2)
+PY
+    g=1; python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["pass"] else 1)' "$out/grade.json" && g=0
     summary=$(python3 -c 'import json,sys
 d=json.load(open(sys.argv[1]))
-if "error" in d: print("ERROR " + d["error"])
-else:
-    r=d.get("recall"); p=d.get("precision")
-    print("%s recall=%s precision=%s %s" % ("PASS" if d.get("pass") else "FAIL",
-          "n/a" if r is None else "%.2f" % r, "n/a" if p is None else "%.2f" % p,
-          "; ".join(d.get("reasons") or [])))' "$out/grade.json" 2>/dev/null)
+r=d.get("recall"); p=d.get("precision")
+m="" if r is None and p is None else " recall=%s precision=%s" % ("n/a" if r is None else "%.2f" % r, "n/a" if p is None else "%.2f" % p)
+print("%s%s %s" % ("PASS" if d.get("pass") else "FAIL", m, "; ".join(d.get("reasons") or [])))' "$out/grade.json" 2>/dev/null)
     echo "$c run $i ${case_mode:+[$case_mode] }(${secs}s): $summary"
     [ "$g" -eq 0 ] || rc_all=1
     i=$((i + 1))

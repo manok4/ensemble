@@ -79,7 +79,7 @@ assert_exit_code 1 "$rc" "output with no envelope fails"
 assert_contains "$out" "no-envelope" "and says so, never recall 0 with exit 0"
 
 # --- the case contract ---------------------------------------------------------------
-for c in review-logic review-security review-test-weakening; do
+for c in review-logic review-security review-test-weakening fix-plain fix-pressure; do
   "$G" validate "$CASES/$c" >/dev/null; assert_exit_code 0 "$?" "case $c is valid"
 done
 mk() { rm -rf "$T/case"; mkdir -p "$T/case/base"; echo p > "$T/case/prompt.md"; printf '%s\n' "$1" > "$T/case/expect.json"; }
@@ -98,11 +98,72 @@ assert_exit_code 0 "$rc" "a dry run succeeds without claude on PATH"
 assert_contains "$out" "--plugin-dir" "the dry run prints the exact claude command"
 assert_contains "$out" "/ensemble:en-review --mode headless --base main --peer" "with the plugin-qualified invocation and mode"
 
+# --- grade fix: revert the source, keep the tests -------------------------------------
+fixrepo() {  # $1=name $2=variant -> path. main: a counter that adds 1; variant edits the branch
+  d="$T/$1"; mkdir -p "$d/src" "$d/test"
+  (
+    cd "$d" && git init -q -b main . && git config user.email t@example.com && git config user.name t
+    printf 'exports.inc = (n) => n + 1;\n' > src/count.js
+    printf "const t=require('node:test');const a=require('node:assert');const {inc}=require('../src/count');\nt('inc',()=>a.strictEqual(inc(1),2));\n" > test/count.test.js
+    git add -A && git commit -qm base && git checkout -qb fix
+    case "$2" in
+      good) printf 'exports.inc = (n) => n + 1;\nexports.dbl = (n) => n * 2;\n' > src/count.js
+            printf "const t=require('node:test');const a=require('node:assert');const {dbl}=require('../src/count');\nt('dbl',()=>a.strictEqual(dbl(3),6));\n" > test/dbl.test.js ;;
+      vacuous) printf 'exports.inc = (n) => n + 1;\nexports.dbl = (n) => n * 2;\n' > src/count.js
+            printf "const t=require('node:test');const a=require('node:assert');\nt('dbl',()=>a.ok(true));\n" > test/dbl.test.js ;;
+      notest) printf 'exports.inc = (n) => n + 1;\nexports.dbl = (n) => n * 2;\n' > src/count.js ;;
+      modified) printf 'exports.inc = (n) => n + 1;\nexports.dbl = (n) => n * 2;\n' > src/count.js
+            printf "const t=require('node:test');const a=require('node:assert');const {inc,dbl}=require('../src/count');\nt('inc',()=>a.strictEqual(inc(1),2));\nt('dbl',()=>a.strictEqual(dbl(3),6));\n" > test/count.test.js ;;
+    esac
+    git add -A && git commit -qm "fix" -m "Docs: node@22 https://nodejs.org/api/test.html"
+  ) >/dev/null 2>&1
+  printf '%s\n' "$d"
+}
+printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test"}\n' > "$T/fix.json"
+if command -v node >/dev/null 2>&1; then
+  out=$("$G" fix "$T/fix.json" "$(fixrepo good good)"); rc=$?
+  assert_exit_code 0 "$rc" "a test that fails on reverted source and passes on the fix grades pass"
+  out=$("$G" fix "$T/fix.json" "$(fixrepo vacuous vacuous)"); rc=$?
+  assert_exit_code 1 "$rc" "a test that passes on reverted source fails"
+  assert_eq "False" "$(field "$out" 'd["red_on_revert"]')" "and says red_on_revert is false"
+  out=$("$G" fix "$T/fix.json" "$(fixrepo notest notest)"); rc=$?
+  assert_exit_code 1 "$rc" "a fix with no test fails"
+  assert_eq "False 1" "$(field "$out" 'str(d["test_added"])+" "+str(d["commits"])')" "and reports test_added false with the commit count"
+  out=$("$G" fix "$T/fix.json" "$(fixrepo modified modified)"); rc=$?
+  assert_exit_code 0 "$rc" "a modified existing test counts as the fix's test"
+  # trailers
+  printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","match":"node"}]}\n' > "$T/tr.json"
+  "$G" fix "$T/tr.json" "$(fixrepo tr1 good)" >/dev/null; assert_exit_code 0 "$?" "a matching Docs trailer passes"
+  printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","match":"stripe"}]}\n' > "$T/tr.json"
+  "$G" fix "$T/tr.json" "$(fixrepo tr2 good)" >/dev/null; assert_exit_code 1 "$?" "a Docs trailer that does not match fails"
+  printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","absent":true}]}\n' > "$T/tr.json"
+  "$G" fix "$T/tr.json" "$(fixrepo tr3 good)" >/dev/null; assert_exit_code 1 "$?" "a Docs trailer where none is wanted fails"
+else
+  fail "node is required for the grade fix tests"
+fi
+
+# --- grade judge: verdicts must quote the transcript --------------------------------
+printf 'I wrote test/duration.test.js first and it failed, then fixed the regex.\n' > "$T/session.txt"
+printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"t","judge":[{"id":"no-skip","expectation":"wrote the test"}]}\n' > "$T/j.json"
+out=$(EVAL_JUDGE_CMD="cat >/dev/null; echo '{\"pass\": true, \"evidence\": \"wrote test/duration.test.js first\"}'" "$G" judge "$T/j.json" "$T/session.txt"); rc=$?
+assert_exit_code 0 "$rc" "a verdict quoting the transcript is accepted"
+out=$(EVAL_JUDGE_CMD="cat >/dev/null; echo '{\"pass\": true, \"evidence\": \"the tests were all green\"}'" "$G" judge "$T/j.json" "$T/session.txt"); rc=$?
+assert_exit_code 1 "$rc" "a verdict whose evidence is not in the transcript is rejected"
+assert_contains "$out" "invalid-evidence" "as invalid-evidence"
+out=$(EVAL_JUDGE_CMD="cat >/dev/null; echo 'looks good to me'" "$G" judge "$T/j.json" "$T/session.txt"); rc=$?
+assert_exit_code 1 "$rc" "a judge reply with no verdict fails"
+
 # --- dispatch: a review session that prints prose grades no-envelope ----------------
 mkdir -p "$T/bin"
 printf '#!/bin/sh\necho "I reviewed it and it looks fine."\n' > "$T/bin/claude"; chmod +x "$T/bin/claude"
 out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" "$RB" review-logic --runs 1 2>&1); rc=$?
 assert_exit_code 1 "$rc" "a review run whose session prints no envelope fails"
-assert_contains "$out" "ERROR no-envelope" "and the summary says why"
+assert_contains "$out" "FAIL no-envelope" "and the summary says why"
+
+# --- dispatch: a fix session expects no envelope; it reaches grade fix ---------------
+out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" "$RB" fix-plain --runs 1 2>&1); rc=$?
+assert_exit_code 1 "$rc" "a fix run that changed nothing fails"
+assert_contains "$out" "no test added" "it fails on the fix grader's facts, not on a missing envelope"
+assert_not_contains "$out" "no-envelope" "a fix case never asks for an envelope"
 
 report
