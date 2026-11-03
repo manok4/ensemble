@@ -210,9 +210,11 @@ rcp_text=$(step_text "$rcp")
 grep -qF 'ensemble-verification-receipt" verify' <<<"$rcp_text" && grep -qF 'do not invoke `/en-ship`' <<<"$rcp_text" \
   && pass "a failed receipt stops the run before the ship" \
   || fail "step $rcp must verify the receipt and not invoke /en-ship on failure"
-grep -qF 'dropping `typecheck` when `AGENTS.md` declares no Typecheck command' <<<"$rcp_text" \
-  && pass "the receipt gate requires typecheck only where the project declares one" \
-  || fail "step $rcp must drop typecheck from --requires when none is declared"
+# A project with no linter could never pass the gate: nothing records a check
+# that has no command, so every run stopped at check-not-recorded.
+grep -qF 'dropping `lint` or `typecheck` when `AGENTS.md` declares no command for it' <<<"$rcp_text" \
+  && pass "the receipt gate requires lint and typecheck only where the project declares them" \
+  || fail "step $rcp must drop lint and typecheck from --requires when none is declared"
 [ -x "$REPO_ROOT/skills/en-fix/scripts/ensemble-verification-receipt" ] \
   && pass "the receipt script is carried and executable" \
   || fail "skills/en-fix/scripts/ensemble-verification-receipt must be carried and executable"
