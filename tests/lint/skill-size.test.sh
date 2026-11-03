@@ -6,7 +6,7 @@
 # 73 to 127 characters across the sixteen skills, so en-simplify at 87 lines was
 # 11KB and en-build at 439 lines was 56KB. What the model pays for is bytes.
 #
-# Budget: 24576 bytes (24KB, about 6K tokens) per SKILL.md.
+# Budget: 26624 bytes (26KB, about 6.5K tokens) per SKILL.md.
 #
 # Five skills were over it when this was written. They are pinned below at
 # their size that day, and a pinned skill may shrink but never grow. When a
@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 . "$REPO_ROOT/tests/lib/assert.sh"
 TEST_NAME="skill size budget"
 
-BUDGET=24576
+BUDGET=26624
 
 # skill  bytes  (over budget; may only shrink; delete the row when under)
 # Re-pinned 2026-09-08 after D107 moved en-build's post-build protocol to a
@@ -50,6 +50,12 @@ BUDGET=24576
 # six mechanical install steps replaced by one ensemble-scaffold call. Every
 # SKILL.md in the repo is under budget, so the next one over is a regression
 # rather than a legacy.
+#
+# The budget moved from 24576 to 26624 on 2026-11-03, for EN25. en-build,
+# en-review and en-plan sat 71, 14 and 322 bytes under it, and EN25 adds an
+# excuse table, a docs-grounding step and two planning pointers to them. The
+# user chose raising the budget over trimming each skill to make room. The
+# shrink-only baseline below is unchanged; only the ceiling moved.
 BASELINE='
 '
 
