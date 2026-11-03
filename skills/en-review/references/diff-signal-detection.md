@@ -1,6 +1,6 @@
 # Diff-signal detection
 
-Shared classification of a change's size and risk surface, consumed by `/en-review` (`--lite` gate, effort ladder) and `/en-qa` (browser-phase detector). One definition so the two skills can't drift apart.
+Shared classification of a change's size and risk surface, consumed by `/en-review` (`--lite` gate, effort ladder), `/en-qa` (browser-phase detector) and `/en-fix` (risk surface at triage and on the real diff). One definition so the skills can't drift apart.
 
 > **Fail-closed is the contract.** Every classification below defaults to the *safe, do-more* answer when any input is unknown. "Small" and "no-frontend" are privileges a diff earns by being unambiguous; ambiguity revokes them.
 
@@ -27,14 +27,21 @@ When `FRONTEND_FILES == 0` the change cannot affect rendered UI, so a browser pa
 
 ## Risk-surface patterns (drives en-review lite gate)
 
-A diff has a **risk signal** when paths or content touch any of:
+A diff has a **risk signal** when changed paths or changed lines touch any of:
 
 - **Auth / authz:** `auth`, `login`, `session`, `token`, `password`, `oauth`, `permission`, `rbac`, `acl`, middleware guarding routes.
 - **Payments / money:** `payment`, `billing`, `charge`, `invoice`, `stripe`, `refund`, commission/disbursement logic.
-- **Migrations / schema:** `migrations/`, `alembic/`, `schema`, `ALTER`, `DROP`, `CREATE TABLE`, model/entity definitions.
+- **Migrations / schema:** `migrations/`, `alembic/`, `schema`, `ALTER`, `DROP`, `CREATE TABLE`, model/entity field definitions.
 - **External effects:** outbound HTTP, email/SMS/webhook/Slack sends, third-party API clients, queue producers.
 - **Secrets / config:** `.env` handling, secret/key material, security headers (CORS, CSP), cookie config.
 - **Data mutation at scale:** bulk `UPDATE`/`DELETE`, backfills, ETL writes.
+
+**A pattern names a concept, not a substring.** Read each hit and ask whether it refers to that concept:
+
+- **Not a signal:** another meaning of the word, such as `max_tokens`, a lexer token or a design token for `token`, `author` for `auth`, `oracle` for `acl`, or a database client's `session`.
+- **Not a signal:** a word that appears only in a comment, in documentation, or in a test's name or description.
+- **Still a signal:** a string literal, because SQL, URLs and header names live in strings. Also a path segment, and a test that asserts the surface's behaviour.
+- **Unsure what it refers to:** a signal. This is where fail-closed applies.
 
 ## Classifications
 
@@ -45,7 +52,7 @@ A diff has a **risk signal** when paths or content touch any of:
 - `RISK_SIGNALS` is empty
 - (caller adds: no conditional review personas were independently triggered)
 
-Otherwise `false` — **fail closed**. Size is deliberately not an input: `--lite` is the user saying "this is a quick fix", and a fix with its regression test and a changelog line is still quick. What the user cannot waive is the risk surface, so any risk signal forces `false`. A `--lite` request does not override a `false` result; the gate wins.
+Otherwise `false` — **fail closed**. Size is deliberately not an input: `--lite` is the user saying "this is a quick fix", and a fix with its regression test and a changelog line is still quick. What the user cannot waive is the risk surface, so any risk signal forces `false`. A `--lite` request does not override a `false` result; the gate wins. Whether to ask for `--lite` is the caller's call: `/en-fix` stops asking once a diff passes its size limit.
 
 **Canonical override-reason identifiers.** When a `--lite` request is overridden, the caller reports WHY using these stable enum values (one per failed condition; `/en-review`'s `lite_gate:` outcome line consumes them verbatim):
 

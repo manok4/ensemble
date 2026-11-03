@@ -59,8 +59,8 @@ When both could apply, prefer telemetry mode if structured logs exist for the er
    - Fallback: dispatch `repo-research` agent with the event name + error message; agent searches the codebase.
 10. **Surface a hypothesis.** Format per `references/observability-hypothesis-format.md`. Brief; cite the log line that anchors the conclusion. Carry a `verdict` as code mode does: when the hypothesis anchors a causal chain with no gaps at `file:line`, classify the fix with code mode's convergent-or-divergent test; below confidence 7, or with a gap in the chain, continue into code mode, which returns `unresolved` if it cannot close the chain either.
 11. **Suggest next step.** One of:
-    - `/en-fix`, with the failing trace as the test fixture, when the fix is local and convergent.
-    - `/en-plan` with `plan_type: bug` when the fix is non-trivial; `/en-build` executes plans, not hypotheses.
+    - `/en-fix`, with the failing trace as the test fixture, when the fix is convergent and nothing needs settling first.
+    - `/en-plan` with `plan_type: bug` when the fix has an open decision, a risk surface or parts that must land in order; `/en-build` executes plans, not hypotheses.
     - `/en-resolve-pr` (when the bug came from a reviewer comment).
     - `/en-learn capture` (when the bug exposes a recurring anti-pattern).
 

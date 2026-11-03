@@ -14,6 +14,9 @@
 #   PRECEDENCE             the user's word beats a Linear Bug label.
 #   ONE LIST               triage and the re-check read plan-or-fix.md, the
 #                          list /en-plan routes by, never a file or commit count.
+#   NOT JUST SMALL         the description and /en-debug's handoff never route on
+#                          size; unrelated concerns are separate runs, not a plan.
+#   DEPTH BY SIZE          past 10 files or 300 lines the review is full, not --lite.
 #   STOPS                  three failed attempts, a P0 or a second blocked review,
 #                          a risk surface after review, a failed receipt.
 #   CLEAN START            tracked edits refuse the run, since /en-ship stages
@@ -28,8 +31,9 @@
 # Negative controls at authoring: removing disable-model-invocation, moving the
 # ship step above the receipt step, moving the /en-debug invoke into the
 # improvement bullet, deleting the post-review risk re-check, adding --base to
-# the review invocation, and dropping the clean-tree refusal each turned its
-# assertion red.
+# the review invocation, dropping the clean-tree refusal, restoring "small" to
+# the description, and deleting the full-review branch each turned its assertion
+# red.
 
 set -u
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -57,6 +61,14 @@ printf '%s' "$frontmatter" | grep -qx 'disable-model-invocation: true' \
 [ ! -f "$REPO_ROOT/skills/en-fix/CONTRACT.md" ] \
   && pass "it carries no CONTRACT.md, since no skill invokes it" \
   || fail "en-fix must not carry a CONTRACT.md" "contract-shape requires callers for one"
+
+# --- /en-fix "fix the off-by-one in all 12 reports": nothing frames it as tiny (D139) ---
+printf '%s' "$frontmatter" | grep -qiE '\b(small|quick fix)\b' \
+  && fail "the description must not frame the skill as small" "D138 routes on what a plan settles, not size" \
+  || pass "the description does not frame the skill as small"
+grep -qE 'fix is local|fix is non-trivial' "$REPO_ROOT/skills/en-debug/SKILL.md" \
+  && fail "/en-debug's handoff must not route on size" "it says local or non-trivial" \
+  || pass "/en-debug's handoff does not route on size"
 
 # --- order: every stop sits before the step it protects ---
 pre=$(step_of 'Preflight');        tri=$(step_of 'Triage')
@@ -150,6 +162,11 @@ grep -qF 'Test it against `references/plan-or-fix.md`' <<<"$tri_text" \
 [ -f "$REPO_ROOT/skills/en-fix/references/plan-or-fix.md" ] \
   && pass "the shared list is carried" \
   || fail "skills/en-fix/references/plan-or-fix.md must be carried"
+# /en-fix "fix the CSV header and also the login page copy": two runs, not a plan.
+grep -qF 'unrelated concerns, name each as its own `/en-fix <concern>` and stop' <<<"$tri_text" \
+  && grep -qF 'Unrelated concerns in one request do not count' "$REPO_ROOT/skills/en-fix/references/plan-or-fix.md" \
+  && pass "unrelated concerns become separate /en-fix runs, not a plan" \
+  || fail "triage and plan-or-fix.md must send unrelated concerns to separate /en-fix runs"
 grep -qF '**Is it ambiguous?**' <<<"$tri_text" \
   && pass "triage makes the ambiguity call the Improvement bullet depends on" \
   || fail "step $tri must mark whether the request is ambiguous"
@@ -178,11 +195,18 @@ done
   || fail "step $com is missing:$missing"
 
 rev_text=$(step_text "$rev")
-grep -qF 'Invoke `/en-review --lite --mode headless` with no target' <<<"$rev_text" \
+grep -qF 'invoke `/en-review --lite --mode headless`' <<<"$rev_text" \
+  && grep -qF 'pass no target' <<<"$rev_text" \
   && ! grep -qF -- '--base' <<<"$rev_text" \
   && pass "the review runs on the bare branch diff, the target that writes a receipt" \
   || fail "step $rev must invoke /en-review --lite --mode headless with no target" \
           "post-review-check.md writes no receipt for a --base target, so the Receipt gate could never pass"
+# /en-fix touching 12 files: --lite would give the biggest changes the lightest read.
+grep -qF 'Past 10 files or 300 changed lines, or on a count you cannot read, invoke `/en-review --mode headless`' <<<"$rev_text" \
+  && grep -qF 'Both rounds keep this depth' <<<"$rev_text" \
+  && grep -qF 'never the route' <<<"$rev_text" \
+  && pass "a change past the size limit gets the full review, and size never routes" \
+  || fail "step $rev must run the full review past 10 files or 300 lines, in both rounds, without routing on size"
 grep -qF 'At most two rounds' <<<"$rev_text" && grep -qF 'A P0 stops the run here' <<<"$rev_text" \
   && grep -qF 'Apply nothing yourself' <<<"$rev_text" && grep -qF 'never a `conflicting` finding' <<<"$rev_text" \
   && pass "round 1 stops on a P0 and never applies conflicting findings; round 2 applies nothing" \
