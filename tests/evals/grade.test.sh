@@ -116,7 +116,7 @@ assert_exit_code 2 "$rc" "no arguments is a usage error"
 assert_contains "$out" "usage: grade validate" "and prints the real usage, not a docstring fragment"
 
 # --- the case contract ---------------------------------------------------------------
-for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure fix-docs-grounding fix-internal-only plan-cli-additive plan-idempotent-endpoint plan-internal-only; do
+for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure fix-docs-grounding fix-internal-only fix-wide-change fix-max-tokens fix-real-token plan-cli-additive plan-idempotent-endpoint plan-internal-only; do
   "$G" validate "$CASES/$c" >/dev/null; assert_exit_code 0 "$?" "case $c is valid"
 done
 mk() { rm -rf "$T/case"; mkdir -p "$T/case/base"; echo p > "$T/case/prompt.md"; printf '%s\n' "$1" > "$T/case/expect.json"; }
@@ -174,6 +174,12 @@ if command -v node >/dev/null 2>&1; then
   out=$("$G" fix "$T/fix.json" "$(fixrepo modified modified)"); rc=$?
   assert_exit_code 0 "$rc" "a modified existing test counts as the fix's test"
   # trailers
+  # A case whose right outcome is a stop: any commit means the run went ahead.
+  printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","stops":true}\n' > "$T/stop.json"
+  "$G" fix "$T/stop.json" "$GOOD" >/dev/null; assert_exit_code 1 "$?" "a stops case with a commit fails"
+  git -C "$GOOD" checkout -q main
+  "$G" fix "$T/stop.json" "$GOOD" >/dev/null; assert_exit_code 0 "$?" "a stops case with no commit passes"
+  git -C "$GOOD" checkout -q fix
   printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","match":"node"}]}\n' > "$T/tr.json"
   "$G" fix "$T/tr.json" "$GOOD" >/dev/null; assert_exit_code 0 "$?" "a matching Docs trailer passes"
   printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","match":"stripe"}]}\n' > "$T/tr.json"

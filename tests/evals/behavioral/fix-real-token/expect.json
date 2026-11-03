@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "stops": true,
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test",
+  "judge": [
+    {
+      "id": "plan-for-auth",
+      "expectation": "The assistant stopped before committing and suggested /en-plan, naming authentication or the refresh token as the risk surface that decided it."
+    }
+  ]
+}
