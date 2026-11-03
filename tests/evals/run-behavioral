@@ -126,7 +126,7 @@ $(cat "$dir/prompt.md")"
     # both do; each part is kept separately so a judge failure never hides
     # behind a factual pass.
     case "$kind" in
-      review) "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade-facts.json" ;;
+      review) EVAL_MODE="$case_mode" "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade-facts.json" ;;
       fix)    "$GRADE" fix "$exp" "$scratch" > "$out/grade-facts.json" ;;
       *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade-facts.json"; false ;;
     esac

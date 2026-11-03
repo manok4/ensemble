@@ -66,6 +66,10 @@ every dimension runs at that file's tier.
 - Diff content matches: `cookie`, `token`, `password`, `secret`, `bcrypt`, `jwt`, `csrf`, `cors`, `Authorization:`, `req.user`, `req.headers`, `process.env.[A-Z_]+_SECRET`
 - File path matches `**/api/**`, `**/routes/**`, `**/handlers/**` AND function signature suggests public endpoint
 - Migration touches a `roles`, `permissions`, `users.password*`, `sessions`, `api_keys` table
+- An LLM SDK import (`openai`, `anthropic`, `@anthropic-ai/`, `langchain`) or a prompt template
+- A change to `package.json`, a lockfile, `requirements*.txt`, `pyproject.toml` or `go.mod`
+- `rm`, `unlink`, `rmtree`, `rmSync` or `fs.rm` with a non-literal path argument
+- Diff content matches `webhook`, `upload`, `multipart`, `redirect`, or personal-data fields sent to a tracking or logging call (`email`, `phone`, `address` inside `track(`, `identify(`, `log`)
 
 `performance`:
 - File path matches `**/queries/**`, `**/db/**`, `**/repository/**`

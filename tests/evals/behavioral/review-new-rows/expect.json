@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "kind": "review",
+  "invocation": "/ensemble:en-review --mode headless --base main",
+  "modes": [
+    "peer",
+    "host"
+  ],
+  "defects": [
+    {
+      "file": "src/summarize.js",
+      "lines": [
+        13,
+        14
+      ],
+      "min_severity": "P2"
+    },
+    {
+      "file": "package.json",
+      "lines": [
+        8,
+        8
+      ],
+      "min_severity": "P2"
+    },
+    {
+      "file": "src/cleanup.js",
+      "lines": [
+        8,
+        8
+      ],
+      "min_severity": "P2"
+    },
+    {
+      "file": "src/signup.js",
+      "lines": [
+        4,
+        4
+      ],
+      "min_severity": "P2"
+    }
+  ],
+  "personas_include": [
+    "security"
+  ],
+  "bars": {
+    "min_recall": 0.75
+  }
+}

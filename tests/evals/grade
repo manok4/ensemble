@@ -175,9 +175,12 @@ def grade_review(expect_path, output_path):
         if recall < floor:
             reasons.append("recall %.2f under %.2f" % (recall, floor))
     personas = env.get("personas") or []
-    for p in exp.get("personas_include") or []:
-        if p not in personas:
-            reasons.append("persona %s not dispatched" % p)
+    # Under --peer no host persona runs, so the roster is empty by design; the
+    # runner says which mode ran through EVAL_MODE.
+    if os.environ.get("EVAL_MODE", "") != "peer":
+        for p in exp.get("personas_include") or []:
+            if p not in personas:
+                reasons.append("persona %s not dispatched" % p)
     cap = bars.get("max_findings")
     if cap:
         limit = SEVERITY[cap["at_or_above"]]

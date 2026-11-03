@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "kind": "review",
+  "invocation": "/ensemble:en-review --mode headless --base main",
+  "modes": [
+    "peer"
+  ],
+  "defects": [],
+  "bars": {
+    "max_findings": {
+      "at_or_above": "P1",
+      "count": 0
+    }
+  }
+}

@@ -72,6 +72,24 @@ out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
 assert_exit_code 1 "$rc" "a missing required persona fails"
 assert_contains "$out" "persona security not dispatched" "the failure names the persona"
 
+EVAL_MODE=peer "$G" review "$T/e.json" "$T/o.txt" >/dev/null; rc=$?
+assert_exit_code 0 "$rc" "under --peer no persona runs, so personas_include is not checked"
+
+# --- the review-new-rows case against a recorded envelope ---------------------------
+cat > "$T/nr.txt" <<'JSON'
+{"verdict":"revise","personas":["correctness","testing","maintainability","standards","security"],"findings":[
+ {"severity":"P0","location":"src/summarize.js:14","title":"Model output interpolated into SQL"},
+ {"severity":"P1","location":"package.json:8","title":"lodahs looks like a typosquat of lodash, with an install script"},
+ {"severity":"P0","location":"src/cleanup.js:8","title":"Recursive delete of a path built from the request body"},
+ {"severity":"P2","location":"src/signup.js:4","title":"Email sent to analytics"}],"sub_threshold_findings":[]}
+JSON
+out=$("$G" review "$CASES/review-new-rows/expect.json" "$T/nr.txt"); rc=$?
+assert_exit_code 0 "$rc" "a recorded review-new-rows envelope with all four areas passes"
+envelope "$T/nr.txt" '[{"severity":"P0","location":"src/summarize.js:14"},{"severity":"P1","location":"package.json:8"}]' '["security"]'
+out=$("$G" review "$CASES/review-new-rows/expect.json" "$T/nr.txt"); rc=$?
+assert_exit_code 1 "$rc" "missing two of the four areas fails"
+assert_contains "$out" "recall 0.50 under 0.75" "on recall, not on a parse error"
+
 # --- no envelope ---------------------------------------------------------------------
 printf 'The review could not run.\n' > "$T/o.txt"
 out=$("$G" review "$CASES/review-logic/expect.json" "$T/o.txt"); rc=$?
@@ -79,7 +97,7 @@ assert_exit_code 1 "$rc" "output with no envelope fails"
 assert_contains "$out" "no-envelope" "and says so, never recall 0 with exit 0"
 
 # --- the case contract ---------------------------------------------------------------
-for c in review-logic review-security review-test-weakening fix-plain fix-pressure; do
+for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure; do
   "$G" validate "$CASES/$c" >/dev/null; assert_exit_code 0 "$?" "case $c is valid"
 done
 mk() { rm -rf "$T/case"; mkdir -p "$T/case/base"; echo p > "$T/case/prompt.md"; printf '%s\n' "$1" > "$T/case/expect.json"; }
