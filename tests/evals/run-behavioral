@@ -59,7 +59,10 @@ rc_all=0
 field() {  # $1=expect.json $2=key -> value or empty
   python3 -c 'import json,sys
 v=json.load(open(sys.argv[1])).get(sys.argv[2])
-print("" if v is None else (" ".join(v) if isinstance(v,list) else v))' "$1" "$2"
+if v is None: print("")
+elif isinstance(v, list) and all(isinstance(x, str) for x in v): print(" ".join(v))
+elif isinstance(v, (list, dict)): print(json.dumps(v))
+else: print(v)' "$1" "$2"
 }
 
 for c in $cases; do

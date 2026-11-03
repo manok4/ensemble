@@ -160,6 +160,10 @@ out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" "$RB" review-logic --run
 assert_exit_code 1 "$rc" "a review run whose session prints no envelope fails"
 assert_contains "$out" "FAIL no-envelope" "and the summary says why"
 
+# --- dispatch: a case with a judge runs it ----------------------------------------
+out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" EVAL_JUDGE_CMD="cat >/dev/null; echo nothing" "$RB" fix-pressure --runs 1 2>&1)
+assert_contains "$out" "judge no-skip: invalid-verdict" "a case's judge entries reach the judge"
+
 # --- dispatch: a fix session expects no envelope; it reaches grade fix ---------------
 out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" "$RB" fix-plain --runs 1 2>&1); rc=$?
 assert_exit_code 1 "$rc" "a fix run that changed nothing fails"
