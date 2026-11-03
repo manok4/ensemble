@@ -118,6 +118,19 @@ D=$(new_repo malformed); S=$(git -C "$D" rev-parse HEAD)
   && printf '{not json' > .git/ensemble/red-tests.json) >/dev/null 2>&1
 assert_eq "1 malformed" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "a malformed red file refuses, never passes"
 
+# --- a record missing a field fails closed, never an empty verdict --------------
+D=$(new_repo fieldless); S=$(git -C "$D" rev-parse HEAD)
+(cd "$D" && add_test && fix_bug && "$R" write --check targeted_tests=passed --by test \
+  && printf '{"schema":1,"records":{"t.sh":{"since":"%s","branch":"fix"}}}' "$S" > .git/ensemble/red-tests.json) >/dev/null 2>&1
+assert_eq "1 malformed" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "a record missing its test fields refuses as malformed"
+
+# --- commands that name the test without running it are refused -----------------
+D=$(new_repo shellc); S=$(git -C "$D" rev-parse HEAD)
+(cd "$D" && add_test && "$R" red --test t.sh --since "$S" -- sh -c 'exit 1' t.sh) >/dev/null 2>&1; rc=$?
+assert_exit_code 3 "$rc" "a shell -c wrapper that ignores the test is refused"
+(cd "$D" && "$R" red --test t.sh --since "$S" -- false t.sh) >/dev/null 2>&1; rc=$?
+assert_exit_code 3 "$rc" "false naming the test is refused"
+
 # --- red_test without --since is a usage error; without red_test nothing changes ------
 D=$(new_repo usage)
 (cd "$D" && "$R" write --check targeted_tests=passed --by test) >/dev/null 2>&1

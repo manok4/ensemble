@@ -311,6 +311,17 @@ cmd_red() {
     case "$a" in "$test_path"|"$test_path"::*|"./$test_path"|"./$test_path"::*) named=1 ;; esac
   done
   [ "$named" -eq 1 ] || die "ensemble-verification-receipt red: the command must name $test_path as an argument"
+  # Naming the test is not running it: `sh -c 'exit 1' t.sh` names it and runs
+  # nothing. Refuse the forms that ignore their arguments. This narrows, not
+  # closes, the gap; the recorded command is kept for review to read.
+  case "$(basename -- "$1")" in
+    false|true|exit|:) die "ensemble-verification-receipt red: '$1' does not run a test" ;;
+  esac
+  for a in "$@"; do
+    case "$a" in -c|-*c) case "$(basename -- "$1")" in sh|bash|zsh|dash|ksh|env)
+      die "ensemble-verification-receipt red: run the test command directly, not through '$1 -c'" ;; esac ;;
+    esac
+  done
 
   head=$(git rev-parse --verify --quiet HEAD 2>/dev/null) || die "ensemble-verification-receipt red: no HEAD"
   since_sha=$(git rev-parse --verify --quiet "$since^{commit}" 2>/dev/null) || die "ensemble-verification-receipt red: --since is not a commit: $since"
@@ -377,18 +388,24 @@ try:
         raise ValueError
 except Exception:
     print("malformed"); sys.exit(0)
-changed = set(os.environ['CHANGED'].split())
-blobs = dict(b.split('=', 1) for b in os.environ['BLOBS'].split())
-mine = [r for r in records.values() if r.get('branch') == os.environ['BRANCH']]
-this_fix = [r for r in mine if r.get('since') == os.environ['SINCE'] and r.get('test') in changed]
-if any(blobs.get(r['test']) == r.get('test_blob') for r in this_fix):
-    print("ok")
-elif this_fix:
-    print("red-test-changed")
-elif any(r.get('since') != os.environ['SINCE'] for r in mine):
-    print("red-test-stale")
-else:
-    print("red-test-missing")
+try:
+    changed = set(os.environ['CHANGED'].split())
+    blobs = dict(b.split('=', 1) for b in os.environ['BLOBS'].split())
+    if not all(isinstance(r, dict) and isinstance(r.get('test'), str) and r.get('test_blob')
+               for r in records.values()):
+        raise ValueError
+    mine = [r for r in records.values() if r.get('branch') == os.environ['BRANCH']]
+    this_fix = [r for r in mine if r.get('since') == os.environ['SINCE'] and r['test'] in changed]
+    if any(blobs.get(r['test']) == r['test_blob'] for r in this_fix):
+        print("ok")
+    elif this_fix:
+        print("red-test-changed")
+    elif any(r.get('since') != os.environ['SINCE'] for r in mine):
+        print("red-test-stale")
+    else:
+        print("red-test-missing")
+except Exception:
+    print("malformed")
 PY
 }
 
@@ -409,7 +426,10 @@ cmd_verify() {
   case ",$(printf '%s' "$requires" | tr ' ' ','),"  in
     *,red_test,*)
       [ -n "$since" ] || die "ensemble-verification-receipt verify: --requires red_test needs --since <sha>"
-      red_reason=$(red_verdict "$since") ;;
+      # Fail closed: a verdict that crashed or printed nothing is malformed,
+      # never an empty string the checker could read as "not required".
+      red_reason=$(red_verdict "$since") || red_reason=malformed
+      [ -n "$red_reason" ] || red_reason=malformed ;;
   esac
 
   if [ ! -f "$RECEIPT" ]; then
@@ -527,10 +547,11 @@ if missing:
     out(False, "check-not-recorded", {"missing": sorted(missing)})
 
 # red_test is not a receipt check: its evidence is in red-tests.json, judged by
-# red_verdict in the shell above. Empty when red_test was not required.
-red = os.environ.get('RED_REASON', '')
-if red and red != 'ok':
-    out(False, red)
+# red_verdict in the shell above. When it is required, only "ok" passes.
+if 'red_test' in os.environ['REQUIRES'].replace(',', ' ').split():
+    red = os.environ.get('RED_REASON', '') or 'malformed'
+    if red != 'ok':
+        out(False, red)
 
 out(True, "ok", {"checks": checks, "age_seconds": age, "written_by": r.get('written_by')})
 PY
