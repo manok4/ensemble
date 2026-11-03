@@ -84,11 +84,30 @@ run "$R"
 assert_exit_code 1 "$RC" "lowering a coverage threshold blocks"
 assert_contains "$(moves_in blocked)" "threshold-lowered pyproject.toml" "the block names the config"
 
+R=$(new_repo emptied)
+( cd "$R" && printf "test('other', () => {});\n" > tests/other.test.js && git commit -qam "empty it" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "a kept test file left with no assertions blocks"
+assert_contains "$(moves_in blocked)" "test-deleted tests/other.test.js" "an emptied test reads as deleted"
+
+R=$(new_repo threshold-gone)
+( cd "$R" && printf '[tool.coverage.report]\n' > pyproject.toml && git commit -qam "drop threshold" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "deleting a coverage threshold outright blocks"
+assert_contains "$(moves_in blocked)" "threshold-lowered pyproject.toml" "the deleted threshold is named"
+
+R=$(new_repo textconv)
+( cd "$R" && printf 'src/*.js -diff\n' > .gitattributes && git add .gitattributes && git commit -qm attrs \
+  && git checkout -q main && git merge -q --ff-only feature 2>/dev/null; git checkout -q feature \
+  && printf '%s\nconst unused = 1;\n' "$LINT_OFF" >> src/add.js && git commit -qam "silence behind -diff" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "a .gitattributes binary marker does not hide an added suppression"
+
 # --- reported, never blocking --------------------------------------------------
 R=$(new_repo asserts)
-( cd "$R" && printf "const { add } = require('../src/add');\ntest('adds', () => {\n  add(1, 2);\n});\n" > tests/add.test.js && git commit -qam "weaken" ) >/dev/null 2>&1
+( cd "$R" && printf "const { add } = require('../src/add');\ntest('adds', () => {\n  expect(add(1, 2)).toBe(3);\n});\n" > tests/add.test.js && git commit -qam "weaken" ) >/dev/null 2>&1
 run "$R"
-assert_exit_code 0 "$RC" "removing assertions from a kept test does not block"
+assert_exit_code 0 "$RC" "removing some assertions from a kept test does not block"
 assert_contains "$(moves_in reported)" "assertion-removed tests/add.test.js" "removed assertions are reported"
 
 R=$(new_repo stub)
@@ -106,11 +125,25 @@ assert_exit_code 0 "$RC" "a Floor-Exception trailer excuses the deletion"
 assert_contains "$(printf '%s' "$OUT" | python3 -c 'import json,sys; print([m["by"] for m in json.load(sys.stdin)["excused"]])')" "trailer" "the excuse is the trailer"
 
 R=$(new_repo ledger)
-( cd "$R" && git rm -q tests/other.test.js \
-  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audit/batch-1.md" ) >/dev/null 2>&1
+( cd "$R" && mkdir -p docs/test-audits && printf '| tests/other.test.js | D | none | dead export | - |\n' > docs/test-audits/batch-1.md \
+  && git add docs && git rm -q tests/other.test.js \
+  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audits/batch-1.md" ) >/dev/null 2>&1
 run "$R"
-assert_exit_code 0 "$RC" "a Test-Audit-Ledger trailer on the deleting commit excuses it"
+assert_exit_code 0 "$RC" "a Test-Audit-Ledger trailer whose ledger names the test excuses the deletion"
 assert_contains "$(printf '%s' "$OUT" | python3 -c 'import json,sys; print([m["by"] for m in json.load(sys.stdin)["excused"]])')" "ledger" "the excuse is the ledger"
+
+R=$(new_repo ledger-missing)
+( cd "$R" && git rm -q tests/other.test.js \
+  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audits/nowhere.md" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "a ledger trailer naming a file that does not exist does not excuse"
+
+R=$(new_repo ledger-other)
+( cd "$R" && mkdir -p docs/test-audits && printf '| tests/add.test.js | R | kept | - | - |\n' > docs/test-audits/b.md \
+  && git add docs && git rm -q tests/other.test.js \
+  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audits/b.md" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "a ledger that does not name the deleted test does not excuse"
 
 R=$(new_repo pending)
 ( cd "$R" && printf "%s'flaky', () => {});\n" "$SKIP_CALL" >> tests/add.test.js ) >/dev/null 2>&1

@@ -147,7 +147,9 @@ def is_test(path):
 
 # --- the diff ----------------------------------------------------------------
 deleted = [p for p in git("diff", "--no-renames", "--name-only", "--diff-filter=D", merge_base).splitlines() if p]
-diff = git("diff", "--no-color", "--no-renames", "--no-ext-diff", "-U0", merge_base)
+# --text and --no-textconv: a .gitattributes entry can mark a file binary or
+# route it through a textconv filter, and either would hide its added lines.
+diff = git("diff", "--no-color", "--no-renames", "--no-ext-diff", "--no-textconv", "--text", "-U0", merge_base)
 untracked = [p for p in git("ls-files", "--others", "--exclude-standard", "-z").split("\0") if p]
 
 files = {}  # path -> {"added": [(line_no, text)], "removed": [text]}
@@ -213,16 +215,34 @@ for path, ch in sorted(files.items()):
     if test:
         lost = sum(1 for t in ch["removed"] if ASSERT.search(t)) - sum(1 for _, t in ch["added"] if ASSERT.search(t))
         if lost > 0 and ch["removed"]:
-            add("assertion-removed", path, None, "%d assertion line(s) removed" % lost)
+            # A kept file with no assertion left is a deletion in all but name.
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    remaining = sum(1 for t in fh if ASSERT.search(t))
+            except OSError:
+                remaining = 0
+            if remaining == 0:
+                add("test-deleted", path, None, "no assertions remain in a kept test file")
+            else:
+                add("assertion-removed", path, None, "%d assertion line(s) removed" % lost)
     if CONFIG_PATH.search(path):
-        before = {}
+        # Compare every value of a key, highest first: a key whose values fell,
+        # or that lost an occurrence (a threshold deleted outright), lowered the bar.
+        before, after = {}, {}
         for t in ch["removed"]:
             for key, val in THRESH.findall(t):
-                before.setdefault(key, float(val))
+                before.setdefault(key, []).append(float(val))
         for n, t in ch["added"]:
             for key, val in THRESH.findall(t):
-                if key in before and float(val) < before[key]:
-                    add("threshold-lowered", path, n, "%s %g -> %s" % (key, before[key], val))
+                after.setdefault(key, []).append((float(val), n))
+        for key, old in sorted(before.items()):
+            old = sorted(old, reverse=True)
+            new = sorted(after.get(key, []), key=lambda v: -v[0])
+            for i, was in enumerate(old):
+                if i >= len(new):
+                    add("threshold-lowered", path, None, "%s %g removed" % (key, was))
+                elif new[i][0] < was:
+                    add("threshold-lowered", path, new[i][1], "%s %g -> %g" % (key, was, new[i][0]))
 
 # --- exceptions --------------------------------------------------------------
 trailer_keys = set()
@@ -234,11 +254,17 @@ for body in git("log", "--format=%B%x00", "%s..HEAD" % merge_base).split("\0"):
 
 
 def ledger_excuses(path):
+    """True when the deleting commit cites a ledger that exists in that commit
+    and names the deleted path. A trailer alone is a claim; the ledger is the
+    evidence /en-test-audit commits with every deletion."""
     shas = git("log", "--diff-filter=D", "--format=%H", "%s..HEAD" % merge_base, "--", path).split()
     for sha in shas:
         body = git("log", "-1", "--format=%B", sha)
-        if re.search(r"^Test-Audit-Ledger:\s*\S", body, re.M):
-            return True
+        for ledger in re.findall(r"^Test-Audit-Ledger:\s*(\S+)\s*$", body, re.M):
+            shown = subprocess.run(["git", "show", "%s:%s" % (sha, ledger)],
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+            if shown.returncode == 0 and path in shown.stdout.decode("utf-8", "replace"):
+                return True
     return False
 
 
