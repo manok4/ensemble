@@ -2,7 +2,7 @@
 type: learning-log
 generated: true
 generator: en-learn
-updated: 2026-09-26
+updated: 2026-11-03
 ---
 
 # Learnings — log
@@ -15,3 +15,4 @@ updated: 2026-09-26
 ## [2026-09-26] capture | routed TD36 (L4): carried file and its citation belong in one plan unit | 99ba3b0
 ## [2026-09-27] capture | routed TD39 (L4): cite a callee's side effects at plan time | 88c6409
 ## [2026-10-30] capture | A live-test control that contradicts the agent's own instructions never fires | fc82d4b
+## [2026-11-03] capture | EN25 build: gate wrote nothing, all four candidates recorded at their code sites; grader-first note added to tests/evals/README.md | df33a05

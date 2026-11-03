@@ -3,10 +3,10 @@ type: plan
 plan_type: improvement
 plan_id: EN25
 title: Measure skill behavior and guard the quality bar, from the agent-skills review
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-11-03
-shipped:
+shipped: 2026-11-03
 deepened:
 covers_requirements: []
 requirements_pending: false

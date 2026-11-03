@@ -62,4 +62,12 @@ Plant defects you can name by file and line, and keep the project small enough t
 2. Do a `--dry-run`.
 3. Do one real run.
 
+**Suspect the grader before the skill on a first failure.** Read `output.txt` and the scratch repo before changing a case's expectations or the skill. Of the first 13 cases run in EN25, four failed their first grade, and every one was the grader's fault:
+- the envelope was written to a file, not stdout
+- a plan settled the policy in its Technical design section
+- several units matched one step
+- the runner could not read a judge list
+
+None of the four failures was the skill's. Each is fixed now, but the next grader will meet output it did not imagine.
+
 A fixture that plants a skipped test or a removed assertion trips `/en-ship`'s floor guard. Commit it with a `Floor-Exception:` trailer naming the fixture path.
