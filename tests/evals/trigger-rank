@@ -181,7 +181,7 @@ class Index:
         scored = [(self.cosine(q, self.vecs[n]), n) for n in self.names]
         # Highest score first; ties break by name so the order is stable.
         scored.sort(key=lambda t: (-t[0], t[1]))
-        return [n for _, n in scored], {n: s for s, n in scored}
+        return [n for _, n in scored]
 
 
 def main():
@@ -206,7 +206,7 @@ def main():
     positives, negatives, failed = [], [], False
     for name, case in sorted(cases.items()):
         for pos in case.get("positive", []):
-            order, scores = index.ranking(pos["prompt"])
+            order = index.ranking(pos["prompt"])
             rank = order.index(name) + 1
             top_k = int(pos.get("top_k", DEFAULT_TOP_K))
             ok = rank <= top_k
@@ -214,7 +214,7 @@ def main():
             positives.append({"skill": name, "prompt": pos["prompt"], "rank": rank,
                               "top_k": top_k, "first": order[0], "pass": ok})
         for neg in case.get("negative", []):
-            order, scores = index.ranking(neg["prompt"])
+            order = index.ranking(neg["prompt"])
             owner = neg["owner"]
             won = order.index(owner) < order.index(name)
             gap = neg.get("known_gap")

@@ -14,7 +14,8 @@
         5,
         5
       ],
-      "min_severity": "P1"
+      "min_severity": "P1",
+      "match": "sql|inject|concaten"
     },
     {
       "file": "src/invoices.js",
@@ -22,7 +23,8 @@
         5,
         7
       ],
-      "min_severity": "P1"
+      "min_severity": "P1",
+      "match": "owner|authori|idor|scope|access"
     }
   ],
   "bars": {

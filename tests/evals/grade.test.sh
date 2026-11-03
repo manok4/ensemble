@@ -54,6 +54,20 @@ envelope "$T/o.txt" '[{"severity":"P1","location":"src/a.js:10-21"}]'
 out=$("$G" review "$T/e.json" "$T/o.txt")
 assert_eq "0.5" "$(field "$out" 'd["recall"]')" "one finding cannot satisfy two defects"
 
+# --- overlapping windows: a matching, not first-fit ----------------------------------
+OVER='[{"file":"src/a.js","lines":[10,10],"min_severity":"P2"},{"file":"src/a.js","lines":[14,14],"min_severity":"P2"}]'
+expect "$T/e.json" "$OVER" '{"min_recall":1.0}'
+envelope "$T/o.txt" '[{"severity":"P1","location":"src/a.js:13"},{"severity":"P1","location":"src/a.js:10"}]'
+out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
+assert_exit_code 0 "$rc" "a finding in both windows does not steal the defect another finding was needed for"
+
+# --- match: one finding cannot be credited for two defects on the same lines ---------
+expect "$T/e.json" '[{"file":"src/i.js","lines":[5,5],"min_severity":"P1","match":"sql"},{"file":"src/i.js","lines":[5,7],"min_severity":"P1","match":"owner"}]' '{"min_recall":1.0}'
+envelope "$T/o.txt" '[{"severity":"P0","location":"src/i.js:5","title":"SQL injection"},{"severity":"P1","location":"src/i.js:6","title":"Also SQL injection, via the id"}]'
+out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
+assert_exit_code 1 "$rc" "two findings about one defect do not cover a second defect with its own match"
+assert_eq "0.5" "$(field "$out" 'd["recall"]')" "recall counts the SQL defect only"
+
 # --- empty sets and the clean-case cap -----------------------------------------------
 expect "$T/e.json" '[]' '{"max_findings":{"at_or_above":"P1","count":0}}'
 envelope "$T/o.txt" '[]'
@@ -96,6 +110,11 @@ out=$("$G" review "$CASES/review-logic/expect.json" "$T/o.txt"); rc=$?
 assert_exit_code 1 "$rc" "output with no envelope fails"
 assert_contains "$out" "no-envelope" "and says so, never recall 0 with exit 0"
 
+# --- no arguments prints a usage line ---------------------------------------------
+out=$("$G" 2>&1); rc=$?
+assert_exit_code 2 "$rc" "no arguments is a usage error"
+assert_contains "$out" "usage: grade validate" "and prints the real usage, not a docstring fragment"
+
 # --- the case contract ---------------------------------------------------------------
 for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure fix-docs-grounding fix-internal-only plan-cli-additive plan-idempotent-endpoint plan-internal-only; do
   "$G" validate "$CASES/$c" >/dev/null; assert_exit_code 0 "$?" "case $c is valid"
@@ -115,8 +134,10 @@ out=$(PATH="$T/nobin:/usr/bin:/bin" "$RB" review-logic --dry-run --runs 1 2>&1);
 assert_exit_code 0 "$rc" "a dry run succeeds without claude on PATH"
 assert_contains "$out" "--plugin-dir" "the dry run prints the exact claude command"
 assert_contains "$out" "/ensemble:en-review --mode headless --base main --peer" "with the plugin-qualified invocation and mode"
-out=$("$RB" fix-docs-grounding --dry-run --runs 1 --no-mcp 2>&1)
-assert_contains "$out" "--strict-mcp-config" "--no-mcp runs the session with no MCP servers"
+out=$("$RB" fix-docs-grounding --dry-run --runs 1 2>&1)
+assert_contains "$out" "--strict-mcp-config" "by default the session loads no MCP servers"
+out=$("$RB" fix-docs-grounding --dry-run --runs 1 --with-user-mcp 2>&1)
+assert_not_contains "$out" "--strict-mcp-config" "--with-user-mcp loads the operator's servers"
 
 # --- grade fix: revert the source, keep the tests -------------------------------------
 fixrepo() {  # $1=name $2=variant -> path. main: a counter that adds 1; variant edits the branch
@@ -141,7 +162,8 @@ fixrepo() {  # $1=name $2=variant -> path. main: a counter that adds 1; variant 
 }
 printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test"}\n' > "$T/fix.json"
 if command -v node >/dev/null 2>&1; then
-  out=$("$G" fix "$T/fix.json" "$(fixrepo good good)"); rc=$?
+  GOOD=$(fixrepo good good)   # grade fix never mutates the repo it reads, so one serves every check
+  out=$("$G" fix "$T/fix.json" "$GOOD"); rc=$?
   assert_exit_code 0 "$rc" "a test that fails on reverted source and passes on the fix grades pass"
   out=$("$G" fix "$T/fix.json" "$(fixrepo vacuous vacuous)"); rc=$?
   assert_exit_code 1 "$rc" "a test that passes on reverted source fails"
@@ -153,11 +175,11 @@ if command -v node >/dev/null 2>&1; then
   assert_exit_code 0 "$rc" "a modified existing test counts as the fix's test"
   # trailers
   printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","match":"node"}]}\n' > "$T/tr.json"
-  "$G" fix "$T/tr.json" "$(fixrepo tr1 good)" >/dev/null; assert_exit_code 0 "$?" "a matching Docs trailer passes"
+  "$G" fix "$T/tr.json" "$GOOD" >/dev/null; assert_exit_code 0 "$?" "a matching Docs trailer passes"
   printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","match":"stripe"}]}\n' > "$T/tr.json"
-  "$G" fix "$T/tr.json" "$(fixrepo tr2 good)" >/dev/null; assert_exit_code 1 "$?" "a Docs trailer that does not match fails"
+  "$G" fix "$T/tr.json" "$GOOD" >/dev/null; assert_exit_code 1 "$?" "a Docs trailer that does not match fails"
   printf '{"version":1,"kind":"fix","invocation":"/x","test_command":"node --test","trailers":[{"key":"Docs","absent":true}]}\n' > "$T/tr.json"
-  "$G" fix "$T/tr.json" "$(fixrepo tr3 good)" >/dev/null; assert_exit_code 1 "$?" "a Docs trailer where none is wanted fails"
+  "$G" fix "$T/tr.json" "$GOOD" >/dev/null; assert_exit_code 1 "$?" "a Docs trailer where none is wanted fails"
 else
   fail "node is required for the grade fix tests"
 fi
@@ -169,13 +191,13 @@ planrepo() {  # $1=name, stdin: sed program applied to the sample plan -> repo p
   sed "$(cat)" "$REPO_ROOT/tests/evals/fixtures/plan-sample.md" > "$d/docs/plans/active/EN01-feature_rename.md"
   printf '%s\n' "$d"
 }
-pcheck() {  # $1=repo $2=plan_checks json -> sets out, rc
+pcheck() {  # $1=repo $2=plan_checks json -> sets out, rc. Lint runs only where a test reads it.
   printf '{"version":1,"kind":"plan","invocation":"/x","plan_checks":%s}\n' "$2" > "$T/p.json"
-  out=$("$G" plan "$T/p.json" "$1"); rc=$?
+  out=$(EVAL_SKIP_LINT="${LINT_OFF:-1}" "$G" plan "$T/p.json" "$1"); rc=$?
 }
 P=$(echo 's/^//' | planrepo plan-ok)
-pcheck "$P" '[{"unit_matching":"dual","before":"drop"},{"unit_matching":"drop","risk":"destructive","last":true}]'
-assert_exit_code 0 "$rc" "a plan meeting its ordering, risk and last checks passes"
+LINT_OFF=0 pcheck "$P" '[{"unit_matching":"dual","before":"drop"},{"unit_matching":"drop","risk":"destructive","last":true}]'
+assert_exit_code 0 "$rc" "a lint-clean plan meeting its ordering, risk and last checks passes"
 pcheck "$P" '[{"unit_matching":"drop","before":"dual"}]'
 assert_exit_code 1 "$rc" "a unit listed after its before target fails"
 assert_contains "$out" "U3 is not before U2" "and names the order"
@@ -198,7 +220,7 @@ P=$(echo 's/^- \*\*Risk:\*\* destructive$/- **Risk:** high/' | planrepo plan-hig
 pcheck "$P" '[{"unit_matching":"drop","risk":"destructive","last":true}]'
 assert_contains "$out" "U3 risk is high, want destructive" "a drop planned below destructive fails naming the risk"
 P=$(echo 's|`src/users.js` (create)|`src/users.js` (modify)|' | planrepo plan-lint)
-pcheck "$P" '[]'
+LINT_OFF=0 pcheck "$P" '[]'
 assert_exit_code 1 "$rc" "a plan with a P1 lint finding fails"
 assert_contains "$out" "unit.files-missing" "and carries the lint rule"
 mkdir -p "$T/noplan"
@@ -218,10 +240,14 @@ assert_exit_code 1 "$rc" "a judge reply with no verdict fails"
 
 # --- dispatch: a review session that prints prose grades no-envelope ----------------
 mkdir -p "$T/bin"
-printf '#!/bin/sh\necho "I reviewed it and it looks fine."\n' > "$T/bin/claude"; chmod +x "$T/bin/claude"
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "%s/claude-argv"\necho "I reviewed it and it looks fine."\n' "$T" > "$T/bin/claude"; chmod +x "$T/bin/claude"
 out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" "$RB" review-logic --runs 1 2>&1); rc=$?
 assert_exit_code 1 "$rc" "a review run whose session prints no envelope fails"
 assert_contains "$out" "FAIL no-envelope" "and the summary says why"
+argv=$(cat "$T/claude-argv" 2>/dev/null)
+assert_contains "$argv" "--plugin-dir" "the session was launched with this checkout as the plugin"
+assert_contains "$argv" "/ensemble:en-review --mode headless --base main --peer" "and the plugin-qualified invocation"
+assert_contains "$argv" "--strict-mcp-config" "with no MCP servers by default"
 
 # --- dispatch: a case with a judge runs it ----------------------------------------
 out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" EVAL_JUDGE_CMD="cat >/dev/null; echo nothing" "$RB" fix-pressure --runs 1 2>&1)
@@ -232,5 +258,11 @@ out=$(PATH="$T/bin:$PATH" EVAL_RESULTS_DIR="$T/results" "$RB" fix-plain --runs 1
 assert_exit_code 1 "$rc" "a fix run that changed nothing fails"
 assert_contains "$out" "no test added" "it fails on the fix grader's facts, not on a missing envelope"
 assert_not_contains "$out" "no-envelope" "a fix case never asks for an envelope"
+
+# --- the fix grader and the floor guard agree on what a test file is ---------------
+# Skills are self-contained, so the pattern is copied; this pins the copies.
+fg=$(grep -E '^TEST_PATH = re.compile' "$REPO_ROOT/skills/en-ship/scripts/ensemble-floor-guard")
+gr=$(grep -E '^TEST_PATH = re.compile' "$G")
+assert_eq "$fg" "$gr" "grade's TEST_PATH matches the floor guard's"
 
 report

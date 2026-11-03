@@ -259,7 +259,7 @@ I timed each of the 190 test files serially on 2026-11-03, each through `./tests
 | `tests/lint/`, 10 slowest | 256 | Led by `peer-isolation` (74s), `en-review-peer-default` (37s) and `lint-rules` (36s). Each one runs scripts |
 | `tests/lint/`, the other 119 | 28 | Each finishes in 1s or less. This group holds the wording tests |
 
-**The wording tests cost about 28 seconds.** The suite is slow because of repeated `./setup` runs and a handful of script-heavy lint tests. If speed is the goal, share one `./setup` install per scenario across the assertions that inspect it, rather than reinstalling for each check. That could cut the three install tests from about 380s to well under 100s. It is a separate change from E1. Plan it on its own, as a fix to a broken window.
+**The wording tests cost about 28 seconds.** The suite is slow because of repeated `./setup` runs and a handful of script-heavy lint tests. If speed is the goal, share one `./setup` install per scenario across the assertions that inspect it, rather than reinstalling for each check. That could cut the three install tests from about 380s to well under 100s, an estimate that has not been measured. It is a separate change from E1. Plan it on its own, as a fix to a broken window.
 
 ## Corrections to `agent-skills-comparison.md`
 

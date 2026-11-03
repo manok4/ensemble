@@ -32,10 +32,18 @@ pat() { ( cd "$REPO_ROOT" && bash "$S" --print "$@" 2>/dev/null ); }
 
 # --- a skill edit selects its own tests and the cross-cutting ones ------------
 p=$(pat skills/en-ship/SKILL.md)
-for want in en-ship parity skill-size skill-payload frontmatter; do
+for want in en-ship parity skill-size skill-payload frontmatter trigger; do
   printf '%s' "$p" | grep -qF "$want" \
     && pass "a SKILL.md edit selects $want" \
     || fail "a SKILL.md edit must select $want" "got: $p"
+done
+
+# --- an eval file selects the trigger and grader tests (EN25) ------------------
+p=$(pat tests/evals/cases/en-ship.json)
+for want in trigger grade; do
+  printf '%s' "$p" | grep -qF "$want" \
+    && pass "an eval case edit selects $want" \
+    || fail "an eval case edit must select $want" "got: $p"
 done
 
 # --- a script edit selects the script's own test ------------------------------

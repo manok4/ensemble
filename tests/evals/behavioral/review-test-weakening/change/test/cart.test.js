@@ -7,5 +7,5 @@ test('totals quantities', () => {
 });
 
 test.skip('rounds a discount to the nearest cent', () => {
-  assert.strictEqual(discount(999, 15), 849);
+  assert.strictEqual(discount(995, 15), 846);
 });

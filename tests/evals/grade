@@ -19,7 +19,9 @@ Case contract, version 1 (expect.json):
   base_from       optional; another case whose base/ this one reuses (not with base/)
   invocation      the slash command run in the scratch repo
   modes           review only; any of peer, host, cross
-  defects         review only; [{file, lines: [a, b], min_severity}]
+  defects         review only; [{file, lines: [a, b], min_severity, match}]; match is an
+                  optional regex over a finding's title and why_it_matters, for defects
+                  that share lines and must not be credited by one finding
   personas_include review only; personas the envelope must list
   bars            review only; {min_recall (default 1.0), max_findings: {at_or_above, count}}
   test_command    fix only
@@ -103,8 +105,8 @@ def validate(case_dir):
 
 
 # --- review ----------------------------------------------------------------------
-def extract_envelope(text):
-    """The last JSON object in the output that carries a findings array."""
+def last_json_object(text, accept):
+    """The last JSON object in text for which accept(obj) holds, or None."""
     best = None
     decoder = json.JSONDecoder()
     for m in re.finditer(r"\{", text):
@@ -112,9 +114,14 @@ def extract_envelope(text):
             obj, _ = decoder.raw_decode(text[m.start():])
         except ValueError:
             continue
-        if isinstance(obj, dict) and isinstance(obj.get("findings"), list):
+        if isinstance(obj, dict) and accept(obj):
             best = obj
     return best
+
+
+def extract_envelope(text):
+    """The last JSON object in the output that carries a findings array."""
+    return last_json_object(text, lambda o: isinstance(o.get("findings"), list))
 
 
 def parse_location(loc):
@@ -136,7 +143,35 @@ def matches(finding, defect):
     if b < lo or a > hi:
         return False
     sev = SEVERITY.get(str(finding.get("severity")), 9)
-    return sev <= SEVERITY[defect["min_severity"]]
+    if sev > SEVERITY[defect["min_severity"]]:
+        return False
+    if defect.get("match"):
+        text = "%s %s" % (finding.get("title") or "", finding.get("why_it_matters") or "")
+        return re.search(defect["match"], text, re.I) is not None
+    return True
+
+
+def max_matching(defects, pool):
+    """Assign findings to defects, one each, maximising matched defects.
+
+    First-fit lets a finding inside two overlapping windows take the defect
+    another finding was needed for; augmenting paths do not (the sizes are tiny).
+    Returns {defect_index: finding_index}."""
+    owner = {}  # finding index -> defect index
+
+    def assign(d, seen):
+        for f in range(len(pool)):
+            if f in seen or not matches(pool[f], defects[d]):
+                continue
+            seen.add(f)
+            if f not in owner or assign(owner[f], seen):
+                owner[f] = d
+                return True
+        return False
+
+    for d in range(len(defects)):
+        assign(d, set())
+    return {d: f for f, d in owner.items()}
 
 
 def grade_review(expect_path, output_path):
@@ -153,18 +188,13 @@ def grade_review(expect_path, output_path):
     findings = [f for f in env.get("findings") or [] if isinstance(f, dict)]
     pool = findings + [f for f in env.get("sub_threshold_findings") or [] if isinstance(f, dict)]
     defects = exp.get("defects") or []
-    used, matched, missed = set(), [], []
-    for d in defects:
-        hit = None
-        for i, f in enumerate(pool):
-            if i not in used and matches(f, d):
-                hit = i
-                break
-        if hit is None:
-            missed.append(d)
+    pairs = max_matching(defects, pool)
+    matched, missed = [], []
+    for i, d in enumerate(defects):
+        if i in pairs:
+            matched.append({"defect": d, "finding": {k: pool[pairs[i]].get(k) for k in ("severity", "location", "title")}})
         else:
-            used.add(hit)
-            matched.append({"defect": d, "finding": {k: pool[hit].get(k) for k in ("severity", "location", "title")}})
+            missed.append(d)
     relevant = [f for f in findings if any(matches(f, d) for d in defects)]
     extra = [{k: f.get(k) for k in ("severity", "location", "title")} for f in findings
              if not any(matches(f, d) for d in defects)]
@@ -303,6 +333,43 @@ def find_units(units, pattern):
     return [i for i, (_, title, _) in enumerate(units) if rx.search(title)]
 
 
+def plan_check_reasons(c, units, text):
+    """The failure reasons for one plan_checks entry; empty means it passed.
+
+    Real plans split one step across units ("API writes both columns", "job
+    writes both columns"), so a pattern may match several. Content passes when
+    any matching unit carries every string, or the whole plan does under
+    `scope: plan`; `before` compares the FIRST unit of each pattern (the step
+    starts in the right order); `last` takes the last match; `risk` must hold
+    for every match."""
+    idx = find_units(units, c["unit_matching"])
+    if not idx:
+        return ["unit-not-found %s" % c["unit_matching"]]
+    why = []
+    wanted = c.get("must_contain") or []
+    if wanted and c.get("scope") == "plan":
+        missing = [m for m in wanted if m.lower() not in text.lower()]
+        if missing:
+            why.append("plan missing %s" % missing)
+    elif wanted and not any(all(m.lower() in units[i][2].lower() for m in wanted) for i in idx):
+        why.append("%s missing %s" % (",".join(units[i][0] for i in idx), wanted))
+    if "risk" in c:
+        for i in idx:
+            m = re.search(r"\*\*Risk:\*\*\s*(\w+)", units[i][2])
+            got = m.group(1) if m else None
+            if got != c["risk"]:
+                why.append("%s risk is %s, want %s" % (units[i][0], got, c["risk"]))
+    if c.get("last") and idx[-1] != len(units) - 1:
+        why.append("%s is not the last unit" % units[idx[-1]][0])
+    if "before" in c:
+        other = find_units(units, c["before"])
+        if not other:
+            why.append("unit-not-found %s" % c["before"])
+        elif not idx[0] < other[0]:
+            why.append("%s is not before %s" % (units[idx[0]][0], units[other[0]][0]))
+    return why
+
+
 def grade_plan(expect_path, repo):
     exp = load_json(expect_path)
     active = os.path.join(repo, "docs", "plans", "active")
@@ -313,50 +380,22 @@ def grade_plan(expect_path, repo):
         sys.exit(1)
     rel = os.path.join("docs", "plans", "active", plans[0])
     text = open(os.path.join(repo, rel), encoding="utf-8", errors="replace").read()
-    rc, lint = sh([os.path.join(ROOT, "bin", "ensemble-lint"), "--scope", rel], repo, timeout=300)
-    p1 = [l for l in lint.splitlines() if l.startswith("[P1]")]
+    # EVAL_SKIP_LINT=1 is for grade.test.sh's ordering checks, which reuse one
+    # clean plan; the lint costs seconds a call and they never read its output.
+    if os.environ.get("EVAL_SKIP_LINT") == "1":
+        p1 = []
+    else:
+        _, lint = sh([os.path.join(ROOT, "bin", "ensemble-lint"), "--scope", rel], repo, timeout=300)
+        p1 = [l for l in lint.splitlines() if l.startswith("[P1]")]
     units = plan_units(text)
     reasons = ["lint P1: " + l for l in p1]
     checks = []
     for c in exp.get("plan_checks") or []:
-        idx = find_units(units, c["unit_matching"])
-        positional = any(k in c for k in ("risk", "last", "before"))
-        res = {"unit_matching": c["unit_matching"], "units": [units[i][0] for i in idx], "pass": True, "why": []}
-        if c.get("scope") == "plan" and not positional:
-            missing = [m for m in c.get("must_contain") or [] if m.lower() not in text.lower()]
-            if not idx:
-                res["why"].append("unit-not-found %s" % c["unit_matching"])
-            if missing:
-                res["why"].append("plan missing %s" % missing)
-        elif not idx:
-            res["why"].append("unit-not-found %s" % c["unit_matching"])
-        else:
-            # Real plans split one step across units ("API writes both columns",
-            # "job writes both columns"), so a pattern may match several. Content
-            # passes when any matching unit carries every string; `before` compares
-            # the FIRST unit of each pattern (the step starts in the right order);
-            # `last` takes the last matching unit; `risk` must hold for every match.
-            def carries(i):
-                return all(m.lower() in units[i][2].lower() for m in c.get("must_contain") or [])
-            if c.get("must_contain") and not any(carries(i) for i in idx):
-                res["why"].append("%s missing %s" % (",".join(units[i][0] for i in idx), c.get("must_contain")))
-            if "risk" in c:
-                for i in idx:
-                    m = re.search(r"\*\*Risk:\*\*\s*(\w+)", units[i][2])
-                    got = m.group(1) if m else None
-                    if got != c["risk"]:
-                        res["why"].append("%s risk is %s, want %s" % (units[i][0], got, c["risk"]))
-            if c.get("last") and idx[-1] != len(units) - 1:
-                res["why"].append("%s is not the last unit" % units[idx[-1]][0])
-            if "before" in c:
-                other = find_units(units, c["before"])
-                if not other:
-                    res["why"].append("unit-not-found %s" % c["before"])
-                elif not idx[0] < other[0]:
-                    res["why"].append("%s is not before %s" % (units[idx[0]][0], units[other[0]][0]))
-        res["pass"] = not res["why"]
-        reasons += res["why"]
-        checks.append(res)
+        why = plan_check_reasons(c, units, text)
+        checks.append({"unit_matching": c["unit_matching"],
+                       "units": [units[i][0] for i in find_units(units, c["unit_matching"])],
+                       "pass": not why, "why": why})
+        reasons += why
     print(json.dumps({"kind": "plan", "plan": rel, "units": [u for u, _, _ in units], "lint_p1": p1,
                       "checks": checks, "reasons": reasons, "pass": not reasons}, indent=2))
     sys.exit(0 if not reasons else 1)
@@ -393,6 +432,7 @@ def grade_judge(expect_path, output_path):
         fail("cannot read %s: %s" % (output_path, exc), 1)
     cmd = os.environ.get("EVAL_JUDGE_CMD", "claude -p --max-turns 1 --output-format text")
     verdicts = []
+    flat = squash(transcript)
     for j in exp.get("judge") or []:
         prompt = JUDGE_PROMPT.format(expectation=j["expectation"], transcript=transcript)
         try:
@@ -401,19 +441,12 @@ def grade_judge(expect_path, output_path):
                                  stderr=subprocess.PIPE, timeout=300, check=False).stdout.decode("utf-8", "replace")
         except subprocess.TimeoutExpired:
             out = ""
-        verdict = None
-        for m in re.finditer(r"\{", out):
-            try:
-                obj, _ = json.JSONDecoder().raw_decode(out[m.start():])
-            except ValueError:
-                continue
-            if isinstance(obj, dict) and isinstance(obj.get("pass"), bool):
-                verdict = obj
+        verdict = last_json_object(out, lambda o: isinstance(o.get("pass"), bool))
         if verdict is None:
             verdicts.append({"id": j["id"], "pass": False, "error": "invalid-verdict"})
             continue
         evidence = str(verdict.get("evidence") or "")
-        if not evidence.strip() or squash(evidence) not in squash(transcript):
+        if not evidence.strip() or squash(evidence) not in flat:
             verdicts.append({"id": j["id"], "pass": False, "error": "invalid-evidence", "evidence": evidence})
             continue
         verdicts.append({"id": j["id"], "pass": verdict["pass"], "evidence": evidence})
@@ -424,9 +457,7 @@ def grade_judge(expect_path, output_path):
 
 def main():
     args = sys.argv[1:]
-    if not args:
-        fail(__doc__.strip().splitlines()[2], 2)
-    cmd = args[0]
+    cmd = args[0] if args else ""
     if cmd == "validate" and len(args) == 2:
         validate(args[1])
     elif cmd == "review" and len(args) == 3:
@@ -439,7 +470,7 @@ def main():
         grade_plan(args[1], args[2])
     else:
         fail("usage: grade validate <case-dir> | grade review|judge <expect.json> <output.txt>"
-             " | grade fix <expect.json> <scratch-repo>", 2)
+             " | grade fix|plan <expect.json> <scratch-repo>", 2)
 
 
 if __name__ == "__main__":

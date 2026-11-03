@@ -314,14 +314,14 @@ cmd_red() {
   # Naming the test is not running it: `sh -c 'exit 1' t.sh` names it and runs
   # nothing. Refuse the forms that ignore their arguments. This narrows, not
   # closes, the gap; the recorded command is kept for review to read.
-  case "$(basename -- "$1")" in
+  prog=$(basename -- "$1")
+  case "$prog" in
     false|true|exit|:) die "ensemble-verification-receipt red: '$1' does not run a test" ;;
+    sh|bash|zsh|dash|ksh|env)
+      for a in "$@"; do
+        case "$a" in -*c) die "ensemble-verification-receipt red: run the test command directly, not through '$1 -c'" ;; esac
+      done ;;
   esac
-  for a in "$@"; do
-    case "$a" in -c|-*c) case "$(basename -- "$1")" in sh|bash|zsh|dash|ksh|env)
-      die "ensemble-verification-receipt red: run the test command directly, not through '$1 -c'" ;; esac ;;
-    esac
-  done
 
   head=$(git rev-parse --verify --quiet HEAD 2>/dev/null) || die "ensemble-verification-receipt red: no HEAD"
   since_sha=$(git rev-parse --verify --quiet "$since^{commit}" 2>/dev/null) || die "ensemble-verification-receipt red: --since is not a commit: $since"
@@ -330,7 +330,10 @@ cmd_red() {
   git merge-base --is-ancestor "$since_sha" "$head" 2>/dev/null \
     || die "ensemble-verification-receipt red: --since must be HEAD or an ancestor of it (the commit the fix starts from), got $since"
   branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || die "ensemble-verification-receipt red: detached HEAD; a red record needs a branch"
-  blob=$(git hash-object -- "$test_path" 2>/dev/null) || die "ensemble-verification-receipt red: cannot hash $test_path"
+  # Records are keyed by the repo-root path, the form `git diff --name-only`
+  # prints, so a test named `./t.sh` or from a subdirectory still verifies.
+  rel="$(git rev-parse --show-prefix 2>/dev/null)${test_path#./}"
+  blob=$(git -C "$REPO_TOP" hash-object -- "$rel" 2>/dev/null) || die "ensemble-verification-receipt red: cannot hash $test_path"
 
   "$@"; rc=$?
   case "$rc" in
@@ -339,7 +342,7 @@ cmd_red() {
   esac
 
   mkdir -p "$RECEIPT_DIR" || die "ensemble-verification-receipt: cannot create $RECEIPT_DIR"
-  TEST="$test_path" BLOB="$blob" SINCE="$since_sha" BRANCH="$branch" EXIT="$rc" CMD="$*" \
+  TEST="$rel" BLOB="$blob" SINCE="$since_sha" BRANCH="$branch" EXIT="$rc" CMD="$*" \
   python3 - "$RED_FILE" <<'PY' || die "ensemble-verification-receipt red: cannot write $RED_FILE"
 import json, os, sys, time
 try:
@@ -370,14 +373,18 @@ PY
 red_verdict() {  # $1=since -> prints a reason
   since_sha=$(git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null) || { printf 'red-test-missing\n'; return; }
   branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || printf '')
-  changed=$( { git diff --name-only "$since_sha" -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+  changed=$( { git -C "$REPO_TOP" diff --name-only "$since_sha" -- 2>/dev/null
+               git -C "$REPO_TOP" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
   [ -f "$RED_FILE" ] || { printf 'red-test-missing\n'; return; }
   blobs=""
-  for t in $(python3 -c 'import json,sys
+  # Hash only the records this fix could match: the file keeps every past
+  # record, and verify runs at several gates per build.
+  for t in $(BRANCH="$branch" SINCE="$since_sha" python3 -c 'import json,os,sys
 try:
-    for k in (json.load(open(sys.argv[1])).get("records") or {}): print(k)
+    for k, r in (json.load(open(sys.argv[1])).get("records") or {}).items():
+        if isinstance(r, dict) and r.get("branch") == os.environ["BRANCH"] and r.get("since") == os.environ["SINCE"]: print(k)
 except Exception: pass' "$RED_FILE" 2>/dev/null); do
-    [ -f "$t" ] && blobs="$blobs $t=$(git hash-object -- "$t" 2>/dev/null)"
+    [ -f "$REPO_TOP/$t" ] && blobs="$blobs $t=$(git -C "$REPO_TOP" hash-object -- "$t" 2>/dev/null)"
   done
   SINCE="$since_sha" BRANCH="$branch" CHANGED="$changed" BLOBS="$blobs" python3 - "$RED_FILE" <<'PY'
 import json, os, sys
@@ -541,14 +548,15 @@ if ttl_seconds >= 0 and age > ttl_seconds:
     out(False, "expired", {"age_seconds": age})
 
 checks = r.get('checks') or {}
-required = [c for c in os.environ['REQUIRES'].replace(',', ' ').split() if c and c != 'red_test']
+requested = os.environ['REQUIRES'].replace(',', ' ').split()
+required = [c for c in requested if c != 'red_test']
 missing = [c for c in required if checks.get(c) != 'passed']
 if missing:
     out(False, "check-not-recorded", {"missing": sorted(missing)})
 
 # red_test is not a receipt check: its evidence is in red-tests.json, judged by
 # red_verdict in the shell above. When it is required, only "ok" passes.
-if 'red_test' in os.environ['REQUIRES'].replace(',', ' ').split():
+if 'red_test' in requested:
     red = os.environ.get('RED_REASON', '') or 'malformed'
     if red != 'ok':
         out(False, red)

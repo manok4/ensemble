@@ -212,7 +212,7 @@ assert_exit_code 2 "$rc" "outside a git work tree exits 2"
 # subcommand reaches the real git, so a guard that swallowed the failure and
 # treated the listing as empty would exit 0 here.
 SHIM="$WORK/shim"; mkdir -p "$SHIM"; REAL_GIT=$(command -v git)
-printf '#!/bin/sh\n[ "$1" = "ls-files" ] && { echo "shim: ls-files failed" >&2; exit 128; }\nexec "%s" "$@"\n' "$REAL_GIT" > "$SHIM/git"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = "ls-files" ] && { echo "shim: ls-files failed" >&2; exit 128; }; done\nexec "%s" "$@"\n' "$REAL_GIT" > "$SHIM/git"
 chmod +x "$SHIM/git"
 R=$(new_repo shim)
 ( cd "$R" && PATH="$SHIM:$PATH" "$G" --base main >/dev/null 2>&1 ); rc=$?
@@ -222,6 +222,79 @@ assert_exit_code 2 "$rc" "a failing git ls-files exits 2, never 0"
 assert_exit_code 3 "$rc" "a missing --base is a usage error"
 ( cd "$R" && "$G" --base main --pending-exception "made-up tests/x: why" >/dev/null 2>&1 ); rc=$?
 assert_exit_code 3 "$rc" "an exception with an unknown move is a usage error"
+
+# --- every arm of the skip and suppression patterns -----------------------------------
+# One row per regex arm, so dropping an arm turns a row red. Strings are split
+# so this file does not itself read as a skip or a suppression.
+arm() {  # $1=label $2=path $3=added line $4=expected move
+  R=$(new_repo "arm-$1"); mkdir -p "$R/$(dirname "$2")"
+  ( cd "$R" && printf '%s\n' "$3" >> "$2" && git add -A && git commit -qm arm ) >/dev/null 2>&1
+  run "$R"
+  assert_contains "$(moves_in blocked)" "$4 $2" "arm $1 blocks as $4"
+}
+arm xit        tests/a.test.js   "x""it('a', () => {});"                  test-skipped
+arm xdescribe  tests/a.test.js   "x""describe('a', () => {});"            test-skipped
+arm only       tests/a.test.js   "it.on""ly('a', () => {});"              test-skipped
+arm todo       tests/a.test.js   "it.to""do('a');"                        test-skipped
+arm pytest     tests/test_a.py   "@pytest.mark.sk""ip"                    test-skipped
+arm goskip     tests/a_test.go   "	t.Sk""ip(\"later\")"                   test-skipped
+arm tsnocheck  src/a.ts          "// @ts-no""check"                       checker-silenced
+arm biome      src/a.ts          "// biome-ig""nore lint: x"              checker-silenced
+arm noqa       src/a.py          "x = 1  # no""qa"                        checker-silenced
+arm typeignore src/a.py          "x = f()  # type: ig""nore"              checker-silenced
+arm istanbul   src/a.js          "/* istanbul ig""nore next */"           checker-silenced
+arm semgrep    src/a.js          "// nosem""grep"                         checker-silenced
+arm gitleaks   src/a.js          "const k = 1; // gitleaks:al""low"       checker-silenced
+
+# --- thresholds in package.json, and several values of one key ----------------------
+R=$(new_repo jest)
+( cd "$R" && printf '{"jest":{"coverageThreshold":{"global":{"branches":80,"lines":90}}}}\n' > package.json && git add -A && git commit -qm j \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && printf '{"jest":{"coverageThreshold":{"global":{"branches":80,"lines":70}}}}\n' > package.json && git commit -qam lower ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "threshold-lowered package.json" "a jest coverageThreshold lowered in package.json blocks"
+R=$(new_repo twovals)
+( cd "$R" && printf '[a]\nfail_under = 90\n[b]\nfail_under = 80\n' > setup.cfg && git add -A && git commit -qm t \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && printf '[a]\nfail_under = 90\n[b]\nfail_under = 60\n' > setup.cfg && git commit -qam lower ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "threshold-lowered setup.cfg" "the second of two values of one key dropping blocks"
+R=$(new_repo maxbranches)
+( cd "$R" && printf '[tool.ruff.lint.pylint]\nmax-branches = 12\n' >> pyproject.toml && git commit -qam a \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && sed -i.bak 's/max-branches = 12/max-branches = 10/' pyproject.toml && rm pyproject.toml.bak && git commit -qam tighten ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 0 "$RC" "tightening a max-branches lint limit is not a lowered coverage threshold"
+
+# --- a malformed trailer in history warns, never stops every ship ---------------------
+R=$(new_repo badtrailer)
+( cd "$R" && printf 'x\n' > src/x.js && git add -A && git commit -qm x -m "Floor-Exception: test-skiped tests/a.test.js: typo" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 0 "$RC" "a malformed Floor-Exception in history does not block a clean branch"
+assert_contains "$OUT" "unparsed Floor-Exception trailer" "and is reported as a warning"
+
+# --- ledger rows may wrap the path in backticks --------------------------------------
+R=$(new_repo ledger-ticks)
+( cd "$R" && mkdir -p docs/test-audits && printf '| `tests/other.test.js` | D | none | dead | - |\n' > docs/test-audits/t.md \
+  && git add docs && git rm -q tests/other.test.js \
+  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audits/t.md" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 0 "$RC" "a ledger row with the path in backticks excuses the deletion"
+
+# --- a path with a space matches its exception -----------------------------------------
+R=$(new_repo spaced)
+( cd "$R" && printf "test('s', () => { expect(1).toBe(1); });\n" > "tests/my file.test.js" && git add -A && git commit -qm s \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && printf "%s's', () => {});\n" "$SKIP_CALL" >> "tests/my file.test.js" \
+  && git commit -qam skip -m "Floor-Exception: test-skipped tests/my file.test.js: flaky upstream" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 0 "$RC" "an exception for a path with a space excuses it"
+
+# --- a large untracked file is skipped and named, not read ---------------------------
+R=$(new_repo large)
+( cd "$R" && head -c 1100000 /dev/zero | tr '\0' 'a' > big.txt ) >/dev/null 2>&1
+run "$R"
+assert_contains "$OUT" "over 1MB not scanned: big.txt" "an untracked file over 1MB is reported, not scanned"
 
 # --- markdown for the PR body -------------------------------------------------------
 R=$(new_repo md)

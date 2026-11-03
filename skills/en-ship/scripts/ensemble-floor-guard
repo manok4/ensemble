@@ -40,7 +40,6 @@
 
 set -u
 
-die() { printf 'ensemble-floor-guard: %s\n' "$*" >&2; exit 3; }
 command -v git >/dev/null 2>&1 || { printf 'ensemble-floor-guard: git not found\n' >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || { printf 'ensemble-floor-guard: python3 not found\n' >&2; exit 2; }
 
@@ -53,7 +52,6 @@ import sys
 
 BLOCKING = ("test-deleted", "test-skipped", "checker-silenced", "threshold-lowered")
 REPORTED = ("assertion-removed", "stub-added")
-MOVES = BLOCKING + REPORTED
 
 
 def bail(msg, code=2):
@@ -64,7 +62,9 @@ def bail(msg, code=2):
 def git(*args):
     """Run git; any failure is a guard that could not run, never an empty result."""
     try:
-        out = subprocess.run(["git"] + list(args), stdout=subprocess.PIPE,
+        # core.quotePath=false: a non-ASCII path prints as itself, not C-quoted,
+        # so it matches the path an exception names.
+        out = subprocess.run(["git", "-c", "core.quotePath=false"] + list(args), stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, check=False)
     except OSError as exc:
         bail("git failed to start: %s" % exc)
@@ -137,7 +137,9 @@ ASSERT = re.compile(r"\b(expect|assert\w*|should)\b")
 _NIE = "NotImplemented" + "Error"
 STUB = re.compile(r"catch\s*(\([^)]*\))?\s*\{\s*\}|throw new (Error|" + _NIE + r")\(.*not implemented|"
                   r"raise " + _NIE + r"|\bpass\s*#\s*stub", re.I)
-THRESH = re.compile(r"(coverageThreshold|branches|functions|lines|statements|fail_under|fail-under|"
+# The key must stand alone: `max-branches = 12` (a lint limit, where lower is
+# stricter) must not read as the coverage key `branches`.
+THRESH = re.compile(r"(?<![\w-])(coverageThreshold|branches|functions|lines|statements|fail_under|fail-under|"
                     r"min_coverage|thresholds)[\"']?\s*[:=]\s*[\"']?(\d+(?:\.\d+)?)")
 
 
@@ -161,12 +163,12 @@ for line in diff.splitlines():
     if line.startswith("diff --git "):
         cur, in_header = None, True
     elif in_header and line.startswith("+++ "):
-        target = line[4:]
+        target = line[4:].rstrip("\t")  # git appends a tab when the path has a space
         cur = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
         if cur is not None:
             files.setdefault(cur, {"added": [], "removed": []})
     elif in_header and line.startswith("--- "):
-        src = line[4:]
+        src = line[4:].rstrip("\t")
         if src != "/dev/null":
             # A deleted file has no +++ target; track its removed lines anyway.
             cur = src[2:] if src.startswith("a/") else src
@@ -181,12 +183,20 @@ for line in diff.splitlines():
     elif cur is not None and line.startswith("-"):
         files[cur]["removed"].append(line[1:])
 
+UNTRACKED_CAP = 1024 * 1024
+skipped_large = []
 for path in untracked:
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            lines = fh.read().splitlines()
-    except (OSError, IsADirectoryError):
+        if os.path.getsize(path) > UNTRACKED_CAP:
+            skipped_large.append(path)
+            continue
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
         continue
+    if b"\0" in raw[:8192]:
+        continue  # binary: nothing a regex over lines can read
+    lines = raw.decode("utf-8", "replace").splitlines()
     files[path] = {"added": [(n + 1, t) for n, t in enumerate(lines)], "removed": []}
 
 # --- moves -------------------------------------------------------------------
@@ -214,7 +224,7 @@ for path, ch in sorted(files.items()):
             add("stub-added", path, n, text)
     if test:
         lost = sum(1 for t in ch["removed"] if ASSERT.search(t)) - sum(1 for _, t in ch["added"] if ASSERT.search(t))
-        if lost > 0 and ch["removed"]:
+        if lost > 0:
             # A kept file with no assertion left is a deletion in all but name.
             try:
                 with open(path, encoding="utf-8", errors="replace") as fh:
@@ -245,12 +255,20 @@ for path, ch in sorted(files.items()):
                     add("threshold-lowered", path, new[i][1], "%s %g -> %g" % (key, was, new[i][0]))
 
 # --- exceptions --------------------------------------------------------------
-trailer_keys = set()
+trailer_keys, unparsed = set(), []
 for body in git("log", "--format=%B%x00", "%s..HEAD" % merge_base).split("\0"):
     for line in body.splitlines():
         m = re.match(r"^Floor-Exception:\s*(.*)$", line)
-        if m:
-            trailer_keys.add(parse_exception(m.group(1), "trailer"))
+        if not m:
+            continue
+        # A malformed trailer already in history excuses nothing and is
+        # reported; failing on it would stop every ship until history is
+        # rewritten. A malformed --pending-exception is still a usage error.
+        em = EXC_RE.match(m.group(1))
+        if em and em.group(1) in BLOCKING:
+            trailer_keys.add((em.group(1), em.group(2).strip()))
+        else:
+            unparsed.append(m.group(1).strip())
 
 
 def ledger_excuses(path):
@@ -264,7 +282,7 @@ def ledger_excuses(path):
         # The ledger must arrive with the deletion and carry a row marking the
         # path deleted (D) or consolidated (C): a row is a whole table cell, so
         # a mention elsewhere, or a "keep" row, excuses nothing.
-        row = re.compile(r"^\|\s*%s(::[^|]*)?\s*\|\s*[DC]\s*\|" % re.escape(path), re.M)
+        row = re.compile(r"^\|\s*`?%s(::[^|`]*)?`?\s*\|\s*[DC]\s*\|" % re.escape(path), re.M)
         for ledger in re.findall(r"^Test-Audit-Ledger:\s*(\S+)\s*$", body, re.M):
             if ledger not in touched:
                 continue
@@ -289,7 +307,9 @@ for mv in moves:
     else:
         blocked.append(mv)
 
-result = {"base": base, "merge_base": merge_base, "blocked": blocked, "reported": reported, "excused": excused}
+result = {"base": base, "merge_base": merge_base, "blocked": blocked, "reported": reported, "excused": excused,
+          "warnings": ["unparsed Floor-Exception trailer: %s" % u for u in unparsed]
+                      + ["untracked file over 1MB not scanned: %s" % p for p in skipped_large]}
 
 
 def where(mv):
@@ -299,13 +319,15 @@ def where(mv):
 if mode == "json":
     print(json.dumps(result, indent=2))
 elif mode == "markdown":
-    if reported or excused:
+    if reported or excused or result["warnings"]:
         print("## Quality bar\n")
         print("The floor guard found these in the diff. None blocked the ship.\n")
         for mv in reported:
             print("- **%s** `%s` %s" % (mv["move"], where(mv), mv["text"]))
         for mv in excused:
             print("- **%s** `%s`, excused by %s" % (mv["move"], where(mv), mv["by"]))
+        for w in result["warnings"]:
+            print("- %s" % w)
 else:
     for mv in blocked:
         print("BLOCKED %s %s %s" % (mv["move"], where(mv), mv["text"]))
@@ -313,6 +335,8 @@ else:
         print("REPORTED %s %s %s" % (mv["move"], where(mv), mv["text"]))
     for mv in excused:
         print("EXCUSED %s %s (by %s)" % (mv["move"], where(mv), mv["by"]))
+    for w in result["warnings"]:
+        print("WARNING " + w)
     print("floor-guard: %d blocked, %d reported, %d excused" % (len(blocked), len(reported), len(excused)))
 sys.exit(1 if blocked else 0)
 PY

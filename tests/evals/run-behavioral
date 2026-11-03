@@ -4,10 +4,13 @@
 # so tests/run.sh never calls this (it is not named *.test.sh).
 #
 # Usage:
-#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--no-mcp] [--dry-run]
+#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--with-user-mcp] [--dry-run]
 #
-# --no-mcp runs the session with no MCP servers (an empty --mcp-config, strict),
-# so a case can check what a skill does when Context7 is unavailable.
+# The session loads NO MCP servers by default (an empty, strict --mcp-config):
+# with bypassPermissions every tool call is auto-approved, and an operator's
+# servers (a database in write mode, say) act outside the scratch repo.
+# --with-user-mcp loads the operator's servers, for a case that needs one
+# (Context7 for docs grounding); run it knowing what those servers can do.
 #
 # Each case is tests/evals/behavioral/<case>/ holding prompt.md, expect.json
 # (the v1 contract in tests/evals/grade) and base/ (or base_from). A review case
@@ -32,17 +35,17 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 CASES="$HERE/behavioral"
 GRADE="$HERE/grade"
 
-usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--no-mcp] [--dry-run]" >&2; exit 2; }
+usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--with-user-mcp] [--dry-run]" >&2; exit 2; }
 
 [ $# -ge 1 ] || usage
 target="$1"; shift
-mode=""; runs=3; dry=0; mcp_flags=""
+mode=""; runs=3; dry=0; mcp_flags="--strict-mcp-config --mcp-config {\"mcpServers\":{}}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) [ $# -ge 2 ] || usage; mode="$2"; shift 2 ;;
     --runs) [ $# -ge 2 ] || usage; runs="$2"; shift 2 ;;
     --dry-run) dry=1; shift ;;
-    --no-mcp) mcp_flags="--strict-mcp-config --mcp-config {\"mcpServers\":{}}"; shift ;;
+    --with-user-mcp) mcp_flags=""; shift ;;
     *) usage ;;
   esac
 done
@@ -114,7 +117,12 @@ $(cat "$dir/prompt.md")"
     printf '%s\n' "$scratch" > "$out/scratch-path"
     : > "$out/.started"
     start=$(date +%s)
-    ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" timeout 1800 claude -p "$prompt" \
+    # Package managers stay offline with install scripts off: a fixture can plant
+    # a typosquat (review-new-rows does), and the session must never install it.
+    ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" \
+        npm_config_ignore_scripts=true npm_config_offline=true npm_config_registry=http://127.0.0.1:9/ \
+        PIP_NO_INDEX=1 PIP_INDEX_URL=http://127.0.0.1:9/ \
+        timeout 1800 claude -p "$prompt" \
         --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text $mcp_flags ) \
       > "$out/output.txt" 2> "$out/stderr.txt"
     secs=$(( $(date +%s) - start ))
@@ -165,7 +173,7 @@ doc = {"facts": facts, "judge": judge, "recall": facts.get("recall"), "precision
        "reasons": reasons, "pass": gf == 0 and gj == 0 and not facts.get("error")}
 json.dump(doc, open(os.path.join(out, "grade.json"), "w"), indent=2)
 PY
-    g=1; python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["pass"] else 1)' "$out/grade.json" && g=0
+    g=1; [ "$(field "$out/grade.json" pass)" = True ] && g=0
     summary=$(python3 -c 'import json,sys
 d=json.load(open(sys.argv[1]))
 r=d.get("recall"); p=d.get("precision")

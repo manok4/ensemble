@@ -28,6 +28,11 @@ out=$(python3 "$RANK" --min-rank1 "$FLOOR" 2>&1); rc=$?
 assert_exit_code 0 "$rc" "every model-invocable skill routes its prompts at rank-1 >= $FLOOR%"
 [ "$rc" -eq 0 ] || printf '%s\n' "$out" >&2
 
+# Negative control on the floor itself: no rate can exceed 100.
+out=$(python3 "$RANK" --min-rank1 100.1 2>&1); rc=$?
+assert_exit_code 1 "$rc" "a floor above any reachable rate fails"
+assert_contains "$out" "under the floor" "and says the rank-1 rate is under the floor"
+
 json=$(python3 "$RANK" --json 2>/dev/null)
 count=$(printf '%s' "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["skills"])')
 cases=$(ls "$REPO_ROOT"/tests/evals/cases/*.json | wc -l | tr -d ' ')

@@ -118,6 +118,15 @@ D=$(new_repo malformed); S=$(git -C "$D" rev-parse HEAD)
   && printf '{not json' > .git/ensemble/red-tests.json) >/dev/null 2>&1
 assert_eq "1 malformed" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "a malformed red file refuses, never passes"
 
+# --- a test named ./t.sh, or from a subdirectory, still verifies --------------------
+D=$(new_repo dotslash); S=$(git -C "$D" rev-parse HEAD)
+(cd "$D" && add_test && "$R" red --test ./t.sh --since "$S" -- sh ./t.sh && fix_bug && "$R" write --check targeted_tests=passed --by test) >/dev/null 2>&1
+assert_eq "0 ok" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "a test recorded as ./t.sh verifies"
+D=$(new_repo subdir); S=$(git -C "$D" rev-parse HEAD)
+(cd "$D" && mkdir -p sub && printf '[ "$(sh ../src.sh)" = 2 ]\n' > sub/t.sh && cd sub && "$R" red --test t.sh --since "$S" -- sh t.sh \
+  && cd .. && fix_bug && "$R" write --check targeted_tests=passed --by test) >/dev/null 2>&1
+assert_eq "0 ok" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "a test recorded from a subdirectory verifies from the root"
+
 # --- a record missing a field fails closed, never an empty verdict --------------
 D=$(new_repo fieldless); S=$(git -C "$D" rev-parse HEAD)
 (cd "$D" && add_test && fix_bug && "$R" write --check targeted_tests=passed --by test \

@@ -14,12 +14,17 @@ Two kinds of check, at two costs.
 ```bash
 tests/evals/run-behavioral review-logic --dry-run          # prints the plan and the exact command; spends nothing
 tests/evals/run-behavioral review-logic --mode peer --runs 1
+tests/evals/run-behavioral fix-docs-grounding --runs 1 --with-user-mcp   # loads your MCP servers
 tests/evals/run-behavioral all --runs 3
 ```
 
 **Cost:** one full skill run per case, per mode, per run. A `/en-review` case also calls the cross-agent peer. Results go to `tests/evals/results/<timestamp>/` (gitignored), one directory per run, holding `output.txt`, `grade.json` and the scratch repo's path.
 
 **Isolation.** The skill comes from this checkout through `--plugin-dir` and is invoked by its plugin-qualified name (`/ensemble:en-review`). An installed copy under `~/.claude/skills` therefore never answers in its place. The session runs with `bypassPermissions` inside a throwaway repo, because the skills under test run scripts, git and the peer CLI, and a permission prompt ends a headless run. `ENSEMBLE_ANALYTICS_DIR` points into the results directory, so eval runs never reach real metrics.
+
+**What the scratch repo does not contain.** Two things act outside it, and the runner closes both by default:
+- **MCP servers.** The session loads none, unless `--with-user-mcp` is passed for a case that needs one, such as Context7 for docs grounding. With `bypassPermissions` every tool call is auto-approved, so an operator's database server in write mode would be live.
+- **The network, through package managers.** npm runs offline with install scripts off, and pip has no index. A fixture can plant a typosquatted dependency (`review-new-rows` does), and the session must never install it.
 
 **Runs are stochastic.** Read rates across runs, not one outcome. Record any run that changed a decision in `ledger.md`.
 
