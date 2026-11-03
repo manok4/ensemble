@@ -165,8 +165,10 @@ for line in diff.splitlines():
         cur, in_header = None, True
     elif in_header and line.startswith("+++ "):
         target = line[4:].rstrip("\t")  # git appends a tab when the path has a space
-        cur = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
-        if cur is not None:
+        # A deleted file's target is /dev/null: keep the path its "---" line
+        # named, so its removed lines (a coverage config's thresholds) still count.
+        if target != "/dev/null":
+            cur = target[2:] if target.startswith("b/") else target
             files.setdefault(cur, {"added": [], "removed": []})
     elif in_header and line.startswith("--- "):
         src = line[4:].rstrip("\t")
@@ -213,8 +215,32 @@ for path in deleted:
     if is_test(path):
         add("test-deleted", path)
 
+def check_thresholds(path, ch):
+    """A threshold key whose values fell, or that lost an occurrence, lowered
+    the bar. Values are compared highest first. A deleted config file has only
+    removed lines, so every threshold it held reads as removed."""
+    before, after = {}, {}
+    for t in ch["removed"]:
+        for key, val in THRESH.findall(t):
+            before.setdefault(key, []).append(float(val))
+    for n, t in ch["added"]:
+        for key, val in THRESH.findall(t):
+            after.setdefault(key, []).append((float(val), n))
+    for key, old in sorted(before.items()):
+        old = sorted(old, reverse=True)
+        new = sorted(after.get(key, []), key=lambda v: -v[0])
+        for i, was in enumerate(old):
+            if i >= len(new):
+                add("threshold-lowered", path, None, "%s %g removed" % (key, was))
+            elif new[i][0] < was:
+                add("threshold-lowered", path, new[i][1], "%s %g -> %g" % (key, was, new[i][0]))
+
+
 for path, ch in sorted(files.items()):
     if path in deleted:
+        # Deleting a coverage config removes its floor as surely as editing it.
+        if CONFIG_PATH.search(path):
+            check_thresholds(path, ch)
         continue
     test, doc = is_test(path), bool(DOC_PATH.search(path))
     for n, text in ch["added"]:
@@ -238,23 +264,7 @@ for path, ch in sorted(files.items()):
             else:
                 add("assertion-removed", path, None, "%d assertion line(s) removed" % lost)
     if CONFIG_PATH.search(path):
-        # Compare every value of a key, highest first: a key whose values fell,
-        # or that lost an occurrence (a threshold deleted outright), lowered the bar.
-        before, after = {}, {}
-        for t in ch["removed"]:
-            for key, val in THRESH.findall(t):
-                before.setdefault(key, []).append(float(val))
-        for n, t in ch["added"]:
-            for key, val in THRESH.findall(t):
-                after.setdefault(key, []).append((float(val), n))
-        for key, old in sorted(before.items()):
-            old = sorted(old, reverse=True)
-            new = sorted(after.get(key, []), key=lambda v: -v[0])
-            for i, was in enumerate(old):
-                if i >= len(new):
-                    add("threshold-lowered", path, None, "%s %g removed" % (key, was))
-                elif new[i][0] < was:
-                    add("threshold-lowered", path, new[i][1], "%s %g -> %g" % (key, was, new[i][0]))
+        check_thresholds(path, ch)
 
 # --- exceptions --------------------------------------------------------------
 trailer_keys, unparsed = set(), []

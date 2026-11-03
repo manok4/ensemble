@@ -81,6 +81,20 @@ D=$(new_repo changed); S=$(git -C "$D" rev-parse HEAD)
   && printf 'true\n' > t.sh && "$R" write --check targeted_tests=passed --by test) >/dev/null 2>&1
 assert_eq "1 red-test-changed" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "editing the test after its red run refuses"
 
+# --- recovery after a review edits the test, with the fix already committed ----
+# The documented way out: check the sources out from the start commit, keep the
+# edited test, re-run red, then restore the sources. Stashing finds nothing,
+# because the fix is committed, so the test still passes and red refuses.
+D=$(new_repo recover); S=$(git -C "$D" rev-parse HEAD)
+(cd "$D" && add_test && "$R" red --test t.sh --since "$S" -- sh t.sh && fix_bug && git add -A && git commit -qm fix \
+  && printf '[ "$(sh src.sh)" = 2 ] && [ -n "reviewed" ]\n' > t.sh && git commit -qam "review: tighten test" \
+  && "$R" write --check targeted_tests=passed --by test) >/dev/null 2>&1
+assert_eq "1 red-test-changed" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "a review edit to the committed test refuses"
+out=$(cd "$D" && git stash push -- src.sh 2>&1; "$R" red --test t.sh --since "$S" -- sh t.sh 2>&1)
+assert_contains "$out" "red-test-passed" "stashing cannot restore a committed fix's baseline"
+(cd "$D" && git checkout -q "$S" -- src.sh && "$R" red --test t.sh --since "$S" -- sh t.sh && git checkout -q HEAD -- src.sh) >/dev/null 2>&1
+assert_eq "0 ok" "$(reason "$D" --requires targeted_tests,red_test --since "$S")" "re-recording against the start commit's sources verifies"
+
 # --- an earlier fix's record cannot stand in for a later fix -----------------------
 D=$(new_repo reuse); S1=$(git -C "$D" rev-parse HEAD)
 (cd "$D" && add_test && "$R" red --test t.sh --since "$S1" -- sh t.sh && fix_bug \

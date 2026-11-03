@@ -266,6 +266,13 @@ R=$(new_repo maxbranches)
 run "$R"
 assert_exit_code 0 "$RC" "tightening a max-branches lint limit is not a lowered coverage threshold"
 
+R=$(new_repo configgone)
+( cd "$R" && printf '[report]\nfail_under = 90\n' > .coveragerc && git add -A && git commit -qm c \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && git rm -q .coveragerc && git commit -qm "drop coverage config" ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "threshold-lowered .coveragerc" "deleting a coverage config with a threshold blocks"
+
 R=$(new_repo covflag)
 ( cd "$R" && printf '[pytest]\naddopts = --cov=src --cov-fail-under=90\n' > pytest.ini && git add -A && git commit -qm c \
   && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
