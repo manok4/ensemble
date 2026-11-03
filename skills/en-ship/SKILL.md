@@ -65,6 +65,9 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 6. **Secret scan on the lines this push would add.** `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --staged`. **Never hand-roll greps for this**; `references/secret-patterns.md` says why, and the helper masks every preview so its own output cannot leak.
    - **Exit 1** (high-confidence pattern or red-flag filename) → stop; report pattern, path and line; suggest `git restore <file>`, the per-line `# pragma: ensemble-allow-secret`, or `--allow-secrets` (rare, and it downgrades rather than silences).
    - **Exit 0 with warnings** (heuristic matches) → surface and let the user confirm; report the pragma-suppressed count so nobody forgets those lines exist.
+6a. **Floor guard: refuse a lowered quality bar.** `bash "$SKILL_DIR/scripts/ensemble-floor-guard" --base origin/<base>`. It blocks a deleted test, a skipped test, a silenced checker and a lowered coverage threshold, and reports removed assertions and stubs; `references/floor-guard.md` has the patterns and the exception rules.
+   - **Exit 1** → stop and list each blocked move. Ask the user for a reason per move; with one, re-run adding `--pending-exception "<move> <path>: <reason>"` and carry each as a `Floor-Exception:` trailer into the step-10 commit. Never invent a reason. A secret-scan pragma the user approved at step 6 takes their reason from there.
+   - **Exit 2** → stop. A guard that could not run is not a pass.
 7. **Resolve what to commit, then confirm scope.** Act on the `staging_case` step 3 returned. Resolve one case explicitly — they are ordered, first match wins:
 
    | Case | Action |
@@ -103,12 +106,13 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    EOF
    )"
    ```
+   Pending floor-guard exceptions from step 6a go in the body as `Floor-Exception: <move> <path>: <reason>` trailers, one per line.
 11. **Push.**
    - Feature branch → `git push -u origin <branch>`.
    - Default branch (after explicit confirmation) → `git push origin <default>`.
 12. **Open PR via `gh pr create`.** Title from the commit subject, or a summary across commits when there are several.
 
-    Body from `bash "$SKILL_DIR/scripts/ensemble-pr-body" --base origin/<base> --tests "<what was **actually run** at step 5, and its result>" --selection "$TEST_SELECT_TIER"`, plus `--plan <plan_path>` when step 8 returned one and `--qa <line>` when an `/en-qa` report exists. It derives Summary from the commits, **Verified locally** from the receipt, and the `Closes plan:` line, then feed it to `gh pr create --body-file`.
+    Body from `bash "$SKILL_DIR/scripts/ensemble-pr-body" --base origin/<base> --tests "<what was **actually run** at step 5, and its result>" --selection "$TEST_SELECT_TIER"`, plus `--plan <plan_path>` when step 8 returned one and `--qa <line>` when an `/en-qa` report exists. It derives Summary from the commits, **Verified locally** from the receipt, and the `Closes plan:` line, then append `bash "$SKILL_DIR/scripts/ensemble-floor-guard" --base origin/<base> --markdown` (a **Quality bar** section, empty when nothing was reported or excused) and feed it to `gh pr create --body-file`.
 
     **Pass `--tests` only with a result you actually have.** With none, the helper prints *"No test run recorded for this branch"* and nothing else, which is the point: a checkbox list nobody executed reads to a reviewer exactly like one that passed. It is a claim without evidence, and worse than an empty section because it displaces the question. Add `--summary` bullets when the commit subjects do not carry the intent.
 

@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# ensemble-floor-guard — refuse a ship that quietly lowers the quality bar.
+#
+# An agent under pressure has four cheap ways to turn a red build green without
+# fixing anything: delete the failing test, skip it, silence the checker, or
+# lower the threshold. Each one is a single-line diff a reviewer can miss. This
+# reads the branch's diff and blocks those four, and reports two softer signals
+# (assertions removed from a kept test, a stub left behind) for a person to read.
+#
+# Usage:
+#   ensemble-floor-guard --base <ref> [--pending-exception "<move> <path>: <reason>"]...
+#                        [--json | --markdown]
+#
+# The diff is the merge base of <ref> and HEAD against the WORKING TREE, plus
+# untracked files: what /en-ship is about to commit and push, not just what is
+# already committed.
+#
+# Moves
+#   blocked:  test-deleted · test-skipped · checker-silenced · threshold-lowered
+#   reported: assertion-removed · stub-added
+#
+# Exceptions (a blocked move becomes "excused"):
+#   - a `Floor-Exception: <move> <path>: <reason>` trailer on a commit in <base>..HEAD
+#   - for test-deleted, a `Test-Audit-Ledger:` trailer on the commit that deleted it
+#     (/en-test-audit writes one for every deletion it makes)
+#   - --pending-exception, for uncommitted work; /en-ship then writes it as a
+#     Floor-Exception trailer in its own commit, so every exception lands in history
+#
+# Exit codes
+#   0  nothing blocked (reported and excused moves may exist)
+#   1  at least one blocked move
+#   2  the guard could not run: not a work tree, no merge base, a git listing
+#      failed. Never read a 2 as a pass.
+#   3  usage error
+#
+# Why regex is acceptable here, when guardrail matching needs parsers: this faces
+# an agent cutting corners, not an attacker probing the matcher. A miss lets one
+# weakened test through to review, where it would have gone anyway; a false
+# block costs one trailer. references/floor-guard.md has the patterns and why.
+
+set -u
+
+die() { printf 'ensemble-floor-guard: %s\n' "$*" >&2; exit 3; }
+command -v git >/dev/null 2>&1 || { printf 'ensemble-floor-guard: git not found\n' >&2; exit 2; }
+command -v python3 >/dev/null 2>&1 || { printf 'ensemble-floor-guard: python3 not found\n' >&2; exit 2; }
+
+exec python3 - "$@" <<'PY'
+import json
+import os
+import re
+import subprocess
+import sys
+
+BLOCKING = ("test-deleted", "test-skipped", "checker-silenced", "threshold-lowered")
+REPORTED = ("assertion-removed", "stub-added")
+MOVES = BLOCKING + REPORTED
+
+
+def bail(msg, code=2):
+    sys.stderr.write("ensemble-floor-guard: %s\n" % msg)
+    sys.exit(code)
+
+
+def git(*args):
+    """Run git; any failure is a guard that could not run, never an empty result."""
+    try:
+        out = subprocess.run(["git"] + list(args), stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, check=False)
+    except OSError as exc:
+        bail("git failed to start: %s" % exc)
+    if out.returncode != 0:
+        bail("git %s failed: %s" % (args[0], out.stderr.decode("utf-8", "replace").strip()))
+    return out.stdout.decode("utf-8", "replace")
+
+
+# --- arguments ---------------------------------------------------------------
+argv = sys.argv[1:]
+base, pending, mode = None, [], "text"
+i = 0
+while i < len(argv):
+    a = argv[i]
+    if a == "--base" and i + 1 < len(argv):
+        base = argv[i + 1]; i += 2
+    elif a == "--pending-exception" and i + 1 < len(argv):
+        pending.append(argv[i + 1]); i += 2
+    elif a == "--json":
+        mode = "json"; i += 1
+    elif a == "--markdown":
+        mode = "markdown"; i += 1
+    elif a in ("-h", "--help"):
+        sys.stdout.write("usage: ensemble-floor-guard --base <ref> [--pending-exception "
+                         "\"<move> <path>: <reason>\"]... [--json | --markdown]\n")
+        sys.exit(0)
+    else:
+        bail("unknown or incomplete argument: %s" % a, 3)
+if not base:
+    bail("--base <ref> is required", 3)
+
+EXC_RE = re.compile(r"^\s*(\S+)\s+(.+?):\s*(\S.*)$")
+
+
+def parse_exception(text, source):
+    m = EXC_RE.match(text)
+    if not m or m.group(1) not in BLOCKING:
+        bail("malformed %s exception %r: want \"<move> <path>: <reason>\" with move in %s"
+             % (source, text, ", ".join(BLOCKING)), 3)
+    return (m.group(1), m.group(2).strip())
+
+
+pending_keys = {parse_exception(p, "pending") for p in pending}
+
+# --- where we are ------------------------------------------------------------
+top = git("rev-parse", "--show-toplevel").strip()
+if not top:
+    bail("not inside a git work tree")
+os.chdir(top)
+merge_base = git("merge-base", base, "HEAD").strip()
+if not merge_base:
+    bail("no merge base between %s and HEAD" % base)
+
+# --- what counts as a test, and which lines matter ---------------------------
+TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[^/]+$|_test\.[^/]+$|(^|/)test_[^/]*\.py$")
+DOC_PATH = re.compile(r"\.(md|mdx|rst|txt)$", re.I)
+CONFIG_PATH = re.compile(
+    r"(^|/)(package\.json|pyproject\.toml|setup\.cfg|tox\.ini|pytest\.ini|\.coveragerc|"
+    r"codecov\.ya?ml|\.nycrc(\.json|\.ya?ml)?|Makefile|"
+    r"(jest|vitest|karma|nyc)\.config\.[cm]?[jt]s)$|^\.github/workflows/[^/]+\.ya?ml$")
+
+SKIP = re.compile(r"\.(skip|only)\(|\bxit\(|\bxdescribe\(|@pytest\.mark\.skip|\bt\.Skip\(|\bit\.todo\(")
+# A suppression is a comment, so require a comment marker before it. That keeps
+# the pattern list itself (in this file, in docs) from reading as a suppression.
+SILENCE = re.compile(
+    r"(//|/\*|#|<!--|--)\s*(@ts-ignore|@ts-nocheck|eslint-disable|biome-ignore|noqa\b|"
+    r"type:\s*ignore|istanbul ignore|nosemgrep|gitleaks:allow|pragma: ensemble-allow-secret)")
+ASSERT = re.compile(r"\b(expect|assert\w*|should)\b")
+# The literal names are split so this pattern line does not report itself.
+_NIE = "NotImplemented" + "Error"
+STUB = re.compile(r"catch\s*(\([^)]*\))?\s*\{\s*\}|throw new (Error|" + _NIE + r")\(.*not implemented|"
+                  r"raise " + _NIE + r"|\bpass\s*#\s*stub", re.I)
+THRESH = re.compile(r"(coverageThreshold|branches|functions|lines|statements|fail_under|fail-under|"
+                    r"min_coverage|thresholds)[\"']?\s*[:=]\s*[\"']?(\d+(?:\.\d+)?)")
+
+
+def is_test(path):
+    return bool(TEST_PATH.search(path))
+
+
+# --- the diff ----------------------------------------------------------------
+deleted = [p for p in git("diff", "--no-renames", "--name-only", "--diff-filter=D", merge_base).splitlines() if p]
+diff = git("diff", "--no-color", "--no-renames", "--no-ext-diff", "-U0", merge_base)
+untracked = [p for p in git("ls-files", "--others", "--exclude-standard", "-z").split("\0") if p]
+
+files = {}  # path -> {"added": [(line_no, text)], "removed": [text]}
+# File headers only occur between "diff --git" and the first "@@". Inside a hunk
+# a removed line "-- x" prints as "--- x", so header matching there would
+# misread content as a new file.
+cur, new_line, in_header = None, 0, False
+for line in diff.splitlines():
+    if line.startswith("diff --git "):
+        cur, in_header = None, True
+    elif in_header and line.startswith("+++ "):
+        target = line[4:]
+        cur = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
+        if cur is not None:
+            files.setdefault(cur, {"added": [], "removed": []})
+    elif in_header and line.startswith("--- "):
+        src = line[4:]
+        if src != "/dev/null":
+            # A deleted file has no +++ target; track its removed lines anyway.
+            cur = src[2:] if src.startswith("a/") else src
+            files.setdefault(cur, {"added": [], "removed": []})
+    elif line.startswith("@@"):
+        in_header = False
+        m = re.search(r"\+(\d+)", line)
+        new_line = int(m.group(1)) if m else 0
+    elif cur is not None and line.startswith("+"):
+        files[cur]["added"].append((new_line, line[1:]))
+        new_line += 1
+    elif cur is not None and line.startswith("-"):
+        files[cur]["removed"].append(line[1:])
+
+for path in untracked:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except (OSError, IsADirectoryError):
+        continue
+    files[path] = {"added": [(n + 1, t) for n, t in enumerate(lines)], "removed": []}
+
+# --- moves -------------------------------------------------------------------
+moves = []
+
+
+def add(move, path, line=None, text=None):
+    moves.append({"move": move, "path": path, "line": line, "text": (text or "").strip()[:160]})
+
+
+for path in deleted:
+    if is_test(path):
+        add("test-deleted", path)
+
+for path, ch in sorted(files.items()):
+    if path in deleted:
+        continue
+    test, doc = is_test(path), bool(DOC_PATH.search(path))
+    for n, text in ch["added"]:
+        if test and SKIP.search(text):
+            add("test-skipped", path, n, text)
+        if not doc and SILENCE.search(text):
+            add("checker-silenced", path, n, text)
+        if not doc and not test and STUB.search(text):
+            add("stub-added", path, n, text)
+    if test:
+        lost = sum(1 for t in ch["removed"] if ASSERT.search(t)) - sum(1 for _, t in ch["added"] if ASSERT.search(t))
+        if lost > 0 and ch["removed"]:
+            add("assertion-removed", path, None, "%d assertion line(s) removed" % lost)
+    if CONFIG_PATH.search(path):
+        before = {}
+        for t in ch["removed"]:
+            for key, val in THRESH.findall(t):
+                before.setdefault(key, float(val))
+        for n, t in ch["added"]:
+            for key, val in THRESH.findall(t):
+                if key in before and float(val) < before[key]:
+                    add("threshold-lowered", path, n, "%s %g -> %s" % (key, before[key], val))
+
+# --- exceptions --------------------------------------------------------------
+trailer_keys = set()
+for body in git("log", "--format=%B%x00", "%s..HEAD" % merge_base).split("\0"):
+    for line in body.splitlines():
+        m = re.match(r"^Floor-Exception:\s*(.*)$", line)
+        if m:
+            trailer_keys.add(parse_exception(m.group(1), "trailer"))
+
+
+def ledger_excuses(path):
+    shas = git("log", "--diff-filter=D", "--format=%H", "%s..HEAD" % merge_base, "--", path).split()
+    for sha in shas:
+        body = git("log", "-1", "--format=%B", sha)
+        if re.search(r"^Test-Audit-Ledger:\s*\S", body, re.M):
+            return True
+    return False
+
+
+blocked, reported, excused = [], [], []
+for mv in moves:
+    key = (mv["move"], mv["path"])
+    if mv["move"] in REPORTED:
+        reported.append(mv)
+    elif key in trailer_keys:
+        excused.append(dict(mv, by="trailer"))
+    elif mv["move"] == "test-deleted" and ledger_excuses(mv["path"]):
+        excused.append(dict(mv, by="ledger"))
+    elif key in pending_keys:
+        excused.append(dict(mv, by="pending"))
+    else:
+        blocked.append(mv)
+
+result = {"base": base, "merge_base": merge_base, "blocked": blocked, "reported": reported, "excused": excused}
+
+
+def where(mv):
+    return "%s:%s" % (mv["path"], mv["line"]) if mv["line"] else mv["path"]
+
+
+if mode == "json":
+    print(json.dumps(result, indent=2))
+elif mode == "markdown":
+    if reported or excused:
+        print("## Quality bar\n")
+        print("The floor guard found these in the diff. None blocked the ship.\n")
+        for mv in reported:
+            print("- **%s** `%s` %s" % (mv["move"], where(mv), mv["text"]))
+        for mv in excused:
+            print("- **%s** `%s`, excused by %s" % (mv["move"], where(mv), mv["by"]))
+else:
+    for mv in blocked:
+        print("BLOCKED %s %s %s" % (mv["move"], where(mv), mv["text"]))
+    for mv in reported:
+        print("REPORTED %s %s %s" % (mv["move"], where(mv), mv["text"]))
+    for mv in excused:
+        print("EXCUSED %s %s (by %s)" % (mv["move"], where(mv), mv["by"]))
+    print("floor-guard: %d blocked, %d reported, %d excused" % (len(blocked), len(reported), len(excused)))
+sys.exit(1 if blocked else 0)
+PY
