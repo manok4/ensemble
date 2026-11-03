@@ -88,7 +88,7 @@ Each one follows the rule that new checks replace an existing cycle or stay off 
 
 ### E1. Trigger evals in CI, then retire tests that only pin wording
 
-**Scope is smaller than theirs.** 8 of our 18 skills are manual-invoke (`disable-model-invocation: true`), so trigger accuracy matters for only 10: `en-brainstorm`, `en-build`, `en-debug`, `en-foundation`, `en-guardrail`, `en-learn`, `en-plan`, `en-review`, `en-ship` and `en-simplify`. The eval should read the frontmatter and skip manual skills, not keep its own list.
+**Scope is smaller than theirs.** 6 of our 18 skills are manual-invoke (`disable-model-invocation: true`), so trigger accuracy matters for 12: `en-brainstorm`, `en-build`, `en-debug`, `en-foundation`, `en-guardrail`, `en-learn`, `en-plan`, `en-qa`, `en-resolve-pr`, `en-review`, `en-ship` and `en-simplify`. An earlier count of 8 came from a grep that matched `en-qa`'s and `en-resolve-pr`'s body text, which explains why they omit the flag. The eval reads the frontmatter and skips manual skills, rather than keeping its own list.
 
 **Design.**
 - Put cases in `tests/evals/cases/<skill>.json`, using their shape: `positive[]` prompts with `top_k`, and `negative[]` prompts with an `owner` skill.
