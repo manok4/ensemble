@@ -3,17 +3,19 @@ project: Ensemble
 type: agent-map
 host: any
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-11-02
 target_length_lines: 100
 ---
 
-# Ensemble — agent map
+# Ensemble agent map
 
-> A set of self-contained Claude Code / Codex skills for plan-driven development with cross-agent peer review.
+> A set of self-contained Claude Code and Codex skills for plan-driven development with cross-agent peer review.
 
-This file is the **canonical project map**. Any agent (Codex, Claude Code, others) should read it first to orient. Deeper sources of truth live in `docs/`. Keep this file short — point to where the answer lives, don't inline it.
+Put shared agent guidance here, never in `CLAUDE.md`, which only imports this file.
 
 ## Project shape
+
+`ensemble-unit-verify` and `ensemble-test-select` parse these bullets. Keep the ``- **Key:** `command` `` form with nothing backticked after the command, and write `<unset>` when there is none.
 
 - **Language:** Shell (POSIX sh / bash) + Markdown
 - **Build:** `<unset>`
@@ -21,7 +23,75 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 - **Lint:** `bin/ensemble-lint --scope docs/`
 - **Typecheck:** `<unset>`
 - **Dev server:** `<unset>`
-- **Metrics:** `bin/ensemble-metrics --peer-value | --time | --selection` — three named reports over `~/.ensemble/analytics/<repo>.jsonl`, the one-line-per-run rollup the skills write. Read-only. Set `ENSEMBLE_ANALYTICS_DIR` to point it somewhere else; `tests/run.sh` does this, and gives every test a scratch run ledger, so stub peers never reach real metrics.
+- **Metrics:** `bin/ensemble-metrics --peer-value | --time | --selection`
+
+`ensemble-metrics` prints three read-only reports over `~/.ensemble/analytics/<repo>.jsonl`, the one-line-per-run rollup the skills write. `ENSEMBLE_ANALYTICS_DIR` points it elsewhere. `tests/run.sh` sets it and gives every test a scratch run ledger, so stub peers never reach real metrics.
+
+## Repo layout
+
+| Path | Holds |
+|---|---|
+| `skills/<name>/` | One self-contained skill: `SKILL.md` plus its own `references/`, `scripts/` and, where it dispatches them, `agents/` |
+| `bin/` | `ensemble-lint` (a copy of `skills/en-setup/references/templates/ensemble-lint`) and `ensemble-metrics` |
+| `scripts/` | `check-health`, and `sync-to-codex`, which links skills into `~/.codex/` |
+| `setup` | Machine install for Claude Code, Codex or both |
+| `tests/` | `run.sh` runs every `*.test.sh`; `select-for.sh` picks the tests a change can break; `parity/` pins duplicated files |
+| `hooks/hooks.json` | Plugin hooks, light on purpose |
+| `.claude-plugin/`, `.codex-plugin/` | Plugin and marketplace manifests |
+| `.ensemble/` | Repo config. `config.local.yaml` is per-developer and gitignored; the example is tracked |
+| `.github/workflows/ensemble-tests.yml` | CI: doc lint and tests, changed-only on a PR and in full on `main` |
+
+## Where things live
+
+| Topic | Source of truth |
+|---|---|
+| Product vision, requirements, skill and agent catalog, architecture | [`docs/foundation.md`](./docs/foundation.md): §5 skills, §6 agents, §9 architecture, §18 doc lints |
+| Decisions and the rules they create | D-IDs in `docs/foundation.md` §4.1. `/en-learn` writes new ADRs to `docs/decisions/NNNN-<slug>.md`, created on first use |
+| In-flight plans | [`docs/plans/active/`](./docs/plans/active/) |
+| Shipped plans | [`docs/plans/completed/`](./docs/plans/completed/), listed in [`docs/generated/plan-index.md`](./docs/generated/plan-index.md) |
+| Tracked technical debt | [`docs/plans/tech-debt-tracker.md`](./docs/plans/tech-debt-tracker.md) |
+| Domain vocabulary | [`docs/CONTEXT.md`](./docs/CONTEXT.md) |
+| Solved problems whose lesson outlives the fix | [`docs/learnings/`](./docs/learnings/), start at [`index.md`](./docs/learnings/index.md) |
+| Brainstorms and design docs | [`docs/designs/`](./docs/designs/) |
+| Skill audits and reviews | [`docs/reviews/`](./docs/reviews/) |
+| CI code-review action setup | [`docs/integrations/`](./docs/integrations/) |
+
+## Routing work
+
+Route by what a plan settles, not by size (D138). Use `/en-plan` when the work has an open decision, a risk surface (auth, payments, migrations, external contracts, destructive data), parts that must land in order or that a reviewer could judge apart, more than one session of work, or a design doc behind it. Otherwise use `/en-fix <request>`, however many files it touches.
+
+| Intent | Command |
+|---|---|
+| Explore an idea before planning | `/en-brainstorm` |
+| New product, or retrofit the foundation | `/en-foundation` |
+| Plan a feature, refactor or fix | `/en-plan` |
+| Implement a plan | `/en-build <plan-path>` |
+| One change, no plan, through to a PR | `/en-fix <request>` * |
+| Plan to ready-for-review PR, hands-off | `/en-flow` * |
+| Bounded autonomous loop | `/en-loop` * |
+| Diagnose a bug | `/en-debug` |
+| Simplify the branch diff | `/en-simplify` |
+| Review the branch | `/en-review`; ad-hoc peer review: `/en-review --peer <path-or-ref>` |
+| End-to-end browser test | `/en-qa` |
+| Commit, push and open a PR | `/en-ship` |
+| Address PR review comments | `/en-resolve-pr` |
+| Capture a learning | `/en-learn capture` |
+| Prune the test suite | `/en-test-audit [<path>]` * |
+| Diagnose project setup | `/en-setup` * |
+| Clean doc drift | `/en-sweep` *, scheduled weekly by default; leave routine doc drift to it rather than opening a bespoke PR |
+
+`*` marks manual-invoke skills (`disable-model-invocation: true`). Name the command for the user; do not start the work some other way. `en-guardrail` is always on through PreToolUse hooks and needs no command.
+
+When several skills could apply: use the one the user names; else the most specific (`en-build` over a generic implementation skill, `en-foundation` over `en-plan` for a new product); if still ambiguous, ask once with two options.
+
+## Conventions
+
+- **Repo-relative paths only** in artifacts. No absolute paths (`/Users/...`, `C:\...`).
+- **Stable IDs:** `R<N>` requirements, `D<N>` decisions, `U<N>` plan units (never renumbered), `EN<NN>` plans (`plan_id_prefix: EN`), `TD<N>` tracked debt.
+- **Conventional commits:** `<type>(<scope>): <subject>`, types `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Subject ≤ 50 chars, imperative.
+- **Skills are self-contained.** A file two skills share is copied byte-identical into each. Edit every copy in the same change; `tests/parity/` fails on drift. Edit `ensemble-lint` in its `en-setup` template, then copy it to `bin/` (`tests/lint/bin-template-sync.test.sh`).
+- **Generated files are never hand-edited:** `docs/generated/` and `docs/learnings/index.md`.
+- **Docs are the source of truth.** A decision outside `docs/` is invisible to the next agent; capture it with `/en-learn capture`. Agent memory holds user preferences and feedback only; project facts go in the repo.
 
 ## Test impact
 
@@ -31,80 +101,18 @@ lint_changed_command: 'for f in {files}; do case "$f" in docs/*.md|AGENTS.md|CLA
 test_paths_command: 'for t in {tests}; do ./tests/run.sh -k "$t" || exit 1; done'
 ```
 
-**While iterating, run `./tests/select-for.sh <changed paths>`. Run
-`./tests/run.sh` in full before you commit.** That split is the point: seconds
-for the few files a skill edit can break, against several minutes for the whole
-suite. Four
-consecutive branches lost time to the same pattern, a small edit followed by the
-whole suite, ten times over, and this repo declared nothing `ensemble-test-select`
-could use, so every selection came back `empty`.
+**Iterate with `./tests/select-for.sh <changed paths>`; run `./tests/run.sh` in full before you commit.** A selection takes seconds; the suite takes several minutes. Four consecutive branches lost time re-running the whole suite after each small edit.
 
-The selection is **approximate on purpose and must not be trusted as final**.
-Many tests here anchor on file *content* — they grep for a clause inside a
-SKILL.md they are not named after — and no path-based rule finds those from the
-path that changed. Editing anything under `tests/lib/` or `tests/run.sh` skips
-the approximation and runs everything.
+- **The selection is approximate and never final.** Many tests grep for a clause inside a `SKILL.md` they are not named after, and no path rule finds those. A change under `tests/lib/` or to `tests/run.sh` runs everything.
+- **`test_changed_command`** wins over the path tiers in `ensemble-test-select`, so `/en-build`'s unit gate and `/en-ship`'s preflight select from it instead of reporting `empty`.
+- **`lint_changed_command`** lints changed markdown only: 3s a file against 68s for all of `docs/`. Its `case` keeps the lint off templates under `skills/`, where `{{TODAY}}` placeholders read as malformed dates.
+- **`test_paths_command`** exists because `run.sh` takes `-k <pattern>`, not a list of paths. A unit that edits a test file runs exactly that file.
+- **No `test_full_seconds`, on purpose.** It only makes a checkpoint run the whole suite when the figure is 300s or less. This suite is slower than that, and a hand-kept figure drifts: it read 286 while the suite took 447s, which sent the EN21 build through the full suite twice.
 
-**No `test_full_seconds`, on purpose.** `ensemble-test-select` runs the whole
-suite in place of a selection only when that figure is at or under its cheap
-threshold (300s at most). This suite takes several times longer than a
-selection, so the only thing the field could do here is make a checkpoint run
-everything, and a hand-kept number drifts: it read 286 while the suite took 447s,
-which sent the EN21 build through the full suite twice.
+## Host notes
 
-`lint_changed_command` runs the doc lint over the changed markdown only. The
-whole-`docs/` run is 68s and a single file is 3s. Its `case` matches the same
-paths as `.github/workflows/ensemble-lint.yml`, and for the same reason: pointed
-at a template under `skills/`, the lint reports the `{{TODAY}}` placeholders as
-malformed dates, which is correct for a document and wrong for a template.
-
-`test_paths_command` exists because `./tests/run.sh` takes `-k <pattern>` and not
-a list of paths, so the default `<test command> <paths>` form would hand it a
-flag it rejects. A unit that edits or adds a test file then runs exactly those
-files, in under a second.
-
-`test_changed_command` wins outright over the path tiers when
-`ensemble-test-select` resolves a set, which is what makes `/en-build`'s unit
-gate and `/en-ship`'s preflight select something here instead of reporting
-`empty`.
-
-## Where things live
-
-| Topic | Source of truth |
-|---|---|
-| Product vision, requirements, decisions | [`docs/foundation.md`](./docs/foundation.md) |
-| Current architecture (components, layers, data flows) | [`docs/architecture.md`](./docs/architecture.md) |
-| In-flight feature plans | [`docs/plans/active/`](./docs/plans/active/) |
-| Shipped feature plans | [`docs/plans/completed/`](./docs/plans/completed/) |
-| Tracked technical debt | [`docs/plans/tech-debt-tracker.md`](./docs/plans/tech-debt-tracker.md) |
-| Domain vocabulary — what words mean here | [`docs/CONTEXT.md`](./docs/CONTEXT.md) |
-| Decisions and the rules they create | [`docs/decisions/`](./docs/decisions/) |
-| Solved problems whose lesson outlives the fix | [`docs/learnings/`](./docs/learnings/) — start at [`index.md`](./docs/learnings/index.md) |
-| Brainstorm / design exploration | [`docs/designs/`](./docs/designs/) |
-
-## Conventions
-
-- **Repo-relative paths only** in artifacts. No absolute paths (`/Users/...`, `C:\...`).
-- **Stable IDs:** `R<N>` for foundation requirements, `U<N>` for plan units (never renumbered), `EN<NN>` for plan filenames, `TD<N>` for tracked debt.
-- **Conventional commits:** `<type>(<scope>): <subject>` — types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Subject ≤ 50 chars, imperative.
-- **Doc-as-source-of-truth:** if a decision isn't in `docs/`, the agent can't see it. Capture it via `/en-learn capture` before moving on.
-
-## Working with this project
-
-- **Start a new feature** → `/en-plan`
-- **Implement a plan** → `/en-build <plan-path>`
-- **Small bug fix or improvement, no plan** → `/en-fix <request>`
-- **Review code** → `/en-review`
-- **End-to-end test in browser** → `/en-qa`
-- **Capture a learning after a fix** → `/en-learn capture`
-- **Ad-hoc peer review** → `/en-review --peer <path-or-ref>`
-- **Diagnose project setup** → `/en-setup`
-- **Prune a bloated test suite** → `/en-test-audit [<path>]`
-
-## Notes for Claude Code users
-
-See [`CLAUDE.md`](./CLAUDE.md) for slash-command preferences, skill priorities, and Claude-specific guidance for this project. (Codex users can ignore that file.)
+- **Claude Code:** deferred tools such as `AskUserQuestion`, `CronCreate` and `TaskCreate` need a `ToolSearch` load before first use.
 
 ## Operating philosophy
 
-The repo is the system of record. Maps are short; encyclopedias are long. Failure means a missing capability, not "try harder" — see `docs/foundation.md` §17 for the principles.
+The repo is the system of record. Maps are short; encyclopedias are long. Failure means a missing capability, not "try harder". `docs/foundation.md` §17 has the principles.
