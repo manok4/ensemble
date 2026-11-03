@@ -15,3 +15,4 @@ One row per real run that set a baseline or changed a decision. Rates, not singl
 | 2026-11-03 | review-new-rows | peer | 3 | 1.00, 1.00, 0.75 | 0.83, 0.83, 0.67 | U7 after (new brief rows). The analytics email, missed 3 of 3 before, is found in 2 of 3; the third run missed the typosquat instead. Bar (recall ≥ 0.75 in 2 of 3) met in 3 of 3. |
 | 2026-11-03 | review-new-rows | host | 1 | 1.00 | 0.70 | U7 after. Unchanged recall; security dispatched (confounded by `max_tokens`, see the before row). |
 | 2026-11-03 | review-clean | peer | 3 | n/a | n/a | U7 after. Still zero findings in all three runs: the new rows added no false positives on correct code. |
+| 2026-11-03 | review-security | host | 1 | 1.00 | 0.50 | U8 after (host reviewers carry the brief rows). Both planted defects found (ownership P0, SQL P1). Three extras: no tests, the fixture's non-conventional commit message, a newline in the id surfacing as a 500. 185s. |

@@ -94,6 +94,14 @@ The exception: don't fire a conditional agent on a doc-only diff. If `git diff -
 
 All persona agents fire **in parallel** — single message, multiple `Agent` tool calls — **and the cross-agent peer subprocess launches in the same batch**. Aggregation waits for all to return.
 
+**Each prompt carries its dimension's rows from `references/peer-brief.md`**, under `rows:`, so host reviewers and the peer review against one checklist. Extract the section with this command, `<dimension>` replaced:
+
+```bash
+awk '/^### <dimension>/{f=1;print;next} f&&/^##/{exit} f' "$SKILL_DIR/references/peer-brief.md"
+```
+
+Empty output means the brief has no section for that dimension: pass the one-line focus alone, as before.
+
 In Claude Code:
 
 ```
