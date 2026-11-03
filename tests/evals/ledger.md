@@ -20,3 +20,6 @@ One row per real run that set a baseline or changed a decision. Rates, not singl
 | 2026-11-03 | fix-docs-grounding | (fix) | 1 | n/a | n/a | U10. Pass: `Docs: ms@2.1.3 https://github.com/vercel/ms/blob/2.1.3/readme.md`. Context7 fails to connect in this environment, so the official-docs fallback ran. 209s. |
 | 2026-11-03 | fix-docs-grounding | (fix, --no-mcp) | 1 | n/a | n/a | U10. Pass: `Docs: ms@2.1.3 node_modules/ms/index.js`, the vendored source at the pinned version. The reference did not list installed source as a source; it now does. 245s. |
 | 2026-11-03 | fix-internal-only | (fix) | 1 | n/a | n/a | U10. Pass: no `Docs:` trailer on a repo-internal fix. 149s. |
+| 2026-11-03 | plan-cli-additive | (plan) | 1 | n/a | n/a | U11. Pass: the flag unit carries an `Interfaces:` block and an additive compatibility line; lint clean. 124s. |
+| 2026-11-03 | plan-idempotent-endpoint | (plan) | 1 | n/a | n/a | U11. First graded FAIL: the plan settled the key policy (claim before await, in-flight duplicates await the claimant, failures delete the record) in Technical design and U1, not in the endpoint unit. The check now uses `scope: plan`; re-graded on the saved plan: pass. 149s. |
+| 2026-11-03 | plan-internal-only | (plan) | 1 | n/a | n/a | U11. Pass: planned as an `improvement` refactor with no public-contract section; the judge agreed. 121s. |

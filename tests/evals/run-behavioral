@@ -132,12 +132,19 @@ $(cat "$dir/prompt.md")"
     case "$kind" in
       review) EVAL_MODE="$case_mode" "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade-facts.json" ;;
       fix)    "$GRADE" fix "$exp" "$scratch" > "$out/grade-facts.json" ;;
+      plan)   "$GRADE" plan "$exp" "$scratch" > "$out/grade-facts.json" ;;
       *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade-facts.json"; false ;;
     esac
     gf=$?
     gj=0
     if [ -n "$(field "$exp" judge)" ]; then
-      "$GRADE" judge "$exp" "$out/output.txt" > "$out/grade-judge.json"; gj=$?
+      # A plan run's deliverable is the plan file, so the judge reads it too.
+      judge_in="$out/output.txt"
+      if [ "$kind" = plan ]; then
+        judge_in="$out/judge-input.txt"
+        { cat "$out/output.txt"; printf '\n\n--- plan file ---\n'; cat "$scratch"/docs/plans/active/*.md 2>/dev/null; } > "$judge_in"
+      fi
+      "$GRADE" judge "$exp" "$judge_in" > "$out/grade-judge.json"; gj=$?
     fi
     python3 - "$out" "$gf" "$gj" <<'PY'
 import json, os, sys

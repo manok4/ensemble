@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [
+    {
+      "unit_matching": "payment|endpoint|charge",
+      "must_contain": [
+        "idempoten",
+        "in-flight",
+        "timeout"
+      ],
+      "scope": "plan"
+    }
+  ]
+}

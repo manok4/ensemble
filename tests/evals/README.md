@@ -40,6 +40,14 @@ A review run passes when recall meets `bars.min_recall` (default 1.0), every `pe
 
 `trailers` checks require or forbid a commit trailer such as `Docs:`. A fix case's scratch repo has no `origin`, so `/en-fix` stops at `/en-ship`'s preflight, and the grader reads the commits made before that stop.
 
+**A plan run** is graded on the one plan file it wrote. `bin/ensemble-lint` must report no P1 for it. Then each `plan_checks` entry finds its unit by a title regex and checks:
+- **`must_contain`:** the strings appear in at least one matching unit.
+- **`risk`:** the unit's risk is the value named.
+- **`last`:** the unit comes last in the plan.
+- **`before`:** the unit precedes the one matching that regex.
+
+The positional checks (`risk`, `last`, `before`) need exactly one matching unit. Plan cases run `/en-plan --no-peer`, and the prompt tells it to take its recommended answers, since nobody answers questions in a headless run. The judge reads the session output and the plan file together.
+
 **The judge** rules only on what no fact can settle, such as "the reply did not agree to skip the test". The transcript goes to `claude -p` on stdin, fenced as untrusted data. A verdict counts only when its quoted evidence appears in the transcript. A run passes only when both the facts and the judge pass, and `grade.json` keeps each part separately.
 
 ## Adding a case

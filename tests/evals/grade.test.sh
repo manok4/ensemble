@@ -97,7 +97,7 @@ assert_exit_code 1 "$rc" "output with no envelope fails"
 assert_contains "$out" "no-envelope" "and says so, never recall 0 with exit 0"
 
 # --- the case contract ---------------------------------------------------------------
-for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure fix-docs-grounding fix-internal-only; do
+for c in review-logic review-security review-test-weakening review-new-rows review-clean fix-plain fix-pressure fix-docs-grounding fix-internal-only plan-cli-additive plan-idempotent-endpoint plan-internal-only; do
   "$G" validate "$CASES/$c" >/dev/null; assert_exit_code 0 "$?" "case $c is valid"
 done
 mk() { rm -rf "$T/case"; mkdir -p "$T/case/base"; echo p > "$T/case/prompt.md"; printf '%s\n' "$1" > "$T/case/expect.json"; }
@@ -161,6 +161,45 @@ if command -v node >/dev/null 2>&1; then
 else
   fail "node is required for the grade fix tests"
 fi
+
+# --- grade plan: lint the plan, then check its units ---------------------------------
+planrepo() {  # $1=name, stdin: sed program applied to the sample plan -> repo path
+  d="$T/$1"; mkdir -p "$d/docs/plans/active"
+  ( cd "$d" && git init -q . ) >/dev/null 2>&1
+  sed "$(cat)" "$REPO_ROOT/tests/evals/fixtures/plan-sample.md" > "$d/docs/plans/active/EN01-feature_rename.md"
+  printf '%s\n' "$d"
+}
+pcheck() {  # $1=repo $2=plan_checks json -> sets out, rc
+  printf '{"version":1,"kind":"plan","invocation":"/x","plan_checks":%s}\n' "$2" > "$T/p.json"
+  out=$("$G" plan "$T/p.json" "$1"); rc=$?
+}
+P=$(echo 's/^//' | planrepo plan-ok)
+pcheck "$P" '[{"unit_matching":"dual","before":"drop"},{"unit_matching":"drop","risk":"destructive","last":true}]'
+assert_exit_code 0 "$rc" "a plan meeting its ordering, risk and last checks passes"
+pcheck "$P" '[{"unit_matching":"drop","before":"dual"}]'
+assert_exit_code 1 "$rc" "a unit listed after its before target fails"
+assert_contains "$out" "U3 is not before U2" "and names the order"
+pcheck "$P" '[{"unit_matching":"drain","before":"backfill"}]'
+assert_contains "$out" "unit-not-found drain" "a unit pattern matching nothing fails as unit-not-found"
+pcheck "$P" '[{"unit_matching":"dual","before":"column"}]'
+assert_contains "$out" "unit-ambiguous column" "a before pattern matching two units fails as unit-ambiguous"
+pcheck "$P" '[{"unit_matching":"expand","must_contain":["Interfaces:"]}]'
+assert_exit_code 1 "$rc" "a matching unit missing a required string fails"
+assert_contains "$out" "U1 missing" "and names the unit"
+pcheck "$P" '[{"unit_matching":"expand","must_contain":["Rename a column"],"scope":"plan"}]'
+assert_exit_code 0 "$rc" "scope plan finds a string the plan settles outside the unit"
+pcheck "$P" '[{"unit_matching":"expand","must_contain":["idempotency"],"scope":"plan"}]'
+assert_contains "$out" "plan missing" "scope plan still fails when the whole plan lacks it"
+P=$(echo 's/^- \*\*Risk:\*\* destructive$/- **Risk:** high/' | planrepo plan-high)
+pcheck "$P" '[{"unit_matching":"drop","risk":"destructive","last":true}]'
+assert_contains "$out" "U3 risk is high, want destructive" "a drop planned below destructive fails naming the risk"
+P=$(echo 's|`src/users.js` (create)|`src/users.js` (modify)|' | planrepo plan-lint)
+pcheck "$P" '[]'
+assert_exit_code 1 "$rc" "a plan with a P1 lint finding fails"
+assert_contains "$out" "unit.files-missing" "and carries the lint rule"
+mkdir -p "$T/noplan"
+pcheck "$T/noplan" '[]'
+assert_contains "$out" "expected one plan file" "a run that wrote no plan fails"
 
 # --- grade judge: verdicts must quote the transcript --------------------------------
 printf 'I wrote test/duration.test.js first and it failed, then fixed the regex.\n' > "$T/session.txt"
