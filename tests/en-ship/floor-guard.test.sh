@@ -266,6 +266,28 @@ R=$(new_repo maxbranches)
 run "$R"
 assert_exit_code 0 "$RC" "tightening a max-branches lint limit is not a lowered coverage threshold"
 
+R=$(new_repo covflag)
+( cd "$R" && printf '[pytest]\naddopts = --cov=src --cov-fail-under=90\n' > pytest.ini && git add -A && git commit -qm c \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && sed -i.bak 's/--cov-fail-under=90/--cov-fail-under=70/' pytest.ini && rm pytest.ini.bak && git commit -qam lower ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "threshold-lowered pytest.ini" "lowering --cov-fail-under blocks"
+R=$(new_repo nycflag)
+( cd "$R" && printf '{"scripts":{"cov":"nyc check-coverage --branches=80"}}\n' > package.json && git add -A && git commit -qm n \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && printf '{"scripts":{"cov":"nyc check-coverage --branches=50"}}\n' > package.json && git commit -qam lower ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "threshold-lowered package.json" "lowering nyc --branches blocks"
+
+R=$(new_repo nul)
+( cd "$R" && printf "\0\n%s'a', () => {});\n" "$SKIP_CALL" > tests/hidden.test.js ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "test-skipped tests/hidden.test.js" "a NUL byte does not hide a skip in an untracked test file"
+R=$(new_repo bigtest)
+( cd "$R" && { head -c 1100000 /dev/zero | tr '\0' '/'; printf "\n%s'a', () => {});\n" "$SKIP_CALL"; } > tests/big.test.js ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" "test-skipped tests/big.test.js" "an untracked test file over 1MB is still scanned"
+
 # --- a malformed trailer in history warns, never stops every ship ---------------------
 R=$(new_repo badtrailer)
 ( cd "$R" && printf 'x\n' > src/x.js && git add -A && git commit -qm x -m "Floor-Exception: test-skiped tests/a.test.js: typo" ) >/dev/null 2>&1

@@ -137,9 +137,10 @@ ASSERT = re.compile(r"\b(expect|assert\w*|should)\b")
 _NIE = "NotImplemented" + "Error"
 STUB = re.compile(r"catch\s*(\([^)]*\))?\s*\{\s*\}|throw new (Error|" + _NIE + r")\(.*not implemented|"
                   r"raise " + _NIE + r"|\bpass\s*#\s*stub", re.I)
-# The key must stand alone: `max-branches = 12` (a lint limit, where lower is
-# stricter) must not read as the coverage key `branches`.
-THRESH = re.compile(r"(?<![\w-])(coverageThreshold|branches|functions|lines|statements|fail_under|fail-under|"
+# A lint limit (`max-branches = 12`, `min-lines`), where lower is stricter, must
+# not read as a coverage key. Only those prefixes are excluded: a flag such as
+# `--cov-fail-under=` or nyc's `--branches=` is still a coverage threshold.
+THRESH = re.compile(r"(?<!\w)(?<!max-)(?<!min-)(coverageThreshold|branches|functions|lines|statements|fail_under|fail-under|"
                     r"min_coverage|thresholds)[\"']?\s*[:=]\s*[\"']?(\d+(?:\.\d+)?)")
 
 
@@ -183,19 +184,20 @@ for line in diff.splitlines():
     elif cur is not None and line.startswith("-"):
         files[cur]["removed"].append(line[1:])
 
+# A test or config file is always read, whatever its size or bytes: skipping
+# one would fail open, since a NUL byte or padding is all it takes to hide a
+# skip. Only other files over the cap are left unscanned, and named.
 UNTRACKED_CAP = 1024 * 1024
 skipped_large = []
 for path in untracked:
     try:
-        if os.path.getsize(path) > UNTRACKED_CAP:
+        if os.path.getsize(path) > UNTRACKED_CAP and not (is_test(path) or CONFIG_PATH.search(path)):
             skipped_large.append(path)
             continue
         with open(path, "rb") as fh:
             raw = fh.read()
     except OSError:
         continue
-    if b"\0" in raw[:8192]:
-        continue  # binary: nothing a regex over lines can read
     lines = raw.decode("utf-8", "replace").splitlines()
     files[path] = {"added": [(n + 1, t) for n, t in enumerate(lines)], "removed": []}
 
