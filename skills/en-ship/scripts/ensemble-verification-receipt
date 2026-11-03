@@ -120,7 +120,11 @@ tree_of() {  # $1=worktree top -> content tree id, or fails
   idx=$(git -C "$1" rev-parse --git-path index 2>/dev/null)
   case "$idx" in ""|/*) ;; *) idx="$1/$idx" ;; esac
   # git rejects an empty index file, so copy the real one or start from none.
-  [ -n "$idx" ] && [ -f "$idx" ] && cp "$idx" "$tmpd/index" 2>/dev/null
+  # Copy with -p: git treats an entry modified in the same second as the index
+  # file as "racily clean" and re-hashes it. A plain cp gives the copy a new
+  # mtime, git then trusts the stale stat cache, and a same-size edit made in
+  # the second of the last commit fingerprints as the old content.
+  [ -n "$idx" ] && [ -f "$idx" ] && cp -p "$idx" "$tmpd/index" 2>/dev/null
   if GIT_INDEX_FILE="$tmpd/index" git -C "$1" add -A -- . >/dev/null 2>&1 \
      && tree=$(GIT_INDEX_FILE="$tmpd/index" git -C "$1" write-tree 2>/dev/null) \
      && [ -n "$tree" ]; then
