@@ -1,0 +1,28 @@
+{
+  "skill": "en-review",
+  "positive": [
+    {
+      "prompt": "Review my branch before I merge it",
+      "top_k": 3
+    },
+    {
+      "prompt": "Can you do a code review of these changes?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Check this diff for correctness and security problems",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Tidy up the code on this branch, it works but it's messy",
+      "owner": "en-simplify",
+      "known_gap": "'code' and 'branch' appear in both descriptions; 'tidy' alone does not outweigh them"
+    },
+    {
+      "prompt": "Address the review comments on my PR",
+      "owner": "en-resolve-pr"
+    }
+  ]
+}

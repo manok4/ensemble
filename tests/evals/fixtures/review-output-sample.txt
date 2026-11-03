@@ -1,0 +1,16 @@
+Review complete for feature against main.
+
+```json
+{
+  "verdict": "revise",
+  "summary": "Paging returns one row short; placeOrder does not await the save.",
+  "personas": ["correctness", "testing", "maintainability", "standards"],
+  "mode": "headless",
+  "findings": [
+    {"severity": "P1", "confidence": 9, "title": "pageOrders drops the last row of every page", "location": "src/orders.js:10", "personas": ["correctness"]},
+    {"severity": "P1", "confidence": 8, "title": "placeOrder returns before the save settles", "location": "src/orders.js:13-15", "personas": ["correctness"]},
+    {"severity": "P3", "confidence": 6, "title": "No test covers pageOrders", "location": "test/orders.test.js", "personas": ["testing"]}
+  ],
+  "sub_threshold_findings": []
+}
+```

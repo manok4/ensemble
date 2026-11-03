@@ -447,4 +447,20 @@ assert_eq "$(noage "$in_run_out")" "$(noage "$no_run_out")" \
 assert_eq "$in_rc" "$no_rc" "and so is the exit code"
 assert_eq "$closed_base" "$(nev)" "nothing is recorded once the run has closed"
 
+# --- a same-size edit in the second of the last commit ----------------------
+# git re-hashes an entry whose mtime is not older than the index file ("racily
+# clean"). The fingerprint copies the index; a plain cp gave the copy a fresh
+# mtime, git trusted the stale stat and hashed the OLD content, and write and
+# verify disagreed on 10 of 25 measured runs (0 of 25 with cp -p). git smudges
+# racy entries itself, so pinning stats from a shell does not reproduce it; the
+# real sequence does, so it runs 12 times: with the bug, 12 clean runs in a row
+# is about a 0.2% chance (0.6^12).
+racy_bad=0
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  d=$(new_repo "racy$i")
+  ( cd "$d" && printf 'two\n' > src.txt && "$R" write --check lint=passed --by test >/dev/null 2>&1 \
+      && "$R" verify --requires lint >/dev/null 2>&1 ) || racy_bad=$((racy_bad + 1))
+done
+assert_eq 0 "$racy_bad" "a same-size edit right after a commit verifies against its own receipt (12 runs)"
+
 report

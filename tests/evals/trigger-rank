@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""trigger-rank: does each model-invocable skill's description rank first for
+the prompts users actually type, and do any two descriptions converge?
+
+A lexical stand-in for how a host routes a prompt to a skill. Claude Code and
+Codex both choose from the descriptions alone, so a description missing the
+words users say is a skill that never fires, and two descriptions that share
+most of their words compete for the same prompts. TF-IDF cannot judge meaning;
+it catches those two failures, which are the common ones.
+
+Usage:
+  trigger-rank [--skills-dir <dir>] [--cases-dir <dir>] [--min-rank1 <pct>] [--json]
+
+Each case file is <cases-dir>/<skill>.json:
+  {"skill": "<name>",
+   "positive": [{"prompt": "...", "top_k": 3}],
+   "negative": [{"prompt": "...", "owner": "<skill that should win>"}]}
+
+A positive passes when its skill ranks within top_k (default 3).
+A negative passes when its owner outranks the case's skill. A negative may
+carry "known_gap": "<why>" when the two skills share the prompt's words and a
+lexical ranker cannot separate them; it is then reported, not failed. A
+known_gap that passes is an error ("stale"), so the list can only shrink.
+Two descriptions at cosine >= 0.75 fail; >= 0.50 warn.
+
+Exit codes:
+  0  every check passed
+  1  a check failed (routing, collision, or rank-1 rate under --min-rank1)
+  2  usage error, unreadable input, or an invalid case file
+"""
+import argparse
+import json
+import math
+import os
+import re
+import sys
+
+COLLISION_ERROR = 0.75
+COLLISION_WARN = 0.50
+DEFAULT_TOP_K = 3
+
+# Common English, plus words every description carries, which would otherwise
+# make every pair look alike ("trigger phrases" closes each one).
+STOP = set("""
+a an and are as at be but by can do does for from has have how i if in into is it
+its me my no not of on or our so than that the their them then there these this
+those to up us use used uses using was we what when where which while who why
+will with without you your yours one two three each every any all also only own
+trigger phrase phrases skill
+""".split())
+
+
+def stem(word):
+    """Strip common suffixes so 'reviewing'/'reviews'/'review' meet.
+
+    Deliberately crude and deterministic: order matters, and a stem is only
+    taken when at least three characters remain.
+    """
+    for suffix in ("ations", "ation", "ings", "ing", "ies", "ied", "ed", "es", "s", "ize", "ise"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            word = word[: -len(suffix)]
+            break
+    return word
+
+
+def tokens(text):
+    out = []
+    for raw in re.split(r"[^a-z0-9]+", text.lower()):
+        if not raw or raw in STOP or raw.isdigit():
+            continue
+        out.append(stem(raw))
+    return out
+
+
+def die(msg):
+    print("trigger-rank: " + msg, file=sys.stderr)
+    sys.exit(2)
+
+
+def frontmatter(path):
+    """Return the frontmatter of a SKILL.md as {key: value} for top-level keys."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError as exc:
+        die("cannot read %s: %s" % (path, exc))
+    if not lines or lines[0].strip() != "---":
+        die("%s has no frontmatter" % path)
+    fields = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return fields
+        m = re.match(r"^([A-Za-z][\w-]*):\s*(.*)$", line)
+        if not m:
+            continue
+        value = m.group(2).strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1].replace('\\"', '"')
+        fields[m.group(1)] = value
+    die("%s frontmatter is not closed" % path)
+
+
+def load_skills(skills_dir):
+    if not os.path.isdir(skills_dir):
+        die("skills dir not found: %s" % skills_dir)
+    skills, manual = {}, set()
+    for name in sorted(os.listdir(skills_dir)):
+        path = os.path.join(skills_dir, name, "SKILL.md")
+        if not os.path.isfile(path):
+            continue
+        fm = frontmatter(path)
+        if fm.get("disable-model-invocation", "").lower() == "true":
+            manual.add(name)
+            continue
+        desc = fm.get("description", "")
+        if not desc:
+            die("%s has no description" % path)
+        skills[name] = desc
+    if not skills:
+        die("no model-invocable skills under %s" % skills_dir)
+    return skills, manual
+
+
+def load_cases(cases_dir, skills, manual):
+    if not os.path.isdir(cases_dir):
+        die("cases dir not found: %s" % cases_dir)
+    cases = {}
+    for fname in sorted(os.listdir(cases_dir)):
+        if not fname.endswith(".json"):
+            continue
+        path = os.path.join(cases_dir, fname)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                case = json.load(fh)
+        except (OSError, ValueError) as exc:
+            die("cannot parse %s: %s" % (path, exc))
+        name = case.get("skill") or fname[:-5]
+        if name in manual:
+            die("case for manual skill %s (%s); manual skills are never routed" % (name, path))
+        if name not in skills:
+            die("case for unknown skill %s (%s)" % (name, path))
+        for neg in case.get("negative", []):
+            owner = neg.get("owner")
+            if owner in manual:
+                die("negative owner %s in %s is a manual skill" % (owner, path))
+            if owner not in skills:
+                die("negative owner %r in %s is not a model-invocable skill" % (owner, path))
+        cases[name] = case
+    return cases
+
+
+class Index:
+    def __init__(self, docs):
+        self.names = list(docs)
+        toks = {n: tokens(d) for n, d in docs.items()}
+        df = {}
+        for words in toks.values():
+            for w in set(words):
+                df[w] = df.get(w, 0) + 1
+        n = len(docs)
+        self.idf = {w: math.log((n + 1) / (c + 1)) + 1 for w, c in df.items()}
+        self.vecs = {name: self.vector(words) for name, words in toks.items()}
+
+    def vector(self, words):
+        tf = {}
+        for w in words:
+            if w in self.idf:
+                tf[w] = tf.get(w, 0) + 1
+        vec = {w: c * self.idf[w] for w, c in tf.items()}
+        norm = math.sqrt(sum(v * v for v in vec.values()))
+        return {w: v / norm for w, v in vec.items()} if norm else {}
+
+    @staticmethod
+    def cosine(a, b):
+        if len(a) > len(b):
+            a, b = b, a
+        return sum(v * b.get(w, 0.0) for w, v in a.items())
+
+    def ranking(self, prompt):
+        q = self.vector(tokens(prompt))
+        scored = [(self.cosine(q, self.vecs[n]), n) for n in self.names]
+        # Highest score first; ties break by name so the order is stable.
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        return [n for _, n in scored]
+
+
+def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("--skills-dir", default=os.path.join(root, "skills"))
+    ap.add_argument("--cases-dir", default=os.path.join(here, "cases"))
+    ap.add_argument("--min-rank1", type=float, default=None)
+    ap.add_argument("--json", action="store_true")
+    try:
+        args = ap.parse_args()
+    except SystemExit as exc:
+        sys.exit(0 if exc.code == 0 else 2)
+
+    skills, manual = load_skills(args.skills_dir)
+    cases = load_cases(args.cases_dir, skills, manual)
+    if not cases:
+        die("no case files under %s" % args.cases_dir)
+    index = Index(skills)
+
+    positives, negatives, failed = [], [], False
+    for name, case in sorted(cases.items()):
+        for pos in case.get("positive", []):
+            order = index.ranking(pos["prompt"])
+            rank = order.index(name) + 1
+            top_k = int(pos.get("top_k", DEFAULT_TOP_K))
+            ok = rank <= top_k
+            failed |= not ok
+            positives.append({"skill": name, "prompt": pos["prompt"], "rank": rank,
+                              "top_k": top_k, "first": order[0], "pass": ok})
+        for neg in case.get("negative", []):
+            order = index.ranking(neg["prompt"])
+            owner = neg["owner"]
+            won = order.index(owner) < order.index(name)
+            gap = neg.get("known_gap")
+            # A known gap that now routes correctly is stale: delete it, so a
+            # regression on that prompt is a failure again.
+            ok = (not won) if gap else won
+            failed |= not ok
+            negatives.append({"skill": name, "owner": owner, "prompt": neg["prompt"],
+                              "owner_rank": order.index(owner) + 1,
+                              "skill_rank": order.index(name) + 1,
+                              "known_gap": gap, "pass": ok})
+
+    collisions = []
+    names = sorted(skills)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            sim = index.cosine(index.vecs[a], index.vecs[b])
+            if sim >= COLLISION_WARN:
+                level = "error" if sim >= COLLISION_ERROR else "warn"
+                failed |= level == "error"
+                collisions.append({"a": a, "b": b, "similarity": round(sim, 3), "level": level})
+
+    rank1 = 100.0 * sum(1 for p in positives if p["rank"] == 1) / len(positives) if positives else 0.0
+    below_floor = args.min_rank1 is not None and rank1 < args.min_rank1
+    failed |= below_floor
+
+    report = {"skills": len(skills), "cases": len(cases), "rank1_rate": round(rank1, 1),
+              "min_rank1": args.min_rank1, "positives": positives, "negatives": negatives,
+              "collisions": collisions, "pass": not failed}
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        for p in positives:
+            if not p["pass"]:
+                print("FAIL positive %s: rank %d > top_k %d (first: %s) :: %s"
+                      % (p["skill"], p["rank"], p["top_k"], p["first"], p["prompt"]))
+        for n in negatives:
+            if n["known_gap"] and n["pass"]:
+                print("KNOWN gap %s vs %s: %s :: %s" % (n["skill"], n["owner"], n["known_gap"], n["prompt"]))
+            elif n["known_gap"]:
+                print("FAIL stale known_gap %s vs %s now routes correctly; delete the known_gap :: %s"
+                      % (n["skill"], n["owner"], n["prompt"]))
+            elif not n["pass"]:
+                print("FAIL negative %s: owner %s ranked %d, skill ranked %d :: %s"
+                      % (n["skill"], n["owner"], n["owner_rank"], n["skill_rank"], n["prompt"]))
+        for c in collisions:
+            print("%s collision %s ~ %s: %.3f" % (c["level"].upper(), c["a"], c["b"], c["similarity"]))
+        if below_floor:
+            print("FAIL rank-1 rate %.1f%% is under the floor %.1f%%" % (rank1, args.min_rank1))
+        print("trigger-rank: %d skills, %d positives, %d negatives, rank-1 %.1f%%, %s"
+              % (len(skills), len(positives), len(negatives), rank1, "pass" if not failed else "FAIL"))
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,27 @@
+{
+  "skill": "en-guardrail",
+  "positive": [
+    {
+      "prompt": "Which destructive commands are you blocked from running here?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Is the safety guardrail on, and what does it protect against?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Make sure nothing can force-push or drop a table without asking me",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Push this branch and open a PR",
+      "owner": "en-ship"
+    },
+    {
+      "prompt": "Why did the deploy fail last night?",
+      "owner": "en-debug"
+    }
+  ]
+}

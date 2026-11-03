@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [
+    {
+      "unit_matching": "json|format|flag",
+      "must_contain": [
+        "Interfaces:",
+        "compatib"
+      ]
+    }
+  ]
+}

@@ -295,4 +295,21 @@ grep -q -- '--tier ceiling' "$PD" && grep -q -- '--tier evidence' "$PD" \
   && pass "persona dispatch resolves each tier through the resolver" \
   || fail "persona dispatch resolves each tier through the resolver"
 
+# Host reviewers get their dimension's rows from the peer brief through the
+# command persona-dispatch.md documents (EN25 U8). Run that exact command, so a
+# brief heading renamed or a broken extraction shows here, not as a host
+# reviewer quietly reviewing without its checklist.
+BRIEF="$REPO_ROOT/skills/en-review/references/peer-brief.md"
+cmd=$(grep -E "^awk '/\^### <dimension>/" "$PD" | head -1)
+[ -n "$cmd" ] && pass "persona dispatch documents the rows extraction" || fail "persona dispatch documents the rows extraction"
+rows() { eval "$(printf '%s' "$cmd" | sed "s/<dimension>/$1/; s|\"\$SKILL_DIR/references/peer-brief.md\"|\"\$BRIEF\"|")"; }
+sec=$(rows security)
+assert_contains "$sec" "### security" "the security rows start at its heading"
+assert_contains "$sec" "Supply chain" "and carry the supply-chain row"
+assert_not_contains "$sec" "### performance" "and stop before the next dimension"
+mig=$(rows migrations)
+assert_contains "$mig" "Locking and downtime" "the last section, migrations, is extracted"
+assert_not_contains "$mig" "Where a finding points" "and stops at the next level-2 heading"
+assert_eq "" "$(rows nosuch)" "a dimension with no section extracts nothing"
+
 report

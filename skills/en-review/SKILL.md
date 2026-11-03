@@ -76,7 +76,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
    `high` is evaluated first, so a small-and-safe diff that is nonetheless gated or architectural still resolves `high`. Record the final tier in `peer_decision.effort`.
 7c. **Requirements coverage (the spec axis).** When step 5 found a plan, ask the question no persona asks: **does this diff do what the plan asked?** All four always-on personas can pass a change that implements the wrong thing. Report these as their own findings, each citing the unit's U-ID. **Missing:** a unit's `Goal` or `Test scenarios` nothing in the diff satisfies. **Unasked-for:** behaviour no unit called for, scope the plan did not authorize. **Implemented but wrong:** a unit addressed in a way its own `Verification` would not accept. **Do not rerank these against persona findings**: flawless code can solve the wrong problem, and merging the axes lets one mask the other. With no plan, skip the axis and say so in Coverage rather than silently omitting it.
 
-8. **Dispatch, per review mode.** `--peer` (default) dispatches the peer alone: step 7's detection fed the effort tier and nothing else, and no persona roster runs. `--host` dispatches the persona roster alone. Only `--cross` dispatches both, and only `--cross` reaches the reconciliation in step 10.
+8. **Dispatch, per review mode.** `--peer` (default) dispatches the peer alone: step 7's detection fed the effort tier and nothing else, and no persona roster runs. `--host` dispatches the persona roster alone, each prompt carrying its dimension's `peer-brief.md` rows (`references/persona-dispatch.md`). Only `--cross` dispatches both, and only `--cross` reaches the reconciliation in step 10.
 
     **`--cross`: the peer first, then the personas in ONE batch.** Start the peer detached (step 9), then one message with multiple `Agent` tool calls for the roster, each carrying `model: $AGENT_MODEL` from step 2b when non-empty. The peer is **blind** to persona findings (step 9), so nothing orders it after the roster. Collect the personas, then wait for the peer.
 9. **Outside Voice peer (runs in `--peer` and `--cross`; `--peer` is the default and makes it the sole reviewer).** Dispatch a cross-agent peer pass over the diff (peer is the other agent per D23):
@@ -148,3 +148,14 @@ Every application is recorded in `applied_fixes[]` (`{finding_id, tier, files[]}
 | Mode is `report-only` but `safe_auto` would apply | Note "Would apply N safe_auto fixes (skipped — report-only mode)" in summary; don't apply |
 | Re-verification fails after applying findings | Revert; surface to user; do not commit |
 | Verification pass peer times out or returns malformed JSON | `verification_pass: not-run (peer-failure)`; the initial verdict stands, flagged as unverified |
+
+## Excuses
+
+Each row is an excuse an agent reaches for at this skill's weak points, with the answer.
+
+| Excuse | Answer |
+|---|---|
+| "The peer timed out, so the review is clean." | A failed peer is `peer: "off"` with its reason. Report it as that, never as a clean pass. |
+| "I'm unsure, but a higher confidence makes it stick." | Inflated confidence moves a weak finding into the tier people act on. |
+| "It's a real bug, but P2 sounds less harsh." | Severity follows impact. A softened P1 is a wrong answer, not a kind one. |
+| "Host and peer disagree, so drop it." | Disagreement is the `conflicting` bucket, and it goes to the user. |

@@ -29,6 +29,7 @@ Pre-flight (hands-off):
   ✓ Lint · Typecheck (skipped: receipt by en-build covers full_suite, 6m old)
   ✓ Targeted tests (8 changed files; 14 tests passed; selection: graph)
   ✓ Secret scan (clean)
+  ✓ Floor guard (0 blocked · 1 reported: assertion-removed tests/auth/refresh.test.ts · 0 excused)
   ✓ Base: origin/main fetched; 0 behind, 5 ahead; no predicted conflicts
   ✓ Staging: 12 tracked files in scope; 2 unrelated files preserved and excluded
   ✓ plan_completion_checkpoint: completed_and_moved (FR07-auth-rotation → completed/)

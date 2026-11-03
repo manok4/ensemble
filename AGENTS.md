@@ -36,6 +36,7 @@ Put shared agent guidance here, never in `CLAUDE.md`, which only imports this fi
 | `scripts/` | `check-health`, and `sync-to-codex`, which links skills into `~/.codex/` |
 | `setup` | Machine install for Claude Code, Codex or both |
 | `tests/` | `run.sh` runs every `*.test.sh`; `select-for.sh` picks the tests a change can break; `parity/` pins duplicated files |
+| `tests/evals/` | `trigger-rank` checks skill descriptions route their prompts (in CI); `run-behavioral` drives real headless sessions on demand, never in CI |
 | `hooks/hooks.json` | Plugin hooks, light on purpose |
 | `.claude-plugin/`, `.codex-plugin/` | Plugin and marketplace manifests |
 | `.ensemble/` | Repo config. `config.local.yaml` is per-developer and gitignored; the example is tracked |

@@ -79,6 +79,20 @@ by bookkeeping.
 **Never record a check that was skipped.** A receipt claiming a check that never
 ran is worse than no receipt, because the next layer skips on it too.
 
+## Red records: the failing half of a fix
+
+A fix's test has to fail before the fix and pass after. The passing half is an ordinary receipt check. The failing half happened on the pre-fix tree, which the receipt's fingerprint does not describe, so it lives beside it in `red-tests.json`.
+
+- **`red --test <path> --since <sha> -- <cmd...>`** runs the command itself and records only a real failure. The command must name the test, so `-- false` cannot stand in. `--since` is the commit the fix starts from: `HEAD`, or an ancestor of it when the fix committed a standalone part first. Exit 126 or 127 means the command never ran the test and records nothing (`red-test-not-run`). A passing test records nothing (`red-test-passed`).
+- **`verify --requires red_test --since <sha>`** accepts a record only when all of these hold: it is on this branch, it names this fix's start commit, its test is in this fix's diff, and the test's content is unchanged since it ran. Otherwise it refuses with `red-test-missing`, `red-test-stale` (a record from a different start commit) or `red-test-changed`.
+- **What it proves, and what it does not.** It proves a command naming the test exited with a failure before the fix. It refuses the forms that name a test without running it (`false`, `true`, a shell `-c` wrapper), but it cannot prove the failure was the bug rather than, say, a syntax error. That is still `/en-fix`'s "fails for the right reason" check, in its test-first change step. The recorded `cmd` is kept for review to read.
+- **Fails closed.** A red file or record that cannot be read refuses as `malformed`, never as an empty verdict that reads as not required.
+- **When a review edits the test after its red run,** verify refuses with `red-test-changed`, and the fix is already in, so a new red run would pass. Re-record against the start commit. The fix is usually committed by then, so `git stash` finds nothing to set aside; check the sources out from the start commit instead, keeping the edited test: `git checkout <since> -- <source files>`, run `red` again, then `git checkout HEAD -- <source files>`. Never edit the test back to match the old record.
+- **Paths are recorded from the repo root.** A test named `./t.sh` or run from a subdirectory is stored in the form `git diff --name-only` prints.
+- **One record per test path.** A later red run replaces the earlier one, so a second fix on the same branch never inherits the first fix's evidence.
+
+`/en-fix` writes the record in its test-first change step and requires it at its receipt gate, except for a behaviour-preserving change, where no test can fail first.
+
 ## Who writes and who reads
 
 - **`/en-build`** writes it after its single full-suite run passes, recording

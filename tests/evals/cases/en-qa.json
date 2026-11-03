@@ -1,0 +1,27 @@
+{
+  "skill": "en-qa",
+  "positive": [
+    {
+      "prompt": "Test this like a user would, in the browser, end to end",
+      "top_k": 3
+    },
+    {
+      "prompt": "QA the new checkout flow and fix anything broken",
+      "top_k": 3
+    },
+    {
+      "prompt": "Verify the feature works by clicking through it in Playwright",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Review the code on this branch for bugs",
+      "owner": "en-review"
+    },
+    {
+      "prompt": "Diagnose why the payment webhook errors in production",
+      "owner": "en-debug"
+    }
+  ]
+}

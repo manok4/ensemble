@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [
+    {
+      "unit_matching": "dual.?write|both columns|writes both",
+      "before": "drain|old.?writer"
+    },
+    {
+      "unit_matching": "drain|old.?writer",
+      "before": "backfill"
+    },
+    {
+      "unit_matching": "reconcil",
+      "must_contain": []
+    },
+    {
+      "unit_matching": "drop|contract",
+      "risk": "destructive",
+      "last": true
+    }
+  ],
+  "judge": [
+    {
+      "id": "names-job-writer",
+      "expectation": "The plan's step for retiring or draining old writers names the nightly job jobs/sync-crm.js (or a scheduled job / background writer) as a writer that must stop writing only the old column before the backfill or switch, not only the API instances."
+    }
+  ]
+}

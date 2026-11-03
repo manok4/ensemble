@@ -66,6 +66,10 @@ every dimension runs at that file's tier.
 - Diff content matches: `cookie`, `token`, `password`, `secret`, `bcrypt`, `jwt`, `csrf`, `cors`, `Authorization:`, `req.user`, `req.headers`, `process.env.[A-Z_]+_SECRET`
 - File path matches `**/api/**`, `**/routes/**`, `**/handlers/**` AND function signature suggests public endpoint
 - Migration touches a `roles`, `permissions`, `users.password*`, `sessions`, `api_keys` table
+- An LLM SDK import (`openai`, `anthropic`, `@anthropic-ai/`, `langchain`) or a prompt template
+- A change to `package.json`, a lockfile, `requirements*.txt`, `pyproject.toml` or `go.mod`
+- `rm`, `unlink`, `rmtree`, `rmSync` or `fs.rm` with a non-literal path argument
+- Diff content matches `webhook`, `upload`, `multipart`, `redirect`, or personal-data fields sent to a tracking or logging call (`email`, `phone`, `address` inside `track(`, `identify(`, `log`)
 
 `performance`:
 - File path matches `**/queries/**`, `**/db/**`, `**/repository/**`
@@ -89,6 +93,14 @@ The exception: don't fire a conditional agent on a doc-only diff. If `git diff -
 ## Parallel dispatch (personas AND the peer, one batch)
 
 All persona agents fire **in parallel** — single message, multiple `Agent` tool calls — **and the cross-agent peer subprocess launches in the same batch**. Aggregation waits for all to return.
+
+**Each prompt carries its dimension's rows from `references/peer-brief.md`**, under `rows:`, so host reviewers and the peer review against one checklist. Extract the section with this command, `<dimension>` replaced:
+
+```bash
+awk '/^### <dimension>/{f=1;print;next} f&&/^##/{exit} f' "$SKILL_DIR/references/peer-brief.md"
+```
+
+Empty output means the brief has no section for that dimension: pass the one-line focus alone, as before.
 
 In Claude Code:
 

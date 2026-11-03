@@ -23,7 +23,8 @@
 # Usage:
 #   ensemble-verification-receipt write --check <name>=passed [--check ...]
 #                                       [--base <ref>] [--dep <path>]... [--by <who>]
-#   ensemble-verification-receipt verify [--requires <a,b>] [--ttl <minutes>] [--json]
+#   ensemble-verification-receipt verify [--requires <a,b>] [--since <sha>] [--ttl <minutes>] [--json]
+#   ensemble-verification-receipt red --test <path> --since <sha> -- <cmd...>
 #   ensemble-verification-receipt show [--json]
 #
 # Exit codes:
@@ -33,7 +34,21 @@
 #   3  usage error
 #
 # Refusal reasons: fingerprint-mismatch · base-moved · dependency-changed ·
-#                  wrong-repo · expired · check-not-recorded · malformed
+#                  wrong-repo · expired · check-not-recorded · malformed ·
+#                  red-test-missing · red-test-stale · red-test-changed
+#
+# RED RECORDS.  A fix's test must fail before the fix and pass after. The passing
+# half is an ordinary check; the failing half happened on a different tree (the
+# pre-fix one), so it cannot live in receipt.json, whose fingerprint names the
+# fixed tree. `red` runs the test command ITSELF and records only a real failure
+# in red-tests.json beside the receipt: an agent cannot claim a failure it never
+# showed this script. The record names the commit the fix started from (--since,
+# HEAD or an ancestor of it), the branch, and the test file's blob.
+# `verify --requires red_test --since <sha>` then demands a record for this fix's
+# start, a test the fix itself added or changed, and the same blob it ran, so a
+# green test is provably the test that went red, and an earlier fix's record on
+# the same branch cannot stand in. `red` exits 0 recorded · 1 red-test-passed or
+# red-test-not-run (exit 126/127: the command never ran the test) · 3 usage.
 #
 # Only `passed` is ever recorded. A receipt is evidence something succeeded, not
 # a log that it ran, so a failing check simply leaves no receipt behind. Never
@@ -85,6 +100,7 @@ GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || die "ensemble-verification-rec
 REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || die "ensemble-verification-receipt: no worktree"
 RECEIPT_DIR="$GIT_DIR/ensemble"
 RECEIPT="$RECEIPT_DIR/receipt.json"
+RED_FILE="$RECEIPT_DIR/red-tests.json"
 
 # --- fingerprint -------------------------------------------------------------
 # The tree a commit of everything would produce: tracked files as they sit on
@@ -120,7 +136,11 @@ tree_of() {  # $1=worktree top -> content tree id, or fails
   idx=$(git -C "$1" rev-parse --git-path index 2>/dev/null)
   case "$idx" in ""|/*) ;; *) idx="$1/$idx" ;; esac
   # git rejects an empty index file, so copy the real one or start from none.
-  [ -n "$idx" ] && [ -f "$idx" ] && cp "$idx" "$tmpd/index" 2>/dev/null
+  # Copy with -p: git treats an entry modified in the same second as the index
+  # file as "racily clean" and re-hashes it. A plain cp gives the copy a new
+  # mtime, git then trusts the stale stat cache, and a same-size edit made in
+  # the second of the last commit fingerprints as the old content.
+  [ -n "$idx" ] && [ -f "$idx" ] && cp -p "$idx" "$tmpd/index" 2>/dev/null
   if GIT_INDEX_FILE="$tmpd/index" git -C "$1" add -A -- . >/dev/null 2>&1 \
      && tree=$(GIT_INDEX_FILE="$tmpd/index" git -C "$1" write-tree 2>/dev/null) \
      && [ -n "$tree" ]; then
@@ -269,17 +289,155 @@ PY
 print(json.dumps([t.split("=", 1)[0] for t in sys.argv[1].split() if "=" in t]))' "$checks" 2>/dev/null)"
 }
 
+# --- red ---------------------------------------------------------------------
+cmd_red() {
+  test_path=""; since=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --test)  [ $# -ge 2 ] || die "--test needs a path"; test_path="$2"; shift 2 ;;
+      --since) [ $# -ge 2 ] || die "--since needs a sha"; since="$2";     shift 2 ;;
+      --) shift; break ;;
+      *) die "ensemble-verification-receipt red: unknown argument $1" ;;
+    esac
+  done
+  [ -n "$test_path" ] || die "ensemble-verification-receipt red: --test <path> is required"
+  [ -n "$since" ]     || die "ensemble-verification-receipt red: --since <sha> is required"
+  [ $# -gt 0 ]        || die "ensemble-verification-receipt red: a test command is required after --"
+  [ -f "$test_path" ] || die "ensemble-verification-receipt red: no such test file: $test_path"
+
+  # The command must name the test, so `-- false` cannot stand in for running it.
+  named=0
+  for a in "$@"; do
+    case "$a" in "$test_path"|"$test_path"::*|"./$test_path"|"./$test_path"::*) named=1 ;; esac
+  done
+  [ "$named" -eq 1 ] || die "ensemble-verification-receipt red: the command must name $test_path as an argument"
+  # Naming the test is not running it: `sh -c 'exit 1' t.sh` names it and runs
+  # nothing. Refuse the forms that ignore their arguments. This narrows, not
+  # closes, the gap; the recorded command is kept for review to read.
+  prog=$(basename -- "$1")
+  case "$prog" in
+    false|true|exit|:) die "ensemble-verification-receipt red: '$1' does not run a test" ;;
+    sh|bash|zsh|dash|ksh|env)
+      for a in "$@"; do
+        case "$a" in -*c) die "ensemble-verification-receipt red: run the test command directly, not through '$1 -c'" ;; esac
+      done ;;
+  esac
+
+  head=$(git rev-parse --verify --quiet HEAD 2>/dev/null) || die "ensemble-verification-receipt red: no HEAD"
+  since_sha=$(git rev-parse --verify --quiet "$since^{commit}" 2>/dev/null) || die "ensemble-verification-receipt red: --since is not a commit: $since"
+  # The fix's start commit: HEAD, or an ancestor when the fix committed a
+  # standalone part (a refactor that makes room) before writing its test.
+  git merge-base --is-ancestor "$since_sha" "$head" 2>/dev/null \
+    || die "ensemble-verification-receipt red: --since must be HEAD or an ancestor of it (the commit the fix starts from), got $since"
+  branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || die "ensemble-verification-receipt red: detached HEAD; a red record needs a branch"
+  # Records are keyed by the repo-root path, the form `git diff --name-only`
+  # prints, so a test named `./t.sh` or from a subdirectory still verifies.
+  rel="$(git rev-parse --show-prefix 2>/dev/null)${test_path#./}"
+  blob=$(git -C "$REPO_TOP" hash-object -- "$rel" 2>/dev/null) || die "ensemble-verification-receipt red: cannot hash $test_path"
+
+  "$@"; rc=$?
+  case "$rc" in
+    0)       printf 'red-test-passed: %s passed before the fix, so it does not capture the bug\n' "$test_path"; exit 1 ;;
+    126|127) printf 'red-test-not-run: the command exited %s and never ran %s\n' "$rc" "$test_path"; exit 1 ;;
+  esac
+
+  mkdir -p "$RECEIPT_DIR" || die "ensemble-verification-receipt: cannot create $RECEIPT_DIR"
+  TEST="$rel" BLOB="$blob" SINCE="$since_sha" BRANCH="$branch" EXIT="$rc" CMD="$*" \
+  python3 - "$RED_FILE" <<'PY' || die "ensemble-verification-receipt red: cannot write $RED_FILE"
+import json, os, sys, time
+try:
+    doc = json.load(open(sys.argv[1]))
+    if not isinstance(doc, dict) or doc.get('schema') != 1 or not isinstance(doc.get('records'), dict):
+        raise ValueError
+except (OSError, ValueError):
+    doc = {"schema": 1, "records": {}}
+# One record per test path: a later red run for the same test replaces the
+# earlier one, so a second fix never inherits the first fix's evidence.
+doc["records"][os.environ['TEST']] = {
+    "test": os.environ['TEST'], "test_blob": os.environ['BLOB'], "since": os.environ['SINCE'],
+    "branch": os.environ['BRANCH'], "exit": int(os.environ['EXIT']), "cmd": os.environ['CMD'],
+    "recorded_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+}
+tmp = sys.argv[1] + '.tmp'
+with open(tmp, 'w') as fh:
+    json.dump(doc, fh, indent=2, sort_keys=True)
+    fh.write('\n')
+os.replace(tmp, sys.argv[1])
+PY
+  printf 'red recorded: %s failed with exit %s before the fix (since %s)\n' "$test_path" "$rc" "$(printf '%s' "$since_sha" | cut -c1-12)"
+}
+
+# The red_test verdict for `verify`: ok, or the refusal reason. Every live input
+# (branch, the fix's changed paths, each recorded test's current blob) is read
+# here, so the Python below only compares.
+red_verdict() {  # $1=since -> prints a reason
+  since_sha=$(git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null) || { printf 'red-test-missing\n'; return; }
+  branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || printf '')
+  changed=$( { git -C "$REPO_TOP" diff --name-only "$since_sha" -- 2>/dev/null
+               git -C "$REPO_TOP" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+  [ -f "$RED_FILE" ] || { printf 'red-test-missing\n'; return; }
+  blobs=""
+  # Hash only the records this fix could match: the file keeps every past
+  # record, and verify runs at several gates per build.
+  for t in $(BRANCH="$branch" SINCE="$since_sha" python3 -c 'import json,os,sys
+try:
+    for k, r in (json.load(open(sys.argv[1])).get("records") or {}).items():
+        if isinstance(r, dict) and r.get("branch") == os.environ["BRANCH"] and r.get("since") == os.environ["SINCE"]: print(k)
+except Exception: pass' "$RED_FILE" 2>/dev/null); do
+    [ -f "$REPO_TOP/$t" ] && blobs="$blobs $t=$(git -C "$REPO_TOP" hash-object -- "$t" 2>/dev/null)"
+  done
+  SINCE="$since_sha" BRANCH="$branch" CHANGED="$changed" BLOBS="$blobs" python3 - "$RED_FILE" <<'PY'
+import json, os, sys
+try:
+    doc = json.load(open(sys.argv[1]))
+    records = doc["records"]
+    if doc.get("schema") != 1 or not isinstance(records, dict):
+        raise ValueError
+except Exception:
+    print("malformed"); sys.exit(0)
+try:
+    changed = set(os.environ['CHANGED'].split())
+    blobs = dict(b.split('=', 1) for b in os.environ['BLOBS'].split())
+    if not all(isinstance(r, dict) and isinstance(r.get('test'), str) and r.get('test_blob')
+               for r in records.values()):
+        raise ValueError
+    mine = [r for r in records.values() if r.get('branch') == os.environ['BRANCH']]
+    this_fix = [r for r in mine if r.get('since') == os.environ['SINCE'] and r['test'] in changed]
+    if any(blobs.get(r['test']) == r['test_blob'] for r in this_fix):
+        print("ok")
+    elif this_fix:
+        print("red-test-changed")
+    elif any(r.get('since') != os.environ['SINCE'] for r in mine):
+        print("red-test-stale")
+    else:
+        print("red-test-missing")
+except Exception:
+    print("malformed")
+PY
+}
+
 # --- verify ------------------------------------------------------------------
 cmd_verify() {
-  requires=""; ttl="$TTL_DEFAULT_MINUTES"; as_json=0
+  requires=""; ttl="$TTL_DEFAULT_MINUTES"; as_json=0; since=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --requires) [ $# -ge 2 ] || die "--requires needs a list"; requires="$2"; shift 2 ;;
+      --since)    [ $# -ge 2 ] || die "--since needs a sha";     since="$2";    shift 2 ;;
       --ttl)      [ $# -ge 2 ] || die "--ttl needs minutes";     ttl="$2";      shift 2 ;;
       --json)     as_json=1; shift ;;
       *) die "ensemble-verification-receipt verify: unknown argument $1" ;;
     esac
   done
+
+  red_reason=""
+  case ",$(printf '%s' "$requires" | tr ' ' ','),"  in
+    *,red_test,*)
+      [ -n "$since" ] || die "ensemble-verification-receipt verify: --requires red_test needs --since <sha>"
+      # Fail closed: a verdict that crashed or printed nothing is malformed,
+      # never an empty string the checker could read as "not required".
+      red_reason=$(red_verdict "$since") || red_reason=malformed
+      [ -n "$red_reason" ] || red_reason=malformed ;;
+  esac
 
   if [ ! -f "$RECEIPT" ]; then
     if [ "$as_json" -eq 1 ]; then
@@ -323,7 +481,7 @@ PY
   _reason_out=$(mktemp 2>/dev/null) || _reason_out=""
   FP="$(fingerprint)" REPO="$REPO_TOP" LIVE_BASE="$live_base" \
   LIVE_DEPS="$live_deps" REQUIRES="$requires" TTL="$ttl" JSON="$as_json" \
-  REASON_OUT="$_reason_out" \
+  REASON_OUT="$_reason_out" RED_REASON="$red_reason" \
   python3 - "$RECEIPT" <<'PY'
 import json, os, sys, time, calendar
 
@@ -390,10 +548,18 @@ if ttl_seconds >= 0 and age > ttl_seconds:
     out(False, "expired", {"age_seconds": age})
 
 checks = r.get('checks') or {}
-required = [c for c in os.environ['REQUIRES'].replace(',', ' ').split() if c]
+requested = os.environ['REQUIRES'].replace(',', ' ').split()
+required = [c for c in requested if c != 'red_test']
 missing = [c for c in required if checks.get(c) != 'passed']
 if missing:
     out(False, "check-not-recorded", {"missing": sorted(missing)})
+
+# red_test is not a receipt check: its evidence is in red-tests.json, judged by
+# red_verdict in the shell above. When it is required, only "ok" passes.
+if 'red_test' in requested:
+    red = os.environ.get('RED_REASON', '') or 'malformed'
+    if red != 'ok':
+        out(False, red)
 
 out(True, "ok", {"checks": checks, "age_seconds": age, "written_by": r.get('written_by')})
 PY
@@ -428,7 +594,8 @@ PY
 case "${1:-}" in
   write)  shift; cmd_write "$@" ;;
   verify) shift; cmd_verify "$@" ;;
+  red)    shift; cmd_red "$@" ;;
   show)   shift; cmd_show "$@" ;;
-  ''|-h|--help) die "usage: ensemble-verification-receipt {write|verify|show} [options]" ;;
+  ''|-h|--help) die "usage: ensemble-verification-receipt {write|verify|red|show} [options]" ;;
   *) die "ensemble-verification-receipt: unknown command '$1'" ;;
 esac

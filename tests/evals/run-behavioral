@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# run-behavioral — drive a skill through a real headless session on a scratch
+# repo, then grade what it did. On demand only: every run spends real tokens,
+# so tests/run.sh never calls this (it is not named *.test.sh).
+#
+# Usage:
+#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--with-user-mcp] [--dry-run]
+#
+# The session loads NO MCP servers by default (an empty, strict --mcp-config):
+# with bypassPermissions every tool call is auto-approved, and an operator's
+# servers (a database in write mode, say) act outside the scratch repo.
+# --with-user-mcp loads the operator's servers, for a case that needs one
+# (Context7 for docs grounding); run it knowing what those servers can do.
+#
+# Each case is tests/evals/behavioral/<case>/ holding prompt.md, expect.json
+# (the v1 contract in tests/evals/grade) and base/ (or base_from). A review case
+# also holds change/, overlaid on a `feature` branch so the skill reviews that
+# diff against `main`.
+#
+# The skill is loaded from THIS checkout with --plugin-dir and invoked by its
+# plugin-qualified name (/ensemble:<skill>), so an installed copy under
+# ~/.claude/skills never answers in its place.
+#
+# Results land in tests/evals/results/<timestamp>/<case>/<run>/ (gitignored;
+# EVAL_RESULTS_DIR moves them):
+# output.txt, grade.json, and the scratch repo path. One summary line per run.
+#
+# The session runs with --permission-mode bypassPermissions inside a throwaway
+# repo: the skills under test run scripts, git and the peer CLI, and a prompt
+# would end a headless run. The cases are this repo's own fixtures.
+
+set -u
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+CASES="$HERE/behavioral"
+GRADE="$HERE/grade"
+
+usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--with-user-mcp] [--dry-run]" >&2; exit 2; }
+
+[ $# -ge 1 ] || usage
+target="$1"; shift
+mode=""; runs=3; dry=0; mcp_flags="--strict-mcp-config --mcp-config {\"mcpServers\":{}}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mode) [ $# -ge 2 ] || usage; mode="$2"; shift 2 ;;
+    --runs) [ $# -ge 2 ] || usage; runs="$2"; shift 2 ;;
+    --dry-run) dry=1; shift ;;
+    --with-user-mcp) mcp_flags=""; shift ;;
+    *) usage ;;
+  esac
+done
+case "$mode" in ""|peer|host|cross) ;; *) usage ;; esac
+case "$runs" in ''|*[!0-9]*) usage ;; esac
+
+if [ "$target" = all ]; then
+  cases=$(cd "$CASES" && ls -d */ 2>/dev/null | tr -d /)
+else
+  [ -d "$CASES/$target" ] || { echo "run-behavioral: no case $target" >&2; exit 2; }
+  cases="$target"
+fi
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+RESULTS="${EVAL_RESULTS_DIR:-$HERE/results}/$stamp"
+rc_all=0
+
+field() {  # $1=expect.json $2=key -> value or empty
+  python3 -c 'import json,sys
+v=json.load(open(sys.argv[1])).get(sys.argv[2])
+if v is None: print("")
+elif isinstance(v, list) and all(isinstance(x, str) for x in v): print(" ".join(v))
+elif isinstance(v, (list, dict)): print(json.dumps(v))
+else: print(v)' "$1" "$2"
+}
+
+for c in $cases; do
+  dir="$CASES/$c"
+  if ! "$GRADE" validate "$dir" >/dev/null; then
+    echo "run-behavioral: invalid case $c: $("$GRADE" validate "$dir" 2>/dev/null)" >&2
+    rc_all=2; continue
+  fi
+  exp="$dir/expect.json"
+  kind=$(field "$exp" kind)
+  invocation=$(field "$exp" invocation)
+  base_from=$(field "$exp" base_from)
+  base="$dir/base"; [ -n "$base_from" ] && base="$CASES/$base_from/base"
+  case_mode="$mode"
+  if [ "$kind" = review ] && [ -z "$case_mode" ]; then
+    case_mode=$(field "$exp" modes | awk '{print $1}'); [ -n "$case_mode" ] || case_mode=peer
+  fi
+  prompt="$invocation"
+  [ "$kind" = review ] && prompt="$prompt --$case_mode"
+  prompt="$prompt
+
+$(cat "$dir/prompt.md")"
+
+  i=1
+  while [ "$i" -le "$runs" ]; do
+    out="$RESULTS/$c/$i"
+    if [ "$dry" -eq 1 ]; then
+      echo "== $c run $i (kind $kind${case_mode:+, mode $case_mode})"
+      echo "   scratch: copy $(printf '%s' "$base" | sed "s|$ROOT/||") -> git init -b main, commit"
+      [ "$kind" = review ] && echo "   then: branch feature, overlay $(printf '%s' "$dir/change" | sed "s|$ROOT/||"), commit"
+      echo "   claude -p <prompt> --plugin-dir $ROOT --permission-mode bypassPermissions --output-format text${mcp_flags:+ $mcp_flags}"
+      printf '%s\n' "$prompt" | sed 's/^/   | /'
+      i=$((i + 1)); continue
+    fi
+    mkdir -p "$out"
+    scratch=$(mktemp -d)
+    (
+      cd "$scratch" && cp -R "$base/." . && git init -q -b main . \
+        && git config user.email eval@example.com && git config user.name eval \
+        && git add -A && git commit -qm "base"
+      if [ "$kind" = review ]; then
+        git checkout -qb feature && cp -R "$dir/change/." . && git add -A && git commit -qm "feature"
+      fi
+    ) >/dev/null 2>&1 || { echo "run-behavioral: could not build the scratch repo for $c" >&2; rc_all=2; i=$((i + 1)); continue; }
+    printf '%s\n' "$scratch" > "$out/scratch-path"
+    : > "$out/.started"
+    start=$(date +%s)
+    # Package managers stay offline with install scripts off: a fixture can plant
+    # a typosquat (review-new-rows does), and the session must never install it.
+    ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" \
+        npm_config_ignore_scripts=true npm_config_offline=true npm_config_registry=http://127.0.0.1:9/ \
+        PIP_NO_INDEX=1 PIP_INDEX_URL=http://127.0.0.1:9/ \
+        timeout 1800 claude -p "$prompt" \
+        --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text $mcp_flags ) \
+      > "$out/output.txt" 2> "$out/stderr.txt"
+    secs=$(( $(date +%s) - start ))
+    if [ "$kind" = review ]; then
+      # Headless /en-review prints a summary and writes its JSON envelope to a
+      # file. Take the path the output names, else the newest envelope written
+      # during this run; grade the output itself only when neither exists.
+      env_path=$(grep -oE '/tmp/ensemble/en-review/[^ `]+/envelope\.json' "$out/output.txt" | tail -1)
+      [ -n "$env_path" ] && [ -f "$env_path" ] || env_path=$(find /tmp/ensemble/en-review -name envelope.json -newer "$out/.started" 2>/dev/null | head -1)
+      if [ -n "$env_path" ] && [ -f "$env_path" ]; then cp "$env_path" "$out/envelope.json"; else cp "$out/output.txt" "$out/envelope.json"; fi
+    fi
+    # Facts first, then the judge when the case has one. A run passes only when
+    # both do; each part is kept separately so a judge failure never hides
+    # behind a factual pass.
+    case "$kind" in
+      review) EVAL_MODE="$case_mode" "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade-facts.json" ;;
+      fix)    "$GRADE" fix "$exp" "$scratch" > "$out/grade-facts.json" ;;
+      plan)   "$GRADE" plan "$exp" "$scratch" > "$out/grade-facts.json" ;;
+      *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade-facts.json"; false ;;
+    esac
+    gf=$?
+    gj=0
+    if [ -n "$(field "$exp" judge)" ]; then
+      # A plan run's deliverable is the plan file, so the judge reads it too.
+      judge_in="$out/output.txt"
+      if [ "$kind" = plan ]; then
+        judge_in="$out/judge-input.txt"
+        { cat "$out/output.txt"; printf '\n\n--- plan file ---\n'; cat "$scratch"/docs/plans/active/*.md 2>/dev/null; } > "$judge_in"
+      fi
+      "$GRADE" judge "$exp" "$judge_in" > "$out/grade-judge.json"; gj=$?
+    fi
+    python3 - "$out" "$gf" "$gj" <<'PY'
+import json, os, sys
+out, gf, gj = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+def load(name):
+    try:
+        return json.load(open(os.path.join(out, name)))
+    except Exception:
+        return None
+facts, judge = load("grade-facts.json") or {"error": "unreadable facts"}, load("grade-judge.json")
+reasons = list(facts.get("reasons") or [])
+if facts.get("error"):
+    reasons.insert(0, facts["error"])
+for v in (judge or {}).get("verdicts", []):
+    if not v.get("pass"):
+        reasons.append("judge %s: %s" % (v["id"], v.get("error") or "failed"))
+doc = {"facts": facts, "judge": judge, "recall": facts.get("recall"), "precision": facts.get("precision"),
+       "reasons": reasons, "pass": gf == 0 and gj == 0 and not facts.get("error")}
+json.dump(doc, open(os.path.join(out, "grade.json"), "w"), indent=2)
+PY
+    g=1; [ "$(field "$out/grade.json" pass)" = True ] && g=0
+    summary=$(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+r=d.get("recall"); p=d.get("precision")
+m="" if r is None and p is None else " recall=%s precision=%s" % ("n/a" if r is None else "%.2f" % r, "n/a" if p is None else "%.2f" % p)
+print("%s%s %s" % ("PASS" if d.get("pass") else "FAIL", m, "; ".join(d.get("reasons") or [])))' "$out/grade.json" 2>/dev/null)
+    echo "$c run $i ${case_mode:+[$case_mode] }(${secs}s): $summary"
+    [ "$g" -eq 0 ] || rc_all=1
+    i=$((i + 1))
+  done
+done
+exit "$rc_all"

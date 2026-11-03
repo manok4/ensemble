@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "base_from": "plan-cli-additive",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [],
+  "judge": [
+    {
+      "id": "no-contract-workflow",
+      "expectation": "The plan treats this as an internal refactor: it does not add a compatibility or migration section for a public contract, since src/report.js's exported names keep working."
+    }
+  ]
+}

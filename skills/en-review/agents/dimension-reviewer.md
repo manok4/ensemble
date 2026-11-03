@@ -32,6 +32,9 @@ made the review worth running.
   `standards`, `security`, `performance`, `migrations`.
 - **`focus`** — what this dimension examines, in one line.
 - **`scope`** — the diff, branch range, or file set under review.
+- Optional **`rows`** — this dimension's table from the review brief, the same
+  checklist the cross-agent peer reviews against. When present it is the list
+  of categories to check; `focus` stays the one-line summary.
 - Optional **`heuristics`** — why the dispatcher thought this dimension applies
   (a matched path, a detected pattern). Treat these as a starting point, not a
   boundary: they explain the dispatch, they do not limit what you may find

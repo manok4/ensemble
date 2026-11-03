@@ -1,6 +1,6 @@
 ---
 name: en-learn
-description: "Capture durable learnings into the repo's knowledge store as a term, a decision, or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Trigger phrases: 'capture this', 'learn from', 'audit learnings', 'wiki health', 'migrate learnings'."
+description: "Capture durable learnings into the repo's knowledge store as a term, a decision, or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Trigger phrases: 'capture this', 'record this decision', 'learn from', 'audit learnings', 'wiki health', 'migrate learnings'."
 ---
 
 

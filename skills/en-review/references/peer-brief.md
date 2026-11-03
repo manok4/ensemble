@@ -81,6 +81,7 @@ Two rules bind the floor. **A documented repo standard always wins** — where t
 | **Path conventions** | Repo-relative paths in artifacts (no `/Users/...`, no `C:\...`) |
 | **Status correctness** | `docs/plans/active/*.md` has `status: draft \| open \| in_progress \| abandoned`; `docs/plans/completed/*.md` has `status: completed`. `plan_type` is one of `feature`, `improvement`, `bug`. |
 | **Test placement** | Tests live where the project's existing tests live (`tests/`, `__tests__/`, alongside source) — match the existing convention |
+| **Dependency changes** | A version bump is a behaviour change nobody here wrote: the changelog was read, one package changes per change, and the lockfile diff is explained by the manifest |
 
 ### security — fires when: The dispatching skill (`en-review` per `references/persona-dispatch.md`) detects security-relevant changes and dispatches you. Detection heuristics: - Path: `**/auth/**`, `**/permissions/**`, `**/oaut
 
@@ -94,6 +95,13 @@ Two rules bind the floor. **A documented repo standard always wins** — where t
 | **Crypto** | Weak algorithms (MD5, SHA1 for security purposes); custom crypto; insecure random; constant-time comparison missing where needed |
 | **Trust boundaries** | Client-side validation only (no server check); trust of `req.headers` without verification; trust of `req.user` after only one auth step |
 | **Rate limiting** | Public endpoints without rate limit; missing exponential backoff on retries that hit external APIs |
+| **AI / LLM features** | Model output reaching SQL, a shell, `eval`, `innerHTML` or a file path; the system prompt used as a permission boundary; secrets or another tenant's data in the context window; tools that take a destructive action with no confirmation |
+| **Supply chain** | A new dependency: typosquat names, a new maintainer, install scripts; a lockfile change the manifest change does not explain |
+| **Destructive ops on derived paths** | A delete, move or overwrite whose target comes from a payload, a config value or another process, checked only by shape |
+| **Inbound integrations** | Webhook signature verification; upload type and size limits; open redirects; OAuth PKCE and `state` |
+| **Privacy** | Personal data (email, name, address, IP) sent to logs, analytics, LLM or other third-party calls; a delete that only flips a flag while the data stays |
+
+Start from the trust boundary: name where untrusted data enters the diff, then follow it. Every P0 or P1 security finding carries a concrete exploit input, the value an attacker sends and what happens. Never propose disabling a control as the fix.
 
 ### performance — fires when: Per `references/persona-dispatch.md`. Detection heuristics: - Path: `**/queries/**`, `**/db/**`, `**/repository/**` - Diff content: ORM patterns (`.findMany`, `.findFirst`, `.where`, `JOIN`, `eager`, 
 
@@ -107,6 +115,7 @@ Two rules bind the floor. **A documented repo standard always wins** — where t
 | **Async pitfalls** | Sequential awaits where Promise.all would parallelize; uncoordinated parallelism (1000 concurrent calls to a rate-limited API) |
 | **Memory** | Loading entire dataset into memory when a stream/iterator would suffice; closure retaining large objects |
 | **Render performance** | (Frontend) re-render storms; missing memoization where the component re-renders on every parent update; large lists without virtualization |
+| **Unmeasured claims** | A latency, size or throughput claim with no measurement behind it; mark a figure you did not measure as an estimate |
 | **Cold-path doing hot-path work** | Initialization that happens lazily but should be eager (pre-warm); or vice versa |
 
 ### migrations — fires when: Per `references/persona-dispatch.md`. Detection heuristics: - Path: `**/migrations/**`, `**/db/migrations/**`, `**/migration_*.sql` - Diff adds/removes columns, tables, indexes, constraints - File con
