@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test"
+}

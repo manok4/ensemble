@@ -39,6 +39,18 @@ else
   fail "must document risk-surface patterns"
 fi
 
+# --- a pattern names a concept (D139). max_tokens stopped /en-fix as if it were
+# auth; a matcher that drops strings would miss SQL. Both directions are pinned.
+missing=""
+for need in 'A pattern names a concept, not a substring' 'max_tokens' 'only in a comment' 'a string literal' 'Unsure what it refers to:** a signal'; do
+  grep -qF "$need" "$REF" || missing="$missing '$need'"
+done
+if [ -z "$missing" ]; then
+  pass "risk patterns match the concept, keep strings, and fail closed when unsure"
+else
+  fail "the risk-pattern matching rule is incomplete" "missing:$missing"
+fi
+
 # --- uncounted-file rule (any non-code file → not small) ---
 if grep -qiE "UNCOUNTED_FILES" "$REF"; then
   pass "documents uncounted-file rule"

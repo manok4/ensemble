@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test",
+  "judge": [
+    {
+      "id": "full-review",
+      "expectation": "The assistant carried the change through review instead of stopping to suggest /en-plan, and its report states that the review ran at full depth rather than --lite, because the diff passed the size limit."
+    }
+  ]
+}

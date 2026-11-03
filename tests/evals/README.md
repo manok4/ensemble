@@ -43,6 +43,8 @@ A review run passes when recall meets `bars.min_recall` (default 1.0), every `pe
 2. Put the source files back to `main` in a copy, keeping the new tests, and run the case's `test_command`. It must fail.
 3. Run it again on the fix. It must pass.
 
+A case with `stops: true` expects the opposite: the right outcome is stopping for a plan, so it passes only with no commit since `main`, and a judge confirms the reason.
+
 `trailers` checks require or forbid a commit trailer such as `Docs:`. A fix case's scratch repo has no `origin`, so `/en-fix` stops at `/en-ship`'s preflight, and the grader reads the commits made before that stop.
 
 **A plan run** is graded on the one plan file it wrote. `bin/ensemble-lint` must report no P1 for it. Then each `plan_checks` entry finds its unit by a title regex and checks:

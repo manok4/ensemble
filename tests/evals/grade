@@ -26,6 +26,8 @@ Case contract, version 1 (expect.json):
   bars            review only; {min_recall (default 1.0), max_findings: {at_or_above, count}}
   test_command    fix only
   trailers        fix only; [{key, match} | {key, absent: true}]
+  stops           fix only; true when the right outcome is stopping for a plan: the run
+                  passes only with no commit since main, and the revert check is skipped
   plan_checks     plan only; [{unit_matching, must_contain, risk, last, before, scope}]
                   scope "plan" checks must_contain against the whole plan file, for
                   policy a plan may settle in Technical design rather than a unit
@@ -93,8 +95,10 @@ def validate(case_dir):
             need(key not in exp, "%s applies only to kind review" % key)
     if kind == "fix":
         need(isinstance(exp.get("test_command"), str), "test_command is required for kind fix")
+        need(isinstance(exp.get("stops", False), bool), "stops must be true or false")
     else:
-        need("test_command" not in exp and "trailers" not in exp, "test_command and trailers apply only to kind fix")
+        need("test_command" not in exp and "trailers" not in exp and "stops" not in exp,
+             "test_command, trailers and stops apply only to kind fix")
     if kind != "plan":
         need("plan_checks" not in exp, "plan_checks applies only to kind plan")
     for j in exp.get("judge") or []:
@@ -262,6 +266,11 @@ def grade_fix(expect_path, repo):
     if not os.path.isdir(os.path.join(repo, ".git")):
         fail("not a scratch repo: %s" % repo, 1)
     commits = len(git_out(repo, "rev-list", "main..HEAD").split())
+    if exp.get("stops"):
+        ok = commits == 0
+        print(json.dumps({"kind": "fix", "stops": True, "commits": commits, "pass": ok,
+                          "reasons": [] if ok else ["expected a stop for a plan, found %d commits since main" % commits]}, indent=2))
+        sys.exit(0 if ok else 1)
     # Committed and uncommitted changes since main: what the run produced.
     changed = [p for p in git_out(repo, "diff", "--name-only", "main").splitlines() if p]
     changed += [p for p in git_out(repo, "ls-files", "--others", "--exclude-standard").splitlines() if p]
