@@ -273,6 +273,19 @@ R=$(new_repo configgone)
 run "$R"
 assert_contains "$(moves_in blocked)" "threshold-lowered .coveragerc" "deleting a coverage config with a threshold blocks"
 
+# A path holding a double quote is C-quoted in diff headers even with
+# core.quotePath=false; it must still match the -z deletion listing.
+R=$(new_repo quotedpath)
+( cd "$R" && mkdir -p 'we"ird' && printf '[report]\nfail_under = 90\n' > 'we"ird/.coveragerc' && git add -A && git commit -qm c \
+  && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \
+  && git rm -q 'we"ird/.coveragerc' && git commit -qm "drop quoted config" ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" 'threshold-lowered we"ird/.coveragerc' "a deleted config under a quoted path still blocks"
+R=$(new_repo quotedtest)
+( cd "$R" && printf "%s'q', () => {});\n" "$SKIP_CALL" > 'tests/qu"ote.test.js' && git add -A && git commit -qm q ) >/dev/null 2>&1
+run "$R"
+assert_contains "$(moves_in blocked)" 'test-skipped tests/qu"ote.test.js' "a skip in a quoted test path is named by its real path"
+
 R=$(new_repo covflag)
 ( cd "$R" && printf '[pytest]\naddopts = --cov=src --cov-fail-under=90\n' > pytest.ini && git add -A && git commit -qm c \
   && git checkout -q main && git merge -q --ff-only feature && git checkout -q feature \

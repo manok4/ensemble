@@ -149,11 +149,31 @@ def is_test(path):
 
 
 # --- the diff ----------------------------------------------------------------
-deleted = [p for p in git("diff", "--no-renames", "--name-only", "--diff-filter=D", merge_base).splitlines() if p]
+deleted = [p for p in git("diff", "--no-renames", "--name-only", "-z", "--diff-filter=D", merge_base).split("\0") if p]
 # --text and --no-textconv: a .gitattributes entry can mark a file binary or
 # route it through a textconv filter, and either would hide its added lines.
 diff = git("diff", "--no-color", "--no-renames", "--no-ext-diff", "--no-textconv", "--text", "-U0", merge_base)
 untracked = [p for p in git("ls-files", "--others", "--exclude-standard", "-z").split("\0") if p]
+
+def header_path(raw, prefix):
+    """The path a ---/+++ header names. git C-quotes a path holding a quote, a
+    backslash or a control character even with core.quotePath=false; unquote it
+    so it matches the -z name listings, then drop the a/ or b/ prefix."""
+    raw = raw.rstrip("\t")  # git appends a tab when the path has a space
+    if len(raw) >= 2 and raw[0] == raw[-1] == '"':
+        out, i, body = bytearray(), 0, raw[1:-1]
+        esc = {"n": 10, "t": 9, '"': 34, "\\": 92, "a": 7, "b": 8, "f": 12, "r": 13, "v": 11}
+        while i < len(body):
+            ch = body[i]
+            if ch == "\\" and i + 1 < len(body):
+                nxt = body[i + 1]
+                if i + 4 <= len(body) and all(c in "01234567" for c in body[i + 1:i + 4]):
+                    out.append(int(body[i + 1:i + 4], 8)); i += 4; continue
+                out.append(esc.get(nxt, ord(nxt))); i += 2; continue
+            out.extend(ch.encode("utf-8")); i += 1
+        raw = out.decode("utf-8", "replace")
+    return raw[len(prefix):] if raw.startswith(prefix) else raw
+
 
 files = {}  # path -> {"added": [(line_no, text)], "removed": [text]}
 # File headers only occur between "diff --git" and the first "@@". Inside a hunk
@@ -164,17 +184,17 @@ for line in diff.splitlines():
     if line.startswith("diff --git "):
         cur, in_header = None, True
     elif in_header and line.startswith("+++ "):
-        target = line[4:].rstrip("\t")  # git appends a tab when the path has a space
+        target = line[4:].rstrip("\t")
         # A deleted file's target is /dev/null: keep the path its "---" line
         # named, so its removed lines (a coverage config's thresholds) still count.
         if target != "/dev/null":
-            cur = target[2:] if target.startswith("b/") else target
+            cur = header_path(target, "b/")
             files.setdefault(cur, {"added": [], "removed": []})
     elif in_header and line.startswith("--- "):
-        src = line[4:].rstrip("\t")
-        if src != "/dev/null":
+        src = line[4:]
+        if src.rstrip("\t") != "/dev/null":
             # A deleted file has no +++ target; track its removed lines anyway.
-            cur = src[2:] if src.startswith("a/") else src
+            cur = header_path(src, "a/")
             files.setdefault(cur, {"added": [], "removed": []})
     elif line.startswith("@@"):
         in_header = False
