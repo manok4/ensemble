@@ -79,6 +79,16 @@ by bookkeeping.
 **Never record a check that was skipped.** A receipt claiming a check that never
 ran is worse than no receipt, because the next layer skips on it too.
 
+## Red records: the failing half of a fix
+
+A fix's test has to fail before the fix and pass after. The passing half is an ordinary receipt check. The failing half happened on the pre-fix tree, which the receipt's fingerprint does not describe, so it lives beside it in `red-tests.json`.
+
+- **`red --test <path> --since <sha> -- <cmd...>`** runs the command itself and records only a real failure. The command must name the test, so `-- false` cannot stand in. `--since` is the commit the fix starts from: `HEAD`, or an ancestor of it when the fix committed a standalone part first. Exit 126 or 127 means the command never ran the test and records nothing (`red-test-not-run`). A passing test records nothing (`red-test-passed`).
+- **`verify --requires red_test --since <sha>`** accepts a record only when all of these hold: it is on this branch, it names this fix's start commit, its test is in this fix's diff, and the test's content is unchanged since it ran. Otherwise it refuses with `red-test-missing`, `red-test-stale` (a record from a different start commit) or `red-test-changed`.
+- **One record per test path.** A later red run replaces the earlier one, so a second fix on the same branch never inherits the first fix's evidence.
+
+`/en-fix` writes the record at step 6 and requires it at step 10, except for a behaviour-preserving change, where no test can fail first.
+
 ## Who writes and who reads
 
 - **`/en-build`** writes it after its single full-suite run passes, recording
