@@ -260,10 +260,17 @@ def ledger_excuses(path):
     shas = git("log", "--diff-filter=D", "--format=%H", "%s..HEAD" % merge_base, "--", path).split()
     for sha in shas:
         body = git("log", "-1", "--format=%B", sha)
+        touched = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).split())
+        # The ledger must arrive with the deletion and carry a row marking the
+        # path deleted (D) or consolidated (C): a row is a whole table cell, so
+        # a mention elsewhere, or a "keep" row, excuses nothing.
+        row = re.compile(r"^\|\s*%s(::[^|]*)?\s*\|\s*[DC]\s*\|" % re.escape(path), re.M)
         for ledger in re.findall(r"^Test-Audit-Ledger:\s*(\S+)\s*$", body, re.M):
+            if ledger not in touched:
+                continue
             shown = subprocess.run(["git", "show", "%s:%s" % (sha, ledger)],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
-            if shown.returncode == 0 and path in shown.stdout.decode("utf-8", "replace"):
+            if shown.returncode == 0 and row.search(shown.stdout.decode("utf-8", "replace")):
                 return True
     return False
 

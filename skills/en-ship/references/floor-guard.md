@@ -28,7 +28,7 @@ The merge base of `origin/<base>` and `HEAD`, against the working tree, plus unt
 A blocked move is legitimate sometimes: a test superseded by a better one, a skip for an upstream outage with an issue open. Record it, never bypass it:
 
 1. **Committed work:** a `Floor-Exception: <move> <path>: <reason>` trailer on any commit in the branch. The move and path must match exactly. One trailer excuses that move on that path.
-2. **Deletions by `/en-test-audit`:** its `Test-Audit-Ledger: <path>` trailer on the deleting commit excuses `test-deleted` with no extra trailer, when the ledger exists in that commit and names the deleted path. A trailer alone is a claim; the ledger is the evidence.
+2. **Deletions by `/en-test-audit`:** its `Test-Audit-Ledger: <path>` trailer on the deleting commit excuses `test-deleted` with no extra trailer, when that commit adds or changes the ledger and it has a row marking the path `D` (deleted) or `C` (consolidated). A trailer alone is a claim; the ledger is the evidence.
 3. **Uncommitted work** (the usual case at ship time): ask the user for a reason per blocked move, re-run with `--pending-exception "<move> <path>: <reason>"`, and write each as a `Floor-Exception:` trailer in the step-10 commit. Every exception lands in history, where review and `git log` can see it.
 
 A reason the user did not give is never invented. With no reason, the ship stays stopped.

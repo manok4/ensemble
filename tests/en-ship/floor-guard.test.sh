@@ -138,6 +138,20 @@ R=$(new_repo ledger-missing)
 run "$R"
 assert_exit_code 1 "$RC" "a ledger trailer naming a file that does not exist does not excuse"
 
+R=$(new_repo ledger-kept-row)
+( cd "$R" && mkdir -p docs/test-audits && printf '| tests/other.test.js | R | kept | - | - |\n' > docs/test-audits/k.md \
+  && git add docs && git rm -q tests/other.test.js \
+  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audits/k.md" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "a ledger row marking the test kept does not excuse its deletion"
+
+R=$(new_repo ledger-stale)
+( cd "$R" && mkdir -p docs/test-audits && printf '| tests/other.test.js | D | none | dead | - |\n' > docs/test-audits/s.md \
+  && git add docs && git commit -qm "older ledger" && git rm -q tests/other.test.js \
+  && git commit -qm "test: prune" -m "Test-Audit-Ledger: docs/test-audits/s.md" ) >/dev/null 2>&1
+run "$R"
+assert_exit_code 1 "$RC" "a ledger not committed with the deletion does not excuse it"
+
 R=$(new_repo ledger-other)
 ( cd "$R" && mkdir -p docs/test-audits && printf '| tests/add.test.js | R | kept | - | - |\n' > docs/test-audits/b.md \
   && git add docs && git rm -q tests/other.test.js \
