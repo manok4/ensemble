@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# run-behavioral — drive a skill through a real headless session on a scratch
+# repo, then grade what it did. On demand only: every run spends real tokens,
+# so tests/run.sh never calls this (it is not named *.test.sh).
+#
+# Usage:
+#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--dry-run]
+#
+# Each case is tests/evals/behavioral/<case>/ holding prompt.md, expect.json
+# (the v1 contract in tests/evals/grade) and base/ (or base_from). A review case
+# also holds change/, overlaid on a `feature` branch so the skill reviews that
+# diff against `main`.
+#
+# The skill is loaded from THIS checkout with --plugin-dir and invoked by its
+# plugin-qualified name (/ensemble:<skill>), so an installed copy under
+# ~/.claude/skills never answers in its place.
+#
+# Results land in tests/evals/results/<timestamp>/<case>/<run>/ (gitignored;
+# EVAL_RESULTS_DIR moves them):
+# output.txt, grade.json, and the scratch repo path. One summary line per run.
+#
+# The session runs with --permission-mode bypassPermissions inside a throwaway
+# repo: the skills under test run scripts, git and the peer CLI, and a prompt
+# would end a headless run. The cases are this repo's own fixtures.
+
+set -u
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+CASES="$HERE/behavioral"
+GRADE="$HERE/grade"
+
+usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--dry-run]" >&2; exit 2; }
+
+[ $# -ge 1 ] || usage
+target="$1"; shift
+mode=""; runs=3; dry=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mode) [ $# -ge 2 ] || usage; mode="$2"; shift 2 ;;
+    --runs) [ $# -ge 2 ] || usage; runs="$2"; shift 2 ;;
+    --dry-run) dry=1; shift ;;
+    *) usage ;;
+  esac
+done
+case "$mode" in ""|peer|host|cross) ;; *) usage ;; esac
+case "$runs" in ''|*[!0-9]*) usage ;; esac
+
+if [ "$target" = all ]; then
+  cases=$(cd "$CASES" && ls -d */ 2>/dev/null | tr -d /)
+else
+  [ -d "$CASES/$target" ] || { echo "run-behavioral: no case $target" >&2; exit 2; }
+  cases="$target"
+fi
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+RESULTS="${EVAL_RESULTS_DIR:-$HERE/results}/$stamp"
+rc_all=0
+
+field() {  # $1=expect.json $2=key -> value or empty
+  python3 -c 'import json,sys
+v=json.load(open(sys.argv[1])).get(sys.argv[2])
+print("" if v is None else (" ".join(v) if isinstance(v,list) else v))' "$1" "$2"
+}
+
+for c in $cases; do
+  dir="$CASES/$c"
+  if ! "$GRADE" validate "$dir" >/dev/null; then
+    echo "run-behavioral: invalid case $c: $("$GRADE" validate "$dir" 2>/dev/null)" >&2
+    rc_all=2; continue
+  fi
+  exp="$dir/expect.json"
+  kind=$(field "$exp" kind)
+  invocation=$(field "$exp" invocation)
+  base_from=$(field "$exp" base_from)
+  base="$dir/base"; [ -n "$base_from" ] && base="$CASES/$base_from/base"
+  case_mode="$mode"
+  if [ "$kind" = review ] && [ -z "$case_mode" ]; then
+    case_mode=$(field "$exp" modes | awk '{print $1}'); [ -n "$case_mode" ] || case_mode=peer
+  fi
+  prompt="$invocation"
+  [ "$kind" = review ] && prompt="$prompt --$case_mode"
+  prompt="$prompt
+
+$(cat "$dir/prompt.md")"
+
+  i=1
+  while [ "$i" -le "$runs" ]; do
+    out="$RESULTS/$c/$i"
+    if [ "$dry" -eq 1 ]; then
+      echo "== $c run $i (kind $kind${case_mode:+, mode $case_mode})"
+      echo "   scratch: copy $(printf '%s' "$base" | sed "s|$ROOT/||") -> git init -b main, commit"
+      [ "$kind" = review ] && echo "   then: branch feature, overlay $(printf '%s' "$dir/change" | sed "s|$ROOT/||"), commit"
+      echo "   claude -p <prompt> --plugin-dir $ROOT --permission-mode bypassPermissions --output-format text"
+      printf '%s\n' "$prompt" | sed 's/^/   | /'
+      i=$((i + 1)); continue
+    fi
+    mkdir -p "$out"
+    scratch=$(mktemp -d)
+    (
+      cd "$scratch" && cp -R "$base/." . && git init -q -b main . \
+        && git config user.email eval@example.com && git config user.name eval \
+        && git add -A && git commit -qm "base"
+      if [ "$kind" = review ]; then
+        git checkout -qb feature && cp -R "$dir/change/." . && git add -A && git commit -qm "feature"
+      fi
+    ) >/dev/null 2>&1 || { echo "run-behavioral: could not build the scratch repo for $c" >&2; rc_all=2; i=$((i + 1)); continue; }
+    printf '%s\n' "$scratch" > "$out/scratch-path"
+    start=$(date +%s)
+    ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" timeout 1800 claude -p "$prompt" \
+        --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text ) \
+      > "$out/output.txt" 2> "$out/stderr.txt"
+    secs=$(( $(date +%s) - start ))
+    case "$kind" in
+      review) "$GRADE" review "$exp" "$out/output.txt" > "$out/grade.json" ;;
+      *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade.json"; false ;;
+    esac
+    g=$?
+    summary=$(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+if "error" in d: print("ERROR " + d["error"])
+else:
+    r=d.get("recall"); p=d.get("precision")
+    print("%s recall=%s precision=%s %s" % ("PASS" if d.get("pass") else "FAIL",
+          "n/a" if r is None else "%.2f" % r, "n/a" if p is None else "%.2f" % p,
+          "; ".join(d.get("reasons") or [])))' "$out/grade.json" 2>/dev/null)
+    echo "$c run $i ${case_mode:+[$case_mode] }(${secs}s): $summary"
+    [ "$g" -eq 0 ] || rc_all=1
+    i=$((i + 1))
+  done
+done
+exit "$rc_all"

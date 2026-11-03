@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "kind": "review",
+  "invocation": "/ensemble:en-review --mode headless --base main",
+  "modes": [
+    "peer",
+    "host",
+    "cross"
+  ],
+  "defects": [
+    {
+      "file": "test/cart.test.js",
+      "lines": [
+        9,
+        11
+      ],
+      "min_severity": "P1"
+    },
+    {
+      "file": "src/cart.js",
+      "lines": [
+        7,
+        7
+      ],
+      "min_severity": "P1"
+    },
+    {
+      "file": "test/cart.test.js",
+      "lines": [
+        5,
+        7
+      ],
+      "min_severity": "P2"
+    }
+  ],
+  "bars": {
+    "min_recall": 0.67
+  }
+}

@@ -50,3 +50,6 @@ coverage/
 # OS / tool caches
 .cache/
 .tmp/
+
+# Behavioral eval output (tests/evals/run-behavioral); never committed.
+tests/evals/results/

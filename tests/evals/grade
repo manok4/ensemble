@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""grade: validate behavioral eval cases and grade their runs.
+
+Usage:
+  grade validate <case-dir>                       exit 0 valid, 2 invalid (names the field)
+  grade review <expect.json> <output.txt>         grades a /en-review JSON envelope
+
+Facts first: a review run is graded by matching finding locations against the
+defects the case planted, with no model in the loop. Results print as JSON.
+
+Case contract, version 1 (expect.json):
+  version         1
+  kind            review | fix | plan
+  base_from       optional; another case whose base/ this one reuses (not with base/)
+  invocation      the slash command run in the scratch repo
+  modes           review only; any of peer, host, cross
+  defects         review only; [{file, lines: [a, b], min_severity}]
+  personas_include review only; personas the envelope must list
+  bars            review only; {min_recall (default 1.0), max_findings: {at_or_above, count}}
+  test_command    fix only
+  trailers        fix only; [{key, match} | {key, absent: true}]
+  plan_checks     plan only; [{unit_matching, must_contain, risk, last, before}]
+  judge           optional; [{id, expectation}]
+"""
+import json
+import os
+import re
+import sys
+
+SEVERITY = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+KINDS = ("review", "fix", "plan")
+LINE_SLACK = 3
+
+
+def fail(msg, code=2):
+    print(json.dumps({"error": msg}))
+    sys.exit(code)
+
+
+def load_json(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError) as exc:
+        fail("cannot read %s: %s" % (path, exc))
+
+
+# --- validate ------------------------------------------------------------------
+def validate(case_dir):
+    exp = load_json(os.path.join(case_dir, "expect.json"))
+    errors = []
+
+    def need(cond, msg):
+        if not cond:
+            errors.append(msg)
+
+    need(exp.get("version") == 1, "version must be 1")
+    kind = exp.get("kind")
+    need(kind in KINDS, "kind must be one of %s" % ", ".join(KINDS))
+    need(isinstance(exp.get("invocation"), str) and exp["invocation"].startswith("/"),
+         "invocation must be a slash command")
+    need(os.path.isfile(os.path.join(case_dir, "prompt.md")), "prompt.md is required")
+    has_base = os.path.isdir(os.path.join(case_dir, "base"))
+    base_from = exp.get("base_from")
+    need(not (has_base and base_from), "base/ and base_from are mutually exclusive")
+    need(has_base or base_from, "base/ or base_from is required")
+    if base_from:
+        need(os.path.isdir(os.path.join(os.path.dirname(case_dir.rstrip("/")), base_from, "base")),
+             "base_from names a case with no base/: %s" % base_from)
+    has_change = os.path.isdir(os.path.join(case_dir, "change"))
+    if kind == "review":
+        need(has_change, "change/ is required for kind review")
+        need(isinstance(exp.get("defects"), list), "defects must be a list for kind review")
+        for d in exp.get("defects") or []:
+            need(isinstance(d.get("file"), str) and isinstance(d.get("lines"), list) and len(d["lines"]) == 2
+                 and d.get("min_severity") in SEVERITY, "each defect needs file, lines [a, b] and min_severity")
+        need(set(exp.get("modes") or ["peer"]) <= {"peer", "host", "cross"}, "modes must be peer, host or cross")
+    else:
+        need(not has_change, "change/ is only allowed for kind review")
+        for key in ("modes", "defects", "personas_include", "bars"):
+            need(key not in exp, "%s applies only to kind review" % key)
+    if kind == "fix":
+        need(isinstance(exp.get("test_command"), str), "test_command is required for kind fix")
+    else:
+        need("test_command" not in exp and "trailers" not in exp, "test_command and trailers apply only to kind fix")
+    if kind != "plan":
+        need("plan_checks" not in exp, "plan_checks applies only to kind plan")
+    for j in exp.get("judge") or []:
+        need(isinstance(j.get("id"), str) and isinstance(j.get("expectation"), str), "each judge entry needs id and expectation")
+    if errors:
+        fail("; ".join(errors))
+    print(json.dumps({"valid": True, "kind": kind}))
+
+
+# --- review ----------------------------------------------------------------------
+def extract_envelope(text):
+    """The last JSON object in the output that carries a findings array."""
+    best = None
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r"\{", text):
+        try:
+            obj, _ = decoder.raw_decode(text[m.start():])
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("findings"), list):
+            best = obj
+    return best
+
+
+def parse_location(loc):
+    m = re.match(r"^\s*([^:\s]+?)(?::(\d+)(?:-(\d+))?)?\s*$", str(loc or ""))
+    if not m:
+        return None, None, None
+    a = int(m.group(2)) if m.group(2) else None
+    b = int(m.group(3)) if m.group(3) else a
+    return m.group(1), a, b
+
+
+def matches(finding, defect):
+    path, a, b = parse_location(finding.get("location"))
+    if path is None or not (path == defect["file"] or path.endswith("/" + defect["file"])):
+        return False
+    if a is None:
+        return False
+    lo, hi = defect["lines"][0] - LINE_SLACK, defect["lines"][1] + LINE_SLACK
+    if b < lo or a > hi:
+        return False
+    sev = SEVERITY.get(str(finding.get("severity")), 9)
+    return sev <= SEVERITY[defect["min_severity"]]
+
+
+def grade_review(expect_path, output_path):
+    exp = load_json(expect_path)
+    try:
+        with open(output_path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as exc:
+        fail("cannot read %s: %s" % (output_path, exc))
+    env = extract_envelope(text)
+    if env is None:
+        print(json.dumps({"error": "no-envelope", "pass": False}))
+        sys.exit(1)
+    findings = [f for f in env.get("findings") or [] if isinstance(f, dict)]
+    pool = findings + [f for f in env.get("sub_threshold_findings") or [] if isinstance(f, dict)]
+    defects = exp.get("defects") or []
+    used, matched, missed = set(), [], []
+    for d in defects:
+        hit = None
+        for i, f in enumerate(pool):
+            if i not in used and matches(f, d):
+                hit = i
+                break
+        if hit is None:
+            missed.append(d)
+        else:
+            used.add(hit)
+            matched.append({"defect": d, "finding": {k: pool[hit].get(k) for k in ("severity", "location", "title")}})
+    relevant = [f for f in findings if any(matches(f, d) for d in defects)]
+    extra = [{k: f.get(k) for k in ("severity", "location", "title")} for f in findings
+             if not any(matches(f, d) for d in defects)]
+    recall = (len(matched) / len(defects)) if defects else None
+    precision = (len(relevant) / len(findings)) if findings else None
+
+    bars = exp.get("bars") or {}
+    reasons = []
+    if defects:
+        floor = float(bars.get("min_recall", 1.0))
+        if recall < floor:
+            reasons.append("recall %.2f under %.2f" % (recall, floor))
+    personas = env.get("personas") or []
+    for p in exp.get("personas_include") or []:
+        if p not in personas:
+            reasons.append("persona %s not dispatched" % p)
+    cap = bars.get("max_findings")
+    if cap:
+        limit = SEVERITY[cap["at_or_above"]]
+        over = [f for f in findings if SEVERITY.get(str(f.get("severity")), 9) <= limit]
+        if len(over) > int(cap["count"]):
+            reasons.append("%d findings at or above %s, cap %d: %s" % (
+                len(over), cap["at_or_above"], int(cap["count"]),
+                "; ".join("%s %s" % (f.get("severity"), f.get("location")) for f in over)))
+    print(json.dumps({"kind": "review", "recall": recall, "precision": precision,
+                      "matched": matched, "missed": missed, "extra": extra,
+                      "sub_threshold": len(pool) - len(findings), "personas": personas,
+                      "reasons": reasons, "pass": not reasons}, indent=2))
+    sys.exit(0 if not reasons else 1)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        fail(__doc__.strip().splitlines()[2], 2)
+    cmd = args[0]
+    if cmd == "validate" and len(args) == 2:
+        validate(args[1])
+    elif cmd == "review" and len(args) == 3:
+        grade_review(args[1], args[2])
+    else:
+        fail("usage: grade validate <case-dir> | grade review <expect.json> <output.txt>", 2)
+
+
+if __name__ == "__main__":
+    main()

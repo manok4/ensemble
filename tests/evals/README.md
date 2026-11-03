@@ -1,0 +1,43 @@
+# Skill evals
+
+Two kinds of check, at two costs.
+
+| | What it checks | Runs | Cost |
+|---|---|---|---|
+| `trigger-rank`, `trigger.test.sh` | Each model-invocable skill's description ranks its skill for the prompts in `cases/`, negative prompts go to their owner, and no two descriptions converge | CI, through `tests/run.sh` | Free |
+| `run-behavioral` | A skill run through a real headless session on a scratch repo does what its case expects | On demand only | Real tokens |
+
+`grade.test.sh` tests the grader offline against recorded outputs, so it runs in CI while the sessions it grades do not.
+
+## Running a behavioral case
+
+```bash
+tests/evals/run-behavioral review-logic --dry-run          # prints the plan and the exact command; spends nothing
+tests/evals/run-behavioral review-logic --mode peer --runs 1
+tests/evals/run-behavioral all --runs 3
+```
+
+**Cost:** one full skill run per case, per mode, per run. A `/en-review` case also calls the cross-agent peer. Results go to `tests/evals/results/<timestamp>/` (gitignored), one directory per run, holding `output.txt`, `grade.json` and the scratch repo's path.
+
+**Isolation.** The skill comes from this checkout through `--plugin-dir` and is invoked by its plugin-qualified name (`/ensemble:en-review`). An installed copy under `~/.claude/skills` therefore never answers in its place. The session runs with `bypassPermissions` inside a throwaway repo, because the skills under test run scripts, git and the peer CLI, and a permission prompt ends a headless run. `ENSEMBLE_ANALYTICS_DIR` points into the results directory, so eval runs never reach real metrics.
+
+**Runs are stochastic.** Read rates across runs, not one outcome. Record any run that changed a decision in `ledger.md`.
+
+## Case contract (v1)
+
+Each case is `behavioral/<case>/` with `prompt.md`, `expect.json`, and `base/` (or `base_from` naming another case's `base/`). A review case also has `change/`, overlaid on a `feature` branch. `tests/evals/grade` documents every field and validates a case before any token is spent.
+
+**Grading uses facts first.** A review run is matched against the planted defects by finding location: same file, a line inside the defect's range plus or minus 3, and severity at or above the case's minimum. Each finding matches one defect at most.
+- **recall** is matched defects over planted ones. It is `null` for a clean case.
+- **precision** is matching findings over all actionable findings. It is `null` when there are none. Precision is reported but never gates, because an unmatched finding may still be real.
+
+A run passes when recall meets `bars.min_recall` (default 1.0), every `personas_include` entry was dispatched, and any `bars.max_findings` cap holds.
+
+## Adding a case
+
+Plant defects you can name by file and line, and keep the project small enough to read in one sitting. Then:
+1. Run `tests/evals/grade validate behavioral/<case>`.
+2. Do a `--dry-run`.
+3. Do one real run.
+
+A fixture that plants a skipped test or a removed assertion trips `/en-ship`'s floor guard. Commit it with a `Floor-Exception:` trailer naming the fixture path.
