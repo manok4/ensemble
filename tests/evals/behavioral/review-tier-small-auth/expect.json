@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "review",
+  "invocation": "/ensemble:en-review --mode headless --base main",
+  "modes": ["auto"],
+  "tier": "full",
+  "defects": [
+    { "file": "src/auth/access.js", "lines": [3, 4], "min_severity": "P2" }
+  ],
+  "bars": { "min_recall": 1.0 }
+}

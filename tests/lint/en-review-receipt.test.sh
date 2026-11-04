@@ -68,6 +68,34 @@ lacks "$S" 'full_suite=passed' "SKILL.md never claims full_suite either"
 # --- the receipt is only written where en-ship will ask about it -------------
 has "$R" 'Success on any other target.** Write nothing' "a receipt against another base is not written"
 
+# --- EN26 U5: the depth reached goes in the receipt ---------------------------
+has "$R" 'one `--check review_<tier>=passed` per tier at or below `ran`' "the write records every tier at or below the depth reached"
+has "$R" 'It adds none when `ran` is below the' "a run below its requirement records no review check"
+has "$R" 'rm -f "$(git rev-parse --git-dir)/ensemble/receipt.json"' "a run below its requirement clears the receipt first"
+has "$R" 'alone: the review did run on this tree' "a receipt skip still records the review"
+
+# The real script, on a real tree: this is the comparison the gate relies on.
+RCPT="$REPO_ROOT/skills/en-review/scripts/ensemble-verification-receipt"
+SCRATCH=$(mktemp -d); trap 'rm -rf "$SCRATCH"' EXIT
+(
+  cd "$SCRATCH" && git init -q -b main . && git config user.email t@example.com && git config user.name tester
+  printf 'x\n' > a && git add -A && git commit -qm init
+) >/dev/null 2>&1
+rcpt() { ( cd "$SCRATCH" && bash "$RCPT" "$@" ) 2>&1; }
+rcpt_rc() { rcpt "$@" >/dev/null; echo $?; }
+rcpt write --check lint=passed --check review_quick=passed --check review_standard=passed --by en-review >/dev/null
+assert_eq "0" "$(rcpt_rc verify --requires review_standard)" "a standard run passes a standard requirement"
+assert_eq "1" "$(rcpt_rc verify --requires review_full)" "a standard run fails a full requirement"
+assert_contains "$(rcpt verify --requires review_full --json)" "check-not-recorded" "the refusal is check-not-recorded"
+rcpt write --check review_quick=passed --check review_standard=passed --check review_full=passed --by en-review >/dev/null
+assert_eq "0" "$(rcpt_rc verify --requires review_quick)" "a full run passes a quick requirement"
+# The raised tier: an earlier standard check must not survive a run that fell short.
+rcpt write --check lint=passed --check review_standard=passed --by en-review >/dev/null
+( cd "$SCRATCH" && rm -f "$(git rev-parse --git-dir)/ensemble/receipt.json" )
+rcpt write --check lint=passed --by en-review >/dev/null
+assert_eq "1" "$(rcpt_rc verify --requires review_standard)" "clearing first drops the earlier review check"
+assert_eq "0" "$(rcpt_rc verify --requires lint)" "the check's own evidence is recorded again"
+
 # --- en-ship honours what en-review wrote -------------------------------------
 has "$SHIP" 'verify --requires lint,typecheck,full_suite' "en-ship still asks for the suite first"
 has "$SHIP" '--requires lint,typecheck,targeted_tests' "en-ship asks for the targeted set second"

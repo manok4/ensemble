@@ -11,12 +11,12 @@ An **ordered first-match cascade**. `high` is evaluated first, so a change that 
 | Order | Tier | Condition |
 |---|---|---|
 | 1 | `high` | `security-reviewer` or `migrations-reviewer` fired, OR an architectural trigger is present, OR the unit is `risk: destructive` or `gated: true` |
-| 2 | `low` | `/en-review`'s `lite_gate` is `applied`, or `is_small_and_safe` is `true` per diff-signal-detection, carried by the skills that review a diff |
+| 2 | `low` | `/en-review`'s `lite_gate` is `applied`, or `ensemble-review-tier` says `quick`, on the skills that review a diff |
 | 3 | `medium` | otherwise (the floor) |
 
-**Rung 2 is unevaluable for a skill that reviews a document.** Both rung-2 inputs come from a diff: `lite_gate` from `/en-review`'s flag and risk gate, `is_small_and_safe` from diff-signal-detection. A skill that ships a document it just wrote has no diff to classify, so the fail-closed default applies and the cascade lands on the rung-3 floor. Those skills therefore do not carry diff-signal-detection; the path above is deliberately unlinked so it is not billed to them.
+**Rung 2 is unevaluable for a skill that reviews a document.** Both rung-2 inputs come from a diff: `lite_gate` and the tier both rest on `ensemble-review-tier`. A skill that ships a document it just wrote has no diff to classify, so the fail-closed default applies and the cascade lands on the rung-3 floor.
 
-**Why `high` is tested first even though it looks redundant.** Both rung-2 inputs already require `RISK_SIGNALS` to be empty (and `lite_gate: applied` requires no conditional persona to have fired), so security and migrations can never collide with `low`. But the **architectural**, **destructive**, and **gated** conditions are *not* inputs to `is_small_and_safe`, and genuinely can co-occur with it. A small, signal-free diff on a `gated: true` unit must still resolve `high`. Ordering the cascade makes that true by construction rather than by coincidence.
+**Why `high` is tested first even though it looks redundant.** Both rung-2 inputs already require no risk signal (and `lite_gate: applied` requires no conditional persona to have fired), so security and migrations can never collide with `low`. But the **architectural**, **destructive**, and **gated** conditions are *not* inputs to the tier, and genuinely can co-occur with `quick`. A small, signal-free diff on a `gated: true` unit must still resolve `high`. Ordering the cascade makes that true by construction rather than by coincidence.
 
 **`xhigh` is an opt-in, never a ladder rung.** The ladder resolves `low`, `medium` or `high`; `xhigh` reaches the peer only through layer 1 or 2 of the resolution order below, for a run someone has decided is worth it. Effort names do not mean the same amount of reasoning across model generations, so the rung-to-tier mapping is re-measured, not renamed, when the peer model changes (D95). `max` is not accepted: on a long artifact it drafts the reply in reasoning and again in output.
 
@@ -67,9 +67,9 @@ When a peer invocation fails, classify it with `ensemble_smoke_classify` from `$
 | Classification | Behavior |
 |---|---|
 | `flagdrift` | **Bounded single retry** dropping **only** the rejected fragment (`PEER_MODEL` or `PEER_EFFORT`, never both, never the prompt). The peer degrades to inherited defaults and the review still gets its cross-agent pass. |
-| `auth` | No flag retry. Ordinary peer failure; fall back to persona-only. |
-| `unknown` | No flag retry. Ordinary peer failure; fall back to persona-only. |
-| Second failure | Stop. Fall back to persona-only, reason `peer-failed:retry-exhausted`. |
+| `auth` | No flag retry. Ordinary peer failure, reported as `peer-failed:*`; `/en-review`'s Outside Voice peer step then reruns in a fresh session. |
+| `unknown` | No flag retry. Ordinary peer failure, reported as `peer-failed:*`; `/en-review`'s Outside Voice peer step then reruns in a fresh session. |
+| Second failure | Stop. Reason `peer-failed:retry-exhausted`; `/en-review`'s Outside Voice peer step then reruns in a fresh session. |
 
 Every outcome is recorded in `peer_decision.reason` and echoed in the mandatory `peer_decision:` summary line. A degradation is never silently swallowed.
 
@@ -93,7 +93,7 @@ Published here once, and consumed verbatim by `/en-review` and the drift tests, 
 | `peer` | `reason` values |
 |---|---|
 | `on` | `default-on` , `explicit-flag` |
-| `off` | `no-peer-flag` , `host-only-mode` , `single-agent-fallback` , `report-only-mode` , `recursion-guard` , `peer-unavailable` , `auto-skip:diff-below-threshold` , `auto-skip:lightweight-depth` , `peer-failed:auth` , `peer-failed:timeout` , `peer-failed:died` , `peer-failed:max-turns` , `peer-failed:unknown` , `peer-failed:retry-exhausted` |
+| `off` | `no-peer-flag` , `host-only-mode` , `single-agent-fallback` , `report-only-mode` , `recursion-guard` , `peer-unavailable` , `auto-skip:diff-below-threshold` , `auto-skip:lightweight-depth` , `review-tier:quick` , `peer-failed:auth` , `peer-failed:timeout` , `peer-failed:died` , `peer-failed:max-turns` , `peer-failed:unknown` , `peer-failed:retry-exhausted` |
 | `degraded` | `dropped-model-fragment` , `dropped-effort-fragment` , `dropped-isolation-fragment` (an isolation, access or schema flag the installed CLI rejected; the set is dropped as one fragment) |
 
 Anything outside this enum is a contract violation, the same standard the build flavors apply to `peer-skipped:`.
@@ -101,6 +101,5 @@ Anything outside this enum is a contract violation, the same standard the build 
 ## Related
 
 - cli-wrappers — the per-CLI flag tables this policy binds against (carried by the skills that bind them)
-- diff-signal-detection — defines `is_small_and_safe` (carried by the skills that review a diff)
 - `references/host-detect.md` — emits `PEER_CMD` / `PEER_FORMAT` / `PEER_TURNS`
 - persona-dispatch — how the peer's findings reconcile with the host personas (carried by `/en-review`)

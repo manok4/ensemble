@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "review",
+  "base_from": "fix-wide-change",
+  "invocation": "/ensemble:en-review --mode headless --base main",
+  "modes": ["auto"],
+  "tier": "full",
+  "ran": "full",
+  "defects": [],
+  "personas_include": ["correctness"]
+}

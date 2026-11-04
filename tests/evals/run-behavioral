@@ -4,7 +4,7 @@
 # so tests/run.sh never calls this (it is not named *.test.sh).
 #
 # Usage:
-#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--with-user-mcp] [--dry-run]
+#   tests/evals/run-behavioral <case|all> [--mode peer|host|cross|auto] [--runs <n>] [--with-user-mcp] [--dry-run]
 #
 # The session loads NO MCP servers by default (an empty, strict --mcp-config):
 # with bypassPermissions every tool call is auto-approved, and an operator's
@@ -35,7 +35,7 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 CASES="$HERE/behavioral"
 GRADE="$HERE/grade"
 
-usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross] [--runs <n>] [--with-user-mcp] [--dry-run]" >&2; exit 2; }
+usage() { echo "usage: run-behavioral <case|all> [--mode peer|host|cross|auto] [--runs <n>] [--with-user-mcp] [--dry-run]" >&2; exit 2; }
 
 [ $# -ge 1 ] || usage
 target="$1"; shift
@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
-case "$mode" in ""|peer|host|cross) ;; *) usage ;; esac
+case "$mode" in ""|peer|host|cross|auto) ;; *) usage ;; esac
 case "$runs" in ''|*[!0-9]*) usage ;; esac
 
 if [ "$target" = all ]; then
@@ -88,7 +88,8 @@ for c in $cases; do
     case_mode=$(field "$exp" modes | awk '{print $1}'); [ -n "$case_mode" ] || case_mode=peer
   fi
   prompt="$invocation"
-  [ "$kind" = review ] && prompt="$prompt --$case_mode"
+  # auto passes no mode flag, so the tier script decides.
+  [ "$kind" = review ] && [ "$case_mode" != auto ] && prompt="$prompt --$case_mode"
   prompt="$prompt
 
 $(cat "$dir/prompt.md")"

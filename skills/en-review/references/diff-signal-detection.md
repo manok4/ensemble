@@ -1,15 +1,13 @@
 # Diff-signal detection
 
-Shared classification of a change's size and risk surface, consumed by `/en-review` (`--lite` gate, effort ladder), `/en-qa` (browser-phase detector) and `/en-fix` (risk surface at triage and on the real diff). One definition so the skills can't drift apart.
+Shared reading of a change's risk surface and frontend reach, consumed by `/en-fix` (risk surface at triage and on the real diff), `/en-qa` (browser-phase detector) and `/en-review` (what a conditional persona's keyword means). One definition so the skills can't drift apart. `ensemble-review-tier` owns review depth; this file does not decide it.
 
-> **Fail-closed is the contract.** Every classification below defaults to the *safe, do-more* answer when any input is unknown. "Small" and "no-frontend" are privileges a diff earns by being unambiguous; ambiguity revokes them.
+> **Fail-closed is the contract.** Every classification below defaults to the *safe, do-more* answer when any input is unknown. "No risk" and "no-frontend" are privileges a diff earns by being unambiguous; ambiguity revokes them.
 
 ## Inputs
 
 Compute from the diff under review (`git diff <base>...HEAD`, or the staged/working set when no base):
 
-- `EXEC_LINES` — count of changed **executable code** lines (added + removed), excluding blank lines and comment-only lines.
-- `UNCOUNTED_FILES` — count of changed files that are **not** countable source code: `.md`, `.txt`, JSON/YAML/TOML config, `.sh`, CI workflow files, lockfiles, generated files, binary assets. (These have no meaningful "executable line" count, so their risk can't be sized — they force the safe path.)
 - `FRONTEND_FILES` — changed files matching the frontend/UI patterns below.
 - `RISK_SIGNALS` — risk-surface patterns present in the diff (paths or content) below.
 
@@ -25,7 +23,7 @@ A changed file is a **frontend file** if its path matches any of:
 
 When `FRONTEND_FILES == 0` the change cannot affect rendered UI, so a browser pass has nothing to exercise.
 
-## Risk-surface patterns (drives en-review lite gate)
+## Risk-surface patterns (drives en-fix's plan check)
 
 A diff has a **risk signal** when changed paths or changed lines touch any of:
 
@@ -45,32 +43,10 @@ A diff has a **risk signal** when changed paths or changed lines touch any of:
 
 ## Classifications
 
-### `is_low_risk` (en-review `--lite` eligibility)
-
-`true` only when **both** hold:
-
-- `RISK_SIGNALS` is empty
-- (caller adds: no conditional review personas were independently triggered)
-
-Otherwise `false` — **fail closed**. Size is deliberately not an input: `--lite` is the user saying "this is a quick fix", and a fix with its regression test and a changelog line is still quick. What the user cannot waive is the risk surface, so any risk signal forces `false`. A `--lite` request does not override a `false` result; the gate wins. Whether to ask for `--lite` is the caller's call: `/en-fix` stops asking once a diff passes its size limit.
-
-**Canonical override-reason identifiers.** When a `--lite` request is overridden, the caller reports WHY using these stable enum values (one per failed condition; `/en-review`'s `lite_gate:` outcome line consumes them verbatim):
-
-| Reason ID | Failed condition |
-|---|---|
-| `risk-signal` | `RISK_SIGNALS` non-empty |
-| `conditional-persona:<names>` | (caller-added, en-review) a conditional review persona fired independently; `<names>` is the alphabetically-sorted `+`-joined persona list, e.g. `conditional-persona:performance+security` |
-
-When multiple conditions fail, report all of them, deduplicated, in the fixed table order above, comma+space separated — one deterministic encoding so equivalent runs produce identical output.
-
-### `is_small_and_safe` (en-review effort ladder, rung 2)
-
-`true` only when **all** hold: `EXEC_LINES` is known AND `1 <= EXEC_LINES <= 39`; `UNCOUNTED_FILES == 0`; `RISK_SIGNALS` is empty. Otherwise `false` — **fail closed**: an unknown line count, ANY uncounted file (a 5-line code change plus one `.md` → not small), or any risk signal. `/en-review`'s effort ladder resolves `low` on it without a `--lite` flag; it is the diff earning the cheap tier on its own.
-
 ### `needs_browser` (en-qa Phase 2 eligibility)
 
 `true` when `FRONTEND_FILES > 0`. Otherwise `false` — **but** the caller's explicit `--browser` flag forces `true` regardless, and an undetermined diff (can't compute `FRONTEND_FILES`, e.g. no base ref) is treated as `true` (fail closed — run the browser pass rather than skip it).
 
 ## Why fail-closed
 
-The cost asymmetry is the whole point. A false "low-risk" gives a lite read to a change that needed the full one; a false "no-frontend" skips QA that a change needed. Both ship a regression. A false "not-small" / "needs-browser" only spends a few extra minutes. When unsure, spend the minutes.
+The cost asymmetry is the whole point. A false "no risk" skips a plan that a change needed; a false "no-frontend" skips QA that a change needed. Both ship a regression. A false "risk" / "needs-browser" only spends a few extra minutes. When unsure, spend the minutes.

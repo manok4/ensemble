@@ -34,7 +34,7 @@ LOOP="$REPO_ROOT/skills/en-loop/SKILL.md"
 
 # --- 1. each mode says what it dispatches ---
 missing=""
-grep -qiE '`--peer`.*Default.*sole reviewer' "$SKILL" || missing="$missing peer-sole"
+grep -qiE '`--peer`.*sole reviewer' "$SKILL" || missing="$missing peer-sole"
 grep -qiE '`--cross`.*personas \*\*and\*\* the peer' "$SKILL" || missing="$missing cross-both"
 grep -qiE '`--host`.*personas only' "$SKILL" || missing="$missing host-only"
 [ -z "$missing" ] \
@@ -114,14 +114,14 @@ done
   && pass "no step instructs on a retired flag spelling" \
   || fail "a retired flag spelling is instructed on outside the table" "$live"
 
-# The replacement has to be stated where the reader meets it: --peer is the
-# default and it is peer-sole, --cross is the opt-in that adds personas. Step 9
+# The replacement has to be stated where the reader meets it: --peer is
+# peer-sole, --cross adds personas. Step 9
 # had these two exactly backwards, which no table check could see.
-if grep -qE '\*\*`--peer` \(the default\), sole reviewer' "$SKILL" \
+if grep -qE '\*\*`--peer`, sole reviewer' "$SKILL" \
    && grep -qE '\*\*`--cross` \(personas \+ peer\)' "$SKILL"; then
   pass "step 9 attributes sole-reviewer to --peer and personas+peer to --cross"
 else
-  fail "step 9 must attribute sole-reviewer to --peer (the default) and personas+peer to --cross" \
+  fail "step 9 must attribute sole-reviewer to --peer and personas+peer to --cross" \
        "these were labelled the other way round until 2026-09-04"
 fi
 

@@ -13,6 +13,7 @@
 #     --artifact-file <path>           # OR --artifact-stdin (read from stdin)
 #     [--peer-mode <cross-agent|single-agent-fallback>]   # default: cross-agent
 #     [--iteration-context-file <path>]                   # optional re-review context
+#     [--plan-file <path>]     # the plan's review copy, for a code review checked against it
 #     [--max-diff-bytes <n>]   # default $ENSEMBLE_PEER_DIFF_MAX_BYTES or 100000; 0 = no cap
 #
 # A unified diff over the cap is inlined whole file by whole file, in order,
@@ -103,6 +104,7 @@ ARTIFACT_FILE=""
 ARTIFACT_STDIN="false"
 PEER_MODE="cross-agent"
 ITERATION_CONTEXT_FILE=""
+PLAN_FILE=""
 MAX_DIFF_BYTES="${ENSEMBLE_PEER_DIFF_MAX_BYTES:-100000}"
 
 usage() {
@@ -119,6 +121,7 @@ while [ $# -gt 0 ]; do
     --artifact-stdin)           ARTIFACT_STDIN="true"; shift ;;
     --peer-mode)                PEER_MODE="$2"; shift 2 ;;
     --iteration-context-file)   ITERATION_CONTEXT_FILE="$2"; shift 2 ;;
+    --plan-file)                PLAN_FILE="$2"; shift 2 ;;
     --max-diff-bytes)           MAX_DIFF_BYTES="$2"; shift 2 ;;
     -h|--help)                  usage ;;
     *) echo "unknown flag: $1" >&2; usage ;;
@@ -230,6 +233,14 @@ if [ -n "$ITERATION_CONTEXT_FILE" ]; then
   ITERATION_CONTEXT=$(cat "$ITERATION_CONTEXT_FILE")
 fi
 
+PLAN_BODY=""
+if [ -n "$PLAN_FILE" ]; then
+  if [ ! -f "$PLAN_FILE" ]; then
+    echo "plan file not found: $PLAN_FILE" >&2; exit 2
+  fi
+  PLAN_BODY=$(cat "$PLAN_FILE")
+fi
+
 # Location hint and u_id field are artifact-type aware: a plan's findings anchor
 # to units (en-build dispatches per-unit off u_id), code anchors to file:line.
   LOCATION_HINT='Use "<file>:<line>" for code, the section name for docs, or "global".'
@@ -245,6 +256,7 @@ $SINGLE_AGENT_NOTE
 PROJECT: $PROJECT_CONTEXT
 GOAL: $GOAL
 $PLAN_REVIEW_DIMENSIONS
+$( [ -n "$PLAN_BODY" ] && printf '## Plan\n\nWhat this change was asked to do, as its author wrote it. It is context, not the artifact under review, and you may challenge its decisions.\n---\n%s\n---\n' "$PLAN_BODY" )
 ARTIFACT:
 ---
 $ARTIFACT_BODY

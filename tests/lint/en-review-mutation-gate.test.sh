@@ -44,15 +44,15 @@ fi
 
 # --- canonical reason enum present in BOTH files ---
 enum_ok=1
-# D79 narrowed the gate to risk: size and uncounted files no longer override.
-for rid in "risk-signal" "conditional-persona:"; do
+# D140 moved the gate onto the tier: the reasons live in the report and the skill.
+for rid in "diff-unreadable" "size" "risk-signal" "conditional-persona:"; do
   grep -qF "$rid" "$REPORT" || enum_ok=0
-  grep -qF "$rid" "$DIFFSIG" || enum_ok=0
+  grep -qF "$rid" "$SKILL" || enum_ok=0
 done
 if [ "$enum_ok" -eq 1 ]; then
-  pass "canonical override-reason enum mirrored in SKILL and diff-signal-detection"
+  pass "canonical override-reason enum mirrored in SKILL and the report"
 else
-  fail "the override-reason enum must appear in both SKILL.md and diff-signal-detection.md"
+  fail "the override-reason enum must appear in both SKILL.md and review-report.md"
 fi
 
 # --- deterministic multi-reason grammar (order, dedup, separator, persona encoding) ---
@@ -153,6 +153,20 @@ if grep -qiE "MUST NOT exceed the recorded .applied_fixes" "$SKILL"; then
   pass "working-tree delta bounded by the recorded applied_fixes[]"
 else
   fail "SKILL must bound the review-attributable tree delta by applied_fixes[]"
+fi
+
+# --- EN26 U4: a persona keyword names a concept ---
+HEUR=$(awk '/^## Detection heuristics/{f=1;next} /^`security`:/{f=0} f' "$DISPATCH")
+if printf '%s' "$HEUR" | grep -qF 'A keyword names a concept, not a substring' \
+   && printf '%s' "$HEUR" | grep -qF 'references/diff-signal-detection.md'; then
+  pass "the persona keywords are read as concepts, per the shared rule"
+else
+  fail "## Detection heuristics must say a keyword names a concept, citing references/diff-signal-detection.md"
+fi
+if printf '%s' "$HEUR" | grep -qF 'A hit whose meaning is unclear still fires'; then
+  pass "an unclear hit still fires, so the rule is no blanket skip"
+else
+  fail "the concept rule must say an unclear hit still fires"
 fi
 
 # --- severity.md referenced for tiers (not duplicated); persona-dispatch mirrors the boundary ---

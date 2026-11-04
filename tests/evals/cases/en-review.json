@@ -17,8 +17,7 @@
   "negative": [
     {
       "prompt": "Tidy up the code on this branch, it works but it's messy",
-      "owner": "en-simplify",
-      "known_gap": "'code' and 'branch' appear in both descriptions; 'tidy' alone does not outweigh them"
+      "owner": "en-simplify"
     },
     {
       "prompt": "Address the review comments on my PR",

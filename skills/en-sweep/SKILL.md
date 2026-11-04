@@ -70,7 +70,7 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
     - PR title: `chore(<scope>): <one-line summary>`.
     - PR body: cites the source-PR SHA and the findings addressed.
     - PR label: `en-sweep`. Kept for humans filtering the PR list; no guard reads it since the label guard retired.
-13. **Run `/en-review` per PR.** Mode: `report-only` (mandatory; never configurable for sweep). Returns findings JSON; does NOT mutate.
+13. **Run `/en-review` per PR.** Mode: `report-only` (mandatory; never configurable for sweep), which runs the host roster for the diff's tier and no peer. Returns findings JSON; does NOT mutate.
 14. **Merge eligibility, recorded, never acted on here.** For each PR: `/en-review` returned no P0/P1 → `merge_eligible: true`; findings, malformed JSON, or `sweep.auto_merge_enabled: false` → `false` with the reason. Write the whole run to `.ensemble/sweep-result.json` (not staged; it is not in the doc-only allowlist):
 
     ```json

@@ -186,8 +186,8 @@ rule "scripts/ensemble-agent-model"        "the dispatch doc names the resolver"
 rule "Both dispatch paths below pass \`model: \$AGENT_MODEL\`" "both paths pass the resolved model"
 rule "pass what the resolver returns and choose nothing themselves" "call sites defer to the resolver"
 rule "never dispatches bare"               "the fallback can no longer inherit the session model by omission"
-# Codex binds per agent file at install time; a Codex session selects nothing
-# per call. The old "take the default and select nothing" rule described the
+# Codex binds per agent file at install time, and a CLI that offers one takes a
+# per-call model on top. The old "take the default and select nothing" rule described the
 # per-call half only and read as if Codex could not be bound at all.
 rule "Codex binds per agent file"          "the Codex binding point is stated"
 rule "renders that TOML from the markdown" "setup is named as the Codex binder"

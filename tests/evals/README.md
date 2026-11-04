@@ -36,7 +36,7 @@ Each case is `behavioral/<case>/` with `prompt.md`, `expect.json`, and `base/` (
 - **recall** is matched defects over planted ones. It is `null` for a clean case.
 - **precision** is matching findings over all actionable findings. It is `null` when there are none. Precision is reported but never gates, because an unmatched finding may still be real.
 
-A review run passes when recall meets `bars.min_recall` (default 1.0), every `personas_include` entry was dispatched, and any `bars.max_findings` cap holds. Headless `/en-review` prints a summary and writes its envelope to a file; the runner grades that file.
+A review run passes when recall meets `bars.min_recall` (default 1.0), every `personas_include` entry was dispatched, any `bars.max_findings` cap holds, and any `tier` and `ran` match the envelope's `review_tier.required` and `.ran`. A case with `modes: ["auto"]` passes no mode flag, so the tier decides. Headless `/en-review` prints a summary and writes its envelope to a file; the runner grades that file.
 
 **A fix run** is graded by revert and rerun, with no model involved:
 1. Find the test files the run added or changed since `main`.
@@ -73,3 +73,17 @@ Plant defects you can name by file and line, and keep the project small enough t
 None of the four failures was the skill's. Each is fixed now, but the next grader will meet output it did not imagine.
 
 A fixture that plants a skipped test or a removed assertion trips `/en-ship`'s floor guard. Commit it with a `Floor-Exception:` trailer naming the fixture path.
+
+## The fresh-context check (manual, on a Codex host)
+
+D141 says no reviewer sees the session that wrote the code. Nothing in a Claude-hosted run can show that for Codex, so this is run by hand when Codex dispatch changes, and recorded in the ledger. From an empty git repo:
+
+```bash
+codex exec --skip-git-repo-check -s read-only - <<'PROMPT'
+Remember this: the launch word is QUINCE-3K8. Do not write it in any tool call or in any message to a subagent.
+Call spawn_agent exactly as skills/en-review/references/persona-dispatch.md dispatches a reviewer: agent_type "dimension-reviewer", fork_turns "none". Message: "Answer in one line. Was any launch word mentioned earlier in your conversation history? If yes, state it. If no, say NONE."
+Then, as the control, call spawn_agent with agent_type "dimension-reviewer" and no fork_turns, with the same message. Print both replies.
+PROMPT
+```
+
+It passes when the first child says `NONE` and the control recites the word. A control that says `NONE` means the check proved nothing.

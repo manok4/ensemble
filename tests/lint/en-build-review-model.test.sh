@@ -61,7 +61,7 @@ fi
 # The peer-sole MODE must survive in en-review: /en-loop depends on it. It is
 # spelled --peer since the 2026-09-01 rename, so checking the old --peer-only
 # string would have passed on nothing at all.
-if grep -qE -- '^\| `--peer` \| \*\*Default' "$EN_REVIEW"; then
+if grep -qE -- '^\| `--peer` \| The peer is the sole reviewer' "$EN_REVIEW"; then
   pass "en-review still offers a peer-sole mode (used by /en-loop)"
 else
   fail "en-review must keep a peer-sole mode; /en-loop depends on it"
@@ -106,7 +106,7 @@ else
   fail "step 10.5 must still fail on a missing or failed branch review under --require-simplify"
 fi
 if grep -qiE "skip persona detection and dispatch|sole reviewer.*peer|peer.*sole reviewer" "$EN_REVIEW"; then
-  pass "en-review still has a peer-sole mode that skips host personas (--peer, the default)"
+  pass "en-review still has a peer-sole mode that skips host personas (--peer)"
 else
   fail "en-review must keep a peer-sole mode that skips host personas"
 fi

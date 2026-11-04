@@ -1,0 +1,428 @@
+#!/usr/bin/env bash
+# ensemble-review-tier — decide how deep a branch diff must be reviewed.
+#
+# Every change gets a review; only the depth varies. This makes the depth a
+# script's answer rather than a model's reading of the diff (D140).
+#
+# Usage:
+#   ensemble-review-tier --base <ref> [--json]
+#
+# The diff is the merge base of <ref> and HEAD against the WORKING TREE, plus
+# untracked files.
+#
+# Tiers (first match wins)
+#   quick     no changed files (empty-diff)
+#   full      any risk signal, over 10 files, over 300 lines, or an unreadable diff
+#   standard  50 lines or more
+#   quick     everything else (under-limits)
+#
+# Output
+#   default  eval-able lines: REVIEW_TIER, REVIEW_TIER_REASONS, REVIEW_TIER_FILES,
+#            REVIEW_TIER_LINES
+#   --json   {"tier","reasons":[],"files":n,"lines":n,"excluded":[],
+#             "risk":[{"signal","path"}]}
+#
+# Reasons: empty-diff, under-limits, size-standard, over-300-lines, over-10-files,
+# risk:<signal>, diff-unreadable.
+# Signals: auth, payments, migrations, secrets, data-mutation, external-effects,
+# dependency.
+#
+# Exit codes
+#   0  a tier was printed, including the fail-closed `full` for an unreadable diff
+#   3  usage error
+#
+# Why a word list is acceptable here, when guardrail matching needs parsers: this
+# decides review depth, not safety, and a miss still gets a review. It faces an
+# agent's honest mistake, not an author hiding a change from the reviewer.
+
+set -u
+
+if ! command -v python3 >/dev/null 2>&1; then
+  case " $* " in
+    *" --json "*) printf '{"tier":"full","reasons":["diff-unreadable"],"files":0,"lines":0,"excluded":[],"risk":[]}\n' ;;
+    *) printf "REVIEW_TIER='full'\nREVIEW_TIER_REASONS='diff-unreadable'\nREVIEW_TIER_FILES=0\nREVIEW_TIER_LINES=0\n" ;;
+  esac
+  exit 0
+fi
+
+# -I keeps a module in the reviewed checkout from running: this reads a branch
+# before anything has reviewed it.
+exec python3 -I - "$@" <<'PY'
+import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
+
+MAX_FILES = 10
+MAX_LINES = 300
+STANDARD_LINES = 50
+
+LOCKFILES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock",
+    "pipfile.lock", "cargo.lock", "gemfile.lock", "go.sum", "composer.lock",
+}
+GENERATED_SEGMENTS = {"generated", "__generated__"}
+
+# Matched like content words, over the whole path: `src/auth_middleware.py` holds
+# `auth`, and `src/authoring/x.js` holds nothing.
+PATH_WORDS = {
+    "auth": {
+        "auth", "oauth", "oauth2", "authn", "authz", "authentication", "authorization",
+        "login", "session", "sessions", "permissions", "rbac", "acl", "credentials",
+    },
+    "payments": {"payment", "payments", "billing", "invoices"},
+    "migrations": {"migrate", "migration", "migrations", "alembic"},
+    "secrets": {"secrets"},
+}
+# Compared lowercased against a whole file name.
+FILE_NAMES = {
+    "migrations": {"schema.prisma", "schema.sql"},
+    "secrets": {".env"},
+    "dependency": {
+        "package.json", "pyproject.toml", "go.mod", "cargo.toml", "gemfile", "composer.json",
+    } | LOCKFILES,
+}
+FILE_GLOBS = {
+    "secrets": [".env.*"],
+    "dependency": ["requirements*.txt"],
+}
+
+# Matched lowercased, after camelCase is split with an underscore, with letters
+# and digits as the only word characters. So `refresh_token` and `refreshToken`
+# hold the word `token`, and `max_tokens`, `author` and `oracle` hold nothing.
+# `tokens` stays off the list for that reason; other plurals are on it.
+CONTENT_WORDS = {
+    "auth": [
+        "auth", "token", "access_tokens", "refresh_tokens", "auth_tokens", "api_tokens",
+        "password", "passwords", "passwd", "credential", "credentials", "oauth", "oauth2",
+        "jwt", "bearer", "csrf", "rbac", "cookie", "cookies",
+        "authn", "authz", "authenticate", "authenticated", "authentication", "authenticator",
+        "authorize", "authorized", "authorizer", "unauthorized", "authorization",
+        "session", "sessions", "login", "permission", "permissions",
+    ],
+    "payments": ["payment", "payments", "billing", "invoice", "stripe", "refund", "charge"],
+    "secrets": [
+        "secret", "secrets", "api_key", "api-key", "apikey", "private_key", "private-key", "cors",
+        "content-security-policy",
+    ],
+    "external-effects": ["webhook", "smtp", "sendgrid", "twilio"],
+    "data-mutation": ["backfill"],
+}
+
+
+def word_regex(words):
+    return re.compile(
+        r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(words)) + r")(?![a-z0-9])"
+    )
+
+
+PATH_RES = {signal: word_regex(words) for signal, words in PATH_WORDS.items()}
+CONTENT_RES = {signal: word_regex(words) for signal, words in CONTENT_WORDS.items()}
+# Over the raw line, so a string holding SQL counts. Bare TRUNCATE stays
+# case-sensitive because `truncate(text)` is an ordinary function name.
+RAW_RES = {
+    "migrations": re.compile(
+        r"\b(?:ALTER TABLE|CREATE TABLE|DROP (?:TABLE|COLUMN|SCHEMA|DATABASE|INDEX))\b", re.I
+    ),
+    "data-mutation": re.compile(
+        r"(?i:\b(?:DELETE FROM|TRUNCATE TABLE|UPDATE \w+ SET)\b)|\bTRUNCATE\b"
+    ),
+}
+SIGNAL_ORDER = [
+    "auth", "payments", "migrations", "secrets", "data-mutation", "external-effects", "dependency",
+]
+COMMENT_PREFIXES = ("#", "//", "/*")
+PROSE_SUFFIXES = (".md", ".mdx", ".rst", ".txt")
+HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+GIT = ["git", "-c", "core.quotePath=false"]
+
+
+class Unreadable(Exception):
+    pass
+
+
+def git(args, cwd=None, stdin=None):
+    try:
+        done = subprocess.run(
+            GIT + args, cwd=cwd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
+    except OSError:
+        raise Unreadable()
+    if done.returncode != 0:
+        raise Unreadable()
+    return done.stdout
+
+
+def text(raw):
+    return raw.decode("utf-8", "surrogateescape")
+
+
+def segments(path):
+    return path.lower().split("/")
+
+
+def is_excluded(path, attr_generated):
+    parts = segments(path)
+    name = parts[-1]
+    if name in LOCKFILES or name.endswith((".min.js", ".min.css")):
+        return True
+    if GENERATED_SEGMENTS.intersection(parts):
+        return True
+    return path in attr_generated
+
+
+def path_signals(path):
+    name = segments(path)[-1]
+    normal = normalize(path)
+    found = {signal for signal, rx in PATH_RES.items() if rx.search(normal)}
+    for signal, names in FILE_NAMES.items():
+        if name in names:
+            found.add(signal)
+    for signal, globs in FILE_GLOBS.items():
+        if any(fnmatch.fnmatchcase(name, g) for g in globs):
+            found.add(signal)
+    return found
+
+
+def is_prose(path):
+    name = segments(path)[-1]
+    if fnmatch.fnmatchcase(name, "requirements*.txt"):
+        return False
+    return name.endswith(PROSE_SUFFIXES)
+
+
+def normalize(line):
+    line = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", line)
+    line = re.sub(r"([A-Z])([A-Z][a-z])", r"\1_\2", line)
+    return line.lower()
+
+
+def is_comment(stripped):
+    """`--password x` and `*session = 0` are code, so these two need a space after."""
+    if stripped.startswith(COMMENT_PREFIXES):
+        return True
+    return bool(re.match(r"--(\s|$)|\*(\s|/|$)", stripped))
+
+
+def line_signals(line):
+    stripped = line.lstrip()
+    if not stripped or is_comment(stripped):
+        return set()
+    found = {signal for signal, rx in RAW_RES.items() if rx.search(line)}
+    normal = normalize(line)
+    found.update(signal for signal, rx in CONTENT_RES.items() if rx.search(normal))
+    return found
+
+
+def header_path(raw):
+    """The path on a `--- a/x` or `+++ b/x` line, or None for /dev/null."""
+    value = raw[4:].rstrip("\t")
+    if value.startswith('"') and value.endswith('"'):
+        value = value[1:-1]
+    if value == "/dev/null":
+        return None
+    return value[2:] if value[:2] in ("a/", "b/") else value
+
+
+def changed_lines(diff):
+    """Yield (path, content) for every added or removed line in a -U0 diff.
+
+    Hunk lengths are counted rather than trusting the line's prefix, because a
+    removed SQL comment reads `--- x` and an added `++ y` reads `+++ y`, which
+    are otherwise file headers.
+    """
+    old_path = new_path = None
+    old_left = new_left = 0
+    for line in text(diff).split("\n"):
+        if old_left > 0 or new_left > 0:
+            if line.startswith("-"):
+                old_left -= 1
+            elif line.startswith("+"):
+                new_left -= 1
+            else:
+                continue
+            yield (new_path or old_path, line[1:])
+            continue
+        if line.startswith("--- "):
+            old_path = header_path(line)
+        elif line.startswith("+++ "):
+            new_path = header_path(line)
+        else:
+            hunk = HUNK_RE.match(line)
+            if hunk:
+                old_left = int(hunk.group(1)) if hunk.group(1) is not None else 1
+                new_left = int(hunk.group(2)) if hunk.group(2) is not None else 1
+
+
+def read_numstat(raw):
+    """[(added, deleted, new_path, old_path_or_None)]; binary counts are zero."""
+    fields = text(raw).split("\0")
+    out = []
+    i = 0
+    while i < len(fields) and fields[i]:
+        parts = fields[i].split("\t", 2)
+        if len(parts) != 3:
+            raise Unreadable()
+        added = int(parts[0]) if parts[0].isdigit() else 0
+        deleted = int(parts[1]) if parts[1].isdigit() else 0
+        if parts[2]:
+            out.append((added, deleted, parts[2], None))
+            i += 1
+        else:
+            if i + 2 >= len(fields):
+                raise Unreadable()
+            out.append((added, deleted, fields[i + 2], fields[i + 1]))
+            i += 3
+    return out
+
+
+def read_untracked(root, path):
+    """The file's text lines, or [] for a binary, a symlink or a nested repository."""
+    full = os.path.join(root, path)
+    if os.path.islink(full) or os.path.isdir(full):
+        return []
+    try:
+        with open(full, "rb") as handle:
+            data = handle.read()
+    except OSError:
+        raise Unreadable()
+    if b"\0" in data[:8000]:
+        return []
+    lines = text(data).split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def generated_attrs(root, paths):
+    if not paths:
+        return set()
+    attrs = git(
+        ["check-attr", "-z", "--stdin", "linguist-generated"],
+        cwd=root,
+        stdin="\0".join(paths).encode("utf-8", "surrogateescape") + b"\0",
+    )
+    fields = text(attrs).split("\0")
+    return {
+        fields[i]
+        for i in range(0, len(fields) - 2, 3)
+        if fields[i + 2] in ("set", "true")
+    }
+
+
+def classify(base):
+    root = text(git(["rev-parse", "--show-toplevel"])).rstrip("\n")
+    merge_base = text(git(["merge-base", base, "HEAD"], cwd=root)).strip()
+    tracked = read_numstat(
+        git(["diff", "-M", "--no-ext-diff", "--no-textconv", "--numstat", "-z", merge_base], cwd=root)
+    )
+    untracked = [
+        p for p in text(git(["ls-files", "--others", "--exclude-standard", "-z"], cwd=root)).split("\0") if p
+    ]
+    paths = [row[2] for row in tracked] + untracked
+    attr_generated = generated_attrs(root, paths)
+    excluded = sorted(p for p in paths if is_excluded(p, attr_generated))
+    excluded_set = set(excluded)
+
+    files = lines = 0
+    risk = set()
+    for added, deleted, path, old in tracked:
+        for candidate in filter(None, (path, old)):
+            risk.update((signal, candidate) for signal in path_signals(candidate))
+        if path not in excluded_set:
+            files += 1
+            lines += added + deleted
+
+    # Exclusion is about size only: a minified file can still hold real SQL.
+    def scan(path, content):
+        if not is_prose(path):
+            risk.update((signal, path) for signal in line_signals(content))
+
+    diff = git(
+        ["diff", "-M", "--no-ext-diff", "--no-textconv", "--no-color", "-U0",
+         "--src-prefix=a/", "--dst-prefix=b/", merge_base],
+        cwd=root,
+    )
+    for path, content in changed_lines(diff):
+        scan(path, content)
+
+    for path in untracked:
+        risk.update((signal, path) for signal in path_signals(path))
+        content = read_untracked(root, path)
+        if path not in excluded_set:
+            files += 1
+            lines += len(content)
+        for line in content:
+            scan(path, line)
+
+    if not paths:
+        return "quick", ["empty-diff"], 0, 0, [], []
+
+    signals = {signal for signal, _ in risk}
+    reasons = []
+    if lines > MAX_LINES:
+        reasons.append("over-300-lines")
+    if files > MAX_FILES:
+        reasons.append("over-10-files")
+    reasons.extend("risk:" + s for s in SIGNAL_ORDER if s in signals)
+    if reasons:
+        tier = "full"
+    elif lines >= STANDARD_LINES:
+        tier, reasons = "standard", ["size-standard"]
+    else:
+        tier, reasons = "quick", ["under-limits"]
+    risk_rows = [
+        {"signal": s, "path": p}
+        for s, p in sorted(risk, key=lambda r: (SIGNAL_ORDER.index(r[0]), r[1]))
+    ]
+    return tier, reasons, files, lines, excluded, risk_rows
+
+
+def usage(message):
+    sys.stderr.write("ensemble-review-tier: %s\n" % message)
+    sys.stderr.write("usage: ensemble-review-tier --base <ref> [--json]\n")
+    sys.exit(3)
+
+
+def main(argv):
+    base = None
+    as_json = False
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--json":
+            as_json = True
+        elif arg == "--base":
+            i += 1
+            if i >= len(argv) or not argv[i]:
+                usage("--base needs a ref")
+            base = argv[i]
+        else:
+            usage("unknown argument: %s" % arg)
+        i += 1
+    if base is None:
+        usage("--base is required")
+
+    try:
+        tier, reasons, files, lines, excluded, risk = classify(base)
+    except Exception:
+        # Any failure at all prints the top tier, because an empty answer would
+        # leave `eval` with no tier and the gate asking for a check named `review_`.
+        tier, reasons, files, lines, excluded, risk = "full", ["diff-unreadable"], 0, 0, [], []
+
+    if as_json:
+        print(json.dumps({
+            "tier": tier, "reasons": reasons, "files": files, "lines": lines,
+            "excluded": excluded, "risk": risk,
+        }))
+    else:
+        print("REVIEW_TIER='%s'" % tier)
+        print("REVIEW_TIER_REASONS='%s'" % ",".join(reasons))
+        print("REVIEW_TIER_FILES=%d" % files)
+        print("REVIEW_TIER_LINES=%d" % lines)
+
+
+main(sys.argv[1:])
+PY

@@ -42,10 +42,6 @@ check 'skills/*/references/peer-model-policy.md' 'references/build-handoff.md'  
 # the ensemble-peer-invoke helper, which is D44's binding layer. Its last two
 # carriers reached it from no flow. A forbidden-relink check on a file that no
 # longer exists asserts nothing; a re-link would fail as a dangling path instead.
-# NOT checked: peer-model-policy's risk-ladder rung 2 links diff-signal-detection
-# to define `is_small_and_safe`. That is a real dependency of the ladder, not an
-# aside, so it stays linked and the 70-line target rides along with the policy.
-# Accuracy over volume: unlinking it would have been the same mistake in reverse.
 check 'skills/*/references/peer-model-policy.md' 'references/persona-dispatch.md'     pmp-persona
 check 'skills/*/references/finding-schema.md'    'references/persona-dispatch.md'     fs-persona
 check 'skills/*/references/stable-ids.md'        'references/doc-lints.md'            sid-lints

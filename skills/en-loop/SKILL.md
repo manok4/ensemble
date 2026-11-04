@@ -109,7 +109,7 @@ Ordinary iterations are test-gated but not peer-reviewed (a full Outside Voice p
 **How the cadence is driven (this is en-loop's mechanic, not a gnhf feature).** gnhf runs to its own stop condition and has **no mid-run callback** to invoke a reviewer, so en-loop drives the checkpoint cadence itself by running gnhf in **bounded chunks**. Do NOT assume gnhf calls `/en-review` mid-run — it does not. Each chunk:
 
 1. **Launch gnhf capped at `--review-every N` iterations** (via gnhf's own `--max-iterations`, so the process stops at the chunk boundary), with the worker prompt and `--stop-when`.
-2. When the chunk stops (cap reached or `--stop-when` self-reported), **run `/en-review --peer --mode headless`** over the branch diff (`git diff <merge-base>..HEAD`). This dispatches the cross-agent Outside Voice peer as the sole reviewer (Claude host → Codex reviews; Codex host → Claude reviews).
+2. When the chunk stops (cap reached or `--stop-when` self-reported), **run `/en-review --peer --mode headless`** over the branch diff (`git diff <merge-base>..HEAD`). The explicit `--peer` overrides the review tier and always runs the peer, however small the diff, as the sole reviewer (Claude host → Codex reviews; Codex host → Claude reviews).
 3. **Record the outcome as a `review-verdict:` trailer** on a checkpoint commit.
 4. If the real `--stop-when` condition is not yet met, **relaunch gnhf on the same branch** for the next chunk with the review findings folded into the worker prompt as the bounded corrections to make (the gnhf Companion-review / relaunch pattern). **Findings become the next chunk's acceptance criteria.**
 

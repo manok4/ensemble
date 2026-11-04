@@ -51,30 +51,23 @@ else
   fail "the risk-pattern matching rule is incomplete" "missing:$missing"
 fi
 
-# --- uncounted-file rule (any non-code file → not small) ---
-if grep -qiE "UNCOUNTED_FILES" "$REF"; then
-  pass "documents uncounted-file rule"
+# --- review depth moved to ensemble-review-tier (D140) ---
+if grep -qE "UNCOUNTED_FILES|EXEC_LINES|is_low_risk|is_small_and_safe" "$REF"; then
+  fail "the size and depth classifications must stay gone" "ensemble-review-tier owns review depth"
 else
-  fail "must document the uncounted-file rule"
+  pass "the size and depth classifications are gone"
+fi
+if grep -qF "ensemble-review-tier" "$REF"; then
+  pass "says ensemble-review-tier owns review depth"
+else
+  fail "must say ensemble-review-tier owns review depth"
 fi
 
-# --- both classifications defined ---
-if grep -qF "is_small_and_safe" "$REF"; then
-  pass "defines is_small_and_safe (en-review lite gate)"
-else
-  fail "must define is_small_and_safe"
-fi
+# --- the remaining classification ---
 if grep -qF "needs_browser" "$REF"; then
   pass "defines needs_browser (en-qa browser gate)"
 else
   fail "must define needs_browser"
-fi
-
-# --- flag override does not beat the fail-closed gate (lite) ---
-if grep -qiE "lite.*does not override|gate wins" "$REF"; then
-  pass "lite flag cannot override a false small/safe result"
-else
-  fail "must state lite flag cannot override the gate"
 fi
 
 report

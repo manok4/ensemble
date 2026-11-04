@@ -120,7 +120,7 @@ grep -qE '^\| .en-foundation. \| \(any\) \|.*\| never \|' \
   || fail "the dispatch matrix agrees with the flow: no learnings scout"
 
 # en-plan lost diff-signal-detection by the same edit and for the same reason:
-# it reviews a document it just wrote, so is_small_and_safe has no diff to read.
+# it reviews a document it just wrote, so there is no diff to read.
 [ -e skills/en-plan/references/diff-signal-detection.md ] \
   && fail "en-plan no longer carries diff-signal-detection either" \
   || pass "en-plan no longer carries diff-signal-detection either"

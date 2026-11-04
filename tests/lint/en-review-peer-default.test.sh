@@ -53,7 +53,7 @@ for tier in '`high`' '`low`' '`medium`'; do
 done
 
 # The ladder must evaluate `high` BEFORE `low` (EN11-PR-001): architectural,
-# destructive, and gated are not inputs to is_small_and_safe, so without an
+# destructive, and gated are not inputs to the tier, so without an
 # explicit order a small gated diff could resolve low.
 hi_line=$(grep -n '| 1 | `high`' "$POLICY" | head -1 | cut -d: -f1)
 lo_line=$(grep -n '| 2 | `low`' "$POLICY" | head -1 | cut -d: -f1)
@@ -63,7 +63,7 @@ else
   fail "ladder must evaluate high before low" "high@${hi_line:-none} low@${lo_line:-none}"
 fi
 has "$POLICY" "gated: true" "high tier covers gated units"
-has "$POLICY" "is_small_and_safe" "low tier cites is_small_and_safe verbatim"
+has "$POLICY" 'ensemble-review-tier` says `quick`' "the low rung reads the tier"
 
 # Resolution order: check the numbered ROWS of the resolution table, not
 # first-occurrence in the file (words like "ladder" legitimately appear earlier
@@ -495,10 +495,10 @@ flagrow() {  # flagrow <flag> <label>
   if printf '%s\n' "$FLAGS_TBL" | grep -qF -- "| \`$1" ; then pass "$2"; else fail "$2" "no Flags-table row for $1"; fi
 }
 # 2026-09-01: --no-peer and --peer-only were replaced by three mutually exclusive
-# review modes. --peer is now peer-SOLE (and the default), --cross is peer plus
+# review modes. --peer is peer-SOLE, --cross is peer plus
 # personas, --host is personas alone. EN11's substance — the peer runs unless a
 # recorded reason says otherwise — is unchanged; only the spelling moved.
-flagrow "--peer" "Flags table has a --peer row (peer-sole, the default)"
+flagrow "--peer" "Flags table has a --peer row (peer-sole)"
 flagrow "--cross" "Flags table has a --cross row (peer + personas)"
 flagrow "--host" "Flags table has a --host row (personas only)"
 flagrow "--effort" "Flags table has an --effort row"
@@ -543,6 +543,112 @@ else
   pass "report-only never defaults a peer on (D38 CI posture intact)"
 fi
 
+# ============================================================
+# EN26 U2 — the tier picks the mode, and no run has zero reviewers
+# ============================================================
+has "$SKILL" 'scripts/ensemble-review-tier" --base <base>' "step 2a runs the tier script"
+has "$SKILL" '`quick` runs as `--host` with the lite roster, `standard` as `--peer`, and `full` as `--cross`' "the tier maps to a review mode"
+has "$SKILL" 'report-only runs no peer, so `quick` uses the lite roster and `standard` or `full` the full host roster' "report-only runs no peer and a host roster"
+has "$SKILL" '| Tier `quick`, no mode flag | `off` | `review-tier:quick` |' "the peer gate turns off only for a quick run with no mode flag"
+hasnt "$SKILL" "skip_peer_below_lines" "an explicit --peer has no size row left to hit"
+hasnt "$SKILL" "skip_peer_on_lightweight" "an explicit --peer has no depth row left to hit"
+has "$POLICY" 'review-tier:quick' "the policy enum carries review-tier:quick"
+for f in "$REPO_ROOT"/skills/*/references/peer-contract.md; do
+  has "$f" 'review-tier:quick' "the contract enum carries review-tier:quick: ${f#"$REPO_ROOT"/}"
+done
+FAILURE_ROW=$(grep -F -- '**Peer failure.**' "$SKILL")
+for want in 'fresh session of the host'"'"'s own CLI' 'never as a subagent' '--peer-mode single-agent-fallback' 'reviewer: single-agent-fallback'; do
+  case "$FAILURE_ROW" in *"$want"*) pass "the peer-failure rule says: $want" ;; *) fail "the peer-failure rule must say: $want" ;; esac
+done
+OFF_ROW=$(grep -F -- '**Peer off**' "$SKILL")
+case "$OFF_ROW" in
+  *'peer and the fresh session both failing'*'run the full host roster'*'zero reviewers'*) pass "every peer-off path falls back to the host roster" ;;
+  *) fail "the peer-off rule must dispatch the full host roster, including when the fresh session fails too" ;;
+esac
+REPORT_REF="$REPO_ROOT/skills/en-review/references/review-report.md"
+has "$REPORT_REF" '"review_tier": {"required"' "the envelope carries review_tier"
+has "$REPORT_REF" 'review_tier: <ran> (required <required>; <files> files, <lines> lines; <reasons>)' "the summary line has its fixed shape"
+RAISE_ROW=$(grep -F -- '**Raising.**' "$SKILL")
+case "$RAISE_ROW" in *'re-resolve `peer_decision` with `default-on`'*) pass "a raise turns the peer back on" ;; *) fail "a raise from quick must re-resolve peer_decision, or the run cannot reach full" ;; esac
+has "$SKILL" 'with no mode flag run as `--peer`' "a target that is not a branch diff still has a mode"
+has "$REPORT_REF" '`jq -r .peer_mode_override ~/.ensemble/config.json` is `off`' "only an explicit opt-out counts a host-only run as full"
+has "$REPORT_REF" '`cross-agent-only` with no second CLI | `standard`' "a missing peer the user required does not count as full"
+has "$POLICY" 'then reruns in a fresh session' "the policy agrees with the fresh-session rerun"
+has "$DISPATCH" 'ensemble_peer_start --job-dir <run-dir>/peer-rerun' "the rerun is detached, so the harness cannot kill it mid-call"
+for f in "$REPO_ROOT"/skills/*/references/outside-voice.md; do
+  hasnt "$f" 'Sole reviewer by default' "no claim the peer is the default reviewer: ${f#"$REPO_ROOT"/}"
+done
+CONTRACT="$REPO_ROOT/skills/en-review/CONTRACT.md"
+has "$CONTRACT" '| `review_tier` |' "the contract returns review_tier"
+hasnt "$CONTRACT" '/en-review --lite --mode headless' "the contract no longer says en-fix asks for --lite"
+
+# ============================================================
+# EN26 U8 — every reviewer runs outside the build session (D141)
+# ============================================================
+has "$DISPATCH" "A reviewer's context is its prompt, the files it names and the project. The build session is not part of it." "the fresh-context rule is stated"
+has "$DISPATCH" 'spawn_agent({ agent_type: "dimension-reviewer", fork_turns: "none", model: $AGENT_MODEL,' "Codex dispatch stays fresh and keeps its model"
+has "$DISPATCH" 'A refused model retries once without `model`' "a refused model falls back and is named"
+has "$DISPATCH" 'host_context: inherited' "an inherited context is reported"
+has "$DISPATCH" 'never a verdict such as' "the goal carries no verdict"
+has "$DISPATCH" 'except on the verification pass and the lite brief' "the plan stays out of the cheap prompts"
+has "$SKILL" 'a run with no plan omit `--plan-file`' "a run with no plan does not pass a missing file"
+has "$SKILL" '--plan-file <plan copy>' "the peer is handed the plan copy"
+AGENT="$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md"
+for slot in '**`goal`**' '**`plan`**' '**`commits`**'; do
+  has "$AGENT" "$slot" "dimension-reviewer takes $slot"
+done
+
+# Run the documented command itself, on a fixture: a plan copy that kept a
+# verdict would hand a reviewer the judgment this rule exists to withhold.
+PC=$(mktemp -d)
+cat > "$PC/plan.md" <<'PLANEOF'
+---
+peer_review_verdict: revise
+---
+
+# A plan
+
+## Context
+
+why
+
+## Iteration log
+
+> peer pass 1, revise
+
+## Decisions, assumptions & risks
+
+- **Decision:** kept
+PLANEOF
+# And the patch and log commands: the patch must hold what the tier classified.
+(
+  cd "$PC" && git init -q -b main . && git config user.email t@example.com && git config user.name tester
+  printf 'x\n' > a.txt && mkdir -p docs && cp plan.md docs/plan.md && git add -A && git commit -qm base
+  git checkout -qb feature && printf 'committed\n' > c.txt && git add c.txt \
+    && git commit -qm 'feat: c' -m 'Verdict: revise, accepted' -m 'kept body'
+  printf 'uncommitted\n' >> a.txt; printf 'untracked\n' > u.txt; printf 'plan edit\n' >> docs/plan.md
+) >/dev/null 2>&1
+mkdir -p "$PC/out"
+grep -E '^(git diff "\$\(git merge-base|git ls-files -z|awk .*plan\.md"|git log --format)' "$DISPATCH" | sed 's/<base>/main/g' > "$PC/out/cmds.sh"
+( cd "$PC" && PLAN="docs/plan.md" RUN_DIR="$PC/out" bash "$PC/out/cmds.sh" ) >/dev/null 2>&1
+COPY=$(cat "$PC/out/plan.md" 2>/dev/null)
+assert_contains "$COPY" "## Decisions, assumptions & risks" "the plan copy keeps the decisions section after the log"
+assert_contains "$COPY" "## Context" "the plan copy keeps the body"
+case "$COPY" in *peer_review_verdict*) fail "the plan copy must lose the frontmatter" ;; *) pass "the plan copy loses the frontmatter" ;; esac
+case "$COPY" in *"peer pass 1"*) fail "the plan copy must lose the iteration log" ;; *) pass "the plan copy loses the iteration log" ;; esac
+PATCH=$(cat "$PC/out/diff.patch" 2>/dev/null)
+for held in '+committed' '+uncommitted' '+untracked'; do
+  assert_contains "$PATCH" "$held" "the reviewer patch holds $held"
+done
+case "$PATCH" in *"plan edit"*) fail "the reviewer patch must leave the plan file out" ;; *) pass "the reviewer patch leaves the plan file out" ;; esac
+# An untracked plan reaches the patch by the second command, not the first.
+( cd "$PC" && printf 'peer pass 2 verdict\n' > docs/new-plan.md && PLAN="docs/new-plan.md" RUN_DIR="$PC/out" bash "$PC/out/cmds.sh" ) >/dev/null 2>&1
+case "$(cat "$PC/out/diff.patch" 2>/dev/null)" in *"peer pass 2 verdict"*) fail "an untracked plan must stay out of the reviewer patch" ;; *) pass "an untracked plan stays out of the reviewer patch" ;; esac
+LOG=$(cat "$PC/out/commits.txt" 2>/dev/null)
+assert_contains "$LOG" "kept body" "the commit log keeps the message"
+case "$LOG" in *"Verdict:"*) fail "the commit log must drop verdict lines" ;; *) pass "the commit log drops verdict lines" ;; esac
+rm -rf "$PC"
+
 # The retry algorithm must NOT be restated in prose (EN11-PR-006): one
 # implementation, in the executable helper.
 if grep -qiE 'retry (exactly )?once' "$SKILL"; then
@@ -572,7 +678,6 @@ has "$DISPATCH" "0.7" "corroboration reuses the existing similarity predicate"
 has "$DISPATCH" "independent of the similarity predicate" "conflict is decoupled from similarity"
 has "$DISPATCH" "+2" "cross-source corroboration boost documented"
 has "$DISPATCH" "+1" "same-source overlap boost retained"
-has "$DISPATCH" "fast-pass" "fast-pass corroboration carve-out preserved"
 has "$DISPATCH" "Blind-peer invariant" "blind-peer invariant is named"
 hasnt "$DISPATCH" "confirm or counter them" "the stale peer-reads-findings claim is gone"
 # The reconciliation record shapes moved on 2026-09-04 from the shared

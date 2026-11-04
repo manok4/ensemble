@@ -265,6 +265,33 @@ assert_exit_code 1 "$rc" "a fix run that changed nothing fails"
 assert_contains "$out" "no test added" "it fails on the fix grader's facts, not on a missing envelope"
 assert_not_contains "$out" "no-envelope" "a fix case never asks for an envelope"
 
+# --- the review tier: tier and ran against the envelope ------------------------------
+tiered() {  # $1=required $2=ran -> an envelope in $T/o.txt
+  printf '{"verdict":"approve","personas":["correctness"],"findings":[],"sub_threshold_findings":[],"review_tier":{"required":"%s","ran":"%s","reasons":[]}}\n' "$1" "$2" > "$T/o.txt"
+}
+printf '{"version":1,"kind":"review","invocation":"/ensemble:en-review","defects":[],"tier":"standard","ran":"standard"}\n' > "$T/e.json"
+tiered standard standard
+out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
+assert_exit_code 0 "$rc" "an envelope whose review_tier matches tier and ran passes"
+printf '{"version":1,"kind":"review","invocation":"/ensemble:en-review","defects":[],"tier":"quick"}\n' > "$T/e.json"
+out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
+assert_exit_code 1 "$rc" "required standard against tier quick fails"
+assert_contains "$out" "review_tier.required is standard, expected quick" "and the failure names both"
+printf '{"version":1,"kind":"review","invocation":"/ensemble:en-review","defects":[],"ran":"full"}\n' > "$T/e.json"
+out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
+assert_exit_code 1 "$rc" "ran standard against ran full fails"
+printf '{"version":1,"kind":"review","invocation":"/ensemble:en-review","defects":[],"tier":"quick"}\n' > "$T/e.json"
+envelope "$T/o.txt" '[]'
+out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
+assert_exit_code 1 "$rc" "an envelope with no review_tier fails when tier is set"
+for c in review-tier-quick review-tier-wide review-tier-small-auth review-tier-raised; do
+  "$G" validate "$CASES/$c" >/dev/null 2>&1; rc=$?
+  assert_exit_code 0 "$rc" "$c validates, with modes auto"
+done
+dry=$("$RB" review-tier-quick --dry-run 2>&1)
+assert_contains "$dry" "| /ensemble:en-review --mode headless --base main" "an auto case prints its invocation"
+assert_not_contains "$dry" "--base main --" "and appends no mode flag"
+
 # --- the fix grader and the floor guard agree on what a test file is ---------------
 # Skills are self-contained, so the pattern is copied; this pins the copies.
 fg=$(grep -E '^TEST_PATH = re.compile' "$REPO_ROOT/skills/en-ship/scripts/ensemble-floor-guard")

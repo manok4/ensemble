@@ -60,8 +60,8 @@ The lifecycle pipeline, with the orthogonal skills below it:
                                               │
                                               ▼
                                        ┌──────────────┐
-                                       │  /en-review  │  Cross-agent peer on by default; personas
-                                       │              │  with --cross; sub-threshold → report only
+                                       │  /en-review  │  A script sets the depth: host, peer or
+                                       │              │  both; sub-threshold → report only
                                        └──────┬───────┘
                                               │
                                               ▼
@@ -151,7 +151,7 @@ For a focused bug investigation:
 /en-debug "TypeError: Cannot read properties of null (reading 'label')"
 # Diagnosis: src/reports/csv-export.ts:42 reads a null header, confidence 8/10, verdict convergent.
 /en-fix "skip null headers in src/reports/csv-export.ts:42"
-# Test-first fix, /en-review --lite, then /en-ship opens the PR.
+# Test-first fix, /en-review at the tier a script sets, then /en-ship opens the PR.
 /en-resolve-pr
 ```
 
@@ -304,7 +304,7 @@ You can run both simultaneously for two AI perspectives.
 | 2 | `/en-foundation` | Produce or retrofit `docs/foundation.md` (PRD, technical direction, architecture), `docs/architecture.md`, `AGENTS.md` and `CLAUDE.md`. Asks for `plan_id_prefix`; the draft is peer-reviewed. |
 | 3 | `/en-plan` | Turn a feature, refactor or bug fix into a plan with stable U-IDs and a `plan_type`: reads the foundation, runs research agents, breaks the work into units with files, tests and risk, then a cross-agent peer review. `--resume` and `--from-legacy` modes. |
 | 4 | `/en-build` | Execute a plan unit by unit on a feature branch (implement, test, lint, commit per unit), then one `/en-simplify` pass and one cross-agent review over the branch diff, an evidence audit, and the learning checkpoint. |
-| 5 | `/en-review` | Code review of the current branch with a cross-agent peer on by default. `--cross` adds host personas (correctness, testing, maintainability, standards always; security, performance, migrations when the diff matches); findings below the confidence threshold are reported, never filed as tech debt. |
+| 5 | `/en-review` | Code review of the current branch at the depth a script sets: host reviewers for a small diff, a cross-agent peer for a medium one, both for a large or risky one. Host personas are correctness, testing, maintainability, standards always; security, performance, migrations when the diff matches; findings below the confidence threshold are reported, never filed as tech debt. |
 | 6 | `/en-qa` | Test the work like a real user: lint, typecheck, tests, then Playwright end-to-end on the golden path and edge cases. Each bug gets a fix, a regression test and a commit. |
 | 7 | `/en-learn` | Capture durable learnings as a term, a decision or a solution. Gated: writes nothing unless the entry is unrecoverable from the code and changes a future decision. Also `--refresh`, `--lint`, `--migrate` and `--enforce-audit`. |
 | 8 | `/en-ship` | Preflight (lint, typecheck, targeted tests, secret scan, merge check), conventional commit, push and `gh pr create`. `--auto-merge` optional. |
@@ -322,7 +322,7 @@ You can run both simultaneously for two AI perspectives.
 | 15 | `/en-flow` | The hands-off pipeline for one piece of work: `/en-plan`, `/en-build`, `/en-learn`, then `/en-ship` with its watch loop. Manual-invoke only. |
 | 16 | `/en-simplify` | Simplify recently changed code for clarity, reuse and efficiency while preserving exact behaviour; the default scope is the branch diff. `/en-build` runs it once per build. |
 | 17 | `/en-test-audit` | Prune an existing test suite one owner-boundary batch at a time: evidence for every deletion in a committed ledger, a caught mutation proving each kept test still fails, and a peer check for lost coverage. `--campaign <path>` covers one subsystem. Manual-invoke only; never pushes or merges. |
-| 18 | `/en-fix` | Take one change that needs no plan, a bug fix or an improvement of any size, from request to PR: `/en-debug` diagnoses a bug first, then a test-first change, `/en-review` (`--lite` unless the diff passes 10 files or 300 lines) and `/en-ship`. Stops and suggests `/en-plan` when the change has an open decision, a risk surface or parts that must land in order, or fails review twice; file and commit counts never change the route. Manual-invoke only. |
+| 18 | `/en-fix` | Take one change that needs no plan, a bug fix or an improvement of any size, from request to PR: `/en-debug` diagnoses a bug first, then a test-first change, `/en-review` at the tier a script sets, and `/en-ship`, which runs only once the diff has been reviewed at its tier. Stops and suggests `/en-plan` when the change has an open decision, a risk surface or parts that must land in order, or fails review twice; file and commit counts never change the route. Manual-invoke only. |
 
 For full process detail, flags and reference files, see each skill's `SKILL.md`
 under [`skills/`](./skills/), which is the contract the skill executes, and
@@ -431,7 +431,7 @@ Per-project config lives in `.ensemble/config.local.yaml` (gitignored). All keys
 ```yaml
 # Cross-review behavior
 peer_mode_override: auto                # auto | cross-agent-only | single-agent-only | off
-skip_peer_below_lines: 50
+skip_peer_below_lines: 50               # /en-plan's plan documents only; /en-review's depth is set by a script
 
 # Review confidence gate (sub-threshold → reported, never filed)
 review:

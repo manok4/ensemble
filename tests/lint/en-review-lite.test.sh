@@ -19,18 +19,18 @@ else
   fail "--lite missing from en-review"
 fi
 
-# --- references the shared signal detector ---
-if grep -qF "diff-signal-detection.md" "$EN_REVIEW"; then
-  pass "en-review --lite uses diff-signal-detection reference"
+# --- the tier, not a prose classification, decides lite ---
+if grep -qF "scripts/ensemble-review-tier" "$EN_REVIEW"; then
+  pass "en-review reads the tier script"
 else
-  fail "en-review --lite must use diff-signal-detection reference"
+  fail "en-review must read the tier script"
 fi
 
 # --- lite roster persona set ---
-if grep -qiE "correctness.*standards|standards.*correctness" "$EN_REVIEW" && grep -qF "fast-pass" "$EN_REVIEW"; then
-  pass "lite roster = correctness + standards + fast-pass"
+if grep -qiE "correctness.*standards|standards.*correctness" "$EN_REVIEW"; then
+  pass "lite roster = correctness + standards"
 else
-  fail "lite roster must be correctness + standards + fast-pass"
+  fail "lite roster must be correctness + standards"
 fi
 
 # --- fail-closed override stated in skill ---
@@ -40,7 +40,8 @@ else
   fail "en-review --lite must state fail-closed override"
 fi
 
-# --- D79: lite is a depth setting in every mode; size does not gate ---
+# --- D79, D140: lite is a depth setting in every mode, on a quick diff ---
+REPORT_REF="$REPO_ROOT/skills/en-review/references/review-report.md"
 LITE_BRIEF="$REPO_ROOT/skills/en-review/references/peer-brief-lite.md"
 DIFFSIG="$REPO_ROOT/skills/en-review/references/diff-signal-detection.md"
 if [ -f "$LITE_BRIEF" ] && grep -qF "references/peer-brief-lite.md" "$EN_REVIEW"; then
@@ -64,11 +65,23 @@ if printf '%s' "$lite_dims" | grep -q '^### correctness' \
 else
   fail "lite brief must keep correctness and drop testing/maintainability/performance/migrations/security"
 fi
-if grep -qF "is_low_risk" "$DIFFSIG" && grep -qF "is_low_risk" "$EN_REVIEW" \
-   && ! grep -qE "exec-lines-out-of-range|uncounted-files|unknown-line-count|no-persona-roster" "$EN_REVIEW" "$DIFFSIG"; then
-  pass "lite gate is is_low_risk; size and uncounted-file reasons are gone"
+if ! grep -qE "exec-lines-out-of-range|uncounted-files|unknown-line-count|no-persona-roster" "$EN_REVIEW" "$DIFFSIG" \
+   && grep -qF '`diff-unreadable`, `size`, `risk-signal`, `conditional-persona:<names>`' "$EN_REVIEW"; then
+  pass "lite is overridden with four reasons, in a fixed order"
 else
-  fail "lite gate must be is_low_risk with only risk-signal and conditional-persona override reasons"
+  fail "the lite gate must override with diff-unreadable, size, risk-signal and conditional-persona, in that order"
+fi
+# Absence across the whole skill tree: the script replaced these, and a survivor
+# is a second definition of the same thing.
+if grep -rqE "is_low_risk|is_small_and_safe" "$REPO_ROOT/skills"; then
+  fail "no skill may still name is_low_risk or is_small_and_safe" "ensemble-review-tier replaced them"
+else
+  pass "no skill still names is_low_risk or is_small_and_safe"
+fi
+if grep -qF 'lite_gate: overridden (risk-signal' "$REPORT_REF" && grep -qF '`applied` is any run at lite depth, including a bare `quick` run' "$REPORT_REF"; then
+  pass "the report defines a bare quick run as lite_gate: applied"
+else
+  fail "the report must define a bare quick run as lite_gate: applied"
 fi
 if grep -qF "no-persona-roster" -r "$REPO_ROOT/skills"; then
   fail "no-persona-roster must not survive anywhere: --lite now applies under --peer"
@@ -83,11 +96,11 @@ else
   fail "persona-dispatch must document the lite roster"
 fi
 
-# --- fast-pass confidence cap documented ---
-if grep -qiE "anchor 50|cap.*fast-pass|fast-pass.*cap" "$PERSONA"; then
-  pass "persona-dispatch documents fast-pass confidence cap"
+# --- fast-pass is gone: it had no dispatch, so it could only run in-session ---
+if grep -rqF "fast-pass" "$REPO_ROOT/skills/en-review"; then
+  fail "fast-pass must be gone from skills/en-review" "D141: every reviewer runs outside the session"
 else
-  fail "persona-dispatch must document fast-pass confidence cap"
+  pass "fast-pass is gone from skills/en-review"
 fi
 
 report
