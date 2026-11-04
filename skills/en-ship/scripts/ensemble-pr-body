@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ensemble-pr-body — compose the PR body from evidence that already exists.
 #
-# Three of its four sections are derived, not written: the commit list, the
-# receipt, and the plan path all exist by the time the PR opens. Leaving the
+# Most of its sections are derived, not written: the commit list, the receipt,
+# the plan path and any Risk-Override line all exist by the time the PR opens. Leaving the
 # composition to prose meant retyping them each run, and retyping is where the
 # Test plan section goes wrong: an agent with a changed-file list and no test
 # result will write a plausible checklist. A checkbox nobody executed reads to a
@@ -17,12 +17,16 @@
 # Usage:
 #   ensemble-pr-body --base <ref> [--summary <line>]... [--plan <path>]
 #                    [--tests <line>] [--selection <tier>] [--qa <line>]
+#   ensemble-pr-body --base <ref> --overrides-only
+#
+# --overrides-only prints the Risk override section alone, or nothing, for a PR
+# that already exists.
 #
 # Prints the body on stdout. Nothing here touches the network or the index.
 
 set -u
 
-BASE=""; PLAN=""; TESTS=""; SELECTION=""; QA=""; SUMMARY=""
+BASE=""; PLAN=""; TESTS=""; SELECTION=""; QA=""; SUMMARY=""; OVERRIDES_ONLY=""
 die() { printf '%s\n' "$*" >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
@@ -34,6 +38,7 @@ while [ $# -gt 0 ]; do
     --tests)     [ $# -ge 2 ] || die "--tests needs text";   TESTS="$2"; shift 2 ;;
     --selection) [ $# -ge 2 ] || die "--selection needs a tier"; SELECTION="$2"; shift 2 ;;
     --qa)        [ $# -ge 2 ] || die "--qa needs text";      QA="$2"; shift 2 ;;
+    --overrides-only) OVERRIDES_ONLY=1; shift ;;
     *) die "ensemble-pr-body: unknown argument $1" ;;
   esac
 done
@@ -42,6 +47,19 @@ git rev-parse --git-dir >/dev/null 2>&1 || die "ensemble-pr-body: not a git repo
 git rev-parse --verify --quiet "$BASE" >/dev/null || die "ensemble-pr-body: cannot resolve base '$BASE'"
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# First, because a reviewer must see this before the diff: the skill stopped on a
+# risk surface, and it recorded that the user chose to skip the plan. Any line of
+# a message counts, so a misplaced trailer still shows. Each value is a code span,
+# so a commit message cannot open a comment or close an issue from here, and
+# control characters go first because a carriage return can end a code span.
+OVERRIDES=$(git log "$BASE"..HEAD --format=%B | LC_ALL=C tr '\000-\011\013-\037\177' ' ' | grep '^Risk-Override:' | sed -e 's/^Risk-Override:[[:space:]]*//' -e "s/\`/'/g")
+if [ -n "$OVERRIDES" ]; then
+  printf '## Risk override\n\nThis change touches a risk surface and skipped a plan. The agent recorded these as the user'"'"'s words:\n\n'
+  printf '%s\n' "$OVERRIDES" | sed -e 's/^/- `/' -e 's/$/`/'
+  [ -n "$OVERRIDES_ONLY" ] || printf '\n'
+fi
+[ -z "$OVERRIDES_ONLY" ] || exit 0
 
 printf '## Summary\n\n'
 if [ -n "$SUMMARY" ]; then

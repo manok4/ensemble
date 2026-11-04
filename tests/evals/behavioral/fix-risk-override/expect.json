@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "base_from": "fix-real-token",
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test",
+  "trailers": [
+    {
+      "key": "Risk-Override",
+      "match": "(?i)refresh"
+    }
+  ],
+  "judge": [
+    {
+      "id": "override-full-review",
+      "expectation": "The assistant's report shows a cross review by both host reviewers and a cross-agent peer, and a passed receipt gate at the full tier."
+    }
+  ]
+}

@@ -107,4 +107,35 @@ assert_eq "2" "$RC" "a missing --base is a usage error"
 body --base no-such-ref-xyz
 assert_eq "2" "$RC" "an unresolvable base is a usage error, not an empty body"
 
+# --- D142: a Risk-Override line opens the PR ----------------------------------------
+BASE_SHA=$(cd "$D" && git rev-parse HEAD~2)
+body --base "$BASE_SHA"
+assert_contains "$OUT" "## Test plan" "the plain body still prints"
+assert_not_contains "$OUT" "## Risk override" "commits with no override add no section"
+body --base "$BASE_SHA" --overrides-only
+assert_eq "" "$OUT" "--overrides-only prints nothing with no override"
+( cd "$D" && printf 'd\n' > d.txt && git add d.txt \
+  && git commit -qm "fix(auth): correct the expiry" -m "Risk-Override: auth: I know this touches refresh tokens, no plan" ) >/dev/null 2>&1
+body --base "$BASE_SHA"
+assert_contains "$OUT" '- `auth: I know this touches refresh tokens, no plan`' "an override quotes the user's words as a code span"
+assert_eq "## Risk override" "$(printf '%s\n' "$OUT" | head -1)" "and opens the body"
+# Git parses only a final paragraph of trailers. A `Fixes` line after this one
+# would hide it from a trailer query, which would drop the gate with no error.
+( cd "$D" && printf 'e\n' > e.txt && git add e.txt \
+  && git commit -qm "fix(api): correct the field" -m "Risk-Override: api contract: rename it, no plan" -m "Fixes ABC-123" ) >/dev/null 2>&1
+body --base "$BASE_SHA"
+assert_contains "$OUT" '- `api contract: rename it, no plan`' "a line above a Fixes paragraph still counts"
+assert_contains "$OUT" '- `auth: I know this touches refresh tokens, no plan`' "and every override on the branch is listed"
+( cd "$D" && printf 'f\n' > f.txt && git add f.txt \
+  && git commit -qm "fix(x): third" -m 'Risk-Override: auth: a `tick` <!-- open' ) >/dev/null 2>&1
+body --base "$BASE_SHA" --overrides-only
+assert_contains "$OUT" "- \`auth: a 'tick' <!-- open\`" "a backtick cannot break out of the code span"
+assert_not_contains "$OUT" "## Summary" "--overrides-only prints that section alone"
+# A carriage return can end a code span, which would let the rest open a comment.
+( cd "$D" && printf 'g\n' > g.txt && git add g.txt \
+  && git commit -qm "fix(x): fourth" -m "$(printf 'Risk-Override: auth: one\r\r<!-- two')" ) >/dev/null 2>&1
+body --base "$BASE_SHA" --overrides-only
+case "$OUT" in *"$(printf '\r')"*) fail "a carriage return must not reach the code span" ;; *) pass "a carriage return does not reach the code span" ;; esac
+assert_contains "$OUT" '- `auth: one  <!-- two`' "and the line stays one code span"
+
 report

@@ -10,6 +10,7 @@ page, never on `SKILL.md` internals and never on a file inside this directory.
 | `/en-review --cross --mode headless --base <merge-base>` | `en-build`, post-build branch review (peer plus personas, D46) |
 | `/en-review --peer --mode headless --base <merge-base>` | `en-loop` checkpoints (peer alone) |
 | `/en-review --mode headless` | `en-fix`, after its one change commits: no depth flag, so `ensemble-review-tier` picks the mode (D140), at most two rounds; no target, because the bare branch diff is the one its post-review check writes a receipt for |
+| `/en-review --cross --mode headless` | `en-fix` under a risk override (D142): host roster and peer, no target |
 | `/en-review --verify <envelope-path> --mode headless` | `en-build`, after applying a batch that addressed a P0/P1: the verification pass alone (D80) |
 | `/en-review --mode report-only` | CI (`en-sweep`); mandatory there, and it never runs a peer |
 | `/en-review --host` | any caller wanting the persona roster and no peer subprocess |

@@ -278,6 +278,19 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Rule key:** verification-pass-scoped-to-fixes
 - **Logged:** 2026-11-04
 
+### TD43. Nothing detects an agent lifting a risk-surface stop on its own
+
+- **Source:** D142 branch review, security finding
+- **Severity:** P2
+- **Confidence:** 7/10
+- **Location:** skills/en-fix/SKILL.md (Receipt gate)
+- **Why it matters:** The stop is lifted by a rule an agent reads. An agent that decides a change is safe, edits the risk surface and writes no Risk-Override line gets a full review and a clean PR, with no marker. D142 records an agent doing this on main before the rule existed, and the evals measure it only on their fixtures.
+- **Suggested fix:** Surface the script's risk signals in the PR body when a branch has no Risk-Override line, for example risk signals auth at src/auth/refresh.js, no override recorded. A hard stop would misfire on word-list false positives such as a lexer's token, which D139 and D140 accept.
+- **Enforce at:** L2 static
+- **Proposed check:** skills/en-ship/scripts/ensemble-pr-body: prints the tier script's risk signals when no Risk-Override line exists
+- **Rule key:** risk-stop-self-lift-detection
+- **Logged:** 2026-11-04
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29

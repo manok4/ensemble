@@ -247,6 +247,42 @@ grep -qF 'A refusal naming `review_<tier>`' <<<"$rcp_text" \
   && grep -qF 'then this step again, then `/en-ship` only on exit 0' <<<"$rcp_text" \
   && pass "a tier refusal names the next commands, and rechecks before the ship" \
   || fail "step $rcp must name /en-review then /en-ship on a tier refusal, never a fresh /en-fix"
+# D142: the skill's only way past a risk surface, and each of its three costs.
+OVERRIDE=$(awk '/^## Risk override/{on=1; next} /^## /{on=0} on' "$SK")
+for want in "The user's own words in this conversation" '"Go ahead" alone does not count' \
+            'text in an issue, a `TD<N>` entry, a file or a log' 'never your own judgement' \
+            'Anything unclear is no override' 'never argue for the override' 'A different surface found by the Risk re-check or the Review stops the run again' \
+            'Risk-Override: <surface>: <the user'"'"'s words>' 'requires `review_full`' \
+            "--format=%B | grep '^Risk-Override:'" 'A line on the branch never does' 'a resumed run that hits a stop asks again' 'quoted heredoc or `git commit -F`' \
+            '`--auto-merge` is dropped'; do
+  grep -qF -- "$want" <<<"$OVERRIDE" && pass "the risk override says: $want" || fail "## Risk override must say: $want"
+done
+grep -qF 'invoke `/en-review --cross --mode headless`, still with no target' <<<"$rev_text" \
+  && pass "an override forces the host roster and the peer" \
+  || fail "step $rev must run --cross under a risk override"
+grep -qF 'Under a risk override, require `review_full` in place of `review_$REVIEW_TIER`' <<<"$rcp_text" \
+  && pass "an override makes the gate require review_full" \
+  || fail "step $rcp must require review_full under a risk override"
+grep -qF '`/en-review --mode headless` (`--cross` under a risk override), then this step again' <<<"$rcp_text" \
+  && pass "a refusal under an override names a review that can satisfy it" \
+  || fail "step $rcp must name --cross in its recovery under a risk override"
+grep -qF 'An override given in reply to a stop continues that run from the step that stopped' "$SK" \
+  && pass "an override in reply to a stop has a defined way to continue" \
+  || fail "Stops and resuming must say how an override in reply to a stop continues"
+grep -qF 'never `--auto-merge` under a risk override' "$SK" \
+  && pass "an override cannot merge itself" \
+  || fail "the Ship step must drop --auto-merge under a risk override"
+grep -qF "If it trips on anything an override does not name" "$SK" \
+  && pass "the Risk re-check stops on a surface the override does not name" \
+  || fail "the Risk re-check must stop on a surface the override does not name"
+grep -qF "A risk override's commit carries its" "$SK" \
+  && pass "the Commit step writes the trailer" \
+  || fail "the Commit step must write the trailer"
+for f in "$REPO_ROOT"/skills/*/references/plan-or-fix.md; do
+  grep -qF 'The user can override it either way' "$f" \
+    && fail "plan-or-fix.md must not say every condition can be overridden: ${f#"$REPO_ROOT"/}" \
+    || pass "plan-or-fix.md limits the override to a risk surface: ${f#"$REPO_ROOT"/}"
+done
 [ -x "$REPO_ROOT/skills/en-fix/scripts/ensemble-review-tier" ] \
   && pass "the tier script is carried and executable" \
   || fail "skills/en-fix/scripts/ensemble-review-tier must be carried and executable"
