@@ -14,7 +14,7 @@ related_design:
 peer_review_verdict: revise
 peer_review_iterations: 2
 peer_review_last_run: 2026-11-04
-peer_review_plan_hash: 18fea8b1c5f8a7c9caa600a9dfd512eea02d1e9a9ffd4870372a4641f9b51051
+peer_review_plan_hash: 72e316bd6bd583d7a87de010e7bcd41714d67735115fe7302b4e22610d00293d
 peer_review_resolutions:
   - finding_id: 1-1
     iteration: 1
@@ -56,6 +56,7 @@ No foundation requirement. This amends D79 (size does not gate `--lite`) and D13
 - A tier gate in `/en-ship` for branches that never ran `/en-fix`. See Decisions.
 - `/en-plan`'s own peer skips. `skip_peer_below_lines` and `skip_peer_on_lightweight` keep working for plan documents.
 - `/en-fix`'s plan check. It keeps the model's concept reading of `references/diff-signal-detection.md`.
+- How research agents and `code-simplifier` start on Codex. They may inherit parent history too, which was not tested. U8 changes reviewers only.
 
 ## Approach (high-level)
 
@@ -72,6 +73,8 @@ With no mode flag, `/en-review` runs what the tier says. An explicit `--peer`, `
 `/en-review` records the depth it reached in the verification receipt, and `/en-fix`'s receipt gate requires the tier the script computes on the final diff. A diff that grew during review therefore refuses to ship until it is reviewed at the new tier.
 
 The script replaces prose: the diff-size peer skip, `is_low_risk`, `is_small_and_safe` and `/en-fix`'s size count all go.
+
+Every reviewer, host or peer, runs outside the build session on every harness. Its context is its prompt, the files that prompt names and the project. On a live Codex 0.165 run, a `spawn_agent` child with `agent_type` and no `fork_turns`, which is how `/en-review` dispatches today, recited a secret word from the parent session. A child with `fork_turns="none"` did not, and that call also accepted a `model`. Fresh does not mean under-informed: host reviewers get the goal, the plan and the branch's commit messages, none of which they get today.
 
 ## Test seams
 
@@ -276,7 +279,7 @@ git diff (merge base..working tree, untracked)
 
 - **Goal:** Real sessions show a small diff gets a reviewer, a wide one gets both, and the gate holds.
 - **Requirements covered:** none
-- **Dependencies:** U5, U6
+- **Dependencies:** U5, U6, U8
 - **Files:**
   - `tests/evals/grade` (modify)
   - `tests/evals/run-behavioral` (modify)
@@ -286,7 +289,7 @@ git diff (merge base..working tree, untracked)
   - `tests/evals/behavioral/review-tier-quick/` (create)
   - `tests/evals/behavioral/review-tier-wide/` (create)
   - `tests/evals/behavioral/review-tier-small-auth/` (create)
-- **Approach:** `grade review` reads a new optional `tier` key and compares it with `envelope.review_tier.required`, and a new optional `ran` key with `.ran`. `modes` gains `auto`, for which `run-behavioral` appends no mode flag, so the tier decides. Cases, all `auto`: `review-tier-quick` plants one logic defect in a diff under 50 lines, with `tier: quick` and recall 1.0, which proves a host reviewer ran. `review-tier-wide` is 13 files and 48 lines, with `tier: full`, `ran: full`, and `personas_include: ["correctness"]`. `review-tier-small-auth` is a 5-line change under `src/auth/`, with `tier: full` and a planted defect. Then rerun `fix-wide-change`, `fix-max-tokens` and `fix-real-token`, one run each. Finally run `review-tier-wide` once with a stub `codex` on `PATH` that exits 1, which must end with `ran: full` and `reviewer: single-agent-fallback`. Record all seven in the ledger. Delete the stub afterwards; it is never committed.
+- **Approach:** `grade review` reads a new optional `tier` key and compares it with `envelope.review_tier.required`, and a new optional `ran` key with `.ran`. `modes` gains `auto`, for which `run-behavioral` appends no mode flag, so the tier decides. Cases, all `auto`: `review-tier-quick` plants one logic defect in a diff under 50 lines, with `tier: quick` and recall 1.0, which proves a host reviewer ran. `review-tier-wide` is 13 files and 48 lines, with `tier: full`, `ran: full`, and `personas_include: ["correctness"]`. `review-tier-small-auth` is a 5-line change under `src/auth/`, with `tier: full` and a planted defect. Then rerun `fix-wide-change`, `fix-max-tokens` and `fix-real-token`, one run each. Finally run `review-tier-wide` once with a stub `codex` on `PATH` that exits 1, which must end with `ran: full` and `reviewer: single-agent-fallback`. Delete the stub afterwards; it is never committed. Last, run the fresh-context check on a Codex host: a secret word in the parent session, then a child dispatched exactly as `persona-dispatch.md` says, which must not recite it. `tests/evals/README.md` carries that prompt, because it is a manual check and not a case. Record all eight in the ledger.
 - **Risk:** low
 - **Category:** diagnostics
 - **Reversibility:** trivial
@@ -296,7 +299,46 @@ git diff (merge base..working tree, untracked)
   - *Happy path:* `grade.test.sh` grades a recorded envelope whose `review_tier` matches `tier` and `ran` as a pass, and `grade validate` accepts all three cases and `modes: ["auto"]`.
   - *Error path:* an envelope with `required: standard` against `tier: quick` fails and names both. An envelope with no `review_tier` fails when `tier` is set.
   - *Integration:* `run-behavioral review-tier-quick --dry-run` prints an invocation with no mode flag.
-- **Verification:** `tests/evals/grade.test.sh` passes. The ledger holds the seven real results, and any failure is reported with its cause, suspecting the grader first per `tests/evals/README.md`.
+- **Verification:** `tests/evals/grade.test.sh` passes. The ledger holds the eight real results, and any failure is reported with its cause, suspecting the grader first per `tests/evals/README.md`.
+
+### U8. Keep every reviewer out of the build session, and give it what it needs
+
+- **Goal:** No reviewer on any harness sees the build session, every reviewer can still choose its model, and each gets the goal, the plan and the branch's commit messages, without `skills/en-review/SKILL.md` growing.
+- **Requirements covered:** none
+- **Dependencies:** U2, U3
+- **Interfaces:**
+  - *Produces:* `ensemble-build-peer-prompt --plan-file <path>`, optional, adding a `## Plan` section to the prompt. `dimension-reviewer` inputs `goal`, `plan` and `commits`. Finding titles prefixed `Plan coverage:`.
+- **Files:**
+  - `skills/en-review/SKILL.md` (modify)
+  - `skills/en-review/references/persona-dispatch.md` (modify)
+  - `skills/en-review/agents/dimension-reviewer.md` (modify)
+  - `skills/en-review/references/review-report.md` (modify)
+  - `skills/*/references/agent-dispatch.md` (modify)
+  - `skills/en-review/references/peer-brief.md` (modify)
+  - `skills/en-review/scripts/ensemble-build-peer-prompt` (modify)
+  - `skills/en-test-audit/scripts/ensemble-build-peer-prompt` (modify)
+  - `docs/foundation.md` (modify)
+  - `tests/lint/en-review-lite.test.sh` (modify)
+  - `tests/lint/en-review-peer-default.test.sh` (modify)
+  - `tests/lint/peer-prompt-contract.test.sh` (modify)
+- **Approach:** State the rule once, at the head of `persona-dispatch.md`'s Parallel dispatch section: "A reviewer's context is its prompt, the files it names and the project. The build session is not part of it."
+  - **Codex dispatch.** Replace "In Codex: equivalent `spawn_agent` calls in a batch" with calls that keep `agent_type: "dimension-reviewer"` and add `fork_turns: "none"`, plus `model: $AGENT_MODEL` from `ensemble-agent-model --tier <tier>` when non-empty. A refused model retries once without `model` and is named in the run summary. A CLI whose `spawn_agent` has no `fork_turns` still runs, and the summary says `host_context: inherited`. `ensemble-build-peer-prompt` keeps its two identical code-review copies identical, and the plan and foundation variants do not change. Correct "selects nothing per call" in every `agent-dispatch.md` copy, and "not bound per call" in `persona-dispatch.md`.
+  - **What reviewers get.** After step 5, write two files to the run directory: the plan with its frontmatter and its `## Iteration log` section removed, so no earlier verdict reaches a reviewer, and `git log --format='%h %s%n%b' <base>..HEAD`. Its `## Decisions, assumptions & risks` section stays visible, and a reviewer may challenge it. Each `dimension-reviewer` prompt names those paths under `plan` and `commits`, and carries `goal`. The peer gets the same copy through `--plan-file`, except on the verification pass and the lite brief. No tool changes: `dimension-reviewer` keeps exactly `Read, Grep, Glob`, as `tests/lint/agent-tool-restrictions.test.sh` requires.
+  - **Goal.** `--goal` and the `goal` input come from the plan's or the request's own words. They state what the change is for, and never a verdict such as "simple fix" or "tests pass".
+  - **Plan check.** Add one row to `### correctness` in `skills/en-review/references/peer-brief.md`, the only copy with that section, for a review given a plan: Missing, Unasked-for and Implemented but wrong, each citing the U-ID, with its title prefixed `Plan coverage:`. Correctness prompts already extract those rows, so `correctness` on a roster and the peer on its own both carry the check, and no reviewer is added. Step 7c shrinks to: findings with that prefix are listed apart and never reranked against the rest, and with no plan, or with a lite-brief peer alone, say so in Coverage.
+  - **`fast-pass`.** Delete it from the lite roster at `SKILL.md` step 7a and the flags table, and from `persona-dispatch.md`. It has no dispatch, so it could only run inside the reviewing session.
+  - **Record.** Add D141 to `docs/foundation.md`.
+  - **Budget.** `skills/en-review/SKILL.md` must not grow from this unit: moving 7c's detail out pays for the rest.
+- **Risk:** medium
+- **Category:** feature
+- **Reversibility:** reversible
+- **Gated:** false
+- **Execution note:** test-first
+- **Test scenarios:**
+  - *Happy path:* pins hold the rule sentence, `fork_turns: "none"` and `model: $AGENT_MODEL` on the Codex dispatch, and the `Plan coverage:` row in `### correctness`. `ensemble-build-peer-prompt --plan-file` puts the plan in the prompt, and leaving it out adds no `## Plan` section.
+  - *Edge case:* a fixture plan with `peer_review_verdict` in its frontmatter and a `## Iteration log` followed by another section keeps that later section and `## Decisions, assumptions & risks`, and loses both the verdict and the log.
+  - *Error path:* a missing `--plan-file` path exits 2, as a missing artifact does. Pins require the retry without `model` and the `host_context: inherited` line. `fast-pass` is absent from `skills/en-review/`, pinned as an absence check.
+- **Verification:** `./tests/select-for.sh skills/en-review/references/persona-dispatch.md skills/en-review/scripts/ensemble-build-peer-prompt` passes, including `tests/lint/skill-size.test.sh`, `tests/lint/agent-tool-restrictions.test.sh` and `tests/parity/`. `skills/en-review/SKILL.md` is no larger than before this unit. Negative control: removing `fork_turns` from the dispatch turns the pin red. The live Codex check in U7 shows the behaviour.
 
 ## Decisions, assumptions & risks
 
@@ -307,7 +349,14 @@ git diff (merge base..working tree, untracked)
 - **Decision:** Thresholds are constants in the script, not config. `skip_peer_below_lines` no longer affects `/en-review`, including for anyone who set it to a custom value. The gate would otherwise depend on per-machine config.
 - **Alternative:** A separate `verify` subcommand comparing tier ranks. Rejected: writing every check at or below `ran` lets the existing receipt gate do the comparison with no new code in a script four skills carry.
 - **Alternative:** Tiering only inside `/en-fix`. Rejected: a bare `/en-review` under 50 lines would keep having no reviewer.
-- **Assumption:** The lite roster's existing `correctness` + `standards` + `fast-pass` is what the user means by the quick pass. `fast-pass` is capped and adds little cost, so it stays.
+- **Decision:** Reviewers see the plan's decisions section, as the user chose on 2026-11-04. It explains why code looks the way it does, and a reviewer may still challenge it. `ce-code-review` withholds settled decisions and filters afterwards, which reads more independently but adds noise and leaves the build session doing the filtering.
+- **Decision:** The plan check goes to a reviewer already running, not a new dispatch, so a plan-backed review costs no extra agent. On `--cross` both `correctness` and the peer make it, and agreement corroborates as usual.
+- **Decision:** Host reviewers get the branch's commit log as a file, not a shell. It keeps the read-only guard and adds no tool. They lose `git blame` on older code, which `ce-code-review`'s reviewers have. Add it only if evals show false positives on deliberate code.
+- **Decision:** Unlike `ce-code-review`'s lite path, the Quick tier still dispatches fresh reviewers, because the user's rule covers every review.
+- **Assumption:** The lite roster of `correctness` + `standards` is what the user means by the quick pass. The user named those two; `fast-pass` is removed in U8.
+- **Risk:** `model` is accepted on Codex, but the spawn result does not report which model served the call, so the override is unproved. **Mitigation:** The rendered agent TOML remains the default, and a refused model falls back and is named in the summary.
+- **Risk:** A Codex CLI with no `fork_turns` still leaks parent history. **Mitigation:** The summary says `host_context: inherited`, so it is visible rather than silent. This is the one known exception to the fresh-session rule.
+- **Risk:** Inlining the plan grows the peer prompt, by about 9,400 tokens for a plan this size, estimated at four bytes a token. **Mitigation:** The verification pass and lite peer omit it. Codex host reviewers also stop carrying build history, a saving not yet measured.
 - **Risk:** The risk match is a word list, and code can avoid it by naming. **Mitigation:** It decides review depth, not safety, and `/en-guardrail` and `/en-fix`'s plan check are separate. It only raises the tier, and persona heuristics can raise it further. `/en-review` is not a security boundary against a hostile author, unlike the guardrail matcher that `docs/learnings/` warns about.
 - **Risk:** A false-positive word such as a lexer's `token` sends a small diff to `full`. **Mitigation:** The cost is minutes of review. The user accepted that trade.
 - **Risk:** A dishonest agent could write `review_full` without running it, as with any receipt check. **Mitigation:** The envelope and `peer_decision` line remain visible in the report. The threat here is an agent's mistake, which a recorded tier does catch.
@@ -324,3 +373,4 @@ None resolved. If `/en-ship` should later enforce the tier for branches that ski
 > - 2026-11-04 (peer pass 1, revise): applied 1-1, a run below its own effective tier records no review check, so a raised tier survives to the gate. Applied 1-2, `diff-unreadable` joins the `--lite` override reasons.
 > - 2026-11-04 (peer pass 2, revise): applied 2-1, a run below its effective tier removes the existing receipt first, since receipt writes merge on an identical tree. The iteration cap is reached, so this fix has no further peer pass. The user accepted the plan as-is on 2026-11-04, and chose that a failed peer under `full` stops the ship.
 > - 2026-11-04 (user correction after promotion): the user reversed that choice. A failed peer now reruns in a fresh host session and the ship continues; it stops only if that session fails too. Plan hash recomputed; no further peer pass, per the cap.
+> - 2026-11-04 (user addition after promotion): added U8 after a live Codex test and a comparison with `ce-code-review`; U7 gains the live check and depends on U8. The user approved it and kept the decisions section visible. Plan hash recomputed. U8 has had no peer pass, per the cap, so the verdict above does not cover it.
