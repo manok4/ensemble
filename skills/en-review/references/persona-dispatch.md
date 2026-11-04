@@ -61,6 +61,8 @@ every dimension runs at that file's tier.
 
 ## Detection heuristics
 
+**A keyword names a concept, not a substring.** Read each hit the way `references/diff-signal-detection.md` says: `max_tokens` is not a credential, and a word only in a comment is no signal. A hit whose meaning is unclear still fires.
+
 `security`:
 - File path matches `**/auth/**`, `**/permissions/**`, `**/oauth/**`, `**/session/**`
 - Diff content matches: `cookie`, `token`, `password`, `secret`, `bcrypt`, `jwt`, `csrf`, `cors`, `Authorization:`, `req.user`, `req.headers`, `process.env.[A-Z_]+_SECRET`

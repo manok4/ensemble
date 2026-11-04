@@ -155,6 +155,20 @@ else
   fail "SKILL must bound the review-attributable tree delta by applied_fixes[]"
 fi
 
+# --- EN26 U4: a persona keyword names a concept ---
+HEUR=$(awk '/^## Detection heuristics/{f=1;next} /^`security`:/{f=0} f' "$DISPATCH")
+if printf '%s' "$HEUR" | grep -qF 'A keyword names a concept, not a substring' \
+   && printf '%s' "$HEUR" | grep -qF 'references/diff-signal-detection.md'; then
+  pass "the persona keywords are read as concepts, per the shared rule"
+else
+  fail "## Detection heuristics must say a keyword names a concept, citing references/diff-signal-detection.md"
+fi
+if printf '%s' "$HEUR" | grep -qF 'A hit whose meaning is unclear still fires'; then
+  pass "an unclear hit still fires, so the rule is no blanket skip"
+else
+  fail "the concept rule must say an unclear hit still fires"
+fi
+
 # --- severity.md referenced for tiers (not duplicated); persona-dispatch mirrors the boundary ---
 if grep -qiE "severity.md.*referenced, not duplicated|Tier definitions live in" "$SKILL" \
    && grep -qiE "must not implement findings outside the mode-permitted" "$DISPATCH"; then
