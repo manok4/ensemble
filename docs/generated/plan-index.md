@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-11-03
-total_entries: 24
+updated: 2026-11-04
+total_entries: 25
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 24
 
 ## Active
 
-_(none)_
+- [`EN26-improvement_review-tiers.md`](../plans/active/EN26-improvement_review-tiers.md) — **EN26** Review tiers set by a script, so every change gets the right depth of review (in progress)
 
 ## Completed
 
