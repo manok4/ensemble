@@ -23,6 +23,16 @@ approximate, <n> tests)`, `failed (<what>)`, or `not-run (report-only |
 no-default-target)`. A skip nobody can see is indistinguishable from a check
 that never existed.
 
+## 0. A run below its own requirement clears the receipt first
+
+On the bare branch diff, with no `--defer-tests`, when `ran` is below the run's effective `required` (`references/review-report.md`), run this before anything else:
+
+```bash
+rm -f "$(git rev-parse --git-dir)/ensemble/receipt.json"
+```
+
+`write` merges on an identical tree, so an earlier `review_standard` would otherwise survive a run that a raise took to `full` and that then fell short. The check below then finds no receipt and runs everything, so the lint and test evidence is recorded again, and this run writes no `review_*` check. `/en-fix`'s receipt gate refuses the tree until a review reaches the tier.
+
 ## 1. Ask whether another layer already proved this exact tree
 
 ```bash
@@ -91,6 +101,12 @@ branch's tests in the simplify pass, again here, and again at 10.4 (D131).
 
   plus `--dep <path>` for each lockfile the project has. It records
   `targeted_tests`, never `full_suite`. Never fatal: a failed write is a warning.
+  It also adds one `--check review_<tier>=passed` per tier at or below `ran`, so a
+  `full` run records `review_quick`, `review_standard` and `review_full`, and a
+  gate requires exactly `review_<required>`. It adds none when `ran` is below the
+  effective `required`.
+- **A skip at step 1 on the bare branch diff.** Still write those review checks,
+  alone: the review did run on this tree, and `write` merges on an identical tree.
 - **Success on any other target.** Write nothing. `targeted_tests` names a set
   selected against a base, and a receipt from `--base HEAD` would record a set
   chosen from the uncommitted delta alone; `/en-ship` would read it as its own.

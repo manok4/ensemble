@@ -16,7 +16,8 @@
 #                          list /en-plan routes by, never a file or commit count.
 #   NOT JUST SMALL         the description and /en-debug's handoff never route on
 #                          size; unrelated concerns are separate runs, not a plan.
-#   DEPTH BY SIZE          past 10 files or 300 lines the review is full, not --lite.
+#   DEPTH BY SCRIPT        no depth flag and no size count: ensemble-review-tier sets
+#                          the depth, and the receipt gate requires that tier.
 #   STOPS                  three failed attempts, a P0 or a second blocked review,
 #                          a risk surface after review, a failed receipt.
 #   CLEAN START            tracked edits refuse the run, since /en-ship stages
@@ -195,18 +196,20 @@ done
   || fail "step $com is missing:$missing"
 
 rev_text=$(step_text "$rev")
-grep -qF 'invoke `/en-review --lite --mode headless`' <<<"$rev_text" \
-  && grep -qF 'pass no target' <<<"$rev_text" \
+grep -qF 'Invoke `/en-review --mode headless`, passing no depth flag and no target' <<<"$rev_text" \
   && ! grep -qF -- '--base' <<<"$rev_text" \
   && pass "the review runs on the bare branch diff, the target that writes a receipt" \
-  || fail "step $rev must invoke /en-review --lite --mode headless with no target" \
+  || fail "step $rev must invoke /en-review --mode headless with no target" \
           "post-review-check.md writes no receipt for a --base target, so the Receipt gate could never pass"
-# /en-fix touching 12 files: --lite would give the biggest changes the lightest read.
-grep -qF 'Past 10 files or 300 changed lines, or on a count you cannot read, invoke `/en-review --mode headless`' <<<"$rev_text" \
-  && grep -qF 'Both rounds keep this depth' <<<"$rev_text" \
-  && grep -qF 'never the route' <<<"$rev_text" \
-  && pass "a change past the size limit gets the full review, and size never routes" \
-  || fail "step $rev must run the full review past 10 files or 300 lines, in both rounds, without routing on size"
+# The depth used to be a count the agent read, and it got that wrong once.
+if grep -qE -- '--lite|shortstat|300 changed lines' <<<"$rev_text"; then
+  fail "step $rev must carry no depth flag and no size count" "ensemble-review-tier sets the depth"
+else
+  pass "the review step carries no depth flag and no size count"
+fi
+grep -qF 'never the route' <<<"$rev_text" \
+  && pass "the tier never routes" \
+  || fail "step $rev must say the tier never routes"
 grep -qF 'At most two rounds' <<<"$rev_text" && grep -qF 'A P0 stops the run here' <<<"$rev_text" \
   && grep -qF 'Apply nothing yourself' <<<"$rev_text" && grep -qF 'never a `conflicting` finding' <<<"$rev_text" \
   && pass "round 1 stops on a P0 and never applies conflicting findings; round 2 applies nothing" \
@@ -234,6 +237,18 @@ rcp_text=$(step_text "$rcp")
 grep -qF 'ensemble-verification-receipt" verify' <<<"$rcp_text" && grep -qF 'do not invoke `/en-ship`' <<<"$rcp_text" \
   && pass "a failed receipt stops the run before the ship" \
   || fail "step $rcp must verify the receipt and not invoke /en-ship on failure"
+# A diff that grew during review must refuse to ship at the lower tier.
+grep -qF 'scripts/ensemble-review-tier" --base <default branch>' <<<"$rcp_text" \
+  && grep -qF 'targeted_tests,red_test,review_$REVIEW_TIER' <<<"$rcp_text" \
+  && pass "the receipt gate computes the tier on the final diff and requires it" \
+  || fail "step $rcp must run the tier script and add review_\$REVIEW_TIER to --requires"
+grep -qF 'A refusal naming `review_<tier>`' <<<"$rcp_text" \
+  && grep -qF 'never a fresh `/en-fix`' <<<"$rcp_text" \
+  && pass "a tier refusal names the next command" \
+  || fail "step $rcp must name /en-review then /en-ship on a tier refusal, never a fresh /en-fix"
+[ -x "$REPO_ROOT/skills/en-fix/scripts/ensemble-review-tier" ] \
+  && pass "the tier script is carried and executable" \
+  || fail "skills/en-fix/scripts/ensemble-review-tier must be carried and executable"
 # A project with no linter could never pass the gate: nothing records a check
 # that has no command, so every run stopped at check-not-recorded.
 grep -qF 'dropping `lint` or `typecheck` when `AGENTS.md` declares no command for it' <<<"$rcp_text" \
