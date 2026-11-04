@@ -55,9 +55,9 @@ in the run summary as `host_model_error:` and dispatch with the tier's own alias
 (`opus` for ceiling, `sonnet` for evidence), never bare. A call that hid that
 error behind `2>/dev/null` ran every reviewer at the file's tier, unnoticed.
 
-On Codex the dimension's tier is not bound per call: `spawn_agent` takes the
-model from the agent's TOML that `./setup` renders for Codex (D103), so
-every dimension runs at that file's tier.
+On Codex the agent's TOML that `./setup` renders is the default (D103), and each
+dispatch passes the resolver's model when it is non-empty, so
+`agent_model_codex_<tier>` reaches each dimension.
 
 ## Detection heuristics
 
@@ -92,6 +92,23 @@ When in doubt, **fire** the conditional agent. Cost is bounded (a focused remit,
 
 The exception: don't fire a conditional agent on a doc-only diff. If `git diff --name-only` shows only `docs/` paths or `*.md` files, skip all three conditional reviewers.
 
+## Reviewer context
+
+**A reviewer's context is its prompt, the files it names and the project. The build session is not part of it.** The reviewer judges the change without the reasoning that produced it (D141).
+
+Fresh does not mean under-informed. After step 5, write two files to the run directory:
+
+```bash
+awk 'NR==1&&/^---$/{f=1;next} f{if(/^---$/)f=0;next} /^## /{s=($0=="## Iteration log")} !s' "$PLAN" > "$RUN_DIR/plan.md"
+git log --format='%h %s%n%b' <base>..HEAD > "$RUN_DIR/commits.txt"
+```
+
+The plan's frontmatter and iteration log go, so no earlier verdict reaches a reviewer. Its `## Decisions, assumptions & risks` section stays, because it explains why code looks the way it does, and a reviewer may still challenge it. With no plan there is no `plan.md`.
+
+- **Each `dimension-reviewer` prompt** names those paths under `plan` and `commits`, and carries `goal`.
+- **The peer** gets the same copy through `--plan-file`, except on the verification pass and the lite brief.
+- **The goal** comes from the plan's or the request's own words. It states what the change is for, never a verdict such as "simple fix" or "tests pass".
+
 ## Parallel dispatch (personas AND the peer, one batch)
 
 All persona agents fire **in parallel** — single message, multiple `Agent` tool calls — **and the cross-agent peer subprocess launches in the same batch**. Aggregation waits for all to return.
@@ -118,7 +135,13 @@ Agent({ subagent_type: "learnings-research", ... })
 $SKILL_DIR/scripts/ensemble-peer-invoke --peer-cmd "$PEER_CMD" ...
 ```
 
-In Codex: equivalent `spawn_agent` calls in a batch.
+In Codex, one call per dimension, in a batch:
+
+```
+spawn_agent({ agent_type: "dimension-reviewer", fork_turns: "none", model: $AGENT_MODEL, message: "dimension: correctness ..." })
+```
+
+`fork_turns: "none"` keeps the child out of this session: without it, a child recited a word from its parent on a live Codex 0.165 run. Omit `model` when `$AGENT_MODEL` is empty. A refused model retries once without `model` and is named in the run summary. A CLI whose `spawn_agent` has no `fork_turns` still runs, and the summary says `host_context: inherited`.
 
 **Why the peer belongs in this batch.** It is **blind** to the persona findings (see the Outside Voice section), so it consumes nothing the roster produces and there is no ordering dependency. Serializing it would add its full latency to every review for no benefit — `peer_timeout_seconds` defaults to 600, so a serial peer is the difference between a review bounded by the slowest persona and one bounded by persona + peer.
 
@@ -189,7 +212,7 @@ Ties break on ascending `finding_id` at every stage, so identical input yields i
 | `host-only` | Only the host personas found it | Normal ranking; skews to standards/testing/maintainability where project context beats fresh eyes |
 | `conflicting` | Same `location`, incompatible claims | Surface **both**, `conflict: true`, **never auto-applied** |
 
-**Why cross-source agreement outranks same-source.** Two host personas agreeing are the same model with correlated blind spots; host and peer agreeing are independent architectures. Hence `+2` across sources versus `+1` within. This repo already encodes the principle that not all agreement is equal: `fast-pass` findings are barred from corroboration promotion entirely, and that carve-out is preserved.
+**Why cross-source agreement outranks same-source.** Two host personas agreeing are the same model with correlated blind spots; host and peer agreeing are independent architectures. Hence `+2` across sources versus `+1` within.
 
 **Conflict detection is independent of the similarity predicate.** Two findings at one `location` whose claims are incompatible are frequently *dissimilar* in title (as in the worked example above), so keying conflict off the `>= 0.7` corroboration predicate would systematically miss them. Conflict is evaluated on contradictory assertions at a shared `location` regardless of similarity.
 
@@ -202,9 +225,9 @@ Aggregate `verdict` is the most-severe of the personas:
 - Any persona returns `revise` and none returns `reject` → aggregate is `revise`.
 - All return `approve` → aggregate is `approve`.
 
-## Outside Voice: on by default, and BLIND (EN11)
+## Outside Voice: BLIND (EN11)
 
-The cross-agent peer runs **by default** (see the peer-decision step in `/en-review` for the mode and availability scoping). It produces a second finding set, tagged `source: "peer"`, which reconciles with the host set per Two-source reconciliation above.
+The cross-agent peer runs on `standard` and `full` (see the peer-decision step in `/en-review` for the mode and availability scoping). It produces a second finding set, tagged `source: "peer"`, which reconciles with the host set per Two-source reconciliation above.
 
 **Blind-peer invariant.** The peer reads:
 
@@ -240,9 +263,8 @@ Total for an average diff: ~15K–40K. Keep diffs reviewable per-unit (per-unit 
 
 When a run is at lite depth under `--host` or `--cross`, on a bare `quick` run or `--lite` on a `quick` diff, dispatch a reduced roster instead of the full panel (under `--peer` the same depth hands the peer `references/peer-brief-lite.md`):
 
-- **Roster:** `correctness` + `standards` + a `fast-pass` lens. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
+- **Roster:** `correctness` + `standards`. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
 - **Fail closed:** on `standard` or `full`, or when a conditional persona raised the tier, run the **full roster**. `--lite` is advisory; `ensemble-review-tier` decides.
-- **`fast-pass` confidence anchor:** cap every `fast-pass` finding at anchor 50. At 50 it surfaces on its own only when P0; otherwise it reaches the actionable tier only by deduping onto an independent persona finding. `fast-pass` findings never count toward cross-reviewer corroboration promotion.
 - **Outcome line (EN08):** the gate's decision is reported by the mandatory `lite_gate:` line in en-review's summary (`applied` / `overridden (<reasons>)` / `not-requested`) — never a silent override.
 
 ## Mutation boundary (EN08)

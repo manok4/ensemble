@@ -89,6 +89,19 @@ else
   fail "code artifact must anchor to file:line and not request u_id"
 fi
 
+# --- EN26 U8: a code review can be handed the plan ---
+CODE_BUILD="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
+CODE_BRIEF="$REPO_ROOT/skills/en-review/references/peer-brief.md"
+mkdir -p "$TMP"; printf 'the plan body\n' > "$TMP/copy.md"; printf 'diff --git a/x b/x\n' > "$TMP/code.diff"
+WITH=$(bash "$CODE_BUILD" --brief "$CODE_BRIEF" --project-context P --goal G --artifact-file "$TMP/code.diff" --plan-file "$TMP/copy.md" 2>&1)
+assert_contains "$WITH" "## Plan" "--plan-file adds a Plan section"
+assert_contains "$WITH" "the plan body" "--plan-file puts the plan in the prompt"
+WITHOUT=$(bash "$CODE_BUILD" --brief "$CODE_BRIEF" --project-context P --goal G --artifact-file "$TMP/code.diff" 2>&1)
+assert_contains "$WITHOUT" "GOAL: G" "the plain prompt still builds"
+case "$WITHOUT" in *"## Plan"*) fail "no --plan-file must add no Plan section" ;; *) pass "no --plan-file adds no Plan section" ;; esac
+bash "$CODE_BUILD" --brief "$CODE_BRIEF" --project-context P --goal G --artifact-file "$TMP/code.diff" --plan-file "$TMP/no-such" >/dev/null 2>&1; RC=$?
+assert_exit_code 2 "$RC" "a missing --plan-file path exits 2, as a missing artifact does"
+
 # --- 7. the schema documents what the prompt now demands ---
 if grep -qF '"coverage"' "$SCHEMA" && grep -qE '\| .findings\[\]\.finding_id. \| required \|' "$SCHEMA"; then
   pass "finding-schema documents coverage and required finding_id"

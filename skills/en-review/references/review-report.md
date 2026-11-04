@@ -67,6 +67,8 @@ Read at the output-report step. This file is the **single owner of the envelope 
 | `review_fixes:` | `review_fixes: applied <N> (<finding-ids with tiers>)` · `review_fixes: none` · `review_fixes: none (report-only)` |
 | `verification_pass:` | `verification_pass: clean` · `verification_pass: new-findings (<id>/<severity>, …)` · `verification_pass: not-run (<reason>)`, where `<reason>` is `no-p0-p1-addressed` or `peer-failure` |
 
+**`host_context: inherited`.** Add this line to the summary only when a host reviewer ran on a Codex CLI with no `fork_turns`, so a reviewer that saw the session is never read as fresh.
+
 **`lite_gate:` outcomes.** `applied` is any run at lite depth, including a bare `quick` run. `not-requested` is a run with no `--lite` and a tier above `quick`, or an explicit mode on a `quick` diff with no `--lite`.
 
 **`lite_gate: overridden (<reasons>)`.** `size` is a `size-standard`, `over-300-lines` or `over-10-files` tier reason, and `risk-signal` any `risk:<signal>`. `<reasons>` uses these **canonical override-reason identifiers** (`diff-unreadable`, `size`, `risk-signal`, `conditional-persona:<names>`), deduplicated, in that fixed canonical order, comma+space separated, with exactly one space before the paren. Persona names in `conditional-persona:` are alphabetically sorted and `+`-joined. Example: `lite_gate: overridden (risk-signal, conditional-persona:performance+security)`. The envelope's `reasons` array holds the same identifiers in the same canonical order, empty for `applied` and `not-requested`.

@@ -27,10 +27,10 @@ else
 fi
 
 # --- lite roster persona set ---
-if grep -qiE "correctness.*standards|standards.*correctness" "$EN_REVIEW" && grep -qF "fast-pass" "$EN_REVIEW"; then
-  pass "lite roster = correctness + standards + fast-pass"
+if grep -qiE "correctness.*standards|standards.*correctness" "$EN_REVIEW"; then
+  pass "lite roster = correctness + standards"
 else
-  fail "lite roster must be correctness + standards + fast-pass"
+  fail "lite roster must be correctness + standards"
 fi
 
 # --- fail-closed override stated in skill ---
@@ -96,11 +96,11 @@ else
   fail "persona-dispatch must document the lite roster"
 fi
 
-# --- fast-pass confidence cap documented ---
-if grep -qiE "anchor 50|cap.*fast-pass|fast-pass.*cap" "$PERSONA"; then
-  pass "persona-dispatch documents fast-pass confidence cap"
+# --- fast-pass is gone: it had no dispatch, so it could only run in-session ---
+if grep -rqF "fast-pass" "$REPO_ROOT/skills/en-review"; then
+  fail "fast-pass must be gone from skills/en-review" "D141: every reviewer runs outside the session"
 else
-  fail "persona-dispatch must document fast-pass confidence cap"
+  pass "fast-pass is gone from skills/en-review"
 fi
 
 report

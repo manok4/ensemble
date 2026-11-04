@@ -40,6 +40,15 @@ made the review worth running.
   boundary: they explain the dispatch, they do not limit what you may find
   *within* your dimension.
 
+- Optional **`goal`** — what the change is for, in the plan's or the request's
+  words. It tells you what to check against, and is no claim that the change works.
+- Optional **`plan`** — the path to the plan, with its review history removed.
+  Its decisions explain why code looks the way it does, and you may still
+  challenge one. When your dimension is `correctness`, your `rows` include the
+  `Plan coverage` check against it.
+- Optional **`commits`** — the path to the branch's commit messages. Read them
+  before you call something an accident.
+
 ## What you return
 
 Findings JSON per `references/peer-contract.md` — the same wire shape every

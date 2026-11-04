@@ -569,6 +569,51 @@ REPORT_REF="$REPO_ROOT/skills/en-review/references/review-report.md"
 has "$REPORT_REF" '"review_tier": {"required"' "the envelope carries review_tier"
 has "$REPORT_REF" 'review_tier: <ran> (required <required>; <files> files, <lines> lines; <reasons>)' "the summary line has its fixed shape"
 
+# ============================================================
+# EN26 U8 — every reviewer runs outside the build session (D141)
+# ============================================================
+has "$DISPATCH" "A reviewer's context is its prompt, the files it names and the project. The build session is not part of it." "the fresh-context rule is stated"
+has "$DISPATCH" 'spawn_agent({ agent_type: "dimension-reviewer", fork_turns: "none", model: $AGENT_MODEL,' "Codex dispatch stays fresh and keeps its model"
+has "$DISPATCH" 'A refused model retries once without `model`' "a refused model falls back and is named"
+has "$DISPATCH" 'host_context: inherited' "an inherited context is reported"
+has "$DISPATCH" 'never a verdict such as' "the goal carries no verdict"
+has "$SKILL" '--plan-file <plan copy>' "the peer is handed the plan copy"
+AGENT="$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md"
+for slot in '**`goal`**' '**`plan`**' '**`commits`**'; do
+  has "$AGENT" "$slot" "dimension-reviewer takes $slot"
+done
+
+# Run the documented command itself, on a fixture: a plan copy that kept a
+# verdict would hand a reviewer the judgment this rule exists to withhold.
+PC=$(mktemp -d)
+cat > "$PC/plan.md" <<'PLANEOF'
+---
+peer_review_verdict: revise
+---
+
+# A plan
+
+## Context
+
+why
+
+## Iteration log
+
+> peer pass 1, revise
+
+## Decisions, assumptions & risks
+
+- **Decision:** kept
+PLANEOF
+AWK_LINE=$(grep -F 'plan.md"' "$DISPATCH" | grep '^awk ' | head -1)
+( PLAN="$PC/plan.md"; RUN_DIR="$PC/out"; mkdir -p "$RUN_DIR"; eval "$AWK_LINE" )
+COPY=$(cat "$PC/out/plan.md" 2>/dev/null)
+assert_contains "$COPY" "## Decisions, assumptions & risks" "the plan copy keeps the decisions section after the log"
+assert_contains "$COPY" "## Context" "the plan copy keeps the body"
+case "$COPY" in *peer_review_verdict*) fail "the plan copy must lose the frontmatter" ;; *) pass "the plan copy loses the frontmatter" ;; esac
+case "$COPY" in *"peer pass 1"*) fail "the plan copy must lose the iteration log" ;; *) pass "the plan copy loses the iteration log" ;; esac
+rm -rf "$PC"
+
 # The retry algorithm must NOT be restated in prose (EN11-PR-006): one
 # implementation, in the executable helper.
 if grep -qiE 'retry (exactly )?once' "$SKILL"; then
@@ -598,7 +643,6 @@ has "$DISPATCH" "0.7" "corroboration reuses the existing similarity predicate"
 has "$DISPATCH" "independent of the similarity predicate" "conflict is decoupled from similarity"
 has "$DISPATCH" "+2" "cross-source corroboration boost documented"
 has "$DISPATCH" "+1" "same-source overlap boost retained"
-has "$DISPATCH" "fast-pass" "fast-pass corroboration carve-out preserved"
 has "$DISPATCH" "Blind-peer invariant" "blind-peer invariant is named"
 hasnt "$DISPATCH" "confirm or counter them" "the stale peer-reads-findings claim is gone"
 # The reconciliation record shapes moved on 2026-09-04 from the shared

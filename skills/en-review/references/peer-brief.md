@@ -30,6 +30,7 @@ skip one, so a silent omission is never mistaken for a clean pass.
 | **Broken invariants** | Class invariants, function pre/post-conditions, type contracts |
 | **Concurrency** | Shared mutable state without synchronization, async ordering, deadlocks |
 | **Security-relevant correctness** | Authentication paths returning wrong principal, authorization checks short-circuiting incorrectly |
+| **Plan coverage** (only when this review was given a plan) | Title each finding `Plan coverage: <U-ID> ...`. **Missing:** a unit's `Goal` or `Test scenarios` nothing in the diff satisfies. **Unasked-for:** behaviour no unit called for, scope the plan did not authorize. **Implemented but wrong:** a unit addressed in a way its own `Verification` would not accept. |
 
 ### testing
 

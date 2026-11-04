@@ -37,8 +37,11 @@ BRIEF="$REPO_ROOT/skills/en-review/references/peer-brief.md"
 
 # --- 1. the spec axis: all three finding kinds, anchored to U-IDs ---
 missing=""
-for k in 'does this diff do what the plan asked' 'Missing:' 'Unasked-for:' 'Implemented but wrong:' 'U-ID'; do
-  grep -qF "$k" "$SKILL" || missing="$missing '$k'"
+# The check moved to the correctness rows so a fresh reviewer carries it (D141).
+grep -qF 'does this diff do what the plan asked' "$SKILL" || missing="$missing 'the question'"
+CORRECTNESS=$(awk '/^### correctness/{f=1;print;next} f&&/^##/{exit} f' "$BRIEF")
+for k in 'Plan coverage: <U-ID>' 'Missing:' 'Unasked-for:' 'Implemented but wrong:'; do
+  grep -qF "$k" <<<"$CORRECTNESS" || missing="$missing '$k'"
 done
 [ -z "$missing" ] \
   && pass "the spec axis asks its three questions and anchors findings to U-IDs" \
