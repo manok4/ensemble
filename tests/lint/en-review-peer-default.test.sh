@@ -498,7 +498,7 @@ flagrow() {  # flagrow <flag> <label>
 # review modes. --peer is now peer-SOLE (and the default), --cross is peer plus
 # personas, --host is personas alone. EN11's substance — the peer runs unless a
 # recorded reason says otherwise — is unchanged; only the spelling moved.
-flagrow "--peer" "Flags table has a --peer row (peer-sole, the default)"
+flagrow "--peer" "Flags table has a --peer row (peer-sole)"
 flagrow "--cross" "Flags table has a --cross row (peer + personas)"
 flagrow "--host" "Flags table has a --host row (personas only)"
 flagrow "--effort" "Flags table has an --effort row"
@@ -542,6 +542,32 @@ if grep -qEi "$CI_BAD" "$SKILL"; then
 else
   pass "report-only never defaults a peer on (D38 CI posture intact)"
 fi
+
+# ============================================================
+# EN26 U2 — the tier picks the mode, and no run has zero reviewers
+# ============================================================
+has "$SKILL" 'scripts/ensemble-review-tier" --base <base>' "step 2a runs the tier script"
+has "$SKILL" '`quick` runs as `--host` with the lite roster, `standard` as `--peer`, and `full` as `--cross`' "the tier maps to a review mode"
+has "$SKILL" 'report-only runs no peer, so `quick` uses the lite roster and `standard` or `full` the full host roster' "report-only runs no peer and a host roster"
+has "$SKILL" '| Tier `quick`, no mode flag | `off` | `review-tier:quick` |' "the peer gate turns off only for a quick run with no mode flag"
+hasnt "$SKILL" "skip_peer_below_lines" "an explicit --peer has no size row left to hit"
+hasnt "$SKILL" "skip_peer_on_lightweight" "an explicit --peer has no depth row left to hit"
+has "$POLICY" 'review-tier:quick' "the policy enum carries review-tier:quick"
+for f in "$REPO_ROOT"/skills/*/references/peer-contract.md; do
+  has "$f" 'review-tier:quick' "the contract enum carries review-tier:quick: ${f#"$REPO_ROOT"/}"
+done
+FAILURE_ROW=$(grep -F -- '**Peer failure.**' "$SKILL")
+for want in 'fresh session of the host'"'"'s own CLI' 'never as a subagent' '--peer-mode single-agent-fallback' 'reviewer: single-agent-fallback'; do
+  case "$FAILURE_ROW" in *"$want"*) pass "the peer-failure rule says: $want" ;; *) fail "the peer-failure rule must say: $want" ;; esac
+done
+OFF_ROW=$(grep -F -- '**Peer off**' "$SKILL")
+case "$OFF_ROW" in
+  *'peer and the fresh session both failing'*'run the full host roster'*'zero reviewers'*) pass "every peer-off path falls back to the host roster" ;;
+  *) fail "the peer-off rule must dispatch the full host roster, including when the fresh session fails too" ;;
+esac
+REPORT_REF="$REPO_ROOT/skills/en-review/references/review-report.md"
+has "$REPORT_REF" '"review_tier": {"required"' "the envelope carries review_tier"
+has "$REPORT_REF" 'review_tier: <ran> (required <required>; <files> files, <lines> lines; <reasons>)' "the summary line has its fixed shape"
 
 # The retry algorithm must NOT be restated in prose (EN11-PR-006): one
 # implementation, in the executable helper.

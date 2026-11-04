@@ -122,7 +122,9 @@ In Codex: equivalent `spawn_agent` calls in a batch.
 
 The concurrency is therefore **licensed by the blind-peer invariant**, not by convenience. Any change that feeds persona findings to the peer must re-serialize this batch.
 
-**Peer failure inside the batch** does not discard persona results. The peer's own degradation path (one bounded retry, then persona-only fallback) is handled by `$SKILL_DIR/scripts/ensemble-peer-invoke` and recorded in `peer_decision.reason`; already-returned persona findings are still synthesized and reported. A review whose peer failed is a review with `peer: "off"` and a recorded reason, never a failed review.
+**Peer failure inside the batch** does not discard persona results. The peer's own degradation path (one bounded retry) is handled by `$SKILL_DIR/scripts/ensemble-peer-invoke` and recorded in `peer_decision.reason`; already-returned persona findings are still synthesized and reported. A review whose peer failed is a review with `peer: "off"` and a recorded reason, never a failed review.
+
+**The fresh-session rerun.** A `peer-failed:*` pass reruns once as a new process of the host's own CLI, so a peer outage does not stop a ship. Rebuild the prompt with `--peer-mode single-agent-fallback`, and call `ensemble_peer_invoke` with the host's values from `references/host-detect.md`: on Claude Code `claude -p`, `--output-format json`, `--max-turns 1`; on Codex `codex exec`, `--json`, no turn flag. Re-resolve `$PEER_MODEL` and `$PEER_EFFORT` through `ensemble-peer-flags` for that command, and keep the access mode. If it fails too, the peer is off and step 9's Peer off rule applies.
 
 ## Synthesis
 

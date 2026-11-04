@@ -12,6 +12,7 @@ Read at the output-report step. This file is the **single owner of the envelope 
   "host_model": "<the resolver's model for dimension-reviewer at the ceiling tier> | null",
   "host_model_evidence": "<the same at the evidence tier, for testing, maintainability, standards, performance> | null",
   "mode": "interactive | headless | report-only",
+  "review_tier": {"required": "quick | standard | full", "ran": "quick | standard | full", "reasons": []},
   "lite_gate": {"outcome": "applied | overridden | not-requested", "reasons": []},
   "verification_pass": {"outcome": "clean | new-findings | not-run", "reason": "no-p0-p1-addressed | peer-failure | null", "finding_ids": []},
   "diff_base": "main",
@@ -40,14 +41,27 @@ Read at the output-report step. This file is the **single owner of the envelope 
 }
 ```
 
+`review_tier` is null for an ad-hoc `--peer <path-or-ref>` and for `--verify`. `required` is the run's effective tier, after any raise, and `ran` is what the run reached:
+
+| What ran | `ran` |
+|---|---|
+| Host lite roster, or a peer given the lite brief, or both | `quick` |
+| Peer with the full brief alone, or full host roster alone | `standard` |
+| Full host roster and peer, including `single-agent-fallback` | `full` |
+| Full host roster where `PEER_AVAILABLE=false` (the user turned the peer off) | `full` |
+| Full host roster and a fresh host session, after a `peer-failed:*` peer | `full` |
+| Fresh host session alone, after a `peer-failed:*` peer | `standard` |
+| Full host roster after the peer and the fresh host session both failed | `standard` |
+
 `sub_threshold_findings[]` holds the findings below the confidence threshold, in the same shape as `findings[]`. It is present in every mode and is never filed as tech debt (`references/review-confidence-gating.md`).
 
 ## Mandatory outcome lines
 
-**Four lines, one rule: EVERY run emits exactly ONE of each, and every line is DERIVED from its structured envelope object, never composed independently.** A missing line is then always distinguishable from a decision that went the quiet way, which is the whole point (D42): a gate that can override silently is not auditable.
+**Five lines, one rule: EVERY run emits exactly ONE of each, and every line is DERIVED from its structured envelope object, never composed independently.** A missing line is then always distinguishable from a decision that went the quiet way, which is the whole point (D42): a gate that can override silently is not auditable.
 
 | Line | Forms |
 |---|---|
+| `review_tier:` | `review_tier: <ran> (required <required>; <files> files, <lines> lines; <reasons>)` · `review_tier: none (<ad-hoc-target or verify>)` |
 | `lite_gate:` | `lite_gate: applied` · `lite_gate: overridden (<reasons>)` · `lite_gate: not-requested` |
 | `peer_decision:` | `peer_decision: <peer> (<reason>, effort=<tier>)`, e.g. `peer_decision: degraded (dropped-effort-fragment, effort=high)`. `<reason>` is a member of the closed enum in `references/peer-model-policy.md` (e). |
 | `review_fixes:` | `review_fixes: applied <N> (<finding-ids with tiers>)` · `review_fixes: none` · `review_fixes: none (report-only)` |
