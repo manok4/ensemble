@@ -2,7 +2,7 @@
 type: tech-debt-tracker
 generated: false
 created: 2026-08-26
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Tech debt tracker
@@ -265,6 +265,18 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Enforce at:** L4 skill
 - **Rule key:** debugging-rules-have-evals
 - **Logged:** 2026-11-03
+
+### TD42. Verification pass reviews the whole branch through a capped diff
+
+- **Source:** EN26 build, learning checkpoint
+- **Severity:** P2
+- **Confidence:** 9/10
+- **Location:** skills/en-review/references/mutation-protocol.md (The verification pass)
+- **Why it matters:** The pass runs with --access none, and the prompt builder caps a diff at 100KB, listing the rest by path for a peer that cannot read them. On a large branch it can return approve while applied fixes were never in its prompt. In the EN26 build the first pass approved and said previous fixes in omitted files remain unverified; rerunning over the fix batch alone found a new P1.
+- **Suggested fix:** Scope the verification artifact to the fixes: the delta from the pre-fix baseline, with no diff cap. Report verification_pass: not-run when any fix's hunk did not reach the peer, instead of reading a partial approval as clean.
+- **Enforce at:** L4 skill
+- **Rule key:** verification-pass-scoped-to-fixes
+- **Logged:** 2026-11-04
 
 ## Resolved
 

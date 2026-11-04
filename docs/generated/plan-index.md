@@ -12,7 +12,7 @@ total_entries: 25
 
 ## Active
 
-- [`EN26-improvement_review-tiers.md`](../plans/active/EN26-improvement_review-tiers.md) — **EN26** Review tiers set by a script, so every change gets the right depth of review (in progress)
+_(none)_
 
 ## Completed
 
@@ -40,3 +40,4 @@ total_entries: 25
 - [`EN23-feature_en-fix.md`](../plans/completed/EN23-feature_en-fix.md) — **EN23** /en-fix, small bug fixes and improvements from request to PR without a plan (shipped 2026-09-27)
 - [`EN24-improvement_egm-review-adaptations.md`](../plans/completed/EN24-improvement_egm-review-adaptations.md) — **EN24** Adapt the useful parts of the Elephant-Goldfish Model into review and planning (shipped 2026-10-30)
 - [`EN25-improvement_quality-evals-and-guards.md`](../plans/completed/EN25-improvement_quality-evals-and-guards.md) — **EN25** Measure skill behavior and guard the quality bar, from the agent-skills review (shipped 2026-11-03)
+- [`EN26-improvement_review-tiers.md`](../plans/completed/EN26-improvement_review-tiers.md) — **EN26** Review tiers set by a script, so every change gets the right depth of review (shipped 2026-11-04)

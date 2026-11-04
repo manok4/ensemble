@@ -16,3 +16,4 @@ updated: 2026-11-03
 ## [2026-09-27] capture | routed TD39 (L4): cite a callee's side effects at plan time | 88c6409
 ## [2026-10-30] capture | A live-test control that contradicts the agent's own instructions never fires | fc82d4b
 ## [2026-11-03] capture | EN25 build: gate wrote nothing, all four candidates recorded at their code sites; grader-first note added to tests/evals/README.md | df33a05
+## [2026-11-04] capture | EN26 build: gate wrote no learning, the verification-pass gap filed as a TD at L4 | 510476d
