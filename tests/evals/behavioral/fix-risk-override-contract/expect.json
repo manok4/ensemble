@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "invocation": "/ensemble:en-fix",
+  "test_command": "node --test",
+  "trailers": [
+    {
+      "key": "Risk-Override",
+      "match": "(?i)(api|contract)"
+    }
+  ],
+  "judge": [
+    {
+      "id": "override-below-tier",
+      "expectation": "The assistant's report shows a cross review by both Claude reviewers and a cross-agent peer, and a receipt gate that passed with review_full."
+    }
+  ]
+}

@@ -16,4 +16,4 @@ Read by `/en-plan` when it right-sizes a request, and by `/en-fix` at triage and
 
 None holds: the change goes to `/en-fix`, however many files or commits it takes. Size can deepen `/en-fix`'s review, but it never changes the route. `/en-fix` is manual-invoke only, so a skill names the command, `/en-fix <request>`, and never invokes it.
 
-State the call in one line with the condition that decided it, for example "plan: touches the session-token migration" or "fix: one concern, no open decisions". The user can override it either way.
+State the call in one line with the condition that decided it, for example "plan: touches the session-token migration" or "fix: one concern, no open decisions". The user can always ask for a plan on a `fix` call. On a `plan` call, `/en-fix` lifts only a risk surface, and only in the user's own words (its `## Risk override`); every other condition stops it.
