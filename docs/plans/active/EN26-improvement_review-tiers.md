@@ -14,7 +14,7 @@ related_design:
 peer_review_verdict: revise
 peer_review_iterations: 2
 peer_review_last_run: 2026-11-04
-peer_review_plan_hash: aec66da789ade2853706a8107deb2aa737b3a1f9680340aaf7a80c9903d6b717
+peer_review_plan_hash: 18fea8b1c5f8a7c9caa600a9dfd512eea02d1e9a9ffd4870372a4641f9b51051
 peer_review_resolutions:
   - finding_id: 1-1
     iteration: 1
@@ -67,7 +67,7 @@ A new script, `ensemble-review-tier`, classifies the branch diff into one of thr
 | `standard` | 50 to 300 lines, 10 files or fewer, no risk signal | Peer only, full brief |
 | `full` | Over 300 lines, over 10 files, any risk signal, or a diff it cannot read | Host roster and peer together |
 
-With no mode flag, `/en-review` runs what the tier says. An explicit `--peer`, `--host` or `--cross` still runs as asked, and the run reports the tier it actually reached. The model may raise the tier with a reason, for example when a conditional persona's heuristic fires, and never lowers it. No run may end with zero reviewers: whenever the peer is off, the host roster runs.
+With no mode flag, `/en-review` runs what the tier says. An explicit `--peer`, `--host` or `--cross` still runs as asked, and the run reports the tier it actually reached. The model may raise the tier with a reason, for example when a conditional persona's heuristic fires, and never lowers it. No run may end with zero reviewers: whenever the peer is off, the host roster runs. When the cross-agent peer fails, the same peer pass reruns once in a fresh session of the host's own CLI, with no history from the session that wrote the code, so an outage does not stop a ship.
 
 `/en-review` records the depth it reached in the verification receipt, and `/en-fix`'s receipt gate requires the tier the script computes on the final diff. A diff that grew during review therefore refuses to ship until it is reviewed at the new tier.
 
@@ -93,7 +93,7 @@ git diff (merge base..working tree, untracked)
 
 **The receipt holds only `passed` values**, so ordering is encoded by writing every check at or below the depth reached. A `full` run writes `review_quick`, `review_standard` and `review_full`. A gate then requires exactly `review_<required>`, and `ensemble-verification-receipt` does not change.
 
-**A run that falls short of its own requirement records nothing.** `required` here is the run's effective tier, after any raise. When `ran` is below it, the run first removes any existing receipt, because `write` merges on an identical tree and an earlier `review_standard` would otherwise survive. It then writes only what its post-review check ran, with no `review_*` check. A raise therefore survives to the gate even though the gate recomputes only the script's tier: a script-`standard` diff raised to `full` whose peer then fails is refused, whatever an earlier run recorded on that tree.
+**A run that falls short of its own requirement records nothing.** `required` here is the run's effective tier, after any raise. When `ran` is below it, the run first removes any existing receipt, because `write` merges on an identical tree and an earlier `review_standard` would otherwise survive. It then writes only what its post-review check ran, with no `review_*` check. A raise therefore survives to the gate even though the gate recomputes only the script's tier: a script-`standard` diff raised to `full`, whose peer and fresh host session then both fail, is refused, whatever an earlier run recorded on that tree.
 
 **What each run counts as (`ran`):**
 
@@ -102,8 +102,10 @@ git diff (merge base..working tree, untracked)
 | Host lite roster, or a peer given the lite brief, or both | `quick` |
 | Peer with the full brief alone, or full host roster alone | `standard` |
 | Full host roster and peer, including `single-agent-fallback` | `full` |
-| Full host roster where `PEER_AVAILABLE=false` (no peer exists on this machine) | `full` |
-| Full host roster after a `peer-failed:*` peer | `standard`, which is below a `full` requirement, so that run records no review check |
+| Full host roster where `PEER_AVAILABLE=false` (the user turned the peer off) | `full` |
+| Full host roster and a fresh host session, after a `peer-failed:*` peer | `full` |
+| Fresh host session alone, after a `peer-failed:*` peer | `standard` |
+| Full host roster after the peer and the fresh host session both failed | `standard`, which is below a `full` requirement, so that run records no review check |
 
 ## Implementation units
 
@@ -154,7 +156,8 @@ git diff (merge base..working tree, untracked)
   - **Mode.** No mode flag: `quick` is `--host` with the lite roster, `standard` is `--peer`, `full` is `--cross`. Report-only never runs a peer: `quick` uses the lite roster, and `standard` or `full` use the full host roster. An explicit `--peer`, `--host` or `--cross` runs as asked.
   - **Peer gate.** Replace the `skip_peer_below_lines` row and the `skip_peer_on_lightweight` row with `Tier quick, no mode flag | off | review-tier:quick`. An explicit `--peer` therefore always runs the peer, however small the diff. Add `review-tier:quick` to the closed enum in every `peer-contract.md` and `peer-model-policy.md` copy, keeping `auto-skip:diff-below-threshold` and `auto-skip:lightweight-depth`, which `/en-plan` reports.
   - **Raising.** After step 7's detection, a fired conditional persona raises a bare run below `full` to `full`, adding `conditional-persona:<names>` to `reasons`. A model may raise for any other reason it names. Nothing lowers the tier.
-  - **Zero reviewers.** Rewrite step 9's "Peer off" bullet: when the peer is off for any reason and the run dispatched no personas, run the full host roster and treat its findings as the envelope. This covers `peer-unavailable`, `peer-failed:*` and `recursion-guard` under `standard`, and report-only.
+  - **Peer failure.** On any `peer-failed:*` decision, rerun the peer pass once in a fresh session of the host's own CLI, never in the reviewing session and never as a subagent. Rebuild the prompt with `--peer-mode single-agent-fallback` and call `ensemble_peer_invoke` with the host's values from `references/host-detect.md`: on Claude Code `claude -p`, `--output-format json`, `--max-turns 1`; on Codex `codex exec`, `--json`, no turn flag. Re-resolve `$PEER_MODEL` and `$PEER_EFFORT` through `ensemble-peer-flags` for that command, and keep the same access mode. Record `reviewer: single-agent-fallback`, and show the original `peer-failed:*` reason on the `peer_decision:` line, so the report never reads as a cross-agent pass.
+  - **Zero reviewers.** Rewrite step 9's "Peer off" bullet: when the peer is off for any reason, including both the peer and the fresh session failing, and the run dispatched no personas, run the full host roster and treat its findings as the envelope. This covers `peer-unavailable` and `recursion-guard` under `standard`, and report-only.
   - **Wording.** Change "`--peer` is the default" at the flags table and the review-mode line to the tier mapping, and record `ran` per the Technical design table.
   - **Budget.** `skills/en-review/SKILL.md` sits at 25,297 of 26,624 bytes. Remove as much as this adds, and move detail to `review-report.md` if needed. The budget does not rise.
 - **Risk:** high
@@ -165,7 +168,7 @@ git diff (merge base..working tree, untracked)
 - **Test scenarios:**
   - *Happy path:* pins hold the three mode mappings, `review-tier:quick` in the peer gate and every enum copy, and the envelope and summary shapes.
   - *Edge case:* an explicit `--peer` has no skip row left to hit, pinned by the absence of `skip_peer_below_lines` from `skills/en-review/SKILL.md`. Report-only is pinned to run no peer and a host roster.
-  - *Error path:* the rewritten Peer off bullet is pinned to dispatch the full host roster, so `peer-failed:*` under `standard` cannot end with no reviewers.
+  - *Error path:* the Peer failure bullet is pinned to rerun in a fresh session of the host's own CLI with `--peer-mode single-agent-fallback`, and to forbid a subagent. The rewritten Peer off bullet is pinned to dispatch the full host roster, so a peer and fresh session that both fail under `standard` cannot end with no reviewers.
 - **Verification:** `./tests/select-for.sh skills/en-review/SKILL.md` passes, including `tests/lint/skill-size.test.sh` and `tests/parity/`. Negative control: restoring the old Peer off wording turns the pin red.
 
 ### U3. Move `--lite` and the effort ladder onto the tier
@@ -242,7 +245,7 @@ git diff (merge base..working tree, untracked)
 - **Test scenarios:**
   - *Happy path:* a scratch repo receipt holding `review_quick` and `review_standard` passes `verify --requires review_standard`, in `tests/lint/en-review-receipt.test.sh`.
   - *Edge case:* the same receipt fails `verify --requires review_full` with `check-not-recorded`, the refusal a diff that grew during review produces. A `full` run's three checks pass a `review_quick` requirement.
-  - *Raised tier:* `post-review-check.md` is pinned to write no `review_*` check when `ran` is below the effective `required`. In a scratch repo, write a receipt holding `lint` and `review_standard`, remove it the way the pinned command does, and write `lint` alone on the same tree: `verify --requires review_standard` then fails with `check-not-recorded`. This is the refusal for a script-`standard` diff, already reviewed once, raised to `full` on a later run whose peer failed.
+  - *Raised tier:* `post-review-check.md` is pinned to write no `review_*` check when `ran` is below the effective `required`. In a scratch repo, write a receipt holding `lint` and `review_standard`, remove it the way the pinned command does, and write `lint` alone on the same tree: `verify --requires review_standard` then fails with `check-not-recorded`. This is the refusal for a script-`standard` diff, already reviewed once, raised to `full` on a later run whose peer and fresh host session both failed.
   - *Error path:* `en-fix.test.sh` pins that the Receipt gate requires `review_$REVIEW_TIER`, runs the script, and stops on refusal. It also pins the absence of `--lite` and of a size count from the Review step.
 - **Verification:** both test files pass. Negative control: removing `review_$REVIEW_TIER` from the gate turns the pin red.
 
@@ -283,7 +286,7 @@ git diff (merge base..working tree, untracked)
   - `tests/evals/behavioral/review-tier-quick/` (create)
   - `tests/evals/behavioral/review-tier-wide/` (create)
   - `tests/evals/behavioral/review-tier-small-auth/` (create)
-- **Approach:** `grade review` reads a new optional `tier` key and compares it with `envelope.review_tier.required`, and a new optional `ran` key with `.ran`. `modes` gains `auto`, for which `run-behavioral` appends no mode flag, so the tier decides. Cases, all `auto`: `review-tier-quick` plants one logic defect in a diff under 50 lines, with `tier: quick` and recall 1.0, which proves a host reviewer ran. `review-tier-wide` is 13 files and 48 lines, with `tier: full`, `ran: full`, and `personas_include: ["correctness"]`. `review-tier-small-auth` is a 5-line change under `src/auth/`, with `tier: full` and a planted defect. Then rerun `fix-wide-change`, `fix-max-tokens` and `fix-real-token`, one run each, and record all six in the ledger.
+- **Approach:** `grade review` reads a new optional `tier` key and compares it with `envelope.review_tier.required`, and a new optional `ran` key with `.ran`. `modes` gains `auto`, for which `run-behavioral` appends no mode flag, so the tier decides. Cases, all `auto`: `review-tier-quick` plants one logic defect in a diff under 50 lines, with `tier: quick` and recall 1.0, which proves a host reviewer ran. `review-tier-wide` is 13 files and 48 lines, with `tier: full`, `ran: full`, and `personas_include: ["correctness"]`. `review-tier-small-auth` is a 5-line change under `src/auth/`, with `tier: full` and a planted defect. Then rerun `fix-wide-change`, `fix-max-tokens` and `fix-real-token`, one run each. Finally run `review-tier-wide` once with a stub `codex` on `PATH` that exits 1, which must end with `ran: full` and `reviewer: single-agent-fallback`. Record all seven in the ledger. Delete the stub afterwards; it is never committed.
 - **Risk:** low
 - **Category:** diagnostics
 - **Reversibility:** trivial
@@ -293,12 +296,13 @@ git diff (merge base..working tree, untracked)
   - *Happy path:* `grade.test.sh` grades a recorded envelope whose `review_tier` matches `tier` and `ran` as a pass, and `grade validate` accepts all three cases and `modes: ["auto"]`.
   - *Error path:* an envelope with `required: standard` against `tier: quick` fails and names both. An envelope with no `review_tier` fails when `tier` is set.
   - *Integration:* `run-behavioral review-tier-quick --dry-run` prints an invocation with no mode flag.
-- **Verification:** `tests/evals/grade.test.sh` passes. The ledger holds the six real results, and any failure is reported with its cause, suspecting the grader first per `tests/evals/README.md`.
+- **Verification:** `tests/evals/grade.test.sh` passes. The ledger holds the seven real results, and any failure is reported with its cause, suspecting the grader first per `tests/evals/README.md`.
 
 ## Decisions, assumptions & risks
 
 - **Decision:** Only `/en-fix` enforces the tier, as the user approved. `/en-build` always runs `--cross`, the top depth, with its own trailer audit. `/en-sweep` writes no receipt. An explicit `--peer` or `--host` remains a person's choice, and `ran` reports what it reached.
-- **Decision:** A `peer-failed:*` run under `full` counts as `standard` and records no review check, so `/en-fix` stops rather than shipping a change that lost its second reader to an outage. The user reruns `/en-review` when the peer is back. `PEER_AVAILABLE=false` counts as `full`, because no peer exists on that machine and such a user could otherwise never ship a large change. The user chose to stop rather than ship on host review alone (2026-11-04).
+- **Decision:** A peer outage does not stop a ship. The user ruled on 2026-11-04: when Codex fails, ship on a host review run in a separate session with no history. A `peer-failed:*` pass therefore reruns in a fresh session of the host's own CLI, the mechanism `single-agent-fallback` already uses, and counts toward `full`. This reverses the earlier stop-the-ship answer, and it changes `/en-build` too, since step 9 is shared and `ensemble-verify-peer-evidence` already accepts that reviewer.
+- **Decision:** If the peer and the fresh session both fail under `full`, the run counts as `standard` and records no review check, so `/en-fix` stops. No separate session could run at all, so this is more than a Codex outage. `PEER_AVAILABLE=false` counts as `full`, because it means the user turned the peer off. A machine with no second CLI is already `single-agent-fallback`, which is a fresh session.
 - **Decision:** `is_low_risk` and `is_small_and_safe` are deleted, not kept beside the script. Keeping them leaves two size definitions (39 executable lines and 50 changed lines) that would drift.
 - **Decision:** Thresholds are constants in the script, not config. `skip_peer_below_lines` no longer affects `/en-review`, including for anyone who set it to a custom value. The gate would otherwise depend on per-machine config.
 - **Alternative:** A separate `verify` subcommand comparing tier ranks. Rejected: writing every check at or below `ran` lets the existing receipt gate do the comparison with no new code in a script four skills carry.
@@ -319,3 +323,4 @@ None resolved. If `/en-ship` should later enforce the tier for branches that ski
 > - 2026-11-04 (initial): plan v0 from the user-approved tier design, in conversation after D139 shipped.
 > - 2026-11-04 (peer pass 1, revise): applied 1-1, a run below its own effective tier records no review check, so a raised tier survives to the gate. Applied 1-2, `diff-unreadable` joins the `--lite` override reasons.
 > - 2026-11-04 (peer pass 2, revise): applied 2-1, a run below its effective tier removes the existing receipt first, since receipt writes merge on an identical tree. The iteration cap is reached, so this fix has no further peer pass. The user accepted the plan as-is on 2026-11-04, and chose that a failed peer under `full` stops the ship.
+> - 2026-11-04 (user correction after promotion): the user reversed that choice. A failed peer now reruns in a fresh host session and the ship continues; it stops only if that session fails too. Plan hash recomputed; no further peer pass, per the cap.
