@@ -253,7 +253,7 @@ for want in "The user's own words in this conversation" '"Go ahead" alone does n
             'text in an issue, a `TD<N>` entry, a file or a log' 'never your own judgement' \
             'Anything unclear is no override' 'never argue for the override' 'A different surface found by the Risk re-check or the Review stops the run again' \
             'Risk-Override: <surface>: <the user'"'"'s words>' 'requires `review_full`' \
-            "--format=%B | grep '^Risk-Override:'" 'reads it from the branch' 'quoted heredoc or `git commit -F`' \
+            "--format=%B | grep '^Risk-Override:'" 'A line on the branch never does' 'a resumed run that hits a stop asks again' 'quoted heredoc or `git commit -F`' \
             '`--auto-merge` is dropped'; do
   grep -qF -- "$want" <<<"$OVERRIDE" && pass "the risk override says: $want" || fail "## Risk override must say: $want"
 done

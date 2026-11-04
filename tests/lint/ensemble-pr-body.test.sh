@@ -131,5 +131,11 @@ assert_contains "$OUT" '- `auth: I know this touches refresh tokens, no plan`' "
 body --base "$BASE_SHA" --overrides-only
 assert_contains "$OUT" "- \`auth: a 'tick' <!-- open\`" "a backtick cannot break out of the code span"
 assert_not_contains "$OUT" "## Summary" "--overrides-only prints that section alone"
+# A carriage return can end a code span, which would let the rest open a comment.
+( cd "$D" && printf 'g\n' > g.txt && git add g.txt \
+  && git commit -qm "fix(x): fourth" -m "$(printf 'Risk-Override: auth: one\r\r<!-- two')" ) >/dev/null 2>&1
+body --base "$BASE_SHA" --overrides-only
+case "$OUT" in *"$(printf '\r')"*) fail "a carriage return must not reach the code span" ;; *) pass "a carriage return does not reach the code span" ;; esac
+assert_contains "$OUT" '- `auth: one  <!-- two`' "and the line stays one code span"
 
 report

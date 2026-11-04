@@ -51,8 +51,9 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 # First, because a reviewer must see this before the diff: the skill stopped on a
 # risk surface, and it recorded that the user chose to skip the plan. Any line of
 # a message counts, so a misplaced trailer still shows. Each value is a code span,
-# so a commit message cannot open a comment or close an issue from here.
-OVERRIDES=$(git log "$BASE"..HEAD --format=%B | grep '^Risk-Override:' | sed -e 's/^Risk-Override:[[:space:]]*//' -e "s/\`/'/g")
+# so a commit message cannot open a comment or close an issue from here, and
+# control characters go first because a carriage return can end a code span.
+OVERRIDES=$(git log "$BASE"..HEAD --format=%B | LC_ALL=C tr '\000-\011\013-\037\177' ' ' | grep '^Risk-Override:' | sed -e 's/^Risk-Override:[[:space:]]*//' -e "s/\`/'/g")
 if [ -n "$OVERRIDES" ]; then
   printf '## Risk override\n\nThis change touches a risk surface and skipped a plan. The agent recorded these as the user'"'"'s words:\n\n'
   printf '%s\n' "$OVERRIDES" | sed -e 's/^/- `/' -e 's/$/`/'
