@@ -3,7 +3,7 @@ type: plan
 plan_type: improvement
 plan_id: EN26
 title: Review tiers set by a script, so every change gets the right depth of review
-status: open
+status: in_progress
 location: active
 created: 2026-11-04
 shipped:

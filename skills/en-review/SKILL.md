@@ -21,7 +21,7 @@ Multi-persona, confidence-gated code review **with the cross-agent peer on by de
 
 2b. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-review`. A standalone review gets its own ledger; one nested inside `/en-build` gets its own too, with a pointer from the build's. Fire-and-forget; `references/run-metrics.md` carries the event vocabulary.
 
-2a. **Resolve the peer decision** (EN11). Produce ONE `peer_decision` object per the schema in `references/peer-model-policy.md` section (e), and carry it into the report rather than recomputing it later.
+2a. **Resolve the peer decision** (EN11). Produce ONE `peer_decision` object per the schema in `references/peer-model-policy.md` section (e), and carry it into the report rather than recomputing it later. For a branch-diff target, first run `eval "$(bash "$SKILL_DIR/scripts/ensemble-review-tier" --base <base>)"`.
 
    | Condition | `peer` | `reason` |
    |---|---|---|
