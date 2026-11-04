@@ -18,7 +18,8 @@
 # Hard timeout per peer-review subprocess (the read-tree access mode defaults to 1200).
 # peer_timeout_seconds: 600
 
-# Skip peer review on artifacts smaller than this (line count).
+# /en-plan: skip peer review on plan documents smaller than this (line count).
+# /en-review ignores it: ensemble-review-tier sets review depth.
 # skip_peer_below_lines: 50
 
 # Skip peer review on Lightweight depth.
