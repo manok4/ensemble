@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "review",
+  "base_from": "review-logic",
+  "invocation": "/ensemble:en-review --mode headless --base main",
+  "modes": ["auto"],
+  "tier": "quick",
+  "ran": "quick",
+  "defects": [
+    { "file": "src/orders.js", "lines": [8, 10], "min_severity": "P3" }
+  ],
+  "bars": { "min_recall": 1.0 }
+}

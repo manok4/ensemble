@@ -18,7 +18,9 @@ Case contract, version 1 (expect.json):
   kind            review | fix | plan
   base_from       optional; another case whose base/ this one reuses (not with base/)
   invocation      the slash command run in the scratch repo
-  modes           review only; any of peer, host, cross
+  modes           review only; any of peer, host, cross, auto (no mode flag: the tier decides)
+  tier            review only; the review_tier.required the envelope must report
+  ran             review only; the review_tier.ran the envelope must report
   defects         review only; [{file, lines: [a, b], min_severity, match}]; match is an
                   optional regex over a finding's title and why_it_matters, for defects
                   that share lines and must not be credited by one finding
@@ -88,10 +90,12 @@ def validate(case_dir):
         for d in exp.get("defects") or []:
             need(isinstance(d.get("file"), str) and isinstance(d.get("lines"), list) and len(d["lines"]) == 2
                  and d.get("min_severity") in SEVERITY, "each defect needs file, lines [a, b] and min_severity")
-        need(set(exp.get("modes") or ["peer"]) <= {"peer", "host", "cross"}, "modes must be peer, host or cross")
+        need(set(exp.get("modes") or ["peer"]) <= {"peer", "host", "cross", "auto"}, "modes must be peer, host, cross or auto")
+        for key in ("tier", "ran"):
+            need(exp.get(key, "quick") in ("quick", "standard", "full"), "%s must be quick, standard or full" % key)
     else:
         need(not has_change, "change/ is only allowed for kind review")
-        for key in ("modes", "defects", "personas_include", "bars"):
+        for key in ("modes", "defects", "personas_include", "bars", "tier", "ran"):
             need(key not in exp, "%s applies only to kind review" % key)
     if kind == "fix":
         need(isinstance(exp.get("test_command"), str), "test_command is required for kind fix")
@@ -218,6 +222,10 @@ def grade_review(expect_path, output_path):
         for p in exp.get("personas_include") or []:
             if p not in personas:
                 reasons.append("persona %s not dispatched" % p)
+    review_tier = env.get("review_tier") if isinstance(env.get("review_tier"), dict) else {}
+    for key, field in (("tier", "required"), ("ran", "ran")):
+        if key in exp and review_tier.get(field) != exp[key]:
+            reasons.append("review_tier.%s is %s, expected %s" % (field, review_tier.get(field), exp[key]))
     cap = bars.get("max_findings")
     if cap:
         limit = SEVERITY[cap["at_or_above"]]
@@ -229,6 +237,7 @@ def grade_review(expect_path, output_path):
     print(json.dumps({"kind": "review", "recall": recall, "precision": precision,
                       "matched": matched, "missed": missed, "extra": extra,
                       "sub_threshold": len(pool) - len(findings), "personas": personas,
+                      "review_tier": env.get("review_tier"),
                       "reasons": reasons, "pass": not reasons}, indent=2))
     sys.exit(0 if not reasons else 1)
 
