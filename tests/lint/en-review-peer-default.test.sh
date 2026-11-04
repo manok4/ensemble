@@ -53,7 +53,7 @@ for tier in '`high`' '`low`' '`medium`'; do
 done
 
 # The ladder must evaluate `high` BEFORE `low` (EN11-PR-001): architectural,
-# destructive, and gated are not inputs to is_small_and_safe, so without an
+# destructive, and gated are not inputs to the tier, so without an
 # explicit order a small gated diff could resolve low.
 hi_line=$(grep -n '| 1 | `high`' "$POLICY" | head -1 | cut -d: -f1)
 lo_line=$(grep -n '| 2 | `low`' "$POLICY" | head -1 | cut -d: -f1)
@@ -63,7 +63,7 @@ else
   fail "ladder must evaluate high before low" "high@${hi_line:-none} low@${lo_line:-none}"
 fi
 has "$POLICY" "gated: true" "high tier covers gated units"
-has "$POLICY" "is_small_and_safe" "low tier cites is_small_and_safe verbatim"
+has "$POLICY" 'ensemble-review-tier` says `quick`' "the low rung reads the tier"
 
 # Resolution order: check the numbered ROWS of the resolution table, not
 # first-occurrence in the file (words like "ladder" legitimately appear earlier

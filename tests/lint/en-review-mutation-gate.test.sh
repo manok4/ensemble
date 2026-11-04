@@ -44,15 +44,15 @@ fi
 
 # --- canonical reason enum present in BOTH files ---
 enum_ok=1
-# D79 narrowed the gate to risk: size and uncounted files no longer override.
-for rid in "risk-signal" "conditional-persona:"; do
+# D140 moved the gate onto the tier: the reasons live in the report and the skill.
+for rid in "diff-unreadable" "size" "risk-signal" "conditional-persona:"; do
   grep -qF "$rid" "$REPORT" || enum_ok=0
-  grep -qF "$rid" "$DIFFSIG" || enum_ok=0
+  grep -qF "$rid" "$SKILL" || enum_ok=0
 done
 if [ "$enum_ok" -eq 1 ]; then
-  pass "canonical override-reason enum mirrored in SKILL and diff-signal-detection"
+  pass "canonical override-reason enum mirrored in SKILL and the report"
 else
-  fail "the override-reason enum must appear in both SKILL.md and diff-signal-detection.md"
+  fail "the override-reason enum must appear in both SKILL.md and review-report.md"
 fi
 
 # --- deterministic multi-reason grammar (order, dedup, separator, persona encoding) ---
