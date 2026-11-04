@@ -96,14 +96,16 @@ The exception: don't fire a conditional agent on a doc-only diff. If `git diff -
 
 **A reviewer's context is its prompt, the files it names and the project. The build session is not part of it.** The reviewer judges the change without the reasoning that produced it (D141).
 
-Fresh does not mean under-informed. After step 5, write two files to the run directory:
+Fresh does not mean under-informed. Step 5 writes the run directory's inputs. On a branch-diff target the patch is the set the tier classified, the working tree and untracked files included, so a receipt never records a review of changes no reviewer saw. Drop both `':(exclude)'"$PLAN"` with no plan:
 
 ```bash
+git diff "$(git merge-base <base> HEAD)" -- . ':(exclude)'"$PLAN" > "$RUN_DIR/diff.patch"
+git ls-files -z --others --exclude-standard -- . ':(exclude)'"$PLAN" | xargs -0 -I{} git diff --no-index /dev/null {} >> "$RUN_DIR/diff.patch"
 awk 'NR==1&&/^---$/{f=1;next} f{if(/^---$/)f=0;next} /^## /{s=($0=="## Iteration log")} !s' "$PLAN" > "$RUN_DIR/plan.md"
-git log --format='%h %s%n%b' <base>..HEAD > "$RUN_DIR/commits.txt"
+git log --format='%h %s%n%b' <base>..HEAD | grep -vE '^(Verdict|review-verdict|simplify-verdict):' > "$RUN_DIR/commits.txt"
 ```
 
-The plan's frontmatter and iteration log go, so no earlier verdict reaches a reviewer. Its `## Decisions, assumptions & risks` section stays, because it explains why code looks the way it does, and a reviewer may still challenge it. With no plan there is no `plan.md`.
+The plan's frontmatter and iteration log go, and the plan file stays out of the patch, so no earlier verdict reaches a reviewer through it. Its `## Decisions, assumptions & risks` section stays, because it explains why code looks the way it does, and a reviewer may still challenge it. With no plan there is no `plan.md`. Commit messages and the plan are the author's claims, not evidence.
 
 - **Each `dimension-reviewer` prompt** names those paths under `plan` and `commits`, and carries `goal`.
 - **The peer** gets the same copy through `--plan-file`, except on the verification pass and the lite brief.
@@ -149,7 +151,7 @@ The concurrency is therefore **licensed by the blind-peer invariant**, not by co
 
 **Peer failure inside the batch** does not discard persona results. The peer's own degradation path (one bounded retry) is handled by `$SKILL_DIR/scripts/ensemble-peer-invoke` and recorded in `peer_decision.reason`; already-returned persona findings are still synthesized and reported. A review whose peer failed is a review with `peer: "off"` and a recorded reason, never a failed review.
 
-**The fresh-session rerun.** A `peer-failed:*` pass reruns once as a new process of the host's own CLI, so a peer outage does not stop a ship. Rebuild the prompt with `--peer-mode single-agent-fallback`, and call `ensemble_peer_invoke` with the host's values from `references/host-detect.md`: on Claude Code `claude -p`, `--output-format json`, `--max-turns 1`; on Codex `codex exec`, `--json`, no turn flag. Re-resolve `$PEER_MODEL` and `$PEER_EFFORT` through `ensemble-peer-flags` for that command, and keep the access mode. If it fails too, the peer is off and step 9's Peer off rule applies.
+**The fresh-session rerun.** A `peer-failed:*` pass reruns once as a new process of the host's own CLI, so a peer outage does not stop a ship. Rebuild the prompt with `--peer-mode single-agent-fallback`, and launch it with `ensemble_peer_start --job-dir <run-dir>/peer-rerun` using the host's values from `references/host-detect.md`: on Claude Code `claude -p`, `--output-format json`, `--max-turns 1`; on Codex `codex exec`, `--json`, no turn flag. Collect it with the same `ensemble_peer_wait` slices and ceilings as step 9. Re-resolve `$PEER_MODEL` and `$PEER_EFFORT` through `ensemble-peer-flags` for that command, and keep the access mode. If it fails too, the peer is off and step 9's Peer off rule applies.
 
 ## Synthesis
 
@@ -265,6 +267,7 @@ When a run is at lite depth under `--host` or `--cross`, on a bare `quick` run o
 
 - **Roster:** `correctness` + `standards`. Skip `testing`, `maintainability`, `learnings`, and every conditional persona.
 - **Fail closed:** on `standard` or `full`, or when a conditional persona raised the tier, run the **full roster**. `--lite` is advisory; `ensemble-review-tier` decides.
+- **Verification pass:** with no peer in this run, step 12a re-dispatches `correctness` with the previous-review context.
 - **Outcome line (EN08):** the gate's decision is reported by the mandatory `lite_gate:` line in en-review's summary (`applied` / `overridden (<reasons>)` / `not-requested`) — never a silent override.
 
 ## Mutation boundary (EN08)

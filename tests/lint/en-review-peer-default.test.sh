@@ -495,7 +495,7 @@ flagrow() {  # flagrow <flag> <label>
   if printf '%s\n' "$FLAGS_TBL" | grep -qF -- "| \`$1" ; then pass "$2"; else fail "$2" "no Flags-table row for $1"; fi
 }
 # 2026-09-01: --no-peer and --peer-only were replaced by three mutually exclusive
-# review modes. --peer is now peer-SOLE (and the default), --cross is peer plus
+# review modes. --peer is peer-SOLE, --cross is peer plus
 # personas, --host is personas alone. EN11's substance — the peer runs unless a
 # recorded reason says otherwise — is unchanged; only the spelling moved.
 flagrow "--peer" "Flags table has a --peer row (peer-sole)"
@@ -568,6 +568,19 @@ esac
 REPORT_REF="$REPO_ROOT/skills/en-review/references/review-report.md"
 has "$REPORT_REF" '"review_tier": {"required"' "the envelope carries review_tier"
 has "$REPORT_REF" 'review_tier: <ran> (required <required>; <files> files, <lines> lines; <reasons>)' "the summary line has its fixed shape"
+RAISE_ROW=$(grep -F -- '**Raising.**' "$SKILL")
+case "$RAISE_ROW" in *'re-resolve `peer_decision` with `default-on`'*) pass "a raise turns the peer back on" ;; *) fail "a raise from quick must re-resolve peer_decision, or the run cannot reach full" ;; esac
+has "$SKILL" 'with no mode flag run as `--peer`' "a target that is not a branch diff still has a mode"
+has "$REPORT_REF" '`jq -r .peer_mode_override ~/.ensemble/config.json` is `off`' "only an explicit opt-out counts a host-only run as full"
+has "$REPORT_REF" '`cross-agent-only` with no second CLI | `standard`' "a missing peer the user required does not count as full"
+has "$POLICY" 'then reruns in a fresh session' "the policy agrees with the fresh-session rerun"
+has "$DISPATCH" 'ensemble_peer_start --job-dir <run-dir>/peer-rerun' "the rerun is detached, so the harness cannot kill it mid-call"
+for f in "$REPO_ROOT"/skills/*/references/outside-voice.md; do
+  hasnt "$f" 'Sole reviewer by default' "no claim the peer is the default reviewer: ${f#"$REPO_ROOT"/}"
+done
+CONTRACT="$REPO_ROOT/skills/en-review/CONTRACT.md"
+has "$CONTRACT" '| `review_tier` |' "the contract returns review_tier"
+hasnt "$CONTRACT" '/en-review --lite --mode headless' "the contract no longer says en-fix asks for --lite"
 
 # ============================================================
 # EN26 U8 — every reviewer runs outside the build session (D141)
@@ -577,6 +590,8 @@ has "$DISPATCH" 'spawn_agent({ agent_type: "dimension-reviewer", fork_turns: "no
 has "$DISPATCH" 'A refused model retries once without `model`' "a refused model falls back and is named"
 has "$DISPATCH" 'host_context: inherited' "an inherited context is reported"
 has "$DISPATCH" 'never a verdict such as' "the goal carries no verdict"
+has "$DISPATCH" 'except on the verification pass and the lite brief' "the plan stays out of the cheap prompts"
+has "$SKILL" 'a run with no plan omit `--plan-file`' "a run with no plan does not pass a missing file"
 has "$SKILL" '--plan-file <plan copy>' "the peer is handed the plan copy"
 AGENT="$REPO_ROOT/skills/en-review/agents/dimension-reviewer.md"
 for slot in '**`goal`**' '**`plan`**' '**`commits`**'; do
@@ -605,13 +620,33 @@ why
 
 - **Decision:** kept
 PLANEOF
-AWK_LINE=$(grep -F 'plan.md"' "$DISPATCH" | grep '^awk ' | head -1)
-( PLAN="$PC/plan.md"; RUN_DIR="$PC/out"; mkdir -p "$RUN_DIR"; eval "$AWK_LINE" )
+# And the patch and log commands: the patch must hold what the tier classified.
+(
+  cd "$PC" && git init -q -b main . && git config user.email t@example.com && git config user.name tester
+  printf 'x\n' > a.txt && mkdir -p docs && cp plan.md docs/plan.md && git add -A && git commit -qm base
+  git checkout -qb feature && printf 'committed\n' > c.txt && git add c.txt \
+    && git commit -qm 'feat: c' -m 'Verdict: revise, accepted' -m 'kept body'
+  printf 'uncommitted\n' >> a.txt; printf 'untracked\n' > u.txt; printf 'plan edit\n' >> docs/plan.md
+) >/dev/null 2>&1
+mkdir -p "$PC/out"
+grep -E '^(git diff "\$\(git merge-base|git ls-files -z|awk .*plan\.md"|git log --format)' "$DISPATCH" | sed 's/<base>/main/g' > "$PC/out/cmds.sh"
+( cd "$PC" && PLAN="docs/plan.md" RUN_DIR="$PC/out" bash "$PC/out/cmds.sh" ) >/dev/null 2>&1
 COPY=$(cat "$PC/out/plan.md" 2>/dev/null)
 assert_contains "$COPY" "## Decisions, assumptions & risks" "the plan copy keeps the decisions section after the log"
 assert_contains "$COPY" "## Context" "the plan copy keeps the body"
 case "$COPY" in *peer_review_verdict*) fail "the plan copy must lose the frontmatter" ;; *) pass "the plan copy loses the frontmatter" ;; esac
 case "$COPY" in *"peer pass 1"*) fail "the plan copy must lose the iteration log" ;; *) pass "the plan copy loses the iteration log" ;; esac
+PATCH=$(cat "$PC/out/diff.patch" 2>/dev/null)
+for held in '+committed' '+uncommitted' '+untracked'; do
+  assert_contains "$PATCH" "$held" "the reviewer patch holds $held"
+done
+case "$PATCH" in *"plan edit"*) fail "the reviewer patch must leave the plan file out" ;; *) pass "the reviewer patch leaves the plan file out" ;; esac
+# An untracked plan reaches the patch by the second command, not the first.
+( cd "$PC" && printf 'peer pass 2 verdict\n' > docs/new-plan.md && PLAN="docs/new-plan.md" RUN_DIR="$PC/out" bash "$PC/out/cmds.sh" ) >/dev/null 2>&1
+case "$(cat "$PC/out/diff.patch" 2>/dev/null)" in *"peer pass 2 verdict"*) fail "an untracked plan must stay out of the reviewer patch" ;; *) pass "an untracked plan stays out of the reviewer patch" ;; esac
+LOG=$(cat "$PC/out/commits.txt" 2>/dev/null)
+assert_contains "$LOG" "kept body" "the commit log keeps the message"
+case "$LOG" in *"Verdict:"*) fail "the commit log must drop verdict lines" ;; *) pass "the commit log drops verdict lines" ;; esac
 rm -rf "$PC"
 
 # The retry algorithm must NOT be restated in prose (EN11-PR-006): one

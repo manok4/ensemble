@@ -13,8 +13,8 @@ the targeted tests twice on an identical tree minutes apart.
   it can honour.
 - **Never in `report-only`.** That mode is CI and strictly read-only; it runs
   nothing and writes nothing.
-- **Not on any other target when nothing was applied** (`--base <ref>`, a ref
-  range, a branch name, a file). A run there would prove a set nobody downstream
+- **Not on any other target when nothing was applied** (`--base <ref>`, `--scope <path>`,
+  a ref range, a branch name, a file). A run there would prove a set nobody downstream
   asks about.
 
 Every run reports one `post_review_check:` line in the markdown summary:

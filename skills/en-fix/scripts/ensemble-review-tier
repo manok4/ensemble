@@ -45,7 +45,9 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 0
 fi
 
-exec python3 - "$@" <<'PY'
+# -I keeps a module in the reviewed checkout from running: this reads a branch
+# before anything has reviewed it.
+exec python3 -I - "$@" <<'PY'
 import fnmatch
 import json
 import os
@@ -63,14 +65,15 @@ LOCKFILES = {
 }
 GENERATED_SEGMENTS = {"generated", "__generated__"}
 
-# Compared lowercased against a whole path segment, or a file name's stem.
+# Matched like content words, over the whole path: `src/auth_middleware.py` holds
+# `auth`, and `src/authoring/x.js` holds nothing.
 PATH_WORDS = {
     "auth": {
         "auth", "oauth", "oauth2", "authn", "authz", "authentication", "authorization",
-        "login", "session", "sessions", "permissions", "rbac", "acl",
+        "login", "session", "sessions", "permissions", "rbac", "acl", "credentials",
     },
     "payments": {"payment", "payments", "billing", "invoices"},
-    "migrations": {"migrations", "alembic"},
+    "migrations": {"migrate", "migration", "migrations", "alembic"},
     "secrets": {"secrets"},
 }
 # Compared lowercased against a whole file name.
@@ -89,40 +92,48 @@ FILE_GLOBS = {
 # Matched lowercased, after camelCase is split with an underscore, with letters
 # and digits as the only word characters. So `refresh_token` and `refreshToken`
 # hold the word `token`, and `max_tokens`, `author` and `oracle` hold nothing.
+# `tokens` stays off the list for that reason; other plurals are on it.
 CONTENT_WORDS = {
     "auth": [
         "auth", "token", "access_tokens", "refresh_tokens", "auth_tokens", "api_tokens",
-        "password", "passwd", "oauth", "oauth2", "jwt", "bearer", "csrf", "rbac", "cookie",
+        "password", "passwords", "passwd", "credential", "credentials", "oauth", "oauth2",
+        "jwt", "bearer", "csrf", "rbac", "cookie", "cookies",
         "authn", "authz", "authenticate", "authenticated", "authentication", "authenticator",
         "authorize", "authorized", "authorizer", "unauthorized", "authorization",
-        "session", "login", "permission", "permissions",
+        "session", "sessions", "login", "permission", "permissions",
     ],
     "payments": ["payment", "payments", "billing", "invoice", "stripe", "refund", "charge"],
     "secrets": [
-        "secret", "api_key", "api-key", "apikey", "private_key", "private-key", "cors",
+        "secret", "secrets", "api_key", "api-key", "apikey", "private_key", "private-key", "cors",
         "content-security-policy",
     ],
     "external-effects": ["webhook", "smtp", "sendgrid", "twilio"],
     "data-mutation": ["backfill"],
 }
-CONTENT_RES = {
-    signal: re.compile(
-        r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in words) + r")(?![a-z0-9])"
+
+
+def word_regex(words):
+    return re.compile(
+        r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(words)) + r")(?![a-z0-9])"
     )
-    for signal, words in CONTENT_WORDS.items()
-}
-# Matched case-sensitively over the raw line, so a lowercase `update x set` in
-# prose stays out and a string holding SQL counts.
+
+
+PATH_RES = {signal: word_regex(words) for signal, words in PATH_WORDS.items()}
+CONTENT_RES = {signal: word_regex(words) for signal, words in CONTENT_WORDS.items()}
+# Over the raw line, so a string holding SQL counts. Bare TRUNCATE stays
+# case-sensitive because `truncate(text)` is an ordinary function name.
 RAW_RES = {
     "migrations": re.compile(
-        r"\b(?:ALTER TABLE|CREATE TABLE|DROP (?:TABLE|COLUMN|SCHEMA|DATABASE|INDEX))\b"
+        r"\b(?:ALTER TABLE|CREATE TABLE|DROP (?:TABLE|COLUMN|SCHEMA|DATABASE|INDEX))\b", re.I
     ),
-    "data-mutation": re.compile(r"\b(?:DELETE FROM|TRUNCATE|UPDATE \w+ SET)\b"),
+    "data-mutation": re.compile(
+        r"(?i:\b(?:DELETE FROM|TRUNCATE TABLE|UPDATE \w+ SET)\b)|\bTRUNCATE\b"
+    ),
 }
 SIGNAL_ORDER = [
     "auth", "payments", "migrations", "secrets", "data-mutation", "external-effects", "dependency",
 ]
-COMMENT_PREFIXES = ("#", "//", "/*", "*", "--")
+COMMENT_PREFIXES = ("#", "//", "/*")
 PROSE_SUFFIXES = (".md", ".mdx", ".rst", ".txt")
 HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 GIT = ["git", "-c", "core.quotePath=false"]
@@ -132,10 +143,10 @@ class Unreadable(Exception):
     pass
 
 
-def git(args, cwd=None):
+def git(args, cwd=None, stdin=None):
     try:
         done = subprocess.run(
-            GIT + args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            GIT + args, cwd=cwd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
         )
     except OSError:
         raise Unreadable()
@@ -155,7 +166,7 @@ def segments(path):
 def is_excluded(path, attr_generated):
     parts = segments(path)
     name = parts[-1]
-    if name in LOCKFILES or name.endswith(".min.js") or name.endswith(".min.css"):
+    if name in LOCKFILES or name.endswith((".min.js", ".min.css")):
         return True
     if GENERATED_SEGMENTS.intersection(parts):
         return True
@@ -163,13 +174,9 @@ def is_excluded(path, attr_generated):
 
 
 def path_signals(path):
-    parts = segments(path)
-    name = parts[-1]
-    stem = os.path.splitext(name)[0]
-    found = set()
-    for signal, words in PATH_WORDS.items():
-        if words.intersection(parts) or stem in words:
-            found.add(signal)
+    name = segments(path)[-1]
+    normal = normalize(path)
+    found = {signal for signal, rx in PATH_RES.items() if rx.search(normal)}
     for signal, names in FILE_NAMES.items():
         if name in names:
             found.add(signal)
@@ -192,9 +199,16 @@ def normalize(line):
     return line.lower()
 
 
+def is_comment(stripped):
+    """`--password x` and `*session = 0` are code, so these two need a space after."""
+    if stripped.startswith(COMMENT_PREFIXES):
+        return True
+    return bool(re.match(r"--(\s|$)|\*(\s|/|$)", stripped))
+
+
 def line_signals(line):
     stripped = line.lstrip()
-    if not stripped or stripped.startswith(COMMENT_PREFIXES):
+    if not stripped or is_comment(stripped):
         return set()
     found = {signal for signal, rx in RAW_RES.items() if rx.search(line)}
     normal = normalize(line)
@@ -285,19 +299,12 @@ def read_untracked(root, path):
 def generated_attrs(root, paths):
     if not paths:
         return set()
-    try:
-        done = subprocess.run(
-            GIT + ["check-attr", "-z", "--stdin", "linguist-generated"],
-            cwd=root,
-            input="\0".join(paths).encode("utf-8", "surrogateescape") + b"\0",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError:
-        raise Unreadable()
-    if done.returncode != 0:
-        raise Unreadable()
-    fields = text(done.stdout).split("\0")
+    attrs = git(
+        ["check-attr", "-z", "--stdin", "linguist-generated"],
+        cwd=root,
+        stdin="\0".join(paths).encode("utf-8", "surrogateescape") + b"\0",
+    )
+    fields = text(attrs).split("\0")
     return {
         fields[i]
         for i in range(0, len(fields) - 2, 3)
@@ -328,10 +335,9 @@ def classify(base):
             files += 1
             lines += added + deleted
 
-    # Excluded files carry no content risk: a lockfile already raised
-    # `dependency` by name, and generated text is not what the author wrote.
+    # Exclusion is about size only: a minified file can still hold real SQL.
     def scan(path, content):
-        if path not in excluded_set and not is_prose(path):
+        if not is_prose(path):
             risk.update((signal, path) for signal in line_signals(content))
 
     diff = git(
@@ -401,7 +407,9 @@ def main(argv):
 
     try:
         tier, reasons, files, lines, excluded, risk = classify(base)
-    except Unreadable:
+    except Exception:
+        # Any failure at all prints the top tier, because an empty answer would
+        # leave `eval` with no tier and the gate asking for a check named `review_`.
         tier, reasons, files, lines, excluded, risk = "full", ["diff-unreadable"], 0, 0, [], []
 
     if as_json:

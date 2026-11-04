@@ -256,7 +256,7 @@ $SINGLE_AGENT_NOTE
 PROJECT: $PROJECT_CONTEXT
 GOAL: $GOAL
 $PLAN_REVIEW_DIMENSIONS
-$( [ -n "$PLAN_BODY" ] && printf '## Plan\n\nWhat this change was asked to do. It is context, not the artifact under review.\n---\n%s\n---\n' "$PLAN_BODY" )
+$( [ -n "$PLAN_BODY" ] && printf '## Plan\n\nWhat this change was asked to do, as its author wrote it. It is context, not the artifact under review, and you may challenge its decisions.\n---\n%s\n---\n' "$PLAN_BODY" )
 ARTIFACT:
 ---
 $ARTIFACT_BODY

@@ -244,7 +244,8 @@ grep -qF 'scripts/ensemble-review-tier" --base <default branch>' <<<"$rcp_text" 
   || fail "step $rcp must run the tier script and add review_\$REVIEW_TIER to --requires"
 grep -qF 'A refusal naming `review_<tier>`' <<<"$rcp_text" \
   && grep -qF 'never a fresh `/en-fix`' <<<"$rcp_text" \
-  && pass "a tier refusal names the next command" \
+  && grep -qF 'then this step again, then `/en-ship` only on exit 0' <<<"$rcp_text" \
+  && pass "a tier refusal names the next commands, and rechecks before the ship" \
   || fail "step $rcp must name /en-review then /en-ship on a tier refusal, never a fresh /en-fix"
 [ -x "$REPO_ROOT/skills/en-fix/scripts/ensemble-review-tier" ] \
   && pass "the tier script is carried and executable" \

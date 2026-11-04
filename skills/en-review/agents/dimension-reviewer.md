@@ -47,7 +47,8 @@ made the review worth running.
   challenge one. When your dimension is `correctness`, your `rows` include the
   `Plan coverage` check against it.
 - Optional **`commits`** — the path to the branch's commit messages. Read them
-  before you call something an accident.
+  before you call something an accident. They are the author's claims, not
+  evidence that the code does what they say.
 
 ## What you return
 

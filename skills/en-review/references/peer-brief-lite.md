@@ -1,11 +1,10 @@
 # Peer review brief — lite
 
-The brief for a `/en-review --lite` run: a quick fix the user wants read once with
-care, not studied. The full brief is `references/peer-brief.md`; this one keeps the
+The brief for a peer at lite depth: a small change to read once with
+care, not study. The full brief is `references/peer-brief.md`; this one keeps the
 dimensions a quick fix can fail on and drops the rest. The wire format both ends
-share is `references/peer-contract.md`. The brief is handed out only when the risk
-gate in `references/diff-signal-detection.md` passed, so a change touching auth,
-payments, schema, secrets or bulk data never arrives here.
+share is `references/peer-contract.md`. The brief is handed out only when
+`ensemble-review-tier` says `quick`, so a change with a risk signal never arrives here.
 
 ## What the peer is asked
 

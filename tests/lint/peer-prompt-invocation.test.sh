@@ -48,6 +48,7 @@ for skill in en-plan en-review en-foundation; do
     | sed -e "s|\$SKILL_DIR|$dir|g" \
           -e "s|<diff>|$T/artifact.diff|g" \
           -e "s|<plan-path>|$T/artifact.plan.md|g" \
+          -e "s|<plan copy>|$T/artifact.plan.md|g" \
           -e "s|<path>|$T/artifact.diff|g" \
           -e 's|"<one-line[^"]*>"|"context"|g' \
           -e 's|"<one line[^"]*>"|"context"|g' \
@@ -68,6 +69,7 @@ cmd=$(grep -oE '`\$SKILL_DIR/scripts/ensemble-build-peer-prompt [^`]*`' "$dir/SK
 filled=$(printf '%s' "$cmd" \
   | sed -e "s|\$SKILL_DIR|$dir|g" \
         -e "s|references/peer-brief.md|references/peer-brief-lite.md|g" \
+        -e "s| --plan-file <plan copy>||g" \
         -e "s|<diff>|$T/artifact.diff|g" \
         -e 's|"<one-line[^"]*>"|"context"|g' \
         -e 's|"\$PEER_MODE"|cross-agent|g')

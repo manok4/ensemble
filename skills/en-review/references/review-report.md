@@ -41,14 +41,15 @@ Read at the output-report step. This file is the **single owner of the envelope 
 }
 ```
 
-`review_tier` is null for an ad-hoc `--peer <path-or-ref>` and for `--verify`. `required` is the run's effective tier, after any raise, and `ran` is what the run reached:
+`review_tier` is null for any target that is not a branch diff, and for `--verify`. `required` is the run's effective tier, after any raise, and `ran` is what the run reached:
 
 | What ran | `ran` |
 |---|---|
 | Host lite roster, or a peer given the lite brief, or both | `quick` |
 | Peer with the full brief alone, or full host roster alone | `standard` |
 | Full host roster and peer, including `single-agent-fallback` | `full` |
-| Full host roster where `PEER_AVAILABLE=false` (the user turned the peer off) | `full` |
+| Full host roster where `jq -r .peer_mode_override ~/.ensemble/config.json` is `off` (the user turned the peer off) | `full` |
+| Full host roster where `PEER_AVAILABLE=false` for any other reason, such as `cross-agent-only` with no second CLI | `standard` |
 | Full host roster and a fresh host session, after a `peer-failed:*` peer | `full` |
 | Fresh host session alone, after a `peer-failed:*` peer | `standard` |
 | Full host roster after the peer and the fresh host session both failed | `standard` |

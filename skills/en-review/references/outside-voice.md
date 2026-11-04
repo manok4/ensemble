@@ -13,7 +13,7 @@ The contract every peer pass follows. Carried by `en-foundation`, `en-plan` and 
 | `en-foundation` | After the draft is synthesized | On; `--no-peer` disables |
 | `en-plan` | After the plan is fully drafted with U-IDs | On; `--no-peer` disables |
 | `en-build` | Once, over the branch diff after `/en-simplify`, through `/en-review --peer` (D52) | On |
-| `en-review` | Sole reviewer by default (`--peer`); beside the personas under `--cross` | On; `--host` runs personas only |
+| `en-review` | Sole reviewer under `--peer`; beside the personas under `--cross` | By tier: on for `standard` and `full`; `--host` runs personas only |
 | `en-test-audit` | Once per batch, before commit: a read-tree preservation review; a failed peer stops the run with the batch staged | On; only `--resume --no-peer` skips it |
 
 ## Single-agent fallback (D31)

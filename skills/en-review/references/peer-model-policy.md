@@ -67,9 +67,9 @@ When a peer invocation fails, classify it with `ensemble_smoke_classify` from `$
 | Classification | Behavior |
 |---|---|
 | `flagdrift` | **Bounded single retry** dropping **only** the rejected fragment (`PEER_MODEL` or `PEER_EFFORT`, never both, never the prompt). The peer degrades to inherited defaults and the review still gets its cross-agent pass. |
-| `auth` | No flag retry. Ordinary peer failure; fall back to persona-only. |
-| `unknown` | No flag retry. Ordinary peer failure; fall back to persona-only. |
-| Second failure | Stop. Fall back to persona-only, reason `peer-failed:retry-exhausted`. |
+| `auth` | No flag retry. Ordinary peer failure, reported as `peer-failed:*`; `/en-review`'s Outside Voice peer step then reruns in a fresh session. |
+| `unknown` | No flag retry. Ordinary peer failure, reported as `peer-failed:*`; `/en-review`'s Outside Voice peer step then reruns in a fresh session. |
+| Second failure | Stop. Reason `peer-failed:retry-exhausted`; `/en-review`'s Outside Voice peer step then reruns in a fresh session. |
 
 Every outcome is recorded in `peer_decision.reason` and echoed in the mandatory `peer_decision:` summary line. A degradation is never silently swallowed.
 

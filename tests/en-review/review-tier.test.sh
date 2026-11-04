@@ -171,9 +171,63 @@ classify "$R"
 assert_contains "$(field reasons)" "risk:auth" "a removed line counts"
 
 R=$(new_repo)
-( cd "$R" && on_main 'printf -- "--- password\nkeep\n" > src/old.sql' && printf 'keep\n' > src/old.sql ) >/dev/null 2>&1
+( cd "$R" && on_main 'printf -- "-- password\nkeep\n" > src/old.sql' && printf 'keep\n' > src/old.sql ) >/dev/null 2>&1
 classify "$R"
 expect quick under-limits "a removed SQL comment is skipped, not read as a file header"
+
+# --- added lines in tracked files: the normal feature branch ----------------------
+in_repo "add_line 'const refresh_token = 1' src/a.js; git add -A; git commit -qm feat"
+expect full risk:auth "a committed risky line"
+R=$(new_repo)
+( cd "$R" && on_main 'printf "keep\n" > src/old.js' && printf 'keep\ndb.run("DROP TABLE x")\n' > src/old.js ) >/dev/null 2>&1
+classify "$R"
+expect full risk:migrations "a risky line added to a tracked file"
+
+# --- exclusion is about size, never content ---------------------------------------
+in_repo "mkdir -p dist; add_line 'db.exec(\"DELETE FROM users\")' dist/app.min.js"
+expect full risk:data-mutation "real SQL in a minified file"
+assert_eq "0" "$(field lines)" "and its lines still do not count"
+
+# --- honest risky changes the first word list missed ------------------------------
+in_repo 'plain_lines 1 src/auth_middleware.py'
+expect full risk:auth "a compound path name"
+in_repo 'plain_lines 1 db/migrate/001.rb'
+expect full risk:migrations "a file under migrate/"
+for hit in 'db.run("alter table users")' 'delete from users' 'req.cookies.sid' 'const passwords = 1' 'use(credentials)' 'x = secrets.DEPLOY_KEY' '--password x'; do
+  in_repo "add_line '$hit' src/a.js"
+  assert_eq "full" "$(field tier)" "content '$hit' raises the tier"
+done
+for miss in 'truncate(text)' '* a list item' '-- a comment'; do
+  in_repo "add_line '$miss' src/a.js"
+  expect quick under-limits "content '$miss'"
+done
+
+# --- binaries, symlinks ------------------------------------------------------------
+in_repo 'printf "\000\001" > src/t.bin; git add -A; git commit -qm bin; plain_lines 2 src/a.js'
+assert_eq "2|2" "$(field files)|$(field lines)" "a tracked binary is one file and no lines"
+in_repo 'printf "\000\001" > src/u.bin; plain_lines 2 src/a.js'
+assert_eq "2|2" "$(field files)|$(field lines)" "an untracked binary is one file and no lines"
+in_repo 'ln -s base.js src/link.js; plain_lines 2 src/a.js'
+assert_eq "2|2" "$(field files)|$(field lines)" "an untracked symlink is one file and no lines"
+
+# --- the contract consumers parse --------------------------------------------------
+in_repo 'plain_lines 301 src/a.js; plain_lines 1 package.json; plain_lines 1 src/auth/x.js'
+assert_eq "over-300-lines,risk:auth,risk:dependency" "$(field reasons)" "several reasons join in a fixed order"
+RISK_ROWS=$(printf '%s' "$OUT" | python3 -c 'import json,sys
+print(" ".join("%s:%s" % (r["signal"], r["path"]) for r in json.load(sys.stdin)["risk"]))')
+assert_eq "auth:src/auth/x.js dependency:package.json" "$RISK_ROWS" "risk rows name the signal and the path"
+
+# --- it never runs code from the reviewed checkout, and always prints a tier --------
+R=$(new_repo)
+( cd "$R" && printf 'open("planted", "w").write("x")\nraise SystemExit(9)\n' > fnmatch.py ) >/dev/null 2>&1
+classify "$R"
+[ -e "$R/planted" ] && fail "a module in the checkout must not run" || pass "a module in the checkout does not run"
+assert_exit_code 0 "$RC" "a planted module does not stop the script"
+assert_eq "1" "$(field files)" "the planted file is still classified"
+
+OUT=$(cd "$R" && PATH=/nonexistent /bin/bash "$T" --base main --json); RC=$?
+assert_exit_code 0 "$RC" "with no python3 it still exits 0"
+expect full diff-unreadable "with no python3"
 
 # --- eval-able output ---------------------------------------------------------
 R=$(new_repo)

@@ -284,7 +284,7 @@ printf '{"version":1,"kind":"review","invocation":"/ensemble:en-review","defects
 envelope "$T/o.txt" '[]'
 out=$("$G" review "$T/e.json" "$T/o.txt"); rc=$?
 assert_exit_code 1 "$rc" "an envelope with no review_tier fails when tier is set"
-for c in review-tier-quick review-tier-wide review-tier-small-auth; do
+for c in review-tier-quick review-tier-wide review-tier-small-auth review-tier-raised; do
   "$G" validate "$CASES/$c" >/dev/null 2>&1; rc=$?
   assert_exit_code 0 "$rc" "$c validates, with modes auto"
 done
