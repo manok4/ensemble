@@ -65,7 +65,10 @@ GENERATED_SEGMENTS = {"generated", "__generated__"}
 
 # Compared lowercased against a whole path segment, or a file name's stem.
 PATH_WORDS = {
-    "auth": {"auth", "oauth", "login", "session", "sessions", "permissions", "rbac", "acl"},
+    "auth": {
+        "auth", "oauth", "oauth2", "authn", "authz", "authentication", "authorization",
+        "login", "session", "sessions", "permissions", "rbac", "acl",
+    },
     "payments": {"payment", "payments", "billing", "invoices"},
     "migrations": {"migrations", "alembic"},
     "secrets": {"secrets"},
@@ -89,11 +92,16 @@ FILE_GLOBS = {
 CONTENT_WORDS = {
     "auth": [
         "auth", "token", "access_tokens", "refresh_tokens", "auth_tokens", "api_tokens",
-        "password", "passwd", "oauth", "jwt", "bearer", "csrf", "rbac", "cookie",
-        "authorization", "session", "login", "permission", "permissions",
+        "password", "passwd", "oauth", "oauth2", "jwt", "bearer", "csrf", "rbac", "cookie",
+        "authn", "authz", "authenticate", "authenticated", "authentication", "authenticator",
+        "authorize", "authorized", "authorizer", "unauthorized", "authorization",
+        "session", "login", "permission", "permissions",
     ],
     "payments": ["payment", "payments", "billing", "invoice", "stripe", "refund", "charge"],
-    "secrets": ["secret", "api_key", "apikey", "private_key", "cors", "content-security-policy"],
+    "secrets": [
+        "secret", "api_key", "api-key", "apikey", "private_key", "private-key", "cors",
+        "content-security-policy",
+    ],
     "external-effects": ["webhook", "smtp", "sendgrid", "twilio"],
     "data-mutation": ["backfill"],
 }

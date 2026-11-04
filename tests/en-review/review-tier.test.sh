@@ -137,12 +137,14 @@ in_repo 'plain_lines 1 .env.local'
 expect full risk:secrets "an .env variant"
 in_repo 'plain_lines 1 requirements-dev.txt'
 expect full risk:dependency "a requirements file"
+in_repo 'plain_lines 1 src/authentication/x.js'
+expect full risk:auth "a file under authentication/"
 in_repo 'plain_lines 1 src/authoring/x.js'
 expect quick under-limits "a segment that only starts with auth"
 
 # --- risk on content ----------------------------------------------------------
 add_line() { printf '%s\n' "$1" > "$2"; }
-for hit in 'const refresh_token = 1' 'const refreshToken = 1' 'x.headers.jwt = y' 'const apiKey = 1' 'send(Webhook)' 'const q = "backfill"'; do
+for hit in 'const refresh_token = 1' 'const refreshToken = 1' 'x.headers.jwt = y' 'const apiKey = 1' 'send(Webhook)' 'const q = "backfill"' 'authenticate(user)' 'if (isAuthorized) go()' 'use_oauth2()' 'h["x-api-key"] = v'; do
   in_repo "add_line '$hit' src/a.js"
   assert_eq "full" "$(field tier)" "content '$hit' raises the tier"
 done
