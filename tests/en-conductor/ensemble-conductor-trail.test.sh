@@ -49,6 +49,15 @@ assert_eq "$(wc -l < "$trail" | tr -d ' ')" "3" "a newline does not add a row"
 assert_eq "$(awk -F'\t' 'NR==3 {print NF "|" $6 "|" $7}' "$trail")" "7|a b|line1 line2" \
   "tabs and newlines become single spaces"
 
+# --- text the shell must not run is stored as written ---
+marker="$SCRATCH/injected"
+bash "$T" log decision route 'quote'\''s' "\$(touch $marker) \`touch $marker\`
+TXT
+)"
+assert_eq "$(tail -n 1 "$trail" | cut -f6)" "quote's" "a single quote survives"
+assert_eq "$(tail -n 1 "$trail" | cut -f7)" "\$(touch $marker) \`touch $marker\` TXT )" "shell syntax is stored as data"
+[ ! -e "$marker" ] && pass "nothing in the value ran" || fail "a logged value ran"
+
 # --- a second start supersedes ---
 err=$(start_run "two" 2>&1 >/dev/null)
 case "$err" in *"$trail"*) pass "a second start names the run it closed" ;;
@@ -71,6 +80,29 @@ bash "$T" finish done ship x
 assert_eq "$(rc_of bash "$T" latest)" "3" "finish done leaves nothing to resume"
 assert_eq "$(rc_of bash "$T" resume)" "3" "resume with nothing live exits 3"
 
+# --- a new run closes a stopped one ---
+trail=$(start_run "old"); bash "$T" finish stopped build reason
+new=$(start_run "new" 2>/dev/null)
+assert_eq "$(tail -n 1 "$trail" | cut -f2)" "superseded" "start closes a stopped run"
+assert_eq "$(bash "$T" latest)" "$new" "and latest is the new run"
+
+# --- a failed write fails, and start does not spin ---
+R=$(fresh_repo readonly); cd "$R" || exit 1
+trail=$(start_run "stuck"); chmod 444 "$trail"
+if [ -w "$trail" ]; then
+  pass "skipped: this user can write a read-only file"
+else
+  assert_eq "$(rc_of bash "$T" log stage build ok x)" "1" "log exits 1 on a failed write"
+  bash "$T" start --request r --route fix --done-when d >/dev/null 2>&1 & p=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$p" 2>/dev/null || break; sleep 1; done
+  if kill -0 "$p" 2>/dev/null; then
+    kill "$p"; fail "start must not spin when it cannot close a live run"
+  else
+    wait "$p"; assert_eq "$?" "1" "start exits 1 when it cannot close a live run"
+  fi
+fi
+chmod 644 "$trail"
+
 # --- usage and state errors ---
 R=$(fresh_repo errors); cd "$R" || exit 1
 assert_eq "$(rc_of bash "$T" log stage build ok x)" "3" "log with no run exits 3"
@@ -80,13 +112,15 @@ assert_eq "$(rc_of bash "$T" log bogus x y z)" "2" "an unknown event exits 2"
 assert_eq "$(rc_of bash "$T" log stage nowhere ok x)" "2" "an unknown stage exits 2"
 assert_eq "$(rc_of bash "$T" log stage build done x)" "2" "a stage row's what is ok, skipped or failed"
 assert_eq "$(rc_of bash "$T" start --request r --route elsewhere --done-when d)" "2" "an unknown route exits 2"
+assert_eq "$(rc_of bash "$T" start --route fix)" "2" "start without a request exits 2"
+assert_eq "$(rc_of bash "$T" finish maybe ship x)" "2" "an unknown finish state exits 2"
 
 # --- outside a repo ---
 mkdir -p "$SCRATCH/plain"; cd "$SCRATCH/plain" || exit 1
 for sub in "start --request r --route fix --done-when d" "log stage build ok x" "finish done ship x" latest resume; do
   # shellcheck disable=SC2086
   rc=$(rc_of env GIT_CEILING_DIRECTORIES="$SCRATCH" bash "$T" $sub)
-  [ "$rc" -ne 0 ] && pass "outside a repo, $sub exits non-zero" || fail "outside a repo, $sub must exit non-zero"
+  assert_eq "$rc" "1" "outside a repo, $sub exits 1"
 done
 assert_eq "$(find "$SCRATCH/plain" -type f | wc -l | tr -d ' ')" "0" "outside a repo nothing is written"
 

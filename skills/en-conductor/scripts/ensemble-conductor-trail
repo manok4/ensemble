@@ -15,7 +15,14 @@
 #   latest
 #   resume
 #
-# Exit: 0 ok; 1 not in a git repo; 2 usage; 3 no run in the required state.
+# Row meaning, what and why by event: start is request and predicate, with the
+# route in stage; stage is ok|skipped|failed and evidence; decision is a key and
+# a value; question is the question and its answer; finish is the state and the
+# reason. Resume reads three of these: `decision route plan`, `decision route
+# options`, and the plan stage row's evidence, which is the plan path.
+#
+# Exit: 0 ok; 1 not in a git repo, or a write failed; 2 usage; 3 no run in the
+# required state.
 
 set -u
 
@@ -37,7 +44,8 @@ row() { # <file> <event> <stage> <what> <why>
   branch=$(git symbolic-ref --short -q HEAD) || branch=detached
   head=$(git rev-parse -q --verify HEAD 2>/dev/null) || head=-
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    "$2" "$(clean "$3")" "$(clean "$branch")" "$head" "$(clean "$4")" "$(clean "$5")" >> "$1"
+    "$2" "$(clean "$3")" "$(clean "$branch")" "$head" "$(clean "$4")" "$(clean "$5")" >> "$1" \
+    || die 1 "cannot write $1"
 }
 
 state_of() { # <file>: open, stopped or closed
@@ -52,7 +60,7 @@ newest_live() { # newest open or stopped trail, or nothing. Names sort by time.
   [ -d "$DIR" ] || return 0
   while IFS= read -r f; do
     [ "$(state_of "$DIR/$f")" != closed ] && { printf '%s\n' "$DIR/$f"; return 0; }
-  done < <(ls -1 "$DIR" | grep '\.tsv$' | sort -r)
+  done < <(ls -1r "$DIR" | grep '\.tsv$')
 }
 
 require_open() {
@@ -84,7 +92,7 @@ cmd_start() {
   done
 
   path="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-$$.tsv"
-  printf 'ts\tevent\tstage\tbranch\thead\twhat\twhy\n' > "$path"
+  printf 'ts\tevent\tstage\tbranch\thead\twhat\twhy\n' > "$path" || die 1 "cannot write $path"
   row "$path" start "$route" "$request" "$done_when"
   printf '%s\n' "$path"
 }

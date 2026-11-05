@@ -3,5 +3,11 @@
   "kind": "fix",
   "invocation": "/ensemble:en-conductor",
   "base_from": "fix-plain",
-  "test_command": "node --test"
+  "test_command": "node --test",
+  "judge": [
+    {
+      "id": "routed-through-en-fix",
+      "expectation": "The assistant took the fix route, ran /en-fix rather than editing directly, reported its en-fix: ready or en-fix: shipped outcome, and wrote no plan."
+    }
+  ]
 }

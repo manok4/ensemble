@@ -31,57 +31,70 @@ case "$second" in *'product or preference'*) pass "second, ask a product or pref
 case "$third"  in *'Decide everything else'*) pass "third, decide the rest" ;; *) fail "branch 3 must decide the rest" "$third" ;; esac
 printf '%s\n' "$qp" | grep -E '^2\. ' | grep -qF 'even when the call could be reversed later' \
   && pass "a reversible product call is still asked" || fail "branch 2 must hold for a reversible call"
-printf '%s\n' "$qp" | grep -qF 'en-conductor: stopped at <stage>: <question>' \
-  && pass "with no question tool, a reserved call ends the run" || fail "the no-question-tool rule must end the run"
+assert_contains "$qp" 'en-conductor: stopped at <stage>: <question>' "with no question tool, a reserved call ends the run"
 
 # --- stages, in order ---
 st=$(section 'Stages')
 lines=""
-for s in Plan Build Learn QA Ship; do
+for s in Plan Build QA Learn Ship; do
   lines="$lines $(printf '%s\n' "$st" | grep -n "^| $s |" | head -1 | cut -d: -f1)"
 done
 [ "$(printf '%s\n' $lines | grep -c .)" -eq 5 ] && [ "$(printf '%s\n' $lines | sort -n | tr '\n' ' ')" = "$(printf '%s\n' $lines | tr '\n' ' ')" ] \
-  && pass "stages ordered plan, build, learn, qa, ship" || fail "stages must run plan, build, learn, qa, ship" "$lines"
+  && pass "stages ordered plan, build, qa, learn, ship" || fail "stages must run plan, build, qa, learn, ship" "$lines"
 
 printf '%s\n' "$st" | grep -E '^\| Ship \|' | grep -qF 'skipped under `--no-ship` or `local_only`' \
   && pass "Ship is skipped under --no-ship on the plan route" || fail "the Ship row must skip under --no-ship"
-printf '%s\n' "$st" | grep -qF "stage ship skipped" \
-  && pass "the skip is logged" || fail "the plan route must log the skipped Ship"
+assert_contains "$st" 'stage ship skipped' "the skip is logged"
 has 'never `--auto-merge`' "it never auto-merges"
 has "grep -Eiq '^- \\*\\*(Risk:\\*\\* (destructive|high)|Gated:\\*\\* true)' <plan-path>" "build placement reads the plan's risk and gates"
 has 'en-conductor: done' "the done marker"
 has 'en-conductor: stopped at <stage>: <reason>' "the stopped marker"
 
 # --- en-ship's exit states reach the reader (D113) ---
-for state in clean settled-externally escalated blocked; do
-  printf '%s\n' "$st" | grep -qF "\`$state\`" && pass "names en-ship's exit state $state" || fail "must name en-ship's exit state $state"
+for state in clean not-watched settled-externally escalated blocked; do
+  assert_contains "$st" "\`$state\`" "names en-ship's exit state $state"
 done
 has 'attempted no repair' "a blocked ship is not read as a failed stage"
 
 # --- learn rule: ci_environment decides nothing ---
 learn=$(section 'Learn rule')
 for signal in 'Scope widened:' 'P0 or P1 applied' 'redispatch or fallback' '`needs-decision`'; do
-  printf '%s\n' "$learn" | grep -qF -- "$signal" && pass "learn signal: $signal" || fail "the Learn rule must name: $signal"
+  assert_contains "$learn" "$signal" "learn signal: $signal"
 done
+
+# --- build placement really matches what the plan template writes ---
+placement=$(grep -oE "grep -Eiq '[^']+'" "$SK" | head -1 | sed -E "s/^grep -Eiq '//; s/'$//")
+for line in '- **Risk:** high' '- **Risk:** destructive' '- **Gated:** true'; do
+  printf '%s\n' "$line" | grep -Eiq "$placement" && pass "builds in session on: $line" || fail "must build in session on: $line"
+done
+for line in '- **Risk:** medium' '- **Gated:** false'; do
+  printf '%s\n' "$line" | grep -Eiq "$placement" && fail "must not force a session build on: $line" || pass "no session build on: $line"
+done
+grep -qE '^- \*\*Risk:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/plan-template.md" \
+  && grep -qE '^- \*\*Gated:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/plan-template.md" \
+  && pass "the plan template still writes those fields" || fail "the plan template no longer writes - **Risk:** and - **Gated:**"
+
+# --- a redispatch keeps the run's restrictions, and only the user answers ---
+assert_contains "$(section 'Fix outcomes')" 'Redispatch with the original flags' "a redispatch keeps --no-ship"
+assert_contains "$(section 'Fix outcomes')" 'Never decide it yourself' "the conductor never answers needs-decision itself"
 
 # --- fallback: a rerun never repeats work that landed ---
 agents=$(section 'Stage agents')
 for clause in 'reruns that stage once in session' 'record `HEAD`' 'git status --porcelain --untracked-files=no' '`gh pr view` finds no PR'; do
-  printf '%s\n' "$agents" | grep -qF -- "$clause" && pass "fallback: $clause" || fail "the fallback must state: $clause"
+  assert_contains "$agents" "$clause" "fallback: $clause"
 done
 
 # --- resume: the restriction and the code it describes survive ---
 res=$(section 'Resume')
-printf '%s\n' "$res" | grep -qF 'Flags given with `--resume` are refused' \
-  && pass "--resume refuses flags" || fail "--resume must refuse flags"
-printf '%s\n' "$res" | grep -qF '`branch` and `head` must equal the current branch and `HEAD`' \
-  && pass "--resume stops on a changed HEAD" || fail "--resume must stop on a changed HEAD"
+assert_contains "$res" 'Flags given with `--resume` are refused' "--resume refuses flags"
+assert_contains "$res" '`branch` and `head` must equal the current branch and `HEAD`' "--resume stops on a changed HEAD after Build"
+assert_contains "$res" 'its `head` must be an ancestor of `HEAD`' "--resume continues a build that committed after Plan"
+assert_contains "$res" 'would re-triage committed work' "--resume never starts a fresh /en-fix on committed work"
 
-printf '%s\n' "$res" | grep -qF 'never read a missing row as no flags' \
-  && pass "--resume stops when the flags row is missing" || fail "--resume must not read a missing flags row as no flags"
+assert_contains "$res" 'never read a missing row as no flags' "--resume stops when the flags row is missing"
 
 # --- free text cannot reach the shell ---
-has 'Free text never goes inside double quotes' "free text stays out of double quotes"
+has "with each \`'\` written as \`'\\''\`" "free text goes in single quotes"
 
 # --- /en-loop is named, never invoked ---
 if grep -qiE '(invoke|invoking|dispatch(es|ed)?) (the )?`?/en-loop' "$SK"; then
@@ -89,7 +102,6 @@ if grep -qiE '(invoke|invoking|dispatch(es|ed)?) (the )?`?/en-loop' "$SK"; then
 else
   pass "/en-loop never follows an invoke verb"
 fi
-section 'Named, never invoked' | grep -qF '`/en-loop`' \
-  && pass "/en-loop is in the named table" || fail "/en-loop must be in the named table"
+assert_contains "$(section 'Named, never invoked')" '`/en-loop`' "/en-loop is in the named table"
 
 report

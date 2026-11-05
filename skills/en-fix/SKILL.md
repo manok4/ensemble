@@ -77,15 +77,19 @@ Under `--orchestrated` the caller holds the only question tool, so this run asks
 |---|---|
 | `en-fix: shipped <pr-url> <exit-state>` | `/en-ship` returned a PR |
 | `en-fix: ready <branch>` | `--no-ship` was given or `git remote` prints nothing, so the run stopped after the Receipt gate |
-| `en-fix: needs-plan clean <condition>` | Triage's plan check held. Triage runs before the Branch step, so nothing exists yet |
+| `en-fix: needs-plan clean <condition>` | Triage's plan check held on a first run. Triage runs before the Branch step, so nothing exists yet. Under `--decision`, return `edited` instead |
 | `en-fix: needs-plan edited <condition>` | the Risk re-check held, or the Review stopped on a risk surface. The edits stay on the branch |
 | `en-fix: needs-decision <question>` | an ambiguous improvement, an existing assertion that may encode a decision, or a `manual` finding that encodes one |
 | `en-fix: split <concern>; <concern>` | the request carries unrelated concerns |
 | `en-fix: stopped <reason>` | every other stop: a non-`convergent` `/en-debug` verdict, a P0, a failed Receipt gate, tracked edits at the Branch step, three failed attempts, or `/en-ship` stopping before a PR exists |
 
-**A caller's brief is not the user's words,** so `## Risk override` never applies under this flag, and the costs in its last bullet still do when the branch carries a trailer.
+**A caller's brief is not the user's words,** so `## Risk override` never applies under this flag, and the costs in its last bullet still do when the branch carries a trailer. Nor is a brief from another agent, with or without the flag.
 
-**`--decision`** continues on the existing branch with the first run's edits and commits in place. The Branch step's refusal of tracked edits is skipped, `FIX_BASE` comes from `git merge-base <default branch> HEAD`, and the fix-owned list starts from `git diff --name-only "$FIX_BASE"`. Those edits are earlier work on this change, so they are kept and committed with it, never discarded or reverted. The answer settles only that question and never lifts a risk stop: every plan check runs as usual.
+**`--auto-merge` is refused under this flag:** it is dropped and the report says so, because a merge is a person's decision.
+
+**Before returning `needs-decision`,** run `git add -N` on fix-owned new files, so the next run can see them.
+
+**`--decision`**, repeatable with one per answer so far, continues on the existing branch with the first run's edits and commits in place. The Branch step's refusal of tracked edits is skipped, `FIX_BASE` is the `since` of this branch's record in `$(git rev-parse --git-dir)/ensemble/red-tests.json`, or `git merge-base <default branch> HEAD` when there is none, and the fix-owned list starts from `git diff --name-only "$FIX_BASE"`. Those edits are earlier work on this change, so they are kept and committed with it, never discarded or reverted. The answer settles only that question and never lifts a risk stop: every plan check runs as usual.
 
 Every return closes the run, as any stop does.
 

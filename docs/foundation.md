@@ -451,7 +451,7 @@ The count read **fourteen** until 2026-09-03, and had done since en-flow, now `e
   1. Recursion guard; preflight: host, question tool, `git remote` (none records `local_only`, a terminal success), and a tracked-dirty tree stops the run.
   2. Route: `--plan` or a design doc to the plan route, exploring to `/en-brainstorm`, a new product to `/en-foundation`, standalone requests are named and the run ends, and otherwise `references/plan-or-fix.md` chooses plan or fix.
   3. Definition of done, written with the trail's `start`.
-  4. Fix route: `/en-fix --orchestrated`, branching on seven named outcomes. Plan route: `/en-plan --orchestrated`, `/en-build --orchestrated`, `/en-learn capture` under its learn rule, `/en-qa` when `needs_browser` is true, then `/en-ship`, never `--auto-merge`; Ship is skipped under `--no-ship` or `local_only`.
+  4. Fix route: `/en-fix --orchestrated`, branching on seven named outcomes. Plan route: `/en-plan --orchestrated`, `/en-build --orchestrated`, `/en-qa` when `needs_browser` is true, `/en-learn capture` under its learn rule, then `/en-ship`, never `--auto-merge`; Ship is skipped under `--no-ship` or `local_only`.
   5. Report ending `en-conductor: done` or `en-conductor: stopped at <stage>: <reason>`.
 - **Question policy.** Answer it by running or reading; ask a product or preference call or an irreversible action; decide the rest and report it. With no question tool, a reserved call ends the run.
 - **Where stages run.** Session for what may ask; fresh subagents for the rest on Claude Code, with one guarded rerun in session; a plan with destructive, high-risk or gated units builds in session; Codex runs everything in session.
@@ -524,7 +524,7 @@ The count read **fourteen** until 2026-09-03, and had done since en-flow, now `e
 
 - **Purpose.** Run a bounded, objective-driven autonomous loop (the ralph / good-night-have-fun pattern): keep an agent working one committed test-gated slice per iteration until an evidence-based stop condition. Wraps the `gnhf` CLI for the loop engine; adds Ensemble's per-iteration test-gate worker contract and branch-level cross-agent review at checkpoints. Manual-invoke only (`disable-model-invocation: true`); the user always starts an overnight loop explicitly.
 - **When to use (vs neighbors).**
-  - vs `/en-conductor` — en-conductor routes one defined request through to a ready-for-review PR and only names en-loop; en-loop only ever starts by hand and is open-ended (scope not fully enumerated, chipped one slice per iteration until a natural-language stop condition).
+  - vs `/en-conductor`: en-conductor routes one defined request through to a ready-for-review PR and only names en-loop; en-loop only ever starts by hand and is open-ended (scope not fully enumerated, chipped one slice per iteration until a natural-language stop condition).
   - vs the built-in `/loop` — `/loop` re-invokes a prompt on a fixed interval in-session; en-loop is objective-driven with commit / rollback / retry and a supervised gnhf process that survives the session.
   - vs `/en-build` — en-build executes known plan units; en-loop discovers its slices in the loop. A peer-reviewed plan belongs in `/en-build`, not en-loop.
 - **Process (high-level).** (`skills/en-loop/SKILL.md` is canonical; this is a summary.)

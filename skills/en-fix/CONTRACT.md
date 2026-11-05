@@ -8,13 +8,13 @@ Owned by `en-fix`. Callers depend on this page, not on `SKILL.md`.
 |---|---|
 | `/en-fix <request>` | a person |
 | `/en-fix <request> --orchestrated [--no-ship] [--no-watch]` | `en-conductor`, on the fix route |
-| `/en-fix <request> --orchestrated --decision "<question>: <answer>"` | `en-conductor`, continuing a `needs-decision` return on the same branch, with the earlier edits and commits in place |
+| `/en-fix <request> --orchestrated [--no-ship] [--no-watch] --decision "<question>: <answer>"` | `en-conductor`, continuing a `needs-decision` return on the same branch, with the earlier edits and commits in place; `--decision` repeats, one per answer so far |
 
 ## Non-interactive guarantee
 
 Under `--orchestrated` this skill **never asks**. Every stop returns one of the
 outcomes below. A caller's brief is not the user's words, so it never lifts a
-risk stop, and neither does a `--decision` answer.
+risk stop, and neither does a `--decision` answer. `--auto-merge` is refused.
 
 ## Return
 

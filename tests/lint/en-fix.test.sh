@@ -308,6 +308,11 @@ grep -qF 'never a host substitution such as `$ARGUMENTS`' "$SK" \
 grep -qF 'never discarded or reverted' "$SK" \
   && pass "--decision never discards earlier edits" || fail "--decision must say earlier edits are never discarded"
 
+grep -qF '**`--auto-merge` is refused under this flag:**' "$SK" \
+  && pass "--auto-merge is refused under --orchestrated" || fail "--orchestrated must refuse --auto-merge"
+grep -F 'en-fix: needs-plan clean' "$SK" | grep -qF 'Under `--decision`, return `edited`' \
+  && pass "needs-plan clean is first-run only" || fail "needs-plan clean must not apply under --decision"
+
 # --- caller mode: one named outcome, and a brief lifts nothing (EN27 U3) ---
 orch=$(awk '/^## Orchestrated/{f=1; next} f&&/^## /{exit} f' "$SK")
 for line in 'en-fix: shipped <pr-url> <exit-state>' 'en-fix: ready <branch>' 'en-fix: needs-plan clean <condition>' \

@@ -248,29 +248,34 @@ key_home="$key_tmp/home"
 key_shim="$key_tmp/bin"
 mkdir -p "$key_home/.ensemble" "$key_shim"
 for c in claude codex; do printf '#!/usr/bin/env bash\necho "{}"\n' > "$key_shim/$c"; chmod +x "$key_shim/$c"; done
-plant() { printf "HOST='%s'\nPEER='planted'\nPEER_MODE='cross-agent'\n" "$1" > "$key_home/.ensemble/host-cache-$1.env"; }
+plant() { printf "HOST='%s'\nPEER='planted'\nPEER_MODE='cross-agent'\n" "$1" > "$key_home/.ensemble/$2"; }
 key_detect() { env -i PATH="$key_shim:/usr/bin:/bin" HOME="$key_home" "$@" "$DETECT" 2>/dev/null; }
+key_reset() { rm -f "$key_home/.ensemble/"*.env; unset HOST PEER; }
 
-plant codex
-unset HOST PEER; eval "$(key_detect CLAUDECODE=1)"
-assert_eq "claude-code" "${HOST:-}" "[cache-key] CLAUDECODE beats a fresh codex cache"
-assert_eq "codex" "${PEER:-}" "[cache-key] and the peer is the other CLI"
+# With only codex on PATH the inverse-CLI fallback says codex, so a claude-code
+# answer can only come from the live signal, not from the fallback.
+rm -f "$key_shim/claude"
+for signal in CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli; do
+  key_reset; plant codex host-cache-codex.env; plant codex host-cache.env
+  eval "$(key_detect "$signal")"
+  assert_eq "claude-code" "${HOST:-}" "[cache-key] $signal beats a fresh codex cache, keyed or old"
+  assert_eq "codex" "${PEER:-}" "[cache-key] and the peer is the other CLI, not a cached one"
+done
+printf '#!/usr/bin/env bash\necho "{}"\n' > "$key_shim/claude"; chmod +x "$key_shim/claude"
 
-unset HOST PEER; rm -f "$key_home/.ensemble/host-cache-claude-code.env"; eval "$(key_detect CLAUDE_CODE_ENTRYPOINT=cli)"
-assert_eq "claude-code" "${HOST:-}" "[cache-key] CLAUDE_CODE_ENTRYPOINT is a live signal"
-
-rm -f "$key_home/.ensemble/"*.env; plant claude-code; before=$(cat "$key_home/.ensemble/host-cache-claude-code.env")
-unset HOST PEER; eval "$(key_detect CODEX_HOME=/x)"
+key_reset; plant claude-code host-cache-claude-code.env; before=$(cat "$key_home/.ensemble/host-cache-claude-code.env")
+eval "$(key_detect CODEX_HOME=/x)"
 assert_eq "codex" "${HOST:-}" "[cache-key] CODEX_HOME beats a fresh claude-code cache"
 assert_eq "$before" "$(cat "$key_home/.ensemble/host-cache-claude-code.env")" "[cache-key] the other host's file is untouched"
 
-rm -f "$key_home/.ensemble/"*.env; plant codex
-unset HOST PEER; eval "$(key_detect ENSEMBLE_HOST=claude-code)"
-assert_eq "claude-code" "${HOST:-}" "[cache-key] ENSEMBLE_HOST beats a fresh codex cache"
+# Both CLIs on PATH: the fallback says claude-code, so codex can only come from ENSEMBLE_HOST.
+key_reset; plant claude-code host-cache-claude-code.env; plant claude-code host-cache.env
+eval "$(key_detect ENSEMBLE_HOST=codex)"
+assert_eq "codex" "${HOST:-}" "[cache-key] ENSEMBLE_HOST beats a fresh cache from the other host"
 
 # Same host, fresh file: the slow probe does not rerun.
-rm -f "$key_home/.ensemble/"*.env; plant claude-code
-unset HOST PEER; eval "$(key_detect CLAUDECODE=1)"
+key_reset; plant claude-code host-cache-claude-code.env
+eval "$(key_detect CLAUDECODE=1)"
 assert_eq "planted" "${PEER:-}" "[cache-key] the same host reads its own cache"
 rm -rf "$key_tmp"
 unset HOST PEER

@@ -17,7 +17,7 @@ One skill to work through. It reads the request, picks the route, runs each stag
 
 ## Invocation
 
-`/en-conductor <request>`, where the request is free text or a path to a design doc.
+`/en-conductor <request>`, where the request is free text or a path to a design doc. Only the flags below are flags: any other flag-shaped word in the request stays text, and `--auto-merge` is refused.
 
 | Flag | Effect |
 |---|---|
@@ -49,22 +49,22 @@ So which test seam to use is decided, and which of two user-facing error message
    - A new product, or `docs/foundation.md` absent with a product-shaped request: foundation.
    - A request matching `## Named, never invoked`: name the command, print `en-conductor: done`, and stop. No trail is written.
    - Otherwise test the request's words, and the content of any file it names, against `references/plan-or-fix.md`. Any condition takes the plan route and none takes the fix route. No diff exists yet, so the diff-signal check stays with `/en-fix`, whose Triage and Risk re-check catch what routing cannot see.
-4. **Definition of done.** Write one checkable sentence from the request plus the route's gates, and record it: `bash "$SKILL_DIR/scripts/ensemble-conductor-trail" start --request "<words>" --route <fix|plan|brainstorm|foundation> --done-when "<sentence>"`. Then record the effective flags with `log decision route options "<flags>"`, writing `none` when there are none.
+4. **Definition of done.** Write one checkable sentence from the request plus the route's gates, and record it: `bash "$SKILL_DIR/scripts/ensemble-conductor-trail" start --request '<words>' --route <fix|plan|brainstorm|foundation> --done-when '<sentence>'`. Then record the effective flags with `log decision route options '<flags>'`, writing `none` when there are none.
 
-   **Free text never goes inside double quotes.** A request, a condition or a stage's reason can hold `$(...)` or backticks, and the shell would run them. Assign it first with a quoted heredoc, `why=$(cat <<'TXT'` then the text then `TXT` and `)`, and pass `"$why"`, on every `start`, `log` and `finish`.
-5. **Run the stages** for the route, per `## Stages`. Log each with `log stage <stage> <ok|skipped|failed> "<evidence>"` and print one line per stage. A long stage agent shows nothing until it returns, and the trail on disk names the last finished stage.
-6. **Report.** Route, the definition of done and whether it holds, the stages, every decision and question from the trail, and the PR URL with its exit state, or the branch when nothing was pushed. Close the trail with `finish <done|stopped> <stage> "<reason>"`. The last line is `en-conductor: done` or `en-conductor: stopped at <stage>: <reason>`, on every path.
+   **Free text goes in single quotes, with each `'` written as `'\''`.** On every `start`, `log` and `finish`, and for any path in a shell command. A request, a condition or a stage's reason is data: double quotes would run a `$(...)` inside it, and a heredoc ends at any line equal to its delimiter.
+5. **Run the stages** for the route, per `## Stages`. Log each with `log stage <stage> <ok|skipped|failed> '<evidence>'` and print one line per stage. A long stage agent shows nothing until it returns, and the trail on disk names the last finished stage.
+6. **Report.** Route, the definition of done and whether it holds, the stages, every decision and question from the trail, and the PR URL with its exit state, or the branch when nothing was pushed. Close the trail with `finish <done|stopped> <stage> '<reason>'`. The last line is `en-conductor: done` or `en-conductor: stopped at <stage>: <reason>`, on every path.
 
 ## Stages
 
-Plan route: Plan, Build, Learn, QA, Ship. Fix route: Fix. Brainstorm and foundation routes: that stage alone.
+Plan route: Plan, Build, QA, Learn, Ship. Fix route: Fix. Brainstorm and foundation routes: that stage alone.
 
 | Stage | Where | Invocation | Gate |
 |---|---|---|---|
 | Plan | session | invoke `/en-plan --orchestrated --branch-on-default y <request>`, skipped under `--plan` | plan file at `status: open`, with its path logged as the stage's evidence. `draft` stops and names `/en-plan --resume`. A `plan_store: linear` refusal stops and repeats its next command |
-| Build | agent, or session | invoke `/en-build <plan-path> --orchestrated` | audit `verdict: ok` and a `review-verdict:` trailer in `git log <merge-base>..HEAD`. A failed audit stops before Ship and names `/en-review --peer <sha>`. `gate_required: U<N>` or `needs-decision: U<N>: <question>` reruns `/en-build <plan-path> --from U<N> --orchestrated` in session, where the skill's own prompt reaches the user |
-| Learn | session | invoke `/en-learn capture`, only under `## Learn rule` | logged as a `decision` either way, never asked |
+| Build | agent, or session | invoke `/en-build <plan-path> --orchestrated` | audit `verdict: ok` and a `review-verdict:` trailer in `git log <merge-base>..HEAD`. A failed audit stops before Ship and names `/en-review --peer <sha>`. `gate_required: U<N>` or `needs-decision: U<N>: <question>` logs `decision build redispatch '<the line>'` and reruns `/en-build <plan-path> --from U<N> --orchestrated` in session, where the skill's own prompt reaches the user |
 | QA | agent | invoke `/en-qa`, only when `needs_browser` is true for the branch diff (`references/diff-signal-detection.md`) | every system check passes and no flow is `Fail`. A `Fail` stops the run before Ship and names the flow |
+| Learn | session | invoke `/en-learn capture`, only under `## Learn rule`; skipped when Ship is skipped | a `stage` row and a `decision` row either way, never asked |
 | Ship | agent | invoke `/en-ship`, adding `--no-watch` when given; never `--auto-merge`; skipped under `--no-ship` or `local_only` | `gh pr view --json url,state,isDraft` confirms the PR, and the exit state is recorded. See below |
 | Fix | agent | invoke `/en-fix <request> --orchestrated`, adding `--no-ship` under `--no-ship` or `local_only`, and `--no-watch` when given | branch on the seven `en-fix:` lines, per `## Fix outcomes` |
 | Brainstorm | session | invoke `/en-brainstorm <request>` | the run ends, naming `/en-conductor <design-path>` |
@@ -72,7 +72,7 @@ Plan route: Plan, Build, Learn, QA, Ship. Fix route: Fix. Brainstorm and foundat
 
 A stage's report is a claim, which is why Build and Ship confirm it from git and GitHub. **Never re-run simplify or review at the top level:** `/en-build` runs `/en-simplify` and `/en-review --cross` inside its own post-build phase (D52).
 
-**Ship's exit state.** `clean` and `settled-externally` are done. `escalated` names the open findings. `blocked` attempted no repair and is not evidence about the code, so it is reported verbatim and not rerun. `/en-ship`'s watch loop is capped at 2 cycles. Under `--no-ship` or `local_only`, the plan route skips Ship, logs `stage ship skipped <reason>`, and the report names the branch and says nothing was pushed.
+**Ship's exit state.** `clean` is done. `not-watched` is done with the PR open and CI not watched. `settled-externally` is done when `gh pr view` says merged and a stop when it says closed. `escalated` names the open findings. `blocked` attempted no repair and is not evidence about the code, so it is reported verbatim and not rerun. `/en-ship`'s watch loop is capped at 2 cycles. Under `--no-ship` or `local_only`, the plan route skips Ship, logs `stage ship skipped <reason>`, and the report names the branch and says nothing was pushed.
 
 **QA and Ship have no question tool, and need none.** Both contracts allow it: `/en-qa` never blocks when a caller drives, and `/en-ship` is hands-off by default. A stop from either is reported as a stop, never rerun. `/en-ship`'s typed confirmation for a push to the default branch cannot arise, because the plan route leaves the default branch at the Plan stage.
 
@@ -80,7 +80,7 @@ A stage's report is a claim, which is why Build and Ship confirm it from git and
 
 ## Learn rule
 
-Every orchestrated build records `learning_checkpoint: ci_environment`, so that value decides nothing. Capture when the branch shows at least one of: a `Scope widened:` line in a commit body, a P0 or P1 applied in the review, a logged redispatch or fallback, or a logged `needs-decision`. Otherwise log `decision learn skip "<reason>"`. `/en-learn` applies its own gate and writes nothing that fails it, so a false positive costs one read.
+Every orchestrated build records `learning_checkpoint: ci_environment`, so that value decides nothing. Capture when the branch shows at least one of: a `Scope widened:` line in a commit body, a P0 or P1 applied in the review, a logged redispatch or fallback, or a logged `needs-decision`. Otherwise log `decision learn skip '<reason>'`. `/en-learn` applies its own gate and writes nothing that fails it, so a false positive costs one read. **Learn runs right before Ship and never without it,** because capture always archives the plan as shipped and stages that move: run earlier, a QA stop or a `--no-ship` run would leave a plan claiming it shipped.
 
 ## Stage agents
 
@@ -88,7 +88,7 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 
 > Invoke the skill named below with these exact arguments. You have no way to ask the user: anything you would ask ends your turn with the question stated. Return the skill's contract fields verbatim, and its last line unchanged.
 
-**Fallback.** An agent that returns none of the stage's contract fields, or a refused `Agent` call, reruns that stage once in session and logs `decision <stage> fallback "<why>"`. Before each agent stage, record `HEAD`. Rerun only when `HEAD` is unchanged, `git status --porcelain --untracked-files=no` is clean, and, for Ship and Fix, `gh pr view` finds no PR for the branch. Otherwise stop and report the new commits, edits or PR, so a rerun never repeats work that already landed. A person continues from there with `--resume`.
+**Fallback.** An agent that returns none of the stage's contract fields, or a refused `Agent` call, reruns that stage once in session and logs `decision <stage> fallback '<why>'`. Before each agent stage, record `HEAD`. Rerun only when `HEAD` is unchanged, `git status --porcelain --untracked-files=no` is clean, and, for Ship and Fix, `gh pr view` finds no PR for the branch. Otherwise stop and report the new commits, edits or PR, so a rerun never repeats work that already landed. A person continues from there with `--resume`, after committing or stashing any tracked edits, which Preflight otherwise stops on.
 
 ## Fix outcomes
 
@@ -96,19 +96,23 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 |---|---|
 | `en-fix: shipped <pr-url> <exit-state>` | Confirm the PR, and apply Ship's exit-state meaning |
 | `en-fix: ready <branch>` | Report the branch and that nothing was pushed. Name `/en-qa` as the next step when `needs_browser` is true for the branch diff |
-| `en-fix: needs-plan clean <condition>` | Log `decision route plan "<condition>"` and take the plan route |
+| `en-fix: needs-plan clean <condition>` | Log `decision route plan '<condition>'` and take the plan route |
 | `en-fix: needs-plan edited <condition>` | Stop, name the condition, and say the edits are on the branch. Whether to keep them is the user's call |
-| `en-fix: needs-decision <question>` | Apply the question policy, then redispatch with `--decision "<question>: <answer>"`. Stop after two redispatches |
+| `en-fix: needs-decision <question>` | Answer it from something you can run or read, or ask the user. Never decide it yourself: `/en-fix` returns this only for a call that is the user's, so with no question tool the run stops with the question. Before redispatching, confirm `HEAD` and `git status --porcelain --untracked-files=no` match what they were when this line returned, or stop and name what changed. Redispatch with the original flags plus one `--decision '<question>: <answer>'` per answer so far. Stop after two redispatches |
 | `en-fix: split <concern>; <concern>` | Report each concern as its own `/en-conductor <concern>` |
 | `en-fix: stopped <reason>` | Report it verbatim |
 
-**A risk stop is not this skill's to lift.** D142 needs the user's own words in the conversation that runs `/en-fix`, so the report tells them to run `/en-fix` directly. On `shipped`, the report also names `/en-qa` when `needs_browser` is true for the branch diff, since `/en-fix` ships inside its own stage.
+**A risk stop is not this skill's to lift.** D142 needs the user's own words in the conversation that runs `/en-fix`, so the report tells them to run `/en-fix` directly and say so in their own words. After `needs-plan edited` it says to stash the edits first, because `/en-fix` refuses to start on tracked edits. On `shipped`, the report also names `/en-qa` when `needs_browser` is true for the branch diff, since `/en-fix` ships inside its own stage.
 
 ## Resume
 
 `--resume` reads `ensemble-conductor-trail latest` and exits with a message on `no-open-run`. Flags given with `--resume` are refused, so a `--no-ship` run cannot lose its restriction. A trail with no `decision route options` row stops the run and says to pass the flags on a new `/en-conductor`: never read a missing row as no flags.
 
-It calls `resume`, then reads the route from the last `decision route plan` row or else the `start` row, the flags from the `decision route options` row, and the plan path from the `plan` stage row's evidence. A stage counts as finished only on a `stage` row whose `what` is `ok` or `skipped`. If any such row exists, the last one's `branch` and `head` must equal the current branch and `HEAD`. If either differs, stop and name both, because earlier Build or QA results may no longer describe the code.
+It calls `resume`, then reads the route from the last `decision route plan` row or else the `start` row, the flags from the `decision route options` row, and the plan path from the `plan` stage row's evidence. A stage counts as finished only on a `stage` row whose `what` is `ok` or `skipped`. Then check the code still matches what those rows describe:
+
+- **The last finished stage is `build`, `qa`, `learn` or `ship`:** its `branch` and `head` must equal the current branch and `HEAD`. If either differs, stop and name both, because earlier Build or QA results may no longer describe the code. The report names `/en-review` and `/en-ship` as the way forward by hand.
+- **The last finished stage is `plan`:** its `head` must be an ancestor of `HEAD`, since Build commits and may create the branch. If it is not, stop and name both.
+- **The fix route with commits past the default branch:** stop, because a fresh `/en-fix` would re-triage committed work. Name its own continuation: `/en-review --mode headless`, then `/en-ship`.
 
 Then continue at the first unfinished stage, re-invoking the skill: `/en-build`'s unit loop records finished units as already satisfied, and `/en-ship` updates an existing PR. A `stopped` run resumes the same way.
 
