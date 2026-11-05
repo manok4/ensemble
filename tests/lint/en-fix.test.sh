@@ -56,9 +56,8 @@ step_line_matching() { step_lines "$1" | grep -m1 -E "$2"; }
 
 frontmatter=$(awk 'NR==1 && /^---$/{on=1; next} on && /^---$/{exit} on' "$SK")
 printf '%s' "$frontmatter" | grep -qx 'disable-model-invocation: true' \
-  && pass "it is user-invoked only" \
-  || fail "SKILL.md must carry disable-model-invocation: true" \
-          "a skill that pushes and opens a PR must not trigger on 'fix this typo'"
+  && fail "SKILL.md must not carry disable-model-invocation: true" "/en-conductor invokes it, and D84 bars a manual callee" \
+  || pass "it is model-invocable, so /en-conductor can invoke it"
 [ ! -f "$REPO_ROOT/skills/en-fix/CONTRACT.md" ] \
   && pass "it carries no CONTRACT.md, since no skill invokes it" \
   || fail "en-fix must not carry a CONTRACT.md" "contract-shape requires callers for one"
@@ -305,5 +304,22 @@ grep -qF -- '`--auto-merge` only when the user gave them' <<<"$shp_text" \
 grep -qF 'never a host substitution such as `$ARGUMENTS`' "$SK" \
   && pass "sub-skills receive the user's words, not \$ARGUMENTS (D70)" \
   || fail "SKILL.md must pass words, never \$ARGUMENTS (D70)"
+
+# --- caller mode: one named outcome, and a brief lifts nothing (EN27 U3) ---
+orch=$(awk '/^## Orchestrated/{f=1; next} f&&/^## /{exit} f' "$SK")
+for line in 'en-fix: shipped <pr-url> <exit-state>' 'en-fix: ready <branch>' 'en-fix: needs-plan clean <condition>' \
+            'en-fix: needs-plan edited <condition>' 'en-fix: needs-decision <question>' \
+            'en-fix: split <concern>; <concern>' 'en-fix: stopped <reason>'; do
+  case "$orch" in *"\`$line\`"*) pass "the Orchestrated section names: $line" ;;
+    *) fail "## Orchestrated must name the outcome: $line" ;; esac
+done
+grep -qF '| `--no-ship` |' "$SK" && grep -qF '| `--decision "<question>: <answer>"` |' "$SK" \
+  && pass "the flag table declares --no-ship and --decision" \
+  || fail "the flag table must declare --no-ship and --decision"
+case "$orch" in *"A caller's brief is not the user's words"*) pass "a caller's brief does not lift a risk stop" ;;
+  *) fail "## Orchestrated must say a caller's brief does not lift a risk stop" ;; esac
+case "$orch" in *'never lifts a risk stop'*'edits and commits in place'*|*'edits and commits in place'*'never lifts a risk stop'*)
+    pass "--decision continues with edits in place and never lifts a risk stop" ;;
+  *) fail "--decision must keep edits in place and never lift a risk stop" ;; esac
 
 report
