@@ -243,7 +243,7 @@ the reason, so the chain cannot reach the state where the plan is in Linear and 
 is holding a path that no longer exists. Enforced, not merely documented: a documented
 boundary fails after the publish, which is the expensive half.
 
-**The signal is a flag, not an inference.** `/en-flow` always invokes `/en-plan --from-flow`.
+**The signal is a flag, not an inference.** `/en-flow` always invokes `/en-plan --orchestrated`.
 On that flag, resolve `plan_store` first, the same read the publish step makes, and on
 `linear` stop before research or drafting: "`/en-flow` needs a plan file, and this repo's
 `plan_store` is `linear`. Run `/en-plan` on its own, then `/en-build <IDENT>`." Without the

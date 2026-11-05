@@ -24,7 +24,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`. **With `--from-flow`**, read `plan_store` as the Linear publish step does; on `linear`, refuse now, per `references/linear-publish.md`'s `/en-flow` boundary.
+1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`. **With `--orchestrated`**, read `plan_store` as the Linear publish step does; on `linear`, refuse now, per `references/linear-publish.md`'s `/en-flow` boundary.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
    - **`--resume <plan-path|IDENT>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step. An identifier (`ENG-412`) amends a published plan: read `references/linear-intake.md`.
@@ -42,8 +42,8 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
    **Read `references/plan-intake.md` here.** It owns the bounded foundation read (`docs/foundation.md` runs past 2,000 lines and is never read whole: section index first, then the sections you need), the rule that a matching design doc's decisions are already settled and must not be re-asked, the context-sufficiency check that offers `/en-brainstorm`, and the brainstorm soft-nudge. Proceeding is always allowed; neither is a hard gate.
 
-   **Infer `plan_type`**: `feature` (net-new behavior), `improvement` (refactor, perf, DX, TD) or `bug`. Default `feature`, and confirm when the request is ambiguous.
-5. **Route, then right-size depth.** Before any research, test the request against `references/plan-or-fix.md`. When none of its conditions holds, offer `/en-fix` instead, naming why: "Nothing here needs a plan: <reason>. `/en-fix <request>` takes it to a PR without one. Plan anyway?" If they take it, close the run as the hand-off does and stop: **no file, no U-IDs, no peer review**, and `/en-build` cannot run, since it consumes a plan file. Never offer it on a `--resume` or `--from-legacy` run, when the user asked for a plan file, or when a condition holds; **a risk surface (authentication, payments, migrations, external contracts) always gets the plan**, however small.
+   **Infer `plan_type`**: `feature` (net-new behavior), `improvement` (refactor, perf, DX, TD) or `bug`. Default `feature`, and confirm when the request is ambiguous; under `--orchestrated`, take the default.
+5. **Route, then right-size depth.** Before any research, test the request against `references/plan-or-fix.md`. When none of its conditions holds, offer `/en-fix` instead, naming why: (never under `--orchestrated`, where the caller already routed) "Nothing here needs a plan: <reason>. `/en-fix <request>` takes it to a PR without one. Plan anyway?" If they take it, close the run as the hand-off does and stop: **no file, no U-IDs, no peer review**, and `/en-build` cannot run, since it consumes a plan file. Never offer it on a `--resume` or `--from-legacy` run, when the user asked for a plan file, or when a condition holds; **a risk surface (authentication, payments, migrations, external contracts) always gets the plan**, however small.
    - Lightweight: 1–3 units, a file or two, no architecture changes.
    - Standard: 3–10 units, several files, possible new components.
    - Deep: 10+ units, structural change, multi-week work.
@@ -56,7 +56,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - `web-research` — only if a 3rd-party library not used elsewhere AND the library has known footguns AND the user hasn't said "skip web research". Recognising the library's name is not knowing its current state: a name from a fast-moving area is a reason to fire, not to skip.
 
    Do not wait for research before round 1. The architecture question rarely depends on it; ask it while the agents run, and let round 2 read their results.
-7. **Resolve planning questions — frontier rounds.** Ask every question whose prerequisites are settled in **one numbered round**, each carrying your **recommended answer**, so a round is "confirm these, correct what I got wrong" rather than "answer these". A question that depends on another still open **in this round** waits for the next round; that dependency rule is what keeps batching from producing diluted answers. Skip anything the design doc already settled or research already answered; facts in the repo are looked up, never asked.
+7. **Resolve planning questions — frontier rounds.** Ask every question whose prerequisites are settled in **one numbered round**, each carrying your **recommended answer**, so a round is "confirm these, correct what I got wrong" rather than "answer these". A question that depends on another still open **in this round** waits for the next round; that dependency rule is what keeps batching from producing diluted answers. Skip anything the design doc already settled or research already answered; facts in the repo are looked up, never asked. **Under `--orchestrated`, classify each question first:** a repo fact is looked up; a product or preference call, or an irreversible action, is asked, even when it could be reversed later; anything else takes your recommended answer and is recorded under `## Decisions, assumptions & risks`.
 
    Two rounds is the natural shape, because file boundaries and test strategy both partly depend on the architecture answer:
 
@@ -137,7 +137,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
       Verdict: approve. Generated by /en-plan.
       ```
     - Does not push. Does not open a PR. `/en-ship` owns those.
-20. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning.
+20. **Capture-from-synthesis reflex (D21).** Soft-prompt to capture any non-obvious pattern that emerged during planning as a learning. Skipped under `--orchestrated`.
 21. **Hand off to `/en-build`, in a fresh session**: the plan is the handoff. Close the run first: `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`.
     > "Plan written and finalized: `docs/plans/active/EN07-feature_auth-rotation.md` (5 units, status: open, committed as <commit-sha>). Ready to build with `/en-build <that path>`?"
 
@@ -145,7 +145,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 | Flag | Effect |
 |---|---|
-| `--from-flow` | Set by `/en-flow`; Detect host refuses under `plan_store: linear`. |
+| `--orchestrated` | A caller is driving. Detect host refuses under `plan_store: linear`; the source, route, frontier and capture steps change as they say. The reject path, the cap-hit question and the destructive-order refusal stay. |
 | `--no-peer` | Skip peer review entirely. Plan is left at `status: open` with `peer_review_verdict: null` (legacy/no-peer mode). |
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
 | `--max-iterations <N>` | Raise the re-loop cap above 1. |
