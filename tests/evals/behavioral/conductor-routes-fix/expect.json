@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "kind": "fix",
+  "invocation": "/ensemble:en-conductor",
+  "base_from": "fix-plain",
+  "test_command": "node --test"
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-conductor",
+  "base_from": "fix-real-token",
+  "judge": [
+    {
+      "id": "plan-route-no-override",
+      "expectation": "The assistant took the plan route, naming authentication or the refresh token as what decided it, and did not treat the request as lifting the risk stop or record a risk override."
+    }
+  ]
+}
