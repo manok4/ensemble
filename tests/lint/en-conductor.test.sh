@@ -77,6 +77,12 @@ printf '%s\n' "$res" | grep -qF 'Flags given with `--resume` are refused' \
 printf '%s\n' "$res" | grep -qF '`branch` and `head` must equal the current branch and `HEAD`' \
   && pass "--resume stops on a changed HEAD" || fail "--resume must stop on a changed HEAD"
 
+printf '%s\n' "$res" | grep -qF 'never read a missing row as no flags' \
+  && pass "--resume stops when the flags row is missing" || fail "--resume must not read a missing flags row as no flags"
+
+# --- free text cannot reach the shell ---
+has 'Free text never goes inside double quotes' "free text stays out of double quotes"
+
 # --- /en-loop is named, never invoked ---
 if grep -qiE '(invoke|invoking|dispatch(es|ed)?) (the )?`?/en-loop' "$SK"; then
   fail "/en-loop must never follow an invoke verb" "it stays manual"

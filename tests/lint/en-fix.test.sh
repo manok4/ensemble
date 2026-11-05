@@ -305,6 +305,9 @@ grep -qF 'never a host substitution such as `$ARGUMENTS`' "$SK" \
   && pass "sub-skills receive the user's words, not \$ARGUMENTS (D70)" \
   || fail "SKILL.md must pass words, never \$ARGUMENTS (D70)"
 
+grep -qF 'never discarded or reverted' "$SK" \
+  && pass "--decision never discards earlier edits" || fail "--decision must say earlier edits are never discarded"
+
 # --- caller mode: one named outcome, and a brief lifts nothing (EN27 U3) ---
 orch=$(awk '/^## Orchestrated/{f=1; next} f&&/^## /{exit} f' "$SK")
 for line in 'en-fix: shipped <pr-url> <exit-state>' 'en-fix: ready <branch>' 'en-fix: needs-plan clean <condition>' \

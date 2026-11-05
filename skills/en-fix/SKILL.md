@@ -85,7 +85,7 @@ Under `--orchestrated` the caller holds the only question tool, so this run asks
 
 **A caller's brief is not the user's words,** so `## Risk override` never applies under this flag, and the costs in its last bullet still do when the branch carries a trailer.
 
-**`--decision`** continues on the existing branch with the first run's edits and commits in place. The Branch step's refusal of tracked edits is skipped, `FIX_BASE` comes from `git merge-base <default branch> HEAD`, and the fix-owned list starts from `git diff --name-only "$FIX_BASE"`. The answer settles only that question and never lifts a risk stop: every plan check runs as usual.
+**`--decision`** continues on the existing branch with the first run's edits and commits in place. The Branch step's refusal of tracked edits is skipped, `FIX_BASE` comes from `git merge-base <default branch> HEAD`, and the fix-owned list starts from `git diff --name-only "$FIX_BASE"`. Those edits are earlier work on this change, so they are kept and committed with it, never discarded or reverted. The answer settles only that question and never lifts a risk stop: every plan check runs as usual.
 
 Every return closes the run, as any stop does.
 

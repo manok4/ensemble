@@ -50,6 +50,8 @@ So which test seam to use is decided, and which of two user-facing error message
    - A request matching `## Named, never invoked`: name the command, print `en-conductor: done`, and stop. No trail is written.
    - Otherwise test the request's words, and the content of any file it names, against `references/plan-or-fix.md`. Any condition takes the plan route and none takes the fix route. No diff exists yet, so the diff-signal check stays with `/en-fix`, whose Triage and Risk re-check catch what routing cannot see.
 4. **Definition of done.** Write one checkable sentence from the request plus the route's gates, and record it: `bash "$SKILL_DIR/scripts/ensemble-conductor-trail" start --request "<words>" --route <fix|plan|brainstorm|foundation> --done-when "<sentence>"`. Then record the effective flags with `log decision route options "<flags>"`, writing `none` when there are none.
+
+   **Free text never goes inside double quotes.** A request, a condition or a stage's reason can hold `$(...)` or backticks, and the shell would run them. Assign it first with a quoted heredoc, `why=$(cat <<'TXT'` then the text then `TXT` and `)`, and pass `"$why"`, on every `start`, `log` and `finish`.
 5. **Run the stages** for the route, per `## Stages`. Log each with `log stage <stage> <ok|skipped|failed> "<evidence>"` and print one line per stage. A long stage agent shows nothing until it returns, and the trail on disk names the last finished stage.
 6. **Report.** Route, the definition of done and whether it holds, the stages, every decision and question from the trail, and the PR URL with its exit state, or the branch when nothing was pushed. Close the trail with `finish <done|stopped> <stage> "<reason>"`. The last line is `en-conductor: done` or `en-conductor: stopped at <stage>: <reason>`, on every path.
 
@@ -104,7 +106,7 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 
 ## Resume
 
-`--resume` reads `ensemble-conductor-trail latest` and exits with a message on `no-open-run`. Flags given with `--resume` are refused, so a `--no-ship` run cannot lose its restriction.
+`--resume` reads `ensemble-conductor-trail latest` and exits with a message on `no-open-run`. Flags given with `--resume` are refused, so a `--no-ship` run cannot lose its restriction. A trail with no `decision route options` row stops the run and says to pass the flags on a new `/en-conductor`: never read a missing row as no flags.
 
 It calls `resume`, then reads the route from the last `decision route plan` row or else the `start` row, the flags from the `decision route options` row, and the plan path from the `plan` stage row's evidence. A stage counts as finished only on a `stage` row whose `what` is `ok` or `skipped`. If any such row exists, the last one's `branch` and `head` must equal the current branch and `HEAD`. If either differs, stop and name both, because earlier Build or QA results may no longer describe the code.
 
