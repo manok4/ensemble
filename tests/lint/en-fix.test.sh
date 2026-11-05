@@ -58,9 +58,9 @@ frontmatter=$(awk 'NR==1 && /^---$/{on=1; next} on && /^---$/{exit} on' "$SK")
 printf '%s' "$frontmatter" | grep -qx 'disable-model-invocation: true' \
   && fail "SKILL.md must not carry disable-model-invocation: true" "/en-conductor invokes it, and D84 bars a manual callee" \
   || pass "it is model-invocable, so /en-conductor can invoke it"
-[ ! -f "$REPO_ROOT/skills/en-fix/CONTRACT.md" ] \
-  && pass "it carries no CONTRACT.md, since no skill invokes it" \
-  || fail "en-fix must not carry a CONTRACT.md" "contract-shape requires callers for one"
+[ -f "$REPO_ROOT/skills/en-fix/CONTRACT.md" ] \
+  && pass "it carries a CONTRACT.md, since /en-conductor invokes it" \
+  || fail "en-fix must carry a CONTRACT.md" "contract-shape requires one for a callee"
 
 # --- /en-fix "fix the off-by-one in all 12 reports": nothing frames it as tiny (D139) ---
 printf '%s' "$frontmatter" | grep -qiE '\b(small|quick fix)\b' \

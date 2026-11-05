@@ -6,7 +6,7 @@ Owned by `en-plan`. Callers depend on this page, not on `SKILL.md`.
 
 | Form | Caller |
 |---|---|
-| `/en-plan <description>` | `en-flow`, when no `--plan` was supplied |
+| `/en-plan <description> --orchestrated --branch-on-default y` | `en-conductor`, on the plan route, when no `--plan` was supplied |
 | `/en-plan --resume <plan-path>` | promoting a draft plan |
 | `/en-plan --from-legacy <path>` | migrating a legacy plan |
 | `--no-peer` · `--no-reloop` · `--max-iterations <N>` | peer-loop control |

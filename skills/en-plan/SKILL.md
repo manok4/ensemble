@@ -24,7 +24,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`. **With `--orchestrated`**, read `plan_store` as the Linear publish step does; on `linear`, refuse now, per `references/linear-publish.md`'s `/en-flow` boundary.
+1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`. **With `--orchestrated`**, read `plan_store` as the Linear publish step does; on `linear`, refuse now, per `references/linear-publish.md`'s `/en-conductor` boundary.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
    - **`--resume <plan-path|IDENT>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step. An identifier (`ENG-412`) amends a published plan: read `references/linear-intake.md`.

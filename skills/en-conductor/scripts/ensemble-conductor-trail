@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# ensemble-conductor-trail: the append-only record of one /en-conductor run.
+#
+# One TSV per run at $(git rev-parse --git-dir)/ensemble/conductor/, so it stays
+# out of commits, `git clean -fdx` cannot remove it, and each linked worktree
+# keeps its own. Columns: ts event stage branch head what why.
+#
+# A run is open, stopped or closed, read from its last row: start, resume and any
+# logged row leave it open; `finish stopped` stops it; `finish done` and a
+# superseded row close it.
+#
+#   start --request <words> --route <fix|plan|brainstorm|foundation> --done-when <predicate>
+#   log <stage|decision|question> <stage> <what> <why-or-evidence>
+#   finish <done|stopped> <stage> <reason>
+#   latest
+#   resume
+#
+# Exit: 0 ok; 1 not in a git repo; 2 usage; 3 no run in the required state.
+
+set -u
+
+STAGES=" route plan build learn qa ship fix brainstorm foundation "
+
+die() { printf 'ensemble-conductor-trail: %s\n' "$2" >&2; exit "$1"; }
+
+GIT_DIR=$(git rev-parse --absolute-git-dir 2>/dev/null) || die 1 "not inside a git repository"
+DIR="$GIT_DIR/ensemble/conductor"
+
+clean() {
+  local v=$1
+  v=${v//$'\t'/ }; v=${v//$'\r'/ }; v=${v//$'\n'/ }
+  printf '%s' "${v:--}"
+}
+
+row() { # <file> <event> <stage> <what> <why>
+  local branch head
+  branch=$(git symbolic-ref --short -q HEAD) || branch=detached
+  head=$(git rev-parse -q --verify HEAD 2>/dev/null) || head=-
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$2" "$(clean "$3")" "$(clean "$branch")" "$head" "$(clean "$4")" "$(clean "$5")" >> "$1"
+}
+
+state_of() { # <file>: open, stopped or closed
+  tail -n 1 "$1" | awk -F'\t' '
+    $2 == "superseded" || ($2 == "finish" && $6 == "done") { print "closed"; next }
+    $2 == "finish" { print "stopped"; next }
+    { print "open" }'
+}
+
+newest_live() { # newest open or stopped trail, or nothing. Names sort by time.
+  local f
+  [ -d "$DIR" ] || return 0
+  while IFS= read -r f; do
+    [ "$(state_of "$DIR/$f")" != closed ] && { printf '%s\n' "$DIR/$f"; return 0; }
+  done < <(ls -1 "$DIR" | grep '\.tsv$' | sort -r)
+}
+
+require_open() {
+  TRAIL=$(newest_live)
+  [ -n "$TRAIL" ] && [ "$(state_of "$TRAIL")" = open ] || die 3 "no-open-run"
+}
+
+valid_stage() { case "$STAGES" in *" $1 "*) return 0 ;; *) die 2 "unknown stage: $1" ;; esac; }
+
+cmd_start() {
+  local request="" route="" done_when="" f path
+  while [ $# -gt 0 ]; do
+    [ $# -ge 2 ] || die 2 "$1 needs a value"
+    case "$1" in
+      --request) request=$2 ;;
+      --route) route=$2 ;;
+      --done-when) done_when=$2 ;;
+      *) die 2 "unknown option: $1" ;;
+    esac
+    shift 2
+  done
+  [ -n "$request" ] && [ -n "$done_when" ] || die 2 "start needs --request and --done-when"
+  case "$route" in fix|plan|brainstorm|foundation) ;; *) die 2 "unknown route: $route" ;; esac
+
+  mkdir -p "$DIR" || die 1 "cannot create $DIR"
+  while f=$(newest_live) && [ -n "$f" ]; do
+    row "$f" superseded - - "a new run started"
+    printf 'ensemble-conductor-trail: superseded %s\n' "$f" >&2
+  done
+
+  path="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-$$.tsv"
+  printf 'ts\tevent\tstage\tbranch\thead\twhat\twhy\n' > "$path"
+  row "$path" start "$route" "$request" "$done_when"
+  printf '%s\n' "$path"
+}
+
+cmd_log() {
+  [ $# -eq 4 ] || die 2 "log <event> <stage> <what> <why-or-evidence>"
+  case "$1" in stage|decision|question) ;; *) die 2 "unknown event: $1" ;; esac
+  valid_stage "$2"
+  if [ "$1" = stage ]; then
+    case "$3" in ok|skipped|failed) ;; *) die 2 "a stage row's what is ok, skipped or failed: $3" ;; esac
+  fi
+  require_open
+  row "$TRAIL" "$1" "$2" "$3" "$4"
+}
+
+cmd_finish() {
+  [ $# -eq 3 ] || die 2 "finish <done|stopped> <stage> <reason>"
+  case "$1" in done|stopped) ;; *) die 2 "unknown finish state: $1" ;; esac
+  valid_stage "$2"
+  require_open
+  row "$TRAIL" finish "$2" "$1" "$3"
+}
+
+cmd_latest() {
+  local f
+  f=$(newest_live)
+  [ -n "$f" ] || { printf 'no-open-run\n'; exit 3; }
+  printf '%s\n' "$f"
+}
+
+cmd_resume() {
+  local f
+  f=$(newest_live)
+  [ -n "$f" ] || { printf 'no-open-run\n'; exit 3; }
+  row "$f" resume - - -
+  printf '%s\n' "$f"
+}
+
+[ $# -ge 1 ] || die 2 "usage: start | log | finish | latest | resume"
+sub=$1; shift
+case "$sub" in
+  start) cmd_start "$@" ;;
+  log) cmd_log "$@" ;;
+  finish) cmd_finish "$@" ;;
+  latest) cmd_latest ;;
+  resume) cmd_resume ;;
+  *) die 2 "unknown subcommand: $sub" ;;
+esac

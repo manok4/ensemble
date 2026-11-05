@@ -6,7 +6,7 @@ Owned by `en-build`. Callers depend on this page, not on `SKILL.md`.
 
 | Form | Caller |
 |---|---|
-| `/en-build <plan-path>` | `en-flow` |
+| `/en-build <plan-path> --orchestrated` | `en-conductor`, on the plan route |
 | `--unit U<N>` · `--from U<N>` | selection; universal safety gates still fire per unit |
 | `--review cross\|peer\|none` · `--no-simplify` | post-build control; each outcome is recorded in the `review-verdict:` / `simplify-verdict:` trailers and the audit |
 | `--orchestrated` | a caller is driving: the learning checkpoint never asks, and with no question tool a stop returns instead of asking |

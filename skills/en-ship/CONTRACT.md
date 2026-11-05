@@ -4,14 +4,14 @@ Owned by `en-ship`. Callers depend on this page, not on `SKILL.md`.
 
 > Reached this page from EN12's plan? Its U10 file list named a different skill
 > here. The call-graph check that unit introduced showed otherwise: nothing
-> invoked that skill programmatically, while `en-flow` does invoke this one.
+> invoked that skill programmatically, while `en-flow`, now `en-conductor`, does invoke this one.
 > The derived set is the source of truth, which is the point of deriving it.
 
 ## Accepted invocations
 
 | Form | Caller |
 |---|---|
-| `/en-ship` | `en-flow`, after a green build |
+| `/en-ship [--no-watch]` | `en-conductor`, after a green build |
 | `/en-ship [--no-watch] [--auto-merge]` | `en-fix`, after its receipt gate passes on a tree that started clean; each flag only when the user gave it |
 | `--auto-merge` | arms `gh pr merge --auto --squash`; default OFF |
 | `--draft` · `--no-pr` · `--base <branch>` · `--reviewers <list>` | PR shape |

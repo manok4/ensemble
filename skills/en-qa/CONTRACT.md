@@ -8,6 +8,7 @@ never on `SKILL.md` internals and never on a file inside this directory.
 | Form | Caller |
 |---|---|
 | `/en-qa` | `en-loop`'s Morning Review, as independent verification of the loop's branch |
+| `/en-qa` | `en-conductor`, on the plan route, when the branch diff needs a browser |
 | `/en-qa [--url <url>] [--browser \| --system-only] [--flow <name> \| --all-flows] [--no-fix]` | a person |
 
 This skill is model-invocable on purpose. A `disable-model-invocation: true`

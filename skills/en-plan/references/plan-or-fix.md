@@ -1,6 +1,6 @@
 # Plan or fix
 
-Read by `/en-plan` when it right-sizes a request, and by `/en-fix` at triage and again on the real diff. Both skills read this one list, so a request one of them refuses is a request the other accepts.
+Read by `/en-conductor` when it routes, by `/en-plan` when it right-sizes a request, and by `/en-fix` at triage and again on the real diff. All three read this one list, so a request `/en-plan` refuses is a request `/en-fix` accepts.
 
 **A plan earns its cost when it settles something before code is written.** Size does not decide it. There is no file or line count: a rename across eight files needs no plan, and a two-line change to token refresh does.
 
