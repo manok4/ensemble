@@ -30,6 +30,14 @@ else
   fail "en-build must document the up_to_date idempotency branch"
 fi
 
+# --- caller-driven runs short-circuit the same way (EN27 U2) ---
+PB="$REPO_ROOT/skills/en-build/references/post-build-protocol.md"
+if grep -F 'CI short-circuit' "$PB" | grep -qF 'CI=true' && grep -F 'CI short-circuit' "$PB" | grep -qF -- '--orchestrated'; then
+  pass "the short-circuit fires on CI=true or --orchestrated"
+else
+  fail "the short-circuit line must name both CI=true and --orchestrated"
+fi
+
 # --- CI short-circuit (ci_environment) ---
 if grep -qE "ci_environment" "$EN_BUILD" && grep -qE "CI=true" "$EN_BUILD"; then
   pass "en-build documents the ci_environment short-circuit"

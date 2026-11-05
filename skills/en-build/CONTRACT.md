@@ -9,6 +9,7 @@ Owned by `en-build`. Callers depend on this page, not on `SKILL.md`.
 | `/en-build <plan-path>` | `en-flow` |
 | `--unit U<N>` · `--from U<N>` | selection; universal safety gates still fire per unit |
 | `--review cross\|peer\|none` · `--no-simplify` | post-build control; each outcome is recorded in the `review-verdict:` / `simplify-verdict:` trailers and the audit |
+| `--orchestrated` | a caller is driving: the learning checkpoint never asks, and with no question tool a stop returns instead of asking |
 | `--no-phasing` · `--dry-run` · `--finalize-only` · `--commit-wip` · `--re-baseline` | run control |
 
 There is no flavor flag and no `--no-peer`: since D52 the host implements every
@@ -22,7 +23,8 @@ passing a `draft` plan gets a refusal or a recovery prompt, not a build.
 **Not guaranteed, and this is deliberate.** Destructive and `gated: true` units
 always stop for explicit confirmation, and **no flag disables that**. A caller
 must either accept that a build can block, or verify the plan has no such units
-first. Everything else advances autonomously.
+first. With no question tool a gate is neither answered nor skipped: the build
+returns `gate_required`. Everything else advances autonomously.
 
 ## Return
 
@@ -34,6 +36,8 @@ A build summary. Callers branch on:
 | `branch_review_pass` | `completed` · `fallback_completed` · `failed` · `missing` |
 | `learning_checkpoint` | `captured (N learnings)` · `intentionally_skipped` · `up_to_date` · `ci_environment` |
 | audit verdict | `ok` · `failed` |
+| `gate_required: U<N>` | no question tool reached the user at a safety gate; the unit did not run, and earlier units stay committed |
+| `needs-decision: U<N>: <question>` | no question tool reached the user at another stop-and-ask; earlier units stay committed |
 
 **Branch on these exact spellings**, never the bare word `skipped`. A `missing`
 or `failed` on either gate makes the audit `failed` even when every unit is
