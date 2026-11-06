@@ -42,6 +42,8 @@ done
 [ "$(printf '%s\n' $lines | grep -c .)" -eq 5 ] && [ "$(printf '%s\n' $lines | sort -n | tr '\n' ' ')" = "$(printf '%s\n' $lines | tr '\n' ' ')" ] \
   && pass "stages ordered plan, build, qa, learn, ship" || fail "stages must run plan, build, qa, learn, ship" "$lines"
 
+printf '%s\n' "$st" | grep -E '^\| QA \|' | grep -qF 'only when `needs_browser` is true' \
+  && pass "QA runs only when the diff needs a browser" || fail "the QA row must gate on needs_browser"
 printf '%s\n' "$st" | grep -E '^\| Ship \|' | grep -qF 'skipped under `--no-ship` or `local_only`' \
   && pass "Ship is skipped under --no-ship on the plan route" || fail "the Ship row must skip under --no-ship"
 assert_contains "$st" 'stage ship skipped' "the skip is logged"

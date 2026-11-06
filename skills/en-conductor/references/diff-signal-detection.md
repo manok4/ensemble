@@ -8,12 +8,12 @@ Shared reading of a change's risk surface and frontend reach, consumed by `/en-f
 
 Compute from the diff under review (`git diff <base>...HEAD`, or the staged/working set when no base):
 
-- `FRONTEND_FILES` — changed files matching the frontend/UI patterns below.
+- `FRONTEND_FILES` — changed files that can change what a user sees or does in a browser, read as below.
 - `RISK_SIGNALS` — risk-surface patterns present in the diff (paths or content) below.
 
 ## Frontend / UI patterns (drives en-qa browser phase)
 
-A changed file is a **frontend file** if its path matches any of:
+A changed file is a **candidate** if its path matches any of:
 
 - Extensions: `.tsx`, `.jsx`, `.vue`, `.svelte`, `.astro`
 - `.css`, `.scss`, `.sass`, `.less`, styled-components / CSS-in-JS files
@@ -21,7 +21,11 @@ A changed file is a **frontend file** if its path matches any of:
 - HTML files: `.html`, `.htm`
 - Client entrypoints: `main.tsx`, `index.tsx`, `App.tsx`, and framework equivalents
 
-When `FRONTEND_FILES == 0` the change cannot affect rendered UI, so a browser pass has nothing to exercise.
+**A path match is a candidate, not an answer.** Read each changed file and ask whether it can change what a user sees or does in a browser:
+
+- **Not a frontend file:** a match that means something else, such as a backend handler under `app/api/` whose response no page reads differently, `static/robots.txt`, or a `templates/` folder that renders no page.
+- **A frontend file with no match:** client code a page depends on, such as `src/hooks/useCart.ts`, a client store, or a client API wrapper. Also a backend change to a response a page displays.
+- **Unsure what it affects:** a frontend file. This is where fail-closed applies.
 
 ## Risk-surface patterns (drives en-fix's plan check)
 

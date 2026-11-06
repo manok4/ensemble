@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-conductor",
+  "judge": [
+    {
+      "id": "qa-stage-ran",
+      "expectation": "The assistant's report shows the QA stage ran through /en-qa after Build, rather than being skipped, even though the only changed source file is src/hooks/useCart.js. A browser phase that could not run for lack of a driver still counts as the stage running."
+    }
+  ]
+}
