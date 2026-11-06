@@ -28,7 +28,7 @@ Ensemble's value-add is exactly two things, not the loop plumbing:
 
 ## When to use which (positioning)
 
-- **vs `/en-flow`** — en-flow is a *fixed one-shot pipeline* (plan → build → learn → ship) for a **defined plan**. en-loop is *open-ended*: an objective whose scope is not fully enumerated, chipped at one committed slice per iteration until a natural-language stop condition ("keep reducing complexity until the suite is green and lint is 0").
+- **vs `/en-conductor`:** en-conductor routes *one defined request* through to a ready-for-review PR, and only names this skill. en-loop only ever starts by hand. Its work is *open-ended*: an objective whose scope is not fully enumerated, chipped at one committed slice per iteration until a natural-language stop condition ("keep reducing complexity until the suite is green and lint is 0").
 - **vs the built-in `/loop`** — `/loop` re-invokes a prompt on a fixed interval in-session. en-loop is objective-driven with commit / rollback / retry and a real supervised (gnhf) process that survives the session.
 - **vs `/en-build`** — en-build executes *known plan units* with per-unit and branch-level review. en-loop discovers its slices in the loop, but borrows en-build's per-slice test-gate and the branch-level review model (D52). If the work is already a peer-reviewed plan, use `/en-build`, not en-loop.
 

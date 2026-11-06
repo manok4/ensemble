@@ -10,8 +10,8 @@
 #   coverage  — the callee set is DERIVED from actual invocations, not
 #               hand-counted, and every derived callee must carry a contract.
 #               This is what caught EN12's own plan naming en-cross-review
-#               (never invoked programmatically) while omitting en-ship (invoked
-#               by en-flow).
+#               (never invoked programmatically) while omitting en-ship (then
+#               invoked by en-flow, now by en-conductor).
 #   truth     — enums a contract publishes must match what the skill emits, and
 #               the mutation/recursion promises must match documented behavior.
 

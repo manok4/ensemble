@@ -1,0 +1,8 @@
+<!doctype html>
+<title>Cart</title>
+<p>Total: <output id="total"></output></p>
+<script type="module">
+  import { cartTotal } from "../src/hooks/useCart.js";
+  const items = [{ price: 5, quantity: 2 }, { price: 3, quantity: 1 }];
+  document.getElementById("total").textContent = cartTotal(items);
+</script>

@@ -23,7 +23,7 @@ Single source of truth for cross-host portability across every Ensemble skill. L
 
 Three steps, in order:
 
-1. **Identify host** via env vars (`CLAUDE_CODE_VERSION` / `CLAUDE_AGENT_NAME` for Claude Code; `CODEX_HOME` / `CODEX_VERSION` for Codex). User override via `ENSEMBLE_HOST` env var. Inverse-CLI presence is the last-resort fallback.
+1. **Identify host** via env vars (`CLAUDE_CODE_VERSION` / `CLAUDE_AGENT_NAME` / `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` for Claude Code; `CODEX_HOME` / `CODEX_VERSION` for Codex). User override via `ENSEMBLE_HOST` env var. Inverse-CLI presence is the last-resort fallback.
 2. **Read user override** from `~/.ensemble/config.json` → `peer_mode_override`. Values: `auto` (default), `cross-agent-only`, `single-agent-only`, `off`.
 3. **Detect peer mode**:
    - `peer_mode_override = off` → `PEER_AVAILABLE=false`. Skip cross-review with a one-line note.
@@ -77,7 +77,7 @@ Every peer entry point checks the variable first and skips the peer when it is s
 `$SKILL_DIR/scripts/ensemble-detect-host` has two performance fast-paths so skills don't pay full detection cost on every invocation:
 
 1. **Recursion-guard short-circuit.** When `ENSEMBLE_PEER_REVIEW=true`, the script emits `PEER_AVAILABLE=false` and exits immediately without doing any detection work. (The calling skill would short-circuit anyway; this just avoids the wasted bash.)
-2. **Session cache.** Detection results are written to `$HOME/.ensemble/host-cache.env` with a 1-hour TTL (configurable via `ENSEMBLE_DETECT_CACHE_TTL_MIN`). The first invocation in a session populates the cache; subsequent invocations within the TTL read from it (~6× faster: ~50ms → ~8ms wall time).
+2. **Session cache.** `HOST` is resolved from live signals first, never cached. The rest of the result is written to `$HOME/.ensemble/host-cache-$HOST.env`, keyed by host so one host's session cannot answer for another, with a 1-hour TTL (configurable via `ENSEMBLE_DETECT_CACHE_TTL_MIN`). The first invocation in a session populates the cache; subsequent invocations within the TTL read from it (~6× faster: ~50ms → ~8ms wall time).
 
 Cache controls:
 
@@ -85,9 +85,9 @@ Cache controls:
 |---|---|
 | `--no-cache` flag | Bypass cache for this invocation; do not read or write |
 | `ENSEMBLE_DETECT_NO_CACHE=true` | Same as `--no-cache` (env-var form) |
-| `ENSEMBLE_DETECT_CACHE_FILE=<path>` | Override cache file location (default `$HOME/.ensemble/host-cache.env`) |
+| `ENSEMBLE_DETECT_CACHE_FILE=<path>` | Override cache file location (default `$HOME/.ensemble/host-cache-$HOST.env`) |
 | `ENSEMBLE_DETECT_CACHE_TTL_MIN=<minutes>` | Override TTL (default 60) |
-| Delete `$HOME/.ensemble/host-cache.env` | Force re-detection on next invocation |
+| Delete `$HOME/.ensemble/host-cache-$HOST.env` | Force re-detection on next invocation |
 
 The cache is invalidated automatically when the file's mtime exceeds the TTL. Skills don't need to manage the cache themselves — they invoke `$SKILL_DIR/scripts/ensemble-detect-host` as before, and the script handles caching transparently.
 

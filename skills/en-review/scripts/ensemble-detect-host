@@ -10,8 +10,8 @@
 #   - Recursion guard: when ENSEMBLE_PEER_REVIEW=true (we're already inside a
 #     peer subprocess), emit PEER_AVAILABLE=false and exit immediately. The
 #     calling skill will short-circuit anyway; no need to do the work.
-#   - Session cache: results are written to ~/.ensemble/host-cache.env with a
-#     1-hour TTL. The first invocation in a session populates the cache;
+#   - Session cache: results are written to ~/.ensemble/host-cache-<host>.env
+#     with a 1-hour TTL, read only after HOST is resolved. The first invocation in a session populates the cache;
 #     subsequent invocations read from it. Bypass with --no-cache or by
 #     setting ENSEMBLE_DETECT_NO_CACHE=true. Invalidate by deleting the file.
 
@@ -45,21 +45,8 @@ EOF
   exit 0
 fi
 
-# --- Session cache: read --------------------------------------------------
-CACHE_FILE="${ENSEMBLE_DETECT_CACHE_FILE:-$HOME/.ensemble/host-cache.env}"
-CACHE_TTL_MIN="${ENSEMBLE_DETECT_CACHE_TTL_MIN:-60}"
-
-if [ "$NO_CACHE" != "true" ] && [ -f "$CACHE_FILE" ]; then
-  # File mtime is within TTL → emit cached output and exit
-  if [ -n "$(find "$CACHE_FILE" -mmin -"$CACHE_TTL_MIN" 2>/dev/null)" ]; then
-    cat "$CACHE_FILE"
-    [ "$VERBOSE" = "true" ] && echo "DETECT_REASON=cache-hit" || true
-    exit 0
-  fi
-fi
-
 # 1. Identify HOST
-if [ -n "${CLAUDE_CODE_VERSION:-}" ] || [ -n "${CLAUDE_AGENT_NAME:-}" ]; then
+if [ -n "${CLAUDE_CODE_VERSION:-}" ] || [ -n "${CLAUDE_AGENT_NAME:-}" ] || [ -n "${CLAUDECODE:-}" ] || [ -n "${CLAUDE_CODE_ENTRYPOINT:-}" ]; then
   HOST="claude-code"
   HOST_CMD="claude -p"
   HOST_FORMAT="--output-format json"
@@ -97,6 +84,21 @@ else
   else
     HOST="claude-code"; HOST_CMD="claude -p"; HOST_FORMAT="--output-format json"
     OTHER="codex"; OTHER_CMD="codex exec"; OTHER_FORMAT="--json"
+  fi
+fi
+
+# --- Session cache: read --------------------------------------------------
+# After HOST, never before: a file written by another host's session must not
+# answer for this one. Only the peer probe below is worth caching.
+CACHE_FILE="${ENSEMBLE_DETECT_CACHE_FILE:-$HOME/.ensemble/host-cache-$HOST.env}"
+CACHE_TTL_MIN="${ENSEMBLE_DETECT_CACHE_TTL_MIN:-60}"
+
+if [ "$NO_CACHE" != "true" ] && [ -f "$CACHE_FILE" ]; then
+  # File mtime is within TTL → emit cached output and exit
+  if [ -n "$(find "$CACHE_FILE" -mmin -"$CACHE_TTL_MIN" 2>/dev/null)" ]; then
+    cat "$CACHE_FILE"
+    [ "$VERBOSE" = "true" ] && echo "DETECT_REASON=cache-hit" || true
+    exit 0
   fi
 fi
 

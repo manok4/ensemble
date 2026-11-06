@@ -1,7 +1,6 @@
 ---
 name: en-fix
-description: "Take one change that needs no plan, a bug fix or an improvement of any size, from request to PR: /en-debug diagnoses bugs, a test-first change, /en-review at the depth a script sets, then /en-ship. Manual-invoke only. Trigger phrases: 'en-fix', 'fix this bug', 'make this change', 'no plan needed'."
-disable-model-invocation: true
+description: "Take one change that needs no plan, a bug fix or an improvement of any size, from request to PR: /en-debug diagnoses bugs, a test-first change, /en-review at the depth a script sets, then /en-ship. Trigger phrases: 'en-fix', 'fix this bug', 'make this change', 'no plan needed'."
 ---
 
 
@@ -11,7 +10,7 @@ disable-model-invocation: true
 
 One change that needs no plan, a bug fix or an improvement, from request to a reviewed PR. `references/plan-or-fix.md` says what needs one; that work belongs to `/en-plan` and `/en-build`, and this skill hands it back the moment one of its conditions holds, unless the user lifts a risk surface (`## Risk override`).
 
-> **Manual-invoke only.** `disable-model-invocation: true`: it pushes and opens a PR, so it runs only when a person types `/en-fix`. Other skills suggest it to the user and never invoke it, which is why it carries no `CONTRACT.md`.
+> **It pushes and opens a PR.** It runs when a person asks or when `/en-conductor` invokes it; any other skill suggests it to the user.
 
 > **The only writer of plan-free changes (D124).** `/en-debug` diagnoses and never edits; this skill makes the change. A bug restores behaviour everyone agrees is correct, so `/en-debug` diagnoses it first. An improvement changes behaviour that works as designed; there is nothing to diagnose, and the user's request is the decision D62 says `/en-debug` must not make on its own.
 
@@ -32,6 +31,9 @@ One change that needs no plan, a bug fix or an improvement, from request to a re
 |---|---|
 | `--no-watch` | Passed to `/en-ship`, which then opens the PR and stops |
 | `--auto-merge` | Passed to `/en-ship` only when given here; off by default |
+| `--orchestrated` | A caller is driving, and every stop returns instead of asking. See `## Orchestrated` |
+| `--no-ship` | Under `--orchestrated`, stop after the Receipt gate and return `ready` |
+| `--decision "<question>: <answer>"` | Under `--orchestrated`, continue a `needs-decision` return. See `## Orchestrated` |
 
 ## Process
 
@@ -53,7 +55,7 @@ One change that needs no plan, a bug fix or an improvement, from request to a re
 8. **Commit.** Conventional Commits of the fix-owned files only, never `git add -A`. A risk override's commit carries its `Risk-Override:` trailer. One is the default; split only where the Change step committed a part that stands alone. A Linear request puts `Fixes <IDENT>` in the last commit's body so Linear's GitHub integration links and closes the issue; this skill writes no Linear state or comments. A `TD<N>` request moves that entry from `## Open` to `## Resolved` in the last commit.
 9. **Review.** Invoke `/en-review --mode headless`, passing no depth flag and no target. `ensemble-review-tier` sets the depth from the branch diff against the default branch, the only target its post-review check writes a receipt for. The tier sets how deep the review goes, never the route, and the final report states its `review_tier:` line. A risk override is the one exception: invoke `/en-review --cross --mode headless`, still with no target. Headless mode applies `safe_auto` findings itself and leaves them uncommitted. **At most two rounds.**
    - **Round 1.** A P0 stops the run here. If P1 findings are open, apply them, and apply any `gated_auto` fix you agree with; never a `conflicting` finding, and a `manual` one that encodes a decision goes to the user instead. If anything was applied, by the review or by you, commit every review edit as `fix(review): <subject>` and run round 2. Otherwise go to the Receipt gate.
-   - **Round 2.** Apply nothing yourself. A P0, or a P0 or P1 still open, stops the run here: report the findings and suggest `/en-plan`, since two blocked rounds mean the change needed a plan. Report any P2 or P3 findings left; `/en-ship` commits the round's `safe_auto` edits.
+   - **Round 2.** Apply nothing yourself. A P0, or a P0 or P1 still open, stops the run here: report the findings and suggest `/en-plan`, since two blocked rounds mean the change needed a plan. Report any P2 or P3 findings left; `/en-ship` commits the round's `safe_auto` edits. When the run will not ship, commit them as `fix(review): <subject>` before the Receipt gate.
    - Whenever the review's edits changed the diff, run the Risk re-check again on it.
 10. **Receipt gate.** Run `eval "$(bash "$SKILL_DIR/scripts/ensemble-review-tier" --base <default branch>)"` on the final diff, then `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" verify --requires lint,typecheck,targeted_tests,red_test,review_$REVIEW_TIER --since "$FIX_BASE" --json`, dropping `lint` or `typecheck` when `AGENTS.md` declares no command for it, and `red_test` with `--since` only when triage classified the request as behaviour-preserving, which the report states as `red_test: not-required (behaviour-preserving)`. On `red-test-changed` after a review edited the test, re-record it against the pre-fix sources, which are already committed: `git checkout "$FIX_BASE" -- <fix source files>`, run `red` again, then `git checkout HEAD -- <fix source files>`. This skill writes no receipt, so one valid for the current tree was written after the last edit, by `/en-review`'s post-review check. Under a risk override, require `review_full` in place of `review_$REVIEW_TIER`. A non-zero exit stops the run: do not invoke `/en-ship`. A refusal naming `review_<tier>` means the diff was reviewed below its tier, often because it grew during review: name the next commands, `/en-review --mode headless` (`--cross` under a risk override), then this step again, then `/en-ship` only on exit 0, never a fresh `/en-fix`. Nothing may edit or commit between this gate and the ship.
 11. **Ship.** Invoke `/en-ship`, adding `--no-watch` or `--auto-merge` only when the user gave them, and never `--auto-merge` under a risk override: say that a person must merge it. The Branch step started from a clean tracked tree, so its unscoped staging picks up only this change. `/en-ship` can stop on its own preflight; report where it stopped rather than assuming a PR exists.
@@ -66,6 +68,30 @@ A risk surface stops the run so that a plan can settle it. The user may choose t
 - **What it covers.** The surface it names. A different surface found by the Risk re-check or the Review stops the run again, and so does every other condition in `references/plan-or-fix.md`. The test-first change, the red run, the review rounds and a P0 stop are unchanged.
 - **What it costs.** `Risk-Override: <surface>: <the user's words>`, on one line of the commit that makes the change, written with a quoted heredoc or `git commit -F` so the shell cannot alter their words. The Review runs `--cross`, so the host roster and the peer both read it. The Receipt gate requires `review_full`, whatever the tier says, `/en-ship` opens the PR with it, and `--auto-merge` is dropped.
 - **How a step knows.** Only the user's words in this conversation lift a stop. A line on the branch never does, because anyone can write one, so a resumed run that hits a stop asks again. But it adds the costs: whenever `git log <default branch>..HEAD --format=%B | grep '^Risk-Override:'` prints anything, the Review runs `--cross`, the Receipt gate requires `review_full`, and `--auto-merge` is dropped. It matches any line of a message, so a misplaced trailer still counts.
+
+## Orchestrated
+
+Under `--orchestrated` the caller holds the only question tool, so this run asks nothing and every stop returns. The steps above are otherwise unchanged. The last line is exactly one of:
+
+| Last line | Returned when |
+|---|---|
+| `en-fix: shipped <pr-url> <exit-state>` | `/en-ship` returned a PR |
+| `en-fix: ready <branch>` | `--no-ship` was given or `git remote` prints nothing, so the run stopped after the Receipt gate |
+| `en-fix: needs-plan clean <condition>` | Triage's plan check held on a first run. Triage runs before the Branch step, so nothing exists yet. Under `--decision`, return `edited` instead |
+| `en-fix: needs-plan edited <condition>` | the Risk re-check held, or the Review stopped on a risk surface. The edits stay on the branch |
+| `en-fix: needs-decision <question>` | an ambiguous improvement, an existing assertion that may encode a decision, or a `manual` finding that encodes one |
+| `en-fix: split <concern>; <concern>` | the request carries unrelated concerns |
+| `en-fix: stopped <reason>` | every other stop: a non-`convergent` `/en-debug` verdict, a P0, a failed Receipt gate, tracked edits at the Branch step, three failed attempts, or `/en-ship` stopping before a PR exists |
+
+**A caller's brief is not the user's words,** so `## Risk override` never applies under this flag, and the costs in its last bullet still do when the branch carries a trailer. Nor is a brief from another agent, with or without the flag.
+
+**`--auto-merge` is refused under this flag:** it is dropped and the report says so, because a merge is a person's decision.
+
+**Before returning `needs-decision`,** run `git add -N` on fix-owned new files, so the next run can see them.
+
+**`--decision`**, repeatable with one per answer so far, continues on the existing branch with the first run's edits and commits in place. The Branch step's refusal of tracked edits is skipped, `FIX_BASE` is the `since` of this branch's record in `$(git rev-parse --git-dir)/ensemble/red-tests.json`, or `git merge-base <default branch> HEAD` when there is none, and the fix-owned list starts from `git diff --name-only "$FIX_BASE"`. Those edits are earlier work on this change, so they are kept and committed with it, never discarded or reverted. The answer settles only that question and never lifts a risk stop: every plan check runs as usual.
+
+Every return closes the run, as any stop does.
 
 ## Stops and resuming
 

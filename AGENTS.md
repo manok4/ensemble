@@ -67,8 +67,8 @@ Route by what a plan settles, not by size (D138). Use `/en-plan` when the work h
 | New product, or retrofit the foundation | `/en-foundation` |
 | Plan a feature, refactor or fix | `/en-plan` |
 | Implement a plan | `/en-build <plan-path>` |
-| One change, no plan, through to a PR | `/en-fix <request>` * |
-| Plan to ready-for-review PR, hands-off | `/en-flow` * |
+| One change, no plan, through to a PR | `/en-fix <request>` |
+| One entry point: routes the request, plans if needed, through to a PR | `/en-conductor <request>` * |
 | Bounded autonomous loop | `/en-loop` * |
 | Diagnose a bug | `/en-debug` |
 | Simplify the branch diff | `/en-simplify` |

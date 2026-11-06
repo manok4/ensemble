@@ -50,7 +50,7 @@ else
   pass "no step writes a test or edits source"
 fi
 dlacks "$DS" "suggest \`/en-ship\`"         "the handoff no longer suggests /en-ship"
-# Invoking /en-fix, a manual-only skill, is caught by contract-shape.test.sh.
+# Only /en-conductor invokes /en-fix; en-debug names it.
 dhas "$DS" "Neither mode leaves an edit behind" "no edit survives a diagnosis"
 dhas "$DS" "Temporary instrumentation is reverted" "boundary instrumentation is reverted before the handoff"
 dhas "$DS" "ends with \`git bisect reset\`"  "bisect restores the tree it started from"

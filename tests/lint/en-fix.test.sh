@@ -56,12 +56,11 @@ step_line_matching() { step_lines "$1" | grep -m1 -E "$2"; }
 
 frontmatter=$(awk 'NR==1 && /^---$/{on=1; next} on && /^---$/{exit} on' "$SK")
 printf '%s' "$frontmatter" | grep -qx 'disable-model-invocation: true' \
-  && pass "it is user-invoked only" \
-  || fail "SKILL.md must carry disable-model-invocation: true" \
-          "a skill that pushes and opens a PR must not trigger on 'fix this typo'"
-[ ! -f "$REPO_ROOT/skills/en-fix/CONTRACT.md" ] \
-  && pass "it carries no CONTRACT.md, since no skill invokes it" \
-  || fail "en-fix must not carry a CONTRACT.md" "contract-shape requires callers for one"
+  && fail "SKILL.md must not carry disable-model-invocation: true" "/en-conductor invokes it, and D84 bars a manual callee" \
+  || pass "it is model-invocable, so /en-conductor can invoke it"
+[ -f "$REPO_ROOT/skills/en-fix/CONTRACT.md" ] \
+  && pass "it carries a CONTRACT.md, since /en-conductor invokes it" \
+  || fail "en-fix must carry a CONTRACT.md" "contract-shape requires one for a callee"
 
 # --- /en-fix "fix the off-by-one in all 12 reports": nothing frames it as tiny (D139) ---
 printf '%s' "$frontmatter" | grep -qiE '\b(small|quick fix)\b' \
@@ -305,5 +304,36 @@ grep -qF -- '`--auto-merge` only when the user gave them' <<<"$shp_text" \
 grep -qF 'never a host substitution such as `$ARGUMENTS`' "$SK" \
   && pass "sub-skills receive the user's words, not \$ARGUMENTS (D70)" \
   || fail "SKILL.md must pass words, never \$ARGUMENTS (D70)"
+
+grep -qF 'never discarded or reverted' "$SK" \
+  && pass "--decision never discards earlier edits" || fail "--decision must say earlier edits are never discarded"
+
+grep -qF '**`--auto-merge` is refused under this flag:**' "$SK" \
+  && pass "--auto-merge is refused under --orchestrated" || fail "--orchestrated must refuse --auto-merge"
+grep -F 'en-fix: needs-plan clean' "$SK" | grep -qF 'Under `--decision`, return `edited`' \
+  && pass "needs-plan clean is first-run only" || fail "needs-plan clean must not apply under --decision"
+
+# --- caller mode: one named outcome, and a brief lifts nothing (EN27 U3) ---
+orch=$(awk '/^## Orchestrated/{f=1; next} f&&/^## /{exit} f' "$SK")
+for line in 'en-fix: shipped <pr-url> <exit-state>' 'en-fix: ready <branch>' 'en-fix: needs-plan clean <condition>' \
+            'en-fix: needs-plan edited <condition>' 'en-fix: needs-decision <question>' \
+            'en-fix: split <concern>; <concern>' 'en-fix: stopped <reason>'; do
+  case "$orch" in *"\`$line\`"*) pass "the Orchestrated section names: $line" ;;
+    *) fail "## Orchestrated must name the outcome: $line" ;; esac
+done
+grep -qF '| `--no-ship` |' "$SK" && grep -qF '| `--decision "<question>: <answer>"` |' "$SK" \
+  && pass "the flag table declares --no-ship and --decision" \
+  || fail "the flag table must declare --no-ship and --decision"
+case "$orch" in *"A caller's brief is not the user's words"*) pass "a caller's brief does not lift a risk stop" ;;
+  *) fail "## Orchestrated must say a caller's brief does not lift a risk stop" ;; esac
+case "$orch" in *'never lifts a risk stop'*'edits and commits in place'*|*'edits and commits in place'*'never lifts a risk stop'*)
+    pass "--decision continues with edits in place and never lifts a risk stop" ;;
+  *) fail "--decision must keep edits in place and never lift a risk stop" ;; esac
+
+# A run that never reaches /en-ship has nothing else to commit round 2's edits,
+# and `ready` promises a reviewed, committed branch.
+grep -E '^ *- \*\*Round 2\.\*\*' "$SK" | grep -qF 'When the run will not ship, commit them as `fix(review): <subject>` before the Receipt gate' \
+  && pass "a run that will not ship commits round 2's edits before the Receipt gate" \
+  || fail "round 2 must commit its safe_auto edits when no /en-ship will"
 
 report

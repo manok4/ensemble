@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-conductor",
+  "judge": [
+    {
+      "id": "qa-stage-skipped",
+      "expectation": "The assistant's report shows the QA stage was skipped because the change does not affect anything a user sees in a browser, even though the changed file sits under app/. /en-qa was not run."
+    }
+  ]
+}

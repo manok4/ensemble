@@ -177,10 +177,10 @@ else
   fail "[recursion-guard] should emit DETECT_REASON=recursion-guard" "$recursion_out"
 fi
 # Cache file should NOT be written when recursion guard fires
-if [ ! -f "$recursion_tmp/.ensemble/host-cache.env" ]; then
+if [ ! -f "$recursion_tmp/.ensemble/host-cache-claude-code.env" ]; then
   pass "[recursion-guard] does not write cache"
 else
-  fail "[recursion-guard] should not write cache" "cache file exists at $recursion_tmp/.ensemble/host-cache.env"
+  fail "[recursion-guard] should not write cache" "cache file exists at $recursion_tmp/.ensemble/host-cache-claude-code.env"
 fi
 rm -rf "$recursion_tmp"
 
@@ -206,15 +206,15 @@ EOF
 # First invocation: cache miss → script runs full path
 out1=$(env -i PATH="$cache_shim:/usr/bin:/bin" HOME="$cache_home" \
   CLAUDE_CODE_VERSION=test "$DETECT" 2>/dev/null)
-if [ -f "$cache_home/.ensemble/host-cache.env" ]; then
+if [ -f "$cache_home/.ensemble/host-cache-claude-code.env" ]; then
   pass "[cache] first invocation writes cache file"
 else
-  fail "[cache] first invocation should write cache" "no cache file at $cache_home/.ensemble/host-cache.env"
+  fail "[cache] first invocation should write cache" "no cache file at $cache_home/.ensemble/host-cache-claude-code.env"
 fi
 
 # Tamper with the cache file so we can prove the second invocation reads from it
-echo "HOST='cache-marker'" > "$cache_home/.ensemble/host-cache.env"
-echo "PEER_AVAILABLE='cache-marker-flag'" >> "$cache_home/.ensemble/host-cache.env"
+echo "HOST='cache-marker'" > "$cache_home/.ensemble/host-cache-claude-code.env"
+echo "PEER_AVAILABLE='cache-marker-flag'" >> "$cache_home/.ensemble/host-cache-claude-code.env"
 
 # Second invocation: cache hit → emits the tampered content (proving it didn't re-run detection)
 out2=$(env -i PATH="$cache_shim:/usr/bin:/bin" HOME="$cache_home" \
@@ -240,6 +240,46 @@ assert_eq "claude-code" "${HOST:-}" "[cache] ENSEMBLE_DETECT_NO_CACHE=true bypas
 
 rm -rf "$cache_tmp"
 
+# --- Scenario: the cache is keyed by host, and a live signal beats another host's file ---
+# Observed 2026-11-04: a fresh cache written by a Codex session was read before
+# any live signal, so a Claude Code session got a Claude peer labelled cross-agent.
+key_tmp=$(mktemp -d)
+key_home="$key_tmp/home"
+key_shim="$key_tmp/bin"
+mkdir -p "$key_home/.ensemble" "$key_shim"
+for c in claude codex; do printf '#!/usr/bin/env bash\necho "{}"\n' > "$key_shim/$c"; chmod +x "$key_shim/$c"; done
+plant() { printf "HOST='%s'\nPEER='planted'\nPEER_MODE='cross-agent'\n" "$1" > "$key_home/.ensemble/$2"; }
+key_detect() { env -i PATH="$key_shim:/usr/bin:/bin" HOME="$key_home" "$@" "$DETECT" 2>/dev/null; }
+key_reset() { rm -f "$key_home/.ensemble/"*.env; unset HOST PEER; }
+
+# With only codex on PATH the inverse-CLI fallback says codex, so a claude-code
+# answer can only come from the live signal, not from the fallback.
+rm -f "$key_shim/claude"
+for signal in CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli; do
+  key_reset; plant codex host-cache-codex.env; plant codex host-cache.env
+  eval "$(key_detect "$signal")"
+  assert_eq "claude-code" "${HOST:-}" "[cache-key] $signal beats a fresh codex cache, keyed or old"
+  assert_eq "codex" "${PEER:-}" "[cache-key] and the peer is the other CLI, not a cached one"
+done
+printf '#!/usr/bin/env bash\necho "{}"\n' > "$key_shim/claude"; chmod +x "$key_shim/claude"
+
+key_reset; plant claude-code host-cache-claude-code.env; before=$(cat "$key_home/.ensemble/host-cache-claude-code.env")
+eval "$(key_detect CODEX_HOME=/x)"
+assert_eq "codex" "${HOST:-}" "[cache-key] CODEX_HOME beats a fresh claude-code cache"
+assert_eq "$before" "$(cat "$key_home/.ensemble/host-cache-claude-code.env")" "[cache-key] the other host's file is untouched"
+
+# Both CLIs on PATH: the fallback says claude-code, so codex can only come from ENSEMBLE_HOST.
+key_reset; plant claude-code host-cache-claude-code.env; plant claude-code host-cache.env
+eval "$(key_detect ENSEMBLE_HOST=codex)"
+assert_eq "codex" "${HOST:-}" "[cache-key] ENSEMBLE_HOST beats a fresh cache from the other host"
+
+# Same host, fresh file: the slow probe does not rerun.
+key_reset; plant claude-code host-cache-claude-code.env
+eval "$(key_detect CLAUDECODE=1)"
+assert_eq "planted" "${PEER:-}" "[cache-key] the same host reads its own cache"
+rm -rf "$key_tmp"
+unset HOST PEER
+
 # --- Scenario: stale cache (TTL exceeded) is bypassed ---
 ttl_tmp=$(mktemp -d)
 ttl_home="$ttl_tmp/home"
@@ -260,10 +300,10 @@ cat > "$ttl_home/.ensemble/config.json" <<EOF
 EOF
 
 # Plant a stale cache (mtime in the past) with tampered content
-echo "HOST='stale-marker'" > "$ttl_home/.ensemble/host-cache.env"
+echo "HOST='stale-marker'" > "$ttl_home/.ensemble/host-cache-claude-code.env"
 # Set mtime to 2 hours ago (well beyond default 60-minute TTL)
 touch -t "$(date -v-2H +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 hours ago' +%Y%m%d%H%M.%S)" \
-  "$ttl_home/.ensemble/host-cache.env" 2>/dev/null
+  "$ttl_home/.ensemble/host-cache-claude-code.env" 2>/dev/null
 
 out5=$(env -i PATH="$ttl_shim:/usr/bin:/bin" HOME="$ttl_home" \
   CLAUDE_CODE_VERSION=test "$DETECT" 2>/dev/null)

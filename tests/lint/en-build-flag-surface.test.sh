@@ -68,4 +68,11 @@ n=$(sed -n '/^## Flags/,/^\*\*Standing/p' "$SKILL" | grep -c '^| `--')
   && pass "the flag surface is $n, within the post-cut budget of 10" \
   || fail "the flag surface has grown back" "$n flags; ask which is standing policy, or which existing flag the new one should absorb"
 
+# --- --orchestrated is a declared flag on both surfaces (EN27 U2) ---
+if grep -qF '| `--orchestrated` |' "$SKILL" && grep -qF -- '--orchestrated' "$REPO_ROOT/skills/en-build/CONTRACT.md"; then
+  pass "--orchestrated is in the flag table and the contract"
+else
+  fail "--orchestrated must be in en-build's flag table and its contract"
+fi
+
 report

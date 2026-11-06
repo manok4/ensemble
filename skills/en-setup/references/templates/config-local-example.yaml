@@ -30,7 +30,7 @@
 # How many REPAIR cycles the post-PR watch loop may run before escalating the
 # remaining findings as needs-human. A cycle is a fix-and-push iteration, not a
 # status poll: waiting on unchanged CI costs nothing, so a long test job cannot
-# exhaust the budget by being slow. /en-flow documents the same default.
+# exhaust the budget by being slow. /en-ship documents the same default.
 # ship:
 #   watch_max_cycles: 2
 

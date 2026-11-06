@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: en-learn
-updated: 2026-11-04
-total_entries: 25
+updated: 2026-11-06
+total_entries: 26
 ---
 
 # Plans — index
@@ -41,3 +41,4 @@ _(none)_
 - [`EN24-improvement_egm-review-adaptations.md`](../plans/completed/EN24-improvement_egm-review-adaptations.md) — **EN24** Adapt the useful parts of the Elephant-Goldfish Model into review and planning (shipped 2026-10-30)
 - [`EN25-improvement_quality-evals-and-guards.md`](../plans/completed/EN25-improvement_quality-evals-and-guards.md) — **EN25** Measure skill behavior and guard the quality bar, from the agent-skills review (shipped 2026-11-03)
 - [`EN26-improvement_review-tiers.md`](../plans/completed/EN26-improvement_review-tiers.md) — **EN26** Review tiers set by a script, so every change gets the right depth of review (shipped 2026-11-04)
+- [`EN27-feature_en-conductor.md`](../plans/completed/EN27-feature_en-conductor.md) — **EN27** Replace /en-flow with /en-conductor, one entry point that routes work and asks only when it must (shipped 2026-11-05)

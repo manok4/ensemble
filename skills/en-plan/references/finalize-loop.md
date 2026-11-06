@@ -15,7 +15,7 @@ A finding the host would reject on evidence the peer could not read is `escalate
 
 1. **A question is already being asked this run** (a P1 at confidence < 7, the cap-hit question, a reject): the escalation is listed in that question with its rationale. The user's answer converts it to `applied`, `deferred` or `disagreed`, with `user decision <date>` as the rationale.
 2. **No question is scheduled**: the entry stays `escalated` and does not block. The host has judged the finding wrong and only the evidence is out of the peer's reach, so the verdict and the status flip follow the other findings as before. The run report and the hand-off line list each escalation.
-3. **A non-interactive run** (`--from-flow`, automation): as path 2.
+3. **A non-interactive run** (`--orchestrated`, automation): as path 2.
 
 ## Checking the paraphrase
 

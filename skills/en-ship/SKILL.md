@@ -141,7 +141,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
        **Being invoked here is not itself authorization**; the delegate acts under the scope this run holds. **Excluded:** merge, rebase, force-push, approving checks, any branch update this loop did not ask for. `references/watch-loop.md` has the permitted set and the rule that it may narrow this scope, never widen it. **en-ship edits nothing here itself.**
 
-    4. **Loop until clean**, re-running the watch after each push, bounded to `ship.watch_max_cycles` **repair cycles** (default `2`, matching `/en-flow`). **A cycle is a repair-and-push iteration, not a poll.** Waiting on unchanged CI consumes nothing, and counted as polls one long test job would exhaust the cap before finishing once. A `doctor-failed` or `gh-error` exit does not consume a repair cycle: nothing was repaired.
+    4. **Loop until clean**, re-running the watch after each push, bounded to `ship.watch_max_cycles` **repair cycles** (default `2`, matching `/en-conductor`). **A cycle is a repair-and-push iteration, not a poll.** Waiting on unchanged CI consumes nothing, and counted as polls one long test job would exhaust the cap before finishing once. A `doctor-failed` or `gh-error` exit does not consume a repair cycle: nothing was repaired.
 
     5. **A PR that settled externally still gets its findings swept.** On `merged` or `closed`, fetch comments once more and list every unresolved **trusted** finding by id and author. Nothing is left to gate, and staying silent is how a review model's finding ships unaddressed and surfaces days later. Name them and recommend a follow-up PR.
 

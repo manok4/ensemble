@@ -235,17 +235,17 @@ this `plan_id` and a different `repo` belongs to another repo and is ignored. On
 this `plan_id` and **no** `repo` cannot be attributed, so discovery refuses and names it
 rather than adopting or duplicating it.
 
-## The `/en-flow` boundary
+## The `/en-conductor` boundary
 
-`/en-flow` chains planning into building by passing a plan path. In a repo whose
+`/en-conductor` chains planning into building by passing a plan path. In a repo whose
 `plan_store` is `linear` there is no path to pass. **Refuse before publishing**, naming
-the reason, so the chain cannot reach the state where the plan is in Linear and `/en-flow`
+the reason, so the chain cannot reach the state where the plan is in Linear and `/en-conductor`
 is holding a path that no longer exists. Enforced, not merely documented: a documented
 boundary fails after the publish, which is the expensive half.
 
-**The signal is a flag, not an inference.** `/en-flow` always invokes `/en-plan --from-flow`.
+**The signal is a flag, not an inference.** `/en-conductor` always invokes `/en-plan --orchestrated`.
 On that flag, resolve `plan_store` first, the same read the publish step makes, and on
-`linear` stop before research or drafting: "`/en-flow` needs a plan file, and this repo's
+`linear` stop before research or drafting: "`/en-conductor` needs a plan file, and this repo's
 `plan_store` is `linear`. Run `/en-plan` on its own, then `/en-build <IDENT>`." Without the
 flag, `/en-plan` cannot tell who called it, and a refusal that depends on guessing the
 caller is not enforced.

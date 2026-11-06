@@ -89,7 +89,7 @@ done
 # /en-plan "fix the typo in the --verbose help text" holds no condition. The
 # user who takes the offer gets no plan file and no U-IDs, is told /en-build
 # cannot run, and is pointed at /en-fix (D124). Suggested, never invoked:
-# /en-fix is manual-only, and contract-shape.test.sh catches an invoke.
+# only /en-conductor invokes /en-fix.
 if printf '%s' "$gate_block" | grep -qF 'no file, no U-IDs' \
    && printf '%s' "$gate_block" | grep -qiE 'consumes a plan file' \
    && printf '%s' "$gate_block" | grep -qF '`/en-fix <request>`'; then

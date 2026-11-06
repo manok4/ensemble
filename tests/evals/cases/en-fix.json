@@ -1,0 +1,27 @@
+{
+  "skill": "en-fix",
+  "positive": [
+    {
+      "prompt": "Fix this bug in the date parser and open a PR",
+      "top_k": 3
+    },
+    {
+      "prompt": "Make this small improvement, no plan needed",
+      "top_k": 3
+    },
+    {
+      "prompt": "Fix the off-by-one in the report totals",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Why did this fail in prod?",
+      "owner": "en-debug"
+    },
+    {
+      "prompt": "Plan this feature before I build it",
+      "owner": "en-plan"
+    }
+  ]
+}

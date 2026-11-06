@@ -18,7 +18,7 @@ has() { grep -qF -- "$2" "$1" && pass "$3" || fail "$3" "not in $1"; }
 has skills/en-qa/SKILL.md          '.test-output/qa/<run-id>/flows.json'                 "en-qa writes the flow ledger"
 has skills/en-qa/SKILL.md          'from the flow ledger'                                 "en-qa's report is derived from it"
 has skills/en-build/SKILL.md       '/tmp/ensemble/en-build/<run-id>/ledger.json'          "en-build writes the unit ledger"
-has skills/en-flow/SKILL.md        '/tmp/ensemble/en-flow/<run-id>/state.json'            "en-flow records stage outcomes"
+has skills/en-conductor/SKILL.md   'ensemble-conductor-trail'                             "en-conductor records stage outcomes"
 has skills/en-resolve-pr/SKILL.md  '/tmp/ensemble/en-resolve-pr/<run-id>/items.json'      "en-resolve-pr writes the item list"
 has skills/en-foundation/SKILL.md  '/tmp/ensemble/en-foundation/<run-id>/ledger.md'       "en-foundation writes the known-facts ledger"
 

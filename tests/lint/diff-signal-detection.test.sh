@@ -51,6 +51,19 @@ else
   fail "the risk-pattern matching rule is incomplete" "missing:$missing"
 fi
 
+# --- a frontend path is a candidate. A path rule ran QA on a backend file under
+# app/ and skipped a hook under src/hooks/, so both directions are pinned. This
+# guards the wording only; the conductor-*-qa evals judge the behaviour.
+missing=""
+for need in 'A path match is a candidate, not an answer' 'Not a frontend file:' 'A frontend file with no match:' 'Unsure what it affects:** a frontend file'; do
+  grep -qF "$need" "$REF" || missing="$missing '$need'"
+done
+if [ -z "$missing" ]; then
+  pass "frontend paths are read as candidates, both ways, and fail closed when unsure"
+else
+  fail "the frontend matching rule is incomplete" "missing:$missing"
+fi
+
 # --- review depth moved to ensemble-review-tier (D140) ---
 if grep -qE "UNCOUNTED_FILES|EXEC_LINES|is_low_risk|is_small_and_safe" "$REF"; then
   fail "the size and depth classifications must stay gone" "ensemble-review-tier owns review depth"

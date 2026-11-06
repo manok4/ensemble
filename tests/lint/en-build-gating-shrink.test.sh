@@ -62,4 +62,21 @@ else
   fail "foundation D33 must record the gating-surface narrowing"
 fi
 
+# --- no question tool: a gate returns, it is never skipped (EN27 U2) ---
+step9a=$(grep -F '**9a. Mandatory safety gate' "$SKILL")
+case "$step9a" in
+  *'neither answered nor skipped'*'`gate_required: U<N>`'*) pass "step 9a returns gate_required when no question tool can reach the user" ;;
+  *) fail "step 9a must say a gate is neither answered nor skipped, and return gate_required" ;;
+esac
+case "$step9a" in
+  *'no question tool'*'`needs-decision: U<N>: <question>`'*) pass "any other stop-and-ask returns needs-decision on the same rule" ;;
+  *) fail "step 9a must return needs-decision for any other stop-and-ask with no question tool" ;;
+esac
+contract="$REPO_ROOT/skills/en-build/CONTRACT.md"
+if grep -qF '`gate_required: U<N>`' "$contract" && grep -qF '`needs-decision: U<N>: <question>`' "$contract"; then
+  pass "the contract's Return table names both return lines"
+else
+  fail "en-build CONTRACT.md must name gate_required and needs-decision"
+fi
+
 report

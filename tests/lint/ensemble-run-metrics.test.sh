@@ -295,6 +295,7 @@ check_kind phase    '{"checkpoint":"end-of-loop","event":"end","units":5,"outcom
 check_kind suite    '{"where":"post-build","seconds":286,"outcome":"passed"}'
 check_kind review   '{"event":"end","reviewer":"cross-agent","findings":11,"personas":[{"dimension":"testing","seconds":null}]}'
 check_kind note     '{"message":"hello","detail":"world"}'
+check_kind conductor '{"route":"fix","state":"done","stage":"fix","stages":{"fix":"ok"},"decisions":1,"questions":0}'
 check_kind child    '{"run_id":"r1","skill":"en-review","ledger":"/tmp/x.jsonl"}'
 check_kind verify   '{"unit":"U3","tier":"graph","ran":3,"failed":0,"rc":0,"checks":[]}'
 check_kind receipt  '{"op":"verify","result":"hit","reason":"ok","age_s":42,"checks":["full_suite"]}'
@@ -388,6 +389,7 @@ L14=$(rmA start --skill en-ship); rmA finish "$L14"
 assert_eq "null" "$(jq -r '.outcome' "$ROLL")"        "a run with no outcome records null, not absence"
 assert_eq "null" "$(jq -r '.detail.select' "$ROLL")"  "a run with no selection records null"
 assert_eq "0"    "$(jq -r '.detail.peer|length' "$ROLL")" "and an empty peer list"
+assert_eq "null" "$(jq -r '.detail.conductor' "$ROLL")" "and no conductor detail"
 
 # Finishing twice appends nothing the second time.
 before=$(wc -l < "$ROLL" | tr -d ' ')

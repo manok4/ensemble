@@ -145,11 +145,11 @@ else
   fail "must state the core rule: host orchestrates, gnhf executes, completion != acceptance"
 fi
 
-# --- Positioning: when-to-use vs en-flow, /loop, en-build ---
-if grep -qF "vs \`/en-flow\`" "$SKILL" && grep -qF "vs the built-in \`/loop\`" "$SKILL" && grep -qF "vs \`/en-build\`" "$SKILL"; then
-  pass "documents positioning vs en-flow, /loop, en-build"
+# --- Positioning: when-to-use vs en-conductor, /loop, en-build ---
+if grep -qF "vs \`/en-conductor\`" "$SKILL" && grep -qF "vs the built-in \`/loop\`" "$SKILL" && grep -qF "vs \`/en-build\`" "$SKILL"; then
+  pass "documents positioning vs en-conductor, /loop, en-build"
 else
-  fail "must document positioning vs en-flow, /loop, and en-build"
+  fail "must document positioning vs en-conductor, /loop, and en-build"
 fi
 
 # --- the self-containment guard covers en-loop (EN12 U8) ---
