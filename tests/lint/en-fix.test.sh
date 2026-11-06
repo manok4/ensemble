@@ -330,4 +330,10 @@ case "$orch" in *'never lifts a risk stop'*'edits and commits in place'*|*'edits
     pass "--decision continues with edits in place and never lifts a risk stop" ;;
   *) fail "--decision must keep edits in place and never lift a risk stop" ;; esac
 
+# A run that never reaches /en-ship has nothing else to commit round 2's edits,
+# and `ready` promises a reviewed, committed branch.
+grep -E '^ *- \*\*Round 2\.\*\*' "$SK" | grep -qF 'When the run will not ship, commit them as `fix(review): <subject>` before the Receipt gate' \
+  && pass "a run that will not ship commits round 2's edits before the Receipt gate" \
+  || fail "round 2 must commit its safe_auto edits when no /en-ship will"
+
 report
