@@ -50,7 +50,7 @@ run possible, committing a guessed fix, and any edit outside a reproduced bug.
 
 ## Cost bounds
 
-Phase 2 runs only for changes the detector classifies as touching frontend files,
+Phase 2 runs only for changes the detector classifies as able to change what a user sees or does in a browser,
 or with `--browser`, and exercises only the flows the change reaches unless
 `--all-flows` is passed. Fixes per run are capped (`qa.max_bugs_to_fix_per_run`,
 default 5); the rest are listed. No peer subprocess and no learning prompt.

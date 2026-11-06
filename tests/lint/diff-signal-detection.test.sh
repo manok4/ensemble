@@ -52,20 +52,16 @@ else
 fi
 
 # --- a frontend path is a candidate. A path rule ran QA on a backend file under
-# app/ and skipped a hook under src/hooks/, so both directions are pinned.
+# app/ and skipped a hook under src/hooks/, so both directions are pinned. This
+# guards the wording only; the conductor-*-qa evals judge the behaviour.
 missing=""
-for need in 'A path match is a candidate, not an answer' 'app/api/' 'robots.txt' 'src/hooks/useCart.ts' 'Unsure what it affects:** a frontend file'; do
+for need in 'A path match is a candidate, not an answer' 'Not a frontend file:' 'A frontend file with no match:' 'Unsure what it affects:** a frontend file'; do
   grep -qF "$need" "$REF" || missing="$missing '$need'"
 done
 if [ -z "$missing" ]; then
   pass "frontend paths are read as candidates, both ways, and fail closed when unsure"
 else
   fail "the frontend matching rule is incomplete" "missing:$missing"
-fi
-if grep -qF 'cannot affect rendered UI' "$REF"; then
-  fail "a file outside the patterns can still affect rendered UI"
-else
-  pass "does not claim a file outside the patterns cannot affect UI"
 fi
 
 # --- review depth moved to ensemble-review-tier (D140) ---

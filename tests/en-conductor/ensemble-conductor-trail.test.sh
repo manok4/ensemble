@@ -26,44 +26,114 @@ rc_of() { "$@" >/dev/null 2>&1; echo $?; }
 
 # --- finish records the run on the rollup, without the free text ---------------
 M="$REPO_ROOT/skills/en-conductor/scripts/ensemble-run-metrics"
-AN="$SCRATCH/analytics"
+open_run() { # <repo>: a run the way the skill opens it
+  ( cd "$1" && bash "$T" start --metrics-ledger "$(bash "$M" start --skill en-conductor)" \
+      --request 'do-not-store-this-request' --route fix --done-when 'PR open' >/dev/null )
+}
+rollup() { # <analytics-dir> <skill>: that skill's line
+  cat "$1"/*.jsonl 2>/dev/null | jq -c --arg s "$2" 'select(.skill == $s)'
+}
+close_run() { # finish, then close whatever it names, as the skill does
+  local ledger; ledger=$(bash "$T" finish "$@") && [ -z "$ledger" ] || bash "$M" finish "$ledger" >/dev/null 2>&1
+}
+
 metrics_repo=$(fresh_repo metrics)
+AN="$SCRATCH/analytics"
 (
   cd "$metrics_repo" || exit 1
   export ENSEMBLE_ANALYTICS_DIR="$AN"
   unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
-  bash "$M" start --skill en-conductor >/dev/null 2>&1
-  bash "$T" start --request 'do-not-store-this-request' --route fix --done-when 'PR open' >/dev/null
+  open_run "$metrics_repo"
+  bash "$T" log decision route options 'none' >/dev/null
+  bash "$T" log decision route local_only 'true' >/dev/null
   bash "$T" log question fix 'q?' 'a' >/dev/null
   bash "$T" log decision route plan 'risk surface' >/dev/null
+  bash "$T" log decision plan peer 'accepted' >/dev/null
   bash "$T" log stage plan ok 'plan.md' >/dev/null
   bash "$T" log stage qa skipped 'needs_browser false' >/dev/null
   bash "$T" log stage qa ok 'reran' >/dev/null
-  bash "$T" finish stopped ship 'do-not-store-this-reason' >/dev/null
-  bash "$M" finish >/dev/null 2>&1
+  close_run stopped ship 'do-not-store-this-reason'
 )
-ROLL=$(cat "$AN"/*.jsonl 2>/dev/null)
+ROLL=$(rollup "$AN" en-conductor)
 c() { printf '%s' "$ROLL" | jq -r ".detail.conductor$1"; }
-assert_eq "en-conductor" "$(printf '%s' "$ROLL" | jq -r '.skill')" "the rollup records a conductor run"
 assert_eq "plan"    "$(c .route)"        "a reroute to plan wins over the start row"
 assert_eq "stopped" "$(c .state)"        "the final state is recorded"
 assert_eq "ship"    "$(c .stage)"        "the stage it ended at is recorded"
 assert_eq "ok"      "$(c .stages.plan)"  "each stage's result is recorded"
 assert_eq "ok"      "$(c .stages.qa)"    "a stage's last row wins"
 assert_eq "1"       "$(c .questions)"    "questions are counted"
-assert_eq "1"       "$(c .decisions)"    "decisions are counted"
+assert_eq "2"       "$(c .decisions)"    "real decisions are counted, route bookkeeping is not"
 case "$ROLL" in
   *do-not-store*) fail "the rollup must not hold the request or the reason" "$ROLL" ;;
   *) pass "the rollup holds neither the request nor the reason" ;;
 esac
 
+plain_repo=$(fresh_repo metrics-plain)
+(
+  cd "$plain_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/plain-analytics"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$plain_repo"
+  bash "$T" log decision route options 'none' >/dev/null
+  close_run done fix 'ok'
+)
+ROLL=$(rollup "$SCRATCH/plain-analytics" en-conductor)
+assert_eq "fix"  "$(c .route)" "with no reroute the start route stands"
+assert_eq "done" "$(c .state)" "a finished run records done"
+
+# A stage agent that dies leaves its run open, and it is then the newest open run.
+# The conductor's event and close must still land on the conductor's own run.
+child_repo=$(fresh_repo metrics-child)
+(
+  cd "$child_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/child"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$child_repo"
+  bash "$M" start --skill en-build >/dev/null 2>&1
+  close_run stopped build 'stage agent died'
+)
+ROLL=$(rollup "$SCRATCH/child" en-conductor)
+assert_eq "stopped" "$(c .state)" "a child left open does not take the conductor's event or close"
+[ -z "$(rollup "$SCRATCH/child" en-build)" ] \
+  && pass "the conductor's close does not publish the open child" \
+  || fail "the conductor's close must not publish the open child"
+
+# A resumed run is its own rollup line, so it reports only what it did.
+resume_repo=$(fresh_repo metrics-resume)
+(
+  cd "$resume_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/resume"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$resume_repo"
+  bash "$T" log question plan 'q?' 'a' >/dev/null
+  bash "$T" log stage plan ok 'plan.md' >/dev/null
+  close_run stopped build 'first stop'
+  bash "$T" resume --metrics-ledger "$(bash "$M" start --skill en-conductor)" >/dev/null
+  bash "$T" log stage ship ok 'pr' >/dev/null
+  close_run done ship 'ok'
+)
+ROLL=$(rollup "$SCRATCH/resume" en-conductor | tail -n 1)
+assert_eq "done" "$(c .state)"       "the resumed run has its own rollup line"
+assert_eq "null" "$(c .stages.plan)" "it does not claim the stages before the resume"
+assert_eq "ok"   "$(c .stages.ship)" "it records its own stages"
+assert_eq "0"    "$(c .questions)"   "and only its own questions"
+
+gone_repo=$(fresh_repo metrics-gone)
+(
+  cd "$gone_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/gone"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  bash "$T" start --metrics-ledger "$SCRATCH/no-such-ledger.jsonl" --request 'r' --route fix --done-when 'PR open' >/dev/null
+  bash "$T" finish done fix 'ok' >/dev/null 2>&1
+) && pass "a missing ledger does not fail finish" || fail "a missing ledger must not fail finish"
+
 off_repo=$(fresh_repo metrics-off)
 (
   cd "$off_repo" || exit 1
   export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/off" ENSEMBLE_METRICS=off
-  bash "$T" start --request 'r' --route fix --done-when 'PR open' >/dev/null
-  bash "$T" finish done fix 'ok' >/dev/null
-) && pass "finish still succeeds with metrics off" || fail "metrics off must not fail finish"
+  bash "$T" start --metrics-ledger "$(bash "$M" start --skill en-conductor)" --request 'r' --route fix --done-when 'PR open' >/dev/null
+  [ -z "$(bash "$T" finish done fix 'ok')" ]
+) && pass "finish still succeeds with metrics off, and names no ledger" || fail "metrics off must not fail finish"
 [ ! -e "$SCRATCH/off" ] && pass "metrics off writes nothing" || fail "metrics off must write nothing"
 
 # --- a whole run ---

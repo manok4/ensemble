@@ -9,11 +9,11 @@
 # logged row leave it open; `finish stopped` stops it; `finish done` and a
 # superseded row close it.
 #
-#   start --request <words> --route <fix|plan|brainstorm|foundation> --done-when <predicate>
+#   start [--metrics-ledger <path>] --request <words> --route <fix|plan|brainstorm|foundation> --done-when <predicate>
 #   log <stage|decision|question> <stage> <what> <why-or-evidence>
 #   finish <done|stopped> <stage> <reason>
 #   latest
-#   resume
+#   resume [--metrics-ledger <path>]
 #
 # Row meaning, what and why by event: start is request and predicate, with the
 # route in stage; stage is ok|skipped|failed and evidence; decision is a key and
@@ -21,8 +21,12 @@
 # reason. Resume reads three of these: `decision route plan`, `decision route
 # options`, and the plan stage row's evidence, which is the plan path.
 #
-# `finish` also records the run's route, state and per-stage results on the open
-# metrics run. Names and counts only: the request and reasons stay in this trail.
+# `finish` also records the run's route, state and per-stage results on the
+# metrics ledger named at start or resume, then prints that ledger's path. It is
+# named, not resolved: a stage agent that dies with its run open is the newest
+# open run, and would take this event and the close. Names and counts only: the
+# request and reasons stay in this trail. Every value in the payload is closed by
+# cmd_start, cmd_log and valid_stage, so the payload is built without escaping.
 #
 # Exit: 0 ok; 1 not in a git repo, or a write failed; 2 usage; 3 no run in the
 # required state.
@@ -74,13 +78,14 @@ require_open() {
 valid_stage() { case "$STAGES" in *" $1 "*) return 0 ;; *) die 2 "unknown stage: $1" ;; esac; }
 
 cmd_start() {
-  local request="" route="" done_when="" f path
+  local request="" route="" done_when="" ledger="" f path
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || die 2 "$1 needs a value"
     case "$1" in
       --request) request=$2 ;;
       --route) route=$2 ;;
       --done-when) done_when=$2 ;;
+      --metrics-ledger) ledger=$2 ;;
       *) die 2 "unknown option: $1" ;;
     esac
     shift 2
@@ -97,6 +102,7 @@ cmd_start() {
   path="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-$$.tsv"
   printf 'ts\tevent\tstage\tbranch\thead\twhat\twhy\n' > "$path" || die 1 "cannot write $path"
   row "$path" start "$route" "$request" "$done_when"
+  [ -z "$ledger" ] || row "$path" metrics - "$ledger" -
   printf '%s\n' "$path"
 }
 
@@ -111,13 +117,21 @@ cmd_log() {
   row "$TRAIL" "$1" "$2" "$3" "$4"
 }
 
+metrics_ledger() { # the ledger of this run, or nothing
+  awk -F'\t' '$2 == "metrics" { ledger = $6 } END { print ledger }' "$TRAIL"
+}
+
 record_metrics() { # <state> <stage>: fire-and-forget, like every metrics call
-  local helper payload
+  local ledger helper payload
+  ledger=$(metrics_ledger)
+  [ -n "$ledger" ] || return 0
   helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ensemble-run-metrics"
+  # A resumed run is its own rollup line, so the tallies restart at its resume row.
   payload=$(awk -F'\t' -v state="$1" -v stage="$2" '
     $2 == "start" { route = $3 }
+    $2 == "resume" { split("", stages); decisions = 0; questions = 0 }
     $2 == "decision" && $3 == "route" && $6 == "plan" { route = "plan" }
-    $2 == "decision" { decisions++ }
+    $2 == "decision" && ($3 != "route" || $6 == "plan") { decisions++ }
     $2 == "question" { questions++ }
     $2 == "stage" { stages[$3] = $6 }
     END {
@@ -126,7 +140,8 @@ record_metrics() { # <state> <stage>: fire-and-forget, like every metrics call
       printf "{\"route\":\"%s\",\"state\":\"%s\",\"stage\":\"%s\",\"stages\":{%s},\"decisions\":%d,\"questions\":%d}",
         route, state, stage, list, decisions, questions
     }' "$TRAIL")
-  bash "$helper" emit --kind conductor --json "$payload" || true
+  bash "$helper" event "$ledger" --kind conductor --json "$payload" || true
+  printf '%s\n' "$ledger"
 }
 
 cmd_finish() {
@@ -146,10 +161,15 @@ cmd_latest() {
 }
 
 cmd_resume() {
-  local f
+  local f ledger=""
+  if [ $# -gt 0 ]; then
+    [ $# -eq 2 ] && [ "$1" = --metrics-ledger ] || die 2 "resume [--metrics-ledger <path>]"
+    ledger=$2
+  fi
   f=$(newest_live)
   [ -n "$f" ] || { printf 'no-open-run\n'; exit 3; }
   row "$f" resume - - -
+  [ -z "$ledger" ] || row "$f" metrics - "$ledger" -
   printf '%s\n' "$f"
 }
 
@@ -160,6 +180,6 @@ case "$sub" in
   log) cmd_log "$@" ;;
   finish) cmd_finish "$@" ;;
   latest) cmd_latest ;;
-  resume) cmd_resume ;;
+  resume) cmd_resume "$@" ;;
   *) die 2 "unknown subcommand: $sub" ;;
 esac
