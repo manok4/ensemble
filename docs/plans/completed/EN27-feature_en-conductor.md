@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN27
 title: Replace /en-flow with /en-conductor, one entry point that routes work and asks only when it must
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-11-04
-shipped:
+shipped: 2026-11-05
 deepened:
 covers_requirements: []
 requirements_pending: false
