@@ -229,6 +229,7 @@ _ALLOW='{
   "select":   ["tier","reason","count","total"],
   "verify":   ["unit","tier","ran","failed","rc","checks"],
   "receipt":  ["op","result","reason","age_s","checks"],
+  "conductor": ["route","state","stage","stages","decisions","questions"],
   "outcome":  ["verdict","findings_total","peer_only","corroborated","host_only",
                "applied","deferred","disagreed","escalated"]
 }'
@@ -343,6 +344,7 @@ _rollup() {  # <ledger>
           | ($ev | group_by(.kind) | map({key: .[0].kind, value: length}) | from_entries) as $counts
           | ($doc | map(select(.kind == "outcome")) | last) as $out
           | ($doc | map(select(.kind == "select"))  | last) as $sel
+          | ($doc | map(select(.kind == "conductor")) | last) as $cond
           | ($doc | map(select(.kind == "peer"))
              | map({peer, decision, reason, effort, model_actual,
                     elapsed_s, cost_usd, tokens_in, tokens_out})) as $peers
@@ -359,7 +361,8 @@ _rollup() {  # <ledger>
              outcome: (if $out == null then null else ($out | del(.kind, .at, .dropped)) end),
              detail: {select: (if $sel == null then null
                                else {tier: $sel.tier, count: $sel.count, total: $sel.total} end),
-                      peer: $peers},
+                      peer: $peers,
+                      conductor: (if $cond == null then null else ($cond | del(.kind, .at, .dropped, .dropped_keys)) end)},
              dropped: $dropped, dropped_keys: $dropped_keys}
         end' "$f" 2>/dev/null) || return 2
   [ -n "$summary" ] && [ "$summary" != "null" ] || return 2

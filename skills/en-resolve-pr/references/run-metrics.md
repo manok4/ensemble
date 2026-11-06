@@ -14,10 +14,11 @@ with the clone. **One JSON object per line, appended**, so parallel dispatches
 cannot lose each other's events and reading a run is a line scan.
 
 Carried by `/en-plan`, `/en-build`, `/en-review`, `/en-ship`, `/en-foundation`,
-`/en-simplify`, `/en-qa`, `/en-learn`, `/en-resolve-pr`, `/en-test-audit` and
-`/en-fix`, every skill that opens a run. Five joined in 2026-10 (D129): without a
-run record their wall time was unknowable. `/en-fix` followed (D138), so plan-free
-work can be timed against planned work.
+`/en-simplify`, `/en-qa`, `/en-learn`, `/en-resolve-pr`, `/en-test-audit`,
+`/en-fix` and `/en-conductor`, every skill that opens a run. Five joined in
+2026-10 (D129): without a run record their wall time was unknowable. `/en-fix`
+followed (D138), so plan-free work can be timed against planned work.
+`/en-conductor` followed (D143), so a run's stages link to it as children.
 
 ## Addressing: a file, not an environment variable
 
@@ -105,6 +106,7 @@ Helper-emitted, with no call point for a model to remember:
 | `receipt` | `op`, `result`, `reason`, `age_s`, `checks` | `ensemble-verification-receipt`, on `write` and `verify` |
 | `peer` | `peer`, `decision`, `reason`, `peer_mode`, `effort`, `model_alias`, `model_actual`, `elapsed_s`, `cost_usd`, `tokens_in`, `tokens_out`, `iteration` | `ensemble-peer-invoke`, in `_epi_decision`; `/en-plan` adds `iteration`, which no helper can see. `cost_usd`, `tokens_in` and `tokens_out` come from the CLI's own result envelope, so they cost nothing to collect and are null when the CLI does not report them (`codex exec --json` reports tokens but no cost and no served model) |
 | `child` | `run_id`, `skill`, `ledger` | `ensemble-run-metrics start`, into the parent |
+| `conductor` | `route`, `state`, `stage`, `stages`, `decisions`, `questions` | `ensemble-conductor-trail finish`. Names and counts only: the request and the stop reason stay in the trail, inside the repo's git dir |
 
 **Model-emitted, for what no helper can see.** Every one of these describes a
 decision the model made, so there is nothing for a script to observe. They are
@@ -144,7 +146,7 @@ sentence saying they were unchanged, and nothing went red.
 directory. It carries `schema`, `skill`, `run_id`, `plan_id`, `repo`,
 `parent_run_id`, `started_at`, `ended_at`, `duration_s`, a `counts` object per
 kind, the `outcome` object verbatim, a `detail` object holding the `select`
-tier and the `peer` passes, and `dropped`.
+tier, the `peer` passes and the `conductor` event, and `dropped`.
 
 Each `peer` pass carries `peer`, `decision`, `reason`, `effort`, `model_actual`,
 `elapsed_s`, `cost_usd`, `tokens_in` and `tokens_out`.

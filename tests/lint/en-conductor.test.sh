@@ -50,6 +50,8 @@ assert_contains "$st" 'stage ship skipped' "the skip is logged"
 has 'never `--auto-merge`' "it never auto-merges"
 has "grep -Eiq '^- \\*\\*(Risk:\\*\\* (destructive|high)|Gated:\\*\\* true)' <plan-path>" "build placement reads the plan's risk and gates"
 has 'en-conductor: done' "the done marker"
+has 'ensemble-run-metrics" start --skill en-conductor' "a run opens under its own name"
+has 'on the fix route the `en-fix:` line verbatim' "the report quotes the fix outcome"
 has 'en-conductor: stopped at <stage>: <reason>' "the stopped marker"
 
 # --- en-ship's exit states reach the reader (D113) ---

@@ -21,6 +21,9 @@
 # reason. Resume reads three of these: `decision route plan`, `decision route
 # options`, and the plan stage row's evidence, which is the plan path.
 #
+# `finish` also records the run's route, state and per-stage results on the open
+# metrics run. Names and counts only: the request and reasons stay in this trail.
+#
 # Exit: 0 ok; 1 not in a git repo, or a write failed; 2 usage; 3 no run in the
 # required state.
 
@@ -108,12 +111,31 @@ cmd_log() {
   row "$TRAIL" "$1" "$2" "$3" "$4"
 }
 
+record_metrics() { # <state> <stage>: fire-and-forget, like every metrics call
+  local helper payload
+  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ensemble-run-metrics"
+  payload=$(awk -F'\t' -v state="$1" -v stage="$2" '
+    $2 == "start" { route = $3 }
+    $2 == "decision" && $3 == "route" && $6 == "plan" { route = "plan" }
+    $2 == "decision" { decisions++ }
+    $2 == "question" { questions++ }
+    $2 == "stage" { stages[$3] = $6 }
+    END {
+      sep = ""; list = ""
+      for (s in stages) { list = list sep "\"" s "\":\"" stages[s] "\""; sep = "," }
+      printf "{\"route\":\"%s\",\"state\":\"%s\",\"stage\":\"%s\",\"stages\":{%s},\"decisions\":%d,\"questions\":%d}",
+        route, state, stage, list, decisions, questions
+    }' "$TRAIL")
+  bash "$helper" emit --kind conductor --json "$payload" || true
+}
+
 cmd_finish() {
   [ $# -eq 3 ] || die 2 "finish <done|stopped> <stage> <reason>"
   case "$1" in done|stopped) ;; *) die 2 "unknown finish state: $1" ;; esac
   valid_stage "$2"
   require_open
   row "$TRAIL" finish "$2" "$1" "$3"
+  record_metrics "$1" "$2"
 }
 
 cmd_latest() {

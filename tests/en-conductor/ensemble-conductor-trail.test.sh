@@ -24,6 +24,48 @@ fresh_repo() {
 start_run() { bash "$T" start --request "$1" --route fix --done-when "PR open"; }
 rc_of() { "$@" >/dev/null 2>&1; echo $?; }
 
+# --- finish records the run on the rollup, without the free text ---------------
+M="$REPO_ROOT/skills/en-conductor/scripts/ensemble-run-metrics"
+AN="$SCRATCH/analytics"
+metrics_repo=$(fresh_repo metrics)
+(
+  cd "$metrics_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$AN"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  bash "$M" start --skill en-conductor >/dev/null 2>&1
+  bash "$T" start --request 'do-not-store-this-request' --route fix --done-when 'PR open' >/dev/null
+  bash "$T" log question fix 'q?' 'a' >/dev/null
+  bash "$T" log decision route plan 'risk surface' >/dev/null
+  bash "$T" log stage plan ok 'plan.md' >/dev/null
+  bash "$T" log stage qa skipped 'needs_browser false' >/dev/null
+  bash "$T" log stage qa ok 'reran' >/dev/null
+  bash "$T" finish stopped ship 'do-not-store-this-reason' >/dev/null
+  bash "$M" finish >/dev/null 2>&1
+)
+ROLL=$(cat "$AN"/*.jsonl 2>/dev/null)
+c() { printf '%s' "$ROLL" | jq -r ".detail.conductor$1"; }
+assert_eq "en-conductor" "$(printf '%s' "$ROLL" | jq -r '.skill')" "the rollup records a conductor run"
+assert_eq "plan"    "$(c .route)"        "a reroute to plan wins over the start row"
+assert_eq "stopped" "$(c .state)"        "the final state is recorded"
+assert_eq "ship"    "$(c .stage)"        "the stage it ended at is recorded"
+assert_eq "ok"      "$(c .stages.plan)"  "each stage's result is recorded"
+assert_eq "ok"      "$(c .stages.qa)"    "a stage's last row wins"
+assert_eq "1"       "$(c .questions)"    "questions are counted"
+assert_eq "1"       "$(c .decisions)"    "decisions are counted"
+case "$ROLL" in
+  *do-not-store*) fail "the rollup must not hold the request or the reason" "$ROLL" ;;
+  *) pass "the rollup holds neither the request nor the reason" ;;
+esac
+
+off_repo=$(fresh_repo metrics-off)
+(
+  cd "$off_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/off" ENSEMBLE_METRICS=off
+  bash "$T" start --request 'r' --route fix --done-when 'PR open' >/dev/null
+  bash "$T" finish done fix 'ok' >/dev/null
+) && pass "finish still succeeds with metrics off" || fail "metrics off must not fail finish"
+[ ! -e "$SCRATCH/off" ] && pass "metrics off writes nothing" || fail "metrics off must write nothing"
+
 # --- a whole run ---
 R=$(fresh_repo whole); cd "$R" || exit 1
 trail=$(start_run "fix the parser")
