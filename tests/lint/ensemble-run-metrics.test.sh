@@ -817,4 +817,35 @@ assert_eq "1" "$(grep -c 'parent-still-found' "$LPAR" || true)" \
   "the parent is still resolvable after 40 completed runs beneath it"
 rmA finish "$LPAR"
 
+# close-above closes only what started after the ledger it names. A name with no
+# exact start record must close nothing, or a typo would publish every open run.
+CA_DIR="$WORK/close-above"; mkdir -p "$CA_DIR"; cd "$CA_DIR" || exit 1
+git init -q . ; git config user.email t@example.com; git config user.name T
+export ENSEMBLE_ANALYTICS_DIR="$WORK/ca"
+ca_start() { bash "$RM" start --skill "$1" 2>/dev/null; }
+finishes() { grep -c '"kind":"finish"' "$1"; }
+CA_LOW=$(ca_start en-learn); CA_MID=$(ca_start en-conductor)
+CA_DONE=$(ca_start en-review); bash "$RM" finish "$CA_DONE" >/dev/null 2>&1
+CA_OLD=$(ca_start en-plan); CA_TOP=$(ca_start en-build)
+for bad in "$CA_DIR/.git/ensemble/runs/no-such.jsonl" "${CA_MID%.jsonl}"; do
+  bash "$RM" close-above "$bad" >/dev/null 2>&1
+  assert_eq "0" "$(finishes "$CA_TOP")" "close-above closes nothing without an exact match: ${bad##*/}"
+done
+bash "$RM" close-above "$CA_MID" >/dev/null 2>&1
+assert_eq "1" "$(finishes "$CA_TOP")"  "close-above closes the newest run above the ledger"
+assert_eq "1" "$(finishes "$CA_OLD")"  "close-above closes every run above the ledger"
+assert_eq "1" "$(finishes "$CA_DONE")" "close-above does not finish a closed run twice"
+assert_eq "0" "$(finishes "$CA_MID")"  "close-above leaves the named ledger open"
+assert_eq "0" "$(finishes "$CA_LOW")"  "close-above leaves an earlier run open"
+
+# Recording off still pops the log, or the run would parent everything after it.
+CA_OFF=$(ca_start en-qa)
+ENSEMBLE_METRICS=off bash "$RM" close-above "$CA_MID" >/dev/null 2>&1
+CA_NEXT=$(ca_start en-ship)
+assert_eq "$(jq -r .run_id "$CA_MID" | head -1)" "$(jq -r .parent_run_id "$CA_NEXT" | head -1)" \
+  "close-above still clears the log while recording is off"
+[ -n "$CA_OFF" ] || fail "the opted-out case needs a run to close"
+unset ENSEMBLE_ANALYTICS_DIR
+cd "$PROJ" || exit 1
+
 report

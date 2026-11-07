@@ -94,9 +94,76 @@ child_repo=$(fresh_repo metrics-child)
 )
 ROLL=$(rollup "$SCRATCH/child" en-conductor)
 assert_eq "stopped" "$(c .state)" "a child left open does not take the conductor's event or close"
-[ -z "$(rollup "$SCRATCH/child" en-build)" ] \
-  && pass "the conductor's close does not publish the open child" \
-  || fail "the conductor's close must not publish the open child"
+# The stage is over once the conductor closes, so its run closes with it and keeps
+# its own rollup line, rather than parenting every later run in the repo.
+child_roll=$(rollup "$SCRATCH/child" en-build)
+[ -n "$child_roll" ] \
+  && pass "the conductor's close also closes a stage left open" \
+  || fail "the conductor's close must close a stage left open"
+assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$(printf '%s' "$child_roll" | jq -r .parent_run_id)" \
+  "the abandoned stage still links to the conductor"
+
+# A stage that stops with its run open must not become the next stage's parent.
+# The conductor logs a row only once the stage has returned, so that is the moment
+# the stale run closes. en-plan's draft stop and en-build's gate returns do this.
+stale_repo=$(fresh_repo metrics-stale)
+stale_out=$(
+  cd "$stale_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/stale"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$stale_repo"
+  bash "$M" start --skill en-plan >/dev/null 2>&1
+  bash "$T" log stage plan failed 'draft stop' >/dev/null
+  next=$(bash "$M" start --skill en-build 2>/dev/null)
+  jq -r .parent_run_id "$next" | head -1
+  bash "$M" finish "$next" >/dev/null 2>&1
+  close_run stopped build 'gate'
+)
+ROLL=$(rollup "$SCRATCH/stale" en-conductor)
+assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$stale_out" \
+  "a stage dispatched after a stop parents to the conductor, not the stale run"
+assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$(rollup "$SCRATCH/stale" en-plan | jq -r .parent_run_id)" \
+  "the stopped stage gets its own rollup line under the conductor"
+
+# Plan and an in-session Build run while the conductor logs questions, so those
+# rows must leave the stage open. A close there would make the stage's own pathless
+# `finish` close the conductor, and the rollup would lose the conductor's detail.
+live_repo=$(fresh_repo metrics-live)
+(
+  cd "$live_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/live"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$live_repo"
+  child=$(bash "$M" start --skill en-plan 2>/dev/null)
+  bash "$T" log question plan 'q?' 'a' >/dev/null
+  bash "$T" log decision plan peer 'accepted' >/dev/null
+  cp "$child" "$SCRATCH/live-child-copy"
+  bash "$M" finish >/dev/null 2>&1
+  bash "$T" log stage plan ok 'plan.md' >/dev/null
+  close_run done plan 'ok'
+)
+grep -q '"kind":"finish"' "$SCRATCH/live-child-copy" \
+  && fail "a question or decision row leaves a running stage open" \
+  || pass "a question or decision row leaves a running stage open"
+ROLL=$(rollup "$SCRATCH/live" en-conductor)
+assert_eq "done" "$(c .state)" "the stage's own finish leaves the conductor's run for the conductor"
+
+# A fallback reruns the stage straight after this row, with no stage row between.
+fb_repo=$(fresh_repo metrics-fallback)
+fb_parent=$(
+  cd "$fb_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/fallback"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$fb_repo"
+  bash "$M" start --skill en-qa >/dev/null 2>&1
+  bash "$T" log decision qa fallback 'agent returned nothing' >/dev/null
+  rerun=$(bash "$M" start --skill en-qa 2>/dev/null)
+  jq -r .parent_run_id "$rerun" | head -1
+  bash "$M" finish "$rerun" >/dev/null 2>&1
+  close_run done qa 'ok'
+)
+ROLL=$(rollup "$SCRATCH/fallback" en-conductor)
+assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$fb_parent" "a fallback rerun parents to the conductor, not the dead agent"
 
 # A resumed run is its own rollup line, so it reports only what it did.
 resume_repo=$(fresh_repo metrics-resume)

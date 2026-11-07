@@ -85,6 +85,12 @@ and never produces a rollup line, so closing it is part of stopping rather than
 part of succeeding. A run nobody closes stops counting as live after
 twenty-four hours, which bounds the damage without hiding it.
 
+`close-above <file>` is the caller's half of that rule. `/en-conductor`'s trail
+calls it on a `stage` row, a `redispatch` or `fallback` decision, and at its own
+close, since a stage has returned at each of those. Every run started after the
+named ledger closes with its own rollup line. A skill never calls it, and a run
+outside `/en-conductor` still relies on `finish`.
+
 Every call is fire-and-forget: outside a git repo, without `jq`, or on a bad
 payload the helper prints one stderr line and exits 0, and a run is never
 blocked by its own bookkeeping.
