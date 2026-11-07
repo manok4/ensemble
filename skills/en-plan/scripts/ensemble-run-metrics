@@ -38,6 +38,7 @@
 #   ensemble-run-metrics event  <file> --kind <kind> --json '<object>'        -> explicit path
 #   ensemble-run-metrics finish  [<file>]   -> path optional; resolves the run itself
 #   ensemble-run-metrics summary [<file>]   -> "N dispatches, M peer passes, K lint runs"
+#   ensemble-run-metrics close-above <file> -> finish every open run started after <file>
 #
 # OPT-OUT IS CHECKED BY EVERY SUBCOMMAND. `ENSEMBLE_METRICS=off`, or a
 # `metrics:` block with `enabled: false` in <repo>/.ensemble/config.local.yaml.
@@ -56,7 +57,7 @@ set -u
 note() { printf 'ensemble-run-metrics: %s\n' "$*" >&2; }
 
 cmd="${1:-}"; [ $# -gt 0 ] && shift
-case "$cmd" in start|emit|event|finish|summary) ;; -h|--help|"") sed -n '2,4p;/^# Usage:/,/^#$/p' "$0" >&2; exit 0 ;; *) note "unknown command: $cmd"; exit 0 ;; esac
+case "$cmd" in start|emit|event|finish|summary|close-above) ;; -h|--help|"") sed -n '2,4p;/^# Usage:/,/^#$/p' "$0" >&2; exit 0 ;; *) note "unknown command: $cmd"; exit 0 ;; esac
 
 command -v jq >/dev/null 2>&1 || { note "jq not found; metrics disabled for this run"; exit 0; }
 
@@ -399,6 +400,36 @@ _rollup() {  # <ledger>
   _rollup_unlock "$target.rotate.lock"
   return 0
 }
+
+# --- close-above -------------------------------------------------------------
+# For a caller that has seen its stage return, which is the one point where a run
+# still open above it is certainly over. A stage cannot be trusted to say so: most
+# of its stops are questions the user may answer, and a pathless `finish` from a
+# stage that never started a run closes the caller's.
+#
+# A ledger the log does not hold closes nothing: everything would otherwise count
+# as started after it. Like `finish`, this works while recording is off, because
+# the log is run bookkeeping.
+if [ "$cmd" = "close-above" ]; then
+  anchor="${1:-}"
+  [ -n "$anchor" ] || { note "close-above needs a ledger path"; exit 0; }
+  dir=$(_runs_dir) || exit 0
+  log="$dir/active"
+  [ -f "$log" ] || exit 0
+  tail -n "$_LOG_SCAN" "$log" 2>/dev/null | grep -qF "$(printf '\t')$anchor" || exit 0
+  closed=""
+  while IFS= read -r line; do
+    mark="${line%%$'\t'*}"; rest="${line#*$'\t'}"; path="${rest#*$'\t'}"
+    [ "$path" = "$rest" ] && continue
+    case "$mark" in
+      -) closed="$closed $path " ;;
+      +) [ "$path" = "$anchor" ] && break
+         case "$closed" in *" $path "*) continue ;; esac
+         [ -f "$path" ] && ! _ledger_closed "$path" && bash "$0" finish "$path" ;;
+    esac
+  done < <(tail -n "$_LOG_SCAN" "$log" 2>/dev/null | (tail -r 2>/dev/null || tac 2>/dev/null))
+  exit 0
+fi
 
 # --- start -------------------------------------------------------------------
 if [ "$cmd" = "start" ]; then

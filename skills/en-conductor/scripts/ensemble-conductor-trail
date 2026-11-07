@@ -21,6 +21,10 @@
 # reason. Resume reads three of these: `decision route plan`, `decision route
 # options`, and the plan stage row's evidence, which is the plan path.
 #
+# Every `log` and `finish` also closes any run still open above this run's metrics
+# ledger. The conductor writes a row only once a stage has returned, so such a run
+# is over, and left open it would parent the next stage.
+#
 # `finish` also records the run's route, state and per-stage results on the
 # metrics ledger named at start or resume, then prints that ledger's path. It is
 # named, not resolved: a stage agent that dies with its run open is the newest
@@ -115,17 +119,28 @@ cmd_log() {
   fi
   require_open
   row "$TRAIL" "$1" "$2" "$3" "$4"
+  close_stale_runs
 }
 
 metrics_ledger() { # the ledger of this run, or nothing
   awk -F'\t' '$2 == "metrics" { ledger = $6 } END { print ledger }' "$TRAIL"
 }
 
+metrics_helper() { printf '%s/ensemble-run-metrics' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; }
+
+close_stale_runs() { # fire-and-forget, like every metrics call
+  local ledger
+  ledger=$(metrics_ledger)
+  [ -n "$ledger" ] || return 0
+  bash "$(metrics_helper)" close-above "$ledger" >/dev/null || true
+}
+
 record_metrics() { # <state> <stage>: fire-and-forget, like every metrics call
   local ledger helper payload
   ledger=$(metrics_ledger)
   [ -n "$ledger" ] || return 0
-  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ensemble-run-metrics"
+  helper=$(metrics_helper)
+  close_stale_runs
   # A resumed run is its own rollup line, so the tallies restart at its resume row.
   payload=$(awk -F'\t' -v state="$1" -v stage="$2" '
     $2 == "start" { route = $3 }

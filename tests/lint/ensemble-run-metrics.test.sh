@@ -817,4 +817,27 @@ assert_eq "1" "$(grep -c 'parent-still-found' "$LPAR" || true)" \
   "the parent is still resolvable after 40 completed runs beneath it"
 rmA finish "$LPAR"
 
+# close-above closes only what started after the ledger it names. A name it cannot
+# find must close nothing, or a typo would publish every open run in the repo.
+CA_DIR="$WORK/close-above"; mkdir -p "$CA_DIR"; cd "$CA_DIR" || exit 1
+git init -q . ; git config user.email t@example.com; git config user.name T
+CA_LOW=$(ENSEMBLE_ANALYTICS_DIR="$WORK/ca" bash "$RM" start --skill en-learn 2>/dev/null)
+CA_MID=$(ENSEMBLE_ANALYTICS_DIR="$WORK/ca" bash "$RM" start --skill en-conductor 2>/dev/null)
+CA_TOP=$(ENSEMBLE_ANALYTICS_DIR="$WORK/ca" bash "$RM" start --skill en-plan 2>/dev/null)
+ENSEMBLE_ANALYTICS_DIR="$WORK/ca" bash "$RM" close-above "$CA_DIR/.git/ensemble/runs/no-such.jsonl" >/dev/null 2>&1
+grep -q '"kind":"finish"' "$CA_TOP" \
+  && fail "close-above closes nothing when it cannot find the ledger" \
+  || pass "close-above closes nothing when it cannot find the ledger"
+ENSEMBLE_ANALYTICS_DIR="$WORK/ca" bash "$RM" close-above "$CA_MID" >/dev/null 2>&1
+grep -q '"kind":"finish"' "$CA_TOP" \
+  && pass "close-above closes a run started after the ledger" \
+  || fail "close-above closes a run started after the ledger"
+grep -q '"kind":"finish"' "$CA_MID" \
+  && fail "close-above leaves the named ledger open" \
+  || pass "close-above leaves the named ledger open"
+grep -q '"kind":"finish"' "$CA_LOW" \
+  && fail "close-above leaves an earlier run open" \
+  || pass "close-above leaves an earlier run open"
+cd "$PROJ" || exit 1
+
 report
