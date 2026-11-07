@@ -165,6 +165,31 @@ fb_parent=$(
 ROLL=$(rollup "$SCRATCH/fallback" en-conductor)
 assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$fb_parent" "a fallback rerun parents to the conductor, not the dead agent"
 
+# A needs-decision redispatch and a needs-plan reroute each start the next stage
+# straight after their row, with no stage row between, so each row closes a Fix
+# agent that returned with its run open.
+arm_case() { # <stage> <key> <value>
+  local arm_repo arm_parent
+  arm_repo=$(fresh_repo "metrics-$1-$2")
+  arm_parent=$(
+    cd "$arm_repo" || exit 1
+    export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/arm-$2"
+    unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+    open_run "$arm_repo"
+    bash "$M" start --skill en-fix >/dev/null 2>&1
+    bash "$T" log decision "$1" "$2" "$3" >/dev/null
+    next=$(bash "$M" start --skill en-plan 2>/dev/null)
+    jq -r .parent_run_id "$next" | head -1
+    bash "$M" finish "$next" >/dev/null 2>&1
+    close_run done plan 'ok'
+  )
+  ROLL=$(rollup "$SCRATCH/arm-$2" en-conductor)
+  assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$arm_parent" \
+    "a decision $1 $2 row closes the Fix agent's run before the next stage starts"
+}
+arm_case fix redispatch 'q?: a'
+arm_case route plan 'risk surface'
+
 # A resumed run is its own rollup line, so it reports only what it did.
 resume_repo=$(fresh_repo metrics-resume)
 (

@@ -21,10 +21,11 @@
 # reason. Resume reads three of these: `decision route plan`, `decision route
 # options`, and the plan stage row's evidence, which is the plan path.
 #
-# A `stage` row, a `redispatch` or `fallback` decision, and `finish` also close any
-# run still open above this run's metrics ledger: each marks a stage that has
-# returned, and left open its run would parent the next stage. Other rows do not,
-# because an in-session stage may still be running when a question is logged.
+# A `stage` row, a `redispatch` or `fallback` decision, `decision route plan`, and
+# `finish` also close any run still open above this run's metrics ledger: each
+# marks a stage that has returned, and left open its run would parent the next
+# stage. Other rows do not, because an in-session stage may still be running when
+# a question is logged.
 #
 # `finish` also records the run's route, state and per-stage results on the
 # metrics ledger named at start or resume, then prints that ledger's path. It is
@@ -120,7 +121,7 @@ cmd_log() {
   fi
   require_open
   row "$TRAIL" "$1" "$2" "$3" "$4"
-  case "$1:$3" in stage:*|decision:redispatch|decision:fallback) close_stale_runs ;; esac
+  case "$1:$2:$3" in stage:*|decision:*:redispatch|decision:*:fallback|decision:route:plan) close_stale_runs ;; esac
 }
 
 metrics_ledger() { # the ledger of this run, or nothing
