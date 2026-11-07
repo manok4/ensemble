@@ -565,7 +565,7 @@ check_index_coverage() {
       if ! grep -qF "$plan_basename" docs/generated/plan-index.md; then
         emit "index-coverage.plan-missing" "docs/generated/plan-index.md" "" "P1" \
           "$plan exists but is not listed in plan-index.md" \
-          "Run /en-learn to regenerate the index"
+          "Run bin/ensemble-lint --fix to regenerate the index"
       fi
     done
   fi
@@ -586,6 +586,41 @@ check_index_coverage() {
       fi
     done
   fi
+}
+
+# --- Fix: docs/generated/plan-index.md ---
+# Built whole from the plans' frontmatter, so the index cannot hold a stale entry.
+# `updated` moves only when an entry does: a --fix on every ship adds no noise.
+plan_index_entries() {  # <active|completed>
+  local plan name id title detail found=0
+  while IFS= read -r plan; do
+    [ -f "$plan" ] || continue
+    name=$(basename "$plan")
+    [ "$name" = "tech-debt-tracker.md" ] && continue
+    id=$(get_field "$plan" plan_id); [ -n "$id" ] || id=$(get_field "$plan" fr_id)
+    title=$(get_field "$plan" title)
+    if [ "$1" = "completed" ]; then detail="shipped $(get_field "$plan" shipped)"
+    else detail=$(get_field "$plan" status); fi
+    printf -- '- [`%s`](../plans/%s/%s) — **%s** %s (%s)\n' "$name" "$1" "$name" "$id" "$title" "$detail"
+    found=1
+  done < <(LC_ALL=C ls -1 "docs/plans/$1"/*.md 2>/dev/null)
+  [ "$found" -eq 1 ] || printf '_(none)_\n'
+}
+
+regenerate_plan_index() {
+  local index=docs/generated/plan-index.md active completed body total tmp
+  [ -d docs/plans ] && [ -d docs/generated ] || return 0
+  active=$(plan_index_entries active)
+  completed=$(plan_index_entries completed)
+  body=$(printf '# Plans — index\n\n> Auto-maintained. Do not hand-edit.\n\n## Active\n\n%s\n\n## Completed\n\n%s' "$active" "$completed")
+  if grep -qs '^generator: ensemble-lint$' "$index" && [ "$(awk 'n >= 2 { print } /^---$/ { n++ }' "$index" | sed '1{/^$/d;}')" = "$body" ]; then
+    return 0
+  fi
+  total=$(printf '%s\n%s\n' "$active" "$completed" | grep -c '^- \[')
+  tmp="$index.tmp.$$"
+  printf -- '---\ntype: plan-index\ngenerated: true\ngenerator: ensemble-lint\nupdated: %s\ntotal_entries: %s\n---\n\n%s\n' \
+    "$(date +%Y-%m-%d)" "$total" "$body" > "$tmp" && mv "$tmp" "$index" \
+    || { rm -f "$tmp"; echo "ensemble-lint: cannot write $index" >&2; return 2; }
 }
 
 # --- Rule: freshness.architecture-* ---
@@ -1058,6 +1093,14 @@ check_td_enforce_layer() {
     END { flush() }
   ' "$file")
 }
+
+# Only when the scope holds the index, since --scope limits what a run may touch.
+# A refresh that cannot write is a runner error: a caller would stage it as current.
+if [ "$FIX" = "true" ]; then
+  case "${SCOPE#./}" in
+    docs|docs/|docs/generated|docs/generated/|docs/generated/plan-index.md) regenerate_plan_index || exit 2 ;;
+  esac
+fi
 
 # --- Run lints ---
 while IFS= read -r file; do
