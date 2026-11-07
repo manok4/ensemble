@@ -110,10 +110,11 @@ Forbidden cross-cuts:
 
 `bin/ensemble-lint` checks:
 
-- `architecture.frontmatter-required` — `status`, `created`, `updated`, `last_drift_check`, `freshness_target_days` all present (P1).
-- `architecture.freshness` — `updated:` within `freshness_target_days` (default 30) → green; up to 90 → P2 advisory; >90 → P1.
-- `architecture.status-valid` — `status:` is `seed` or `active`; nothing else (P1).
-- `architecture.no-absolute-paths` — no `/Users/...` in component file lists (P1).
+- `frontmatter.missing`: the file has a frontmatter block (P1).
+- `frontmatter.invalid-enum`: `status:` is `seed` or `active` (P1).
+- `freshness.architecture-30`: `updated:` is older than `freshness_target_days`, 30 when unset (P2).
+- `freshness.architecture-90`: `updated:` is older than 90 days, or than `freshness_target_days` when that is longer (P1).
+- `path.absolute`: no absolute path such as `/Users/...` outside a code span (P1).
 
 ## Update protocol
 
