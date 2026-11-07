@@ -86,6 +86,14 @@ assert_contains "$(section 'Fix outcomes')" 'Redispatch with the original flags'
 assert_contains "$(section 'Fix outcomes')" 'Never decide it yourself' "the conductor never answers needs-decision itself"
 assert_contains "$(section 'Fix outcomes')" "Log \`decision fix redispatch" "a Fix redispatch logs the row that closes the returned agent's run"
 
+# --- the keys that close stage runs belong to their events only ---
+# The trail closes stage runs on these rows, so a free decision logged under one
+# while an in-session stage runs would close that stage's run and orphan its finish.
+qp_step3=$(section 'Question policy' | grep -E '^3\. ')
+for key in '`redispatch`' '`fallback`' '`decision route plan`'; do
+  assert_contains "$qp_step3" "$key" "a free decision never uses $key, which closes stage runs"
+done
+
 # --- fallback: a rerun never repeats work that landed ---
 agents=$(section 'Stage agents')
 for clause in 'reruns that stage once in session' 'record `HEAD`' 'git status --porcelain --untracked-files=no' '`gh pr view` finds no PR'; do
