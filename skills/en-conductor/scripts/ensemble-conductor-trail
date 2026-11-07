@@ -25,7 +25,8 @@
 # `finish` also close any run still open above this run's metrics ledger: each
 # marks a stage that has returned, and left open its run would parent the next
 # stage. Other rows do not, because an in-session stage may still be running when
-# a question is logged.
+# a question is logged. So those keys are reserved for those events: SKILL.md's
+# question policy keeps a free decision off them.
 #
 # `finish` also records the run's route, state and per-stage results on the
 # metrics ledger named at start or resume, then prints that ledger's path. It is

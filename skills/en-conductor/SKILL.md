@@ -32,7 +32,7 @@ This session holds the only question tool in the run, so every question reaches 
 
 1. **If running or reading something can answer it, do that.**
 2. **If it is a product or preference call, or an irreversible action, ask,** even when the call could be reversed later.
-3. **Decide everything else,** log it with `log decision`, and list it in the report.
+3. **Decide everything else,** log it with `log decision`, and list it in the report. Never under the key `redispatch` or `fallback`, nor as `decision route plan`: the trail closes stage runs on those rows, so they belong only to the events `## Stages`, `## Stage agents` and `## Fix outcomes` name.
 
 So which test seam to use is decided, and which of two user-facing error messages to show is asked. Log an asked question and its answer with `log question`. Existing stops are unchanged: `/en-build`'s typed confirmations, a P0 in review, and never merging.
 
