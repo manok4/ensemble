@@ -61,13 +61,6 @@ default_branch_fallback: main
 #   strict_destructive: false    # extend the typed confirmation to risk: high and P3
 #   learning_checkpoint: true    # run the structured learning checkpoint at step 10.6
 
-# --- Lint ---
-
-# lint:
-#   freshness_target_days: 30
-#   scope_default: docs/
-#   fix_skip_rules: []
-
 # --- Review (layered over ~/.ensemble/config.json via ensemble-config-get) ---
 
 # Confidence gate for /en-review. Findings rated below this threshold are

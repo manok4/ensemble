@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
 Usage: ensemble-lint [--scope <path>] [--fix] [--json] [--quiet]
 
   --scope <path>  Limit to files under <path> (default: docs/)
-  --fix           Apply mechanical fixes
+  --fix           Regenerate docs/generated/plan-index.md, its only repair
   --json          Emit JSON-lines output (one violation per line)
   --quiet         Suppress non-error output
 
@@ -1153,10 +1153,6 @@ if [ "$VIOLATIONS" -gt 0 ]; then
       echo "- **Medium (P2):** $P2"
       echo "- **Advisory (P3):** $P3"
       echo "- **Total:** $VIOLATIONS"
-      echo ""
-      if [ "$P1" -gt 0 ]; then
-        echo "Run \`bin/ensemble-lint --fix\` to auto-apply mechanical fixes (not yet implemented for all rules)."
-      fi
     fi
   fi
   exit 1
