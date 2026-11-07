@@ -84,6 +84,7 @@ grep -qE '^- \*\*Risk:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/pla
 # --- a redispatch keeps the run's restrictions, and only the user answers ---
 assert_contains "$(section 'Fix outcomes')" 'Redispatch with the original flags' "a redispatch keeps --no-ship"
 assert_contains "$(section 'Fix outcomes')" 'Never decide it yourself' "the conductor never answers needs-decision itself"
+assert_contains "$(section 'Fix outcomes')" "Log \`decision fix redispatch" "a Fix redispatch logs the row that closes the returned agent's run"
 
 # --- fallback: a rerun never repeats work that landed ---
 agents=$(section 'Stage agents')

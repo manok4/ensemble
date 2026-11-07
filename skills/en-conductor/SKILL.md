@@ -96,9 +96,9 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 |---|---|
 | `en-fix: shipped <pr-url> <exit-state>` | Confirm the PR, and apply Ship's exit-state meaning |
 | `en-fix: ready <branch>` | Report the branch and that nothing was pushed. Name `/en-qa` as the next step when `needs_browser` is true for the branch diff |
-| `en-fix: needs-plan clean <condition>` | Log `decision route plan '<condition>'` and take the plan route |
+| `en-fix: needs-plan clean <condition>` | Log `decision route plan '<condition>'`, which closes the Fix agent's run, and take the plan route |
 | `en-fix: needs-plan edited <condition>` | Stop, name the condition, and say the edits are on the branch. Whether to keep them is the user's call |
-| `en-fix: needs-decision <question>` | Answer it from something you can run or read, or ask the user. Never decide it yourself: `/en-fix` returns this only for a call that is the user's, so with no question tool the run stops with the question. Before redispatching, confirm `HEAD` and `git status --porcelain --untracked-files=no` match what they were when this line returned, or stop and name what changed. Redispatch with the original flags plus one `--decision '<question>: <answer>'` per answer so far. Stop after two redispatches |
+| `en-fix: needs-decision <question>` | Answer it from something you can run or read, or ask the user. Never decide it yourself: `/en-fix` returns this only for a call that is the user's, so with no question tool the run stops with the question. Before redispatching, confirm `HEAD` and `git status --porcelain --untracked-files=no` match what they were when this line returned, or stop and name what changed. Log `decision fix redispatch '<question>: <answer>'`, which closes the returned agent's run. Redispatch with the original flags plus one `--decision '<question>: <answer>'` per answer so far. Stop after two redispatches |
 | `en-fix: split <concern>; <concern>` | Report each concern as its own `/en-conductor <concern>` |
 | `en-fix: stopped <reason>` | Report it verbatim |
 
