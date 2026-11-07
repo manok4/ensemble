@@ -125,6 +125,46 @@ assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$stale_out" \
 assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$(rollup "$SCRATCH/stale" en-plan | jq -r .parent_run_id)" \
   "the stopped stage gets its own rollup line under the conductor"
 
+# Plan and an in-session Build run while the conductor logs questions, so those
+# rows must leave the stage open. A close there would make the stage's own pathless
+# `finish` close the conductor, and the rollup would lose the conductor's detail.
+live_repo=$(fresh_repo metrics-live)
+(
+  cd "$live_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/live"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$live_repo"
+  child=$(bash "$M" start --skill en-plan 2>/dev/null)
+  bash "$T" log question plan 'q?' 'a' >/dev/null
+  bash "$T" log decision plan peer 'accepted' >/dev/null
+  cp "$child" "$SCRATCH/live-child-copy"
+  bash "$M" finish >/dev/null 2>&1
+  bash "$T" log stage plan ok 'plan.md' >/dev/null
+  close_run done plan 'ok'
+)
+grep -q '"kind":"finish"' "$SCRATCH/live-child-copy" \
+  && fail "a question or decision row leaves a running stage open" \
+  || pass "a question or decision row leaves a running stage open"
+ROLL=$(rollup "$SCRATCH/live" en-conductor)
+assert_eq "done" "$(c .state)" "the stage's own finish leaves the conductor's run for the conductor"
+
+# A fallback reruns the stage straight after this row, with no stage row between.
+fb_repo=$(fresh_repo metrics-fallback)
+fb_parent=$(
+  cd "$fb_repo" || exit 1
+  export ENSEMBLE_ANALYTICS_DIR="$SCRATCH/fallback"
+  unset ENSEMBLE_RUN_LEDGER ENSEMBLE_METRICS
+  open_run "$fb_repo"
+  bash "$M" start --skill en-qa >/dev/null 2>&1
+  bash "$T" log decision qa fallback 'agent returned nothing' >/dev/null
+  rerun=$(bash "$M" start --skill en-qa 2>/dev/null)
+  jq -r .parent_run_id "$rerun" | head -1
+  bash "$M" finish "$rerun" >/dev/null 2>&1
+  close_run done qa 'ok'
+)
+ROLL=$(rollup "$SCRATCH/fallback" en-conductor)
+assert_eq "$(printf '%s' "$ROLL" | jq -r .run_id)" "$fb_parent" "a fallback rerun parents to the conductor, not the dead agent"
+
 # A resumed run is its own rollup line, so it reports only what it did.
 resume_repo=$(fresh_repo metrics-resume)
 (

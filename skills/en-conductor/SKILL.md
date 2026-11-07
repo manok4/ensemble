@@ -88,7 +88,7 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 
 > Invoke the skill named below with these exact arguments. You have no way to ask the user: anything you would ask ends your turn with the question stated. Return the skill's contract fields verbatim, and its last line unchanged.
 
-**Fallback.** An agent that returns none of the stage's contract fields, or a refused `Agent` call, reruns that stage once in session and logs `decision <stage> fallback '<why>'`. Before each agent stage, record `HEAD`. Rerun only when `HEAD` is unchanged, `git status --porcelain --untracked-files=no` is clean, and, for Ship and Fix, `gh pr view` finds no PR for the branch. Otherwise stop and report the new commits, edits or PR, so a rerun never repeats work that already landed. A person continues from there with `--resume`, after committing or stashing any tracked edits, which Preflight otherwise stops on.
+**Fallback.** An agent that returns none of the stage's contract fields, or a refused `Agent` call, logs `decision <stage> fallback '<why>'`, which closes the failed agent's run, then reruns that stage once in session. Before each agent stage, record `HEAD`. Rerun only when `HEAD` is unchanged, `git status --porcelain --untracked-files=no` is clean, and, for Ship and Fix, `gh pr view` finds no PR for the branch. Otherwise stop and report the new commits, edits or PR, so a rerun never repeats work that already landed. A person continues from there with `--resume`, after committing or stashing any tracked edits, which Preflight otherwise stops on.
 
 ## Fix outcomes
 

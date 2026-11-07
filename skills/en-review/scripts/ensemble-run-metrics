@@ -166,6 +166,8 @@ _log_append() {  # <log> <+|-> <run_id> <path>
     || note "cannot record the run lifecycle in $1; nesting attribution unavailable"
 }
 
+_log_reversed() { tail -n "$_LOG_SCAN" "$1" 2>/dev/null | (tail -r 2>/dev/null || tac 2>/dev/null); }
+
 # The newest run with no closing `-`, that still qualifies. `--for-finish`
 # accepts a ledger that is marked and waiting to publish; `emit` does not,
 # because the rollup has already read it.
@@ -187,7 +189,7 @@ _log_open_run() {  # <log> [--for-finish]
          if [ "$mode" != "--for-finish" ]; then _ledger_live "$path" || continue; fi
          printf '%s\n' "$path"; return 0 ;;
     esac
-  done < <(tail -n "$_LOG_SCAN" "$log" 2>/dev/null | (tail -r 2>/dev/null || tac 2>/dev/null))
+  done < <(_log_reversed "$log")
   return 1
 }
 
@@ -402,32 +404,35 @@ _rollup() {  # <ledger>
 }
 
 # --- close-above -------------------------------------------------------------
-# For a caller that has seen its stage return, which is the one point where a run
-# still open above it is certainly over. A stage cannot be trusted to say so: most
-# of its stops are questions the user may answer, and a pathless `finish` from a
-# stage that never started a run closes the caller's.
+# For a caller that has seen its stage return. It cannot leave this to the stage:
+# most of a stage's stops are questions the user may answer, and a pathless
+# `finish` from a stage that never started a run closes the caller's.
 #
-# A ledger the log does not hold closes nothing: everything would otherwise count
+# Every run above the anchor counts as the caller's, so this assumes one session
+# per worktree; a linked worktree has its own log. An abandoned or `closing` run
+# is closed too, unlike in `_log_open_run`, because here it only needs to end. A
+# ledger with no exact `+` record closes nothing: everything would otherwise count
 # as started after it. Like `finish`, this works while recording is off, because
 # the log is run bookkeeping.
 if [ "$cmd" = "close-above" ]; then
   anchor="${1:-}"
   [ -n "$anchor" ] || { note "close-above needs a ledger path"; exit 0; }
   dir=$(_runs_dir) || exit 0
-  log="$dir/active"
-  [ -f "$log" ] || exit 0
-  tail -n "$_LOG_SCAN" "$log" 2>/dev/null | grep -qF "$(printf '\t')$anchor" || exit 0
-  closed=""
+  closed="" stale="" found=0
   while IFS= read -r line; do
     mark="${line%%$'\t'*}"; rest="${line#*$'\t'}"; path="${rest#*$'\t'}"
     [ "$path" = "$rest" ] && continue
     case "$mark" in
       -) closed="$closed $path " ;;
-      +) [ "$path" = "$anchor" ] && break
+      +) [ "$path" = "$anchor" ] && { found=1; break; }
          case "$closed" in *" $path "*) continue ;; esac
-         [ -f "$path" ] && ! _ledger_closed "$path" && bash "$0" finish "$path" ;;
+         stale="$stale$path"$'\n' ;;
     esac
-  done < <(tail -n "$_LOG_SCAN" "$log" 2>/dev/null | (tail -r 2>/dev/null || tac 2>/dev/null))
+  done < <(_log_reversed "$dir/active")
+  [ "$found" -eq 1 ] || exit 0
+  while IFS= read -r path; do
+    [ -f "$path" ] && bash "$0" finish "$path"
+  done <<< "$stale"
   exit 0
 fi
 
