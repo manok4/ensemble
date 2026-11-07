@@ -155,7 +155,7 @@ The `remediation` field is critical — it gives the agent a direct fix path wit
 - Add missing required frontmatter fields with placeholder values.
 - Sync `status:` to match directory location (`active/` ↔ `completed/`).
 - Repair `claude-md.no-cross-ref-line` by prepending the line.
-- Regenerate `docs/generated/plan-index.md` and `learning-index.md`.
+- Regenerate `docs/generated/plan-index.md` from the plans' frontmatter. `/en-learn --lint --fix` owns `learning-index.md`.
 - Bump `updated:` timestamps when content actually changed.
 
 Non-mechanical findings (judgment-required, contradictions, length budget overruns where the user added intentional content) → surfaced for human resolution.

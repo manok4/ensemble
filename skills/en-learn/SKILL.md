@@ -94,7 +94,8 @@ After every write:
    - If `status: completed`: no-op; plan already moved.
    - If `status: draft` OR `status: abandoned`: skip the flip; surface a one-line notice (`/en-learn` shouldn't be flipping a draft plan to completed).
    - `git mv docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md docs/plans/completed/<PREFIX><NN>-<plan_type>_<slug>.md` (filename preserved verbatim during the move).
-   - Stage the rename + frontmatter edit.
+   - Refresh the index: `bin/ensemble-lint --fix --quiet --scope docs/generated/plan-index.md`.
+   - Stage the rename, the frontmatter edit and the index.
 
    **11a always runs**, even when the user picked "skip — no learnings worth filing" earlier in the capture flow. The flip is lifecycle bookkeeping; it shouldn't be tied to whether wiki content was filed.
 

@@ -1,7 +1,7 @@
 ---
 type: plan-index
 generated: true
-generator: en-learn
+generator: ensemble-lint
 updated: 2026-11-06
 total_entries: 26
 ---

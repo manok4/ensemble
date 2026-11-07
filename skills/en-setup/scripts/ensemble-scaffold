@@ -137,13 +137,13 @@ seed docs/generated/plan-index.md <<EOF
 ---
 type: plan-index
 generated: true
-generator: en-learn
+generator: ensemble-lint
 updated: $TODAY
 ---
 
 # Plans — index
 
-> Auto-maintained by \`en-learn\`. Do not hand-edit.
+> Auto-maintained. Do not hand-edit.
 
 _(no plans yet)_
 EOF
