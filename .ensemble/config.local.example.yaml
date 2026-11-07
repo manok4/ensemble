@@ -62,13 +62,6 @@ default_branch_fallback: main
 #   pause_between_phases: false  # prompt between phases instead of auto-rolling
 #   learning_checkpoint: true    # run the structured learning checkpoint at step 10.6
 
-# --- Lint ---
-
-# lint:
-#   freshness_target_days: 30
-#   scope_default: docs/
-#   fix_skip_rules: []
-
 # --- Review (layered over ~/.ensemble/config.json via ensemble-config-get) ---
 
 # Confidence gate for /en-review. Findings rated below this threshold are

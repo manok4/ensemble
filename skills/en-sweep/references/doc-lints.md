@@ -137,44 +137,19 @@ Plus a markdown summary at the end:
 ```markdown
 ## Lint summary
 
-- **Errors (P0):** 0
 - **High (P1):** 3
 - **Medium (P2):** 5
 - **Advisory (P3):** 2
-
-Run `bin/ensemble-lint --fix` to auto-apply mechanical fixes.
+- **Total:** 10
 ```
 
 The `remediation` field is critical — it gives the agent a direct fix path without round-tripping to a human.
 
 ## Auto-fix behavior
 
-`bin/ensemble-lint --fix` applies mechanical fixes:
+`bin/ensemble-lint --fix` makes one repair: it regenerates `docs/generated/plan-index.md` from the plans' frontmatter, when the scope holds that file. `/en-learn --lint --fix` owns `learning-index.md`. Every other finding is fixed by hand, from its `remediation`.
 
-- Repair broken cross-links when the moved-to target is obvious.
-- Add missing required frontmatter fields with placeholder values.
-- Sync `status:` to match directory location (`active/` ↔ `completed/`).
-- Repair `claude-md.no-cross-ref-line` by prepending the line.
-- Regenerate `docs/generated/plan-index.md` from the plans' frontmatter. `/en-learn --lint --fix` owns `learning-index.md`.
-- Bump `updated:` timestamps when content actually changed.
-
-Non-mechanical findings (judgment-required, contradictions, length budget overruns where the user added intentional content) → surfaced for human resolution.
-
-## Configuration
-
-`~/.ensemble/config.json` keys read by lint:
-
-```json
-{
-  "lint": {
-    "freshness_target_days": 30,
-    "scope_default": "docs/",
-    "fix_skip_rules": []
-  }
-}
-```
-
-`fix_skip_rules` lets a project opt out of specific auto-fixes (rare; usually leave default empty).
+The lint reads no configuration. Its thresholds, such as the architecture freshness window, are fixed in the script.
 
 ## CI integration
 
