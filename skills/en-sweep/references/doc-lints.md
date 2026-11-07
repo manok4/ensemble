@@ -62,7 +62,7 @@ No rule runs on files under `docs/plans/legacy/`. Archived plans are frozen hist
 | Rule | Severity | Notes |
 |---|---|---|
 | `freshness.architecture-30` | P2 | `architecture.md` `updated:` >30 days old (or whatever `freshness_target_days` is set to) |
-| `freshness.architecture-90` | P1 | `architecture.md` `updated:` >90 days old |
+| `freshness.architecture-90` | P1 | `architecture.md` `updated:` >90 days old, or older than `freshness_target_days` when that is longer |
 | `freshness.foundation-180` | P2 | `foundation.md` `updated:` >180 days old (advisory only — foundation is mostly stable) |
 
 ### `generated.*` — generated-file integrity
@@ -149,7 +149,7 @@ The `remediation` field is critical — it gives the agent a direct fix path wit
 
 `bin/ensemble-lint --fix` makes one repair: it regenerates `docs/generated/plan-index.md` from the plans' frontmatter, when the scope holds that file. `/en-learn --lint --fix` owns `learning-index.md`. Every other finding is fixed by hand, from its `remediation`.
 
-The lint reads no configuration. Its thresholds, such as the architecture freshness window, are fixed in the script.
+The lint reads no configuration file. The one threshold a project sets is the architecture freshness window, from `freshness_target_days` in `docs/architecture.md`'s own frontmatter.
 
 ## CI integration
 

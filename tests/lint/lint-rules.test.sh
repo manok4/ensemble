@@ -393,6 +393,22 @@ freshness_target_days: 30
 EOF
 assert_rule_fires "freshness.architecture-90" "architecture >90 days stale"
 
+# --- the freshness window is the file's own freshness_target_days ---
+arch_aged() { # <days old> <freshness_target_days>
+  local d
+  d=$(date -v-"$1"d +%Y-%m-%d 2>/dev/null || date -d "$1 days ago" +%Y-%m-%d)
+  setup_minimum
+  printf -- '---\nproject: Test\ntype: architecture\nstatus: active\ncreated: %s\nupdated: %s\nlast_drift_check: %s\nfreshness_target_days: %s\n---\n\n# Architecture\n' \
+    "$d" "$d" "$d" "$2" > "$TMP/docs/architecture.md"
+}
+arch_aged 10 7
+assert_rule_fires "freshness.architecture-30" "a 7-day window flags a 10-day-old architecture.md"
+arch_aged 100 120
+r=$(run_lint)
+assert_not_contains "${r%%|||*}" "freshness.architecture" "a 120-day window leaves a 100-day-old architecture.md alone"
+arch_aged 130 120
+assert_rule_fires "freshness.architecture-90" "past a window longer than 90 days is P1"
+
 # --- length.agents-md-over-150 ---
 setup_minimum
 {
@@ -1322,5 +1338,16 @@ setup_minimum; mk_tree
 files_unit 1 '`src/gone.ts` (modify)' | files_plan EN77 completed completed
 files_lint
 assert_not_contains "$output" "unit.files-" "a completed plan's since-deleted path fires nothing"
+
+# --- the architecture template names only rules the lint emits ---
+emitted=$(grep -oE 'emit "[a-z0-9.-]+"' "$LINT" | sort -u)
+for tpl in "$REPO_ROOT"/skills/*/references/templates/architecture-template.md; do
+  ids=$(awk '$0=="## Lint rules"{f=1; next} f&&/^## /{exit} f' "$tpl" | grep -oE '^- `[a-z-]+\.[a-z0-9.-]+`' | grep -oE '[a-z-]+\.[a-z0-9.-]+')
+  [ -n "$ids" ] || { fail "${tpl#"$REPO_ROOT"/} lists its lint rules"; continue; }
+  for id in $ids; do
+    printf '%s\n' "$emitted" | grep -qF "emit \"$id\"" && pass "${tpl#"$REPO_ROOT"/} names $id, which the lint emits" \
+      || fail "${tpl#"$REPO_ROOT"/} names $id, which the lint never emits"
+  done
+done
 
 report

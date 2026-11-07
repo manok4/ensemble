@@ -624,8 +624,9 @@ regenerate_plan_index() {
 }
 
 # --- Rule: freshness.architecture-* ---
-# docs/architecture.md updated: field within configurable freshness window.
-# 0-30 days: green; 31-90 days: P2 advisory; 91+ days: P1.
+# docs/architecture.md `updated:` within the file's own `freshness_target_days`
+# (default 30): green inside the window, P2 past it, P1 past 90 days or past the
+# window when the window is longer.
 check_architecture_freshness() {
   [ "$1" = "docs/architecture.md" ] || return 0
   local updated
@@ -641,13 +642,18 @@ check_architecture_freshness() {
   else return 0; fi
   days=$(( (now_epoch - updated_epoch) / 86400 ))
 
-  if [ "$days" -gt 90 ]; then
+  local target limit
+  target=$(get_field "$1" freshness_target_days)
+  case "$target" in ''|*[!0-9]*|0) target=30 ;; esac
+  limit=$(( target > 90 ? target : 90 ))
+
+  if [ "$days" -gt "$limit" ]; then
     emit "freshness.architecture-90" "$1" "" "P1" \
-      "architecture.md updated $days days ago (>90 days)" \
+      "architecture.md updated $days days ago (>$limit days)" \
       "Run /en-learn or /en-sweep to refresh against current code"
-  elif [ "$days" -gt 30 ]; then
+  elif [ "$days" -gt "$target" ]; then
     emit "freshness.architecture-30" "$1" "" "P2" \
-      "architecture.md updated $days days ago (>30 days)" \
+      "architecture.md updated $days days ago (>$target days, its freshness_target_days)" \
       "Verify it still reflects current code; refresh if not"
   fi
 }
