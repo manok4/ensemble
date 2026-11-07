@@ -1094,7 +1094,13 @@ check_td_enforce_layer() {
   ' "$file")
 }
 
-[ "$FIX" = "true" ] && regenerate_plan_index
+# Only when the scope holds the index, since --scope limits what a run may touch.
+# A refresh that cannot write is a runner error: a caller would stage it as current.
+if [ "$FIX" = "true" ]; then
+  case "${SCOPE#./}" in
+    docs|docs/|docs/generated|docs/generated/|docs/generated/plan-index.md) regenerate_plan_index || exit 2 ;;
+  esac
+fi
 
 # --- Run lints ---
 while IFS= read -r file; do

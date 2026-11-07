@@ -77,6 +77,20 @@ case "$out" in
   *) pass "--fix clears the coverage finding in the same run" ;;
 esac
 
+# --scope limits the run, so a fix aimed elsewhere leaves the index alone.
+printf -- '---\ntype: note\n---\n' > other.md
+plan completed EN05-feature_fifth.md EN05 Fifth completed 2026-05-05
+held=$(cat "$IDX")
+bash "$LINT" --fix --scope other.md >/dev/null 2>&1
+assert_eq "$held" "$(cat "$IDX")" "--fix with another scope does not touch the index"
+
+# A refresh that cannot write must say so in its exit status, or a caller stages
+# the stale index believing it current.
+chmod a-w docs/generated
+bash "$LINT" --fix --quiet --scope "$IDX" >/dev/null 2>&1; rc=$?
+chmod u+w docs/generated
+assert_eq "2" "$rc" "a failed refresh exits 2"
+
 # Both places that move a plan to completed/ must refresh the index with it.
 CMD='bin/ensemble-lint --fix --quiet --scope docs/generated/plan-index.md'
 for f in skills/en-ship/references/plan-completion.md skills/en-learn/SKILL.md; do
