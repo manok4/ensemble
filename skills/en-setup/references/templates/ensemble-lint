@@ -644,7 +644,9 @@ check_architecture_freshness() {
 
   local target limit
   target=$(get_field "$1" freshness_target_days)
-  case "$target" in ''|*[!0-9]*|0) target=30 ;; esac
+  # Base 10 explicitly: bash reads a zero-padded 08 as octal and aborts.
+  case "$target" in ''|*[!0-9]*) target=30 ;; *) target=$((10#$target)) ;; esac
+  [ "$target" -gt 0 ] || target=30
   limit=$(( target > 90 ? target : 90 ))
 
   if [ "$days" -gt "$limit" ]; then
