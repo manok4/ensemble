@@ -75,6 +75,14 @@ for R in "$REPO_ROOT"/skills/*/scripts/ensemble-ship-model; do
   # falling through to a valid global value the operator did not pick here.
   clear_cfg; Y 'ship_model_claude: gpt-5'; J '{"ship_model_claude":"haiku"}'
   assert_eq "|inherit" "$(res claude-code)" "$skill: an invalid repo value inherits rather than falling through to global"
+  # An explicit `inherit` stops at its layer, so a repo can keep the session's
+  # model under a global value (PR #147 review: the ship evals leaked the
+  # operator's global ship_model_claude without it).
+  clear_cfg; J '{"ship_model_claude":"opus","ship_model_codex":"gpt-x"}'; Y 'ship_model_claude: inherit'
+  assert_eq "|inherit" "$(res claude-code)" "$skill: a repo inherit overrides a global alias"
+  assert_eq "" "$(cat "$W/err")" "$skill: an explicit inherit is not reported as invalid"
+  Y 'ship_model_codex: inherit'
+  assert_eq "|inherit" "$(res codex)" "$skill: a repo inherit overrides a global Codex ID"
   "$R" --host vim --repo-root "$W/repo" --home "$W/home" >/dev/null 2>&1; rc=$?
   assert_eq "2" "$rc" "$skill: an unknown --host exits 2"
   "$R" --repo-root "$W/repo" --home "$W/home" >/dev/null 2>&1; rc=$?

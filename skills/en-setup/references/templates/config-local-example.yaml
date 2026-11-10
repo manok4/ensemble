@@ -90,6 +90,7 @@ default_branch_fallback: main
 # that model, staying in session for --interactive or the default branch.
 # ship_model_claude:                     # alias (haiku | sonnet | opus | fable); unset = the session's model
 # ship_model_codex:                      # your Codex model ID; unset = the session's model
+# `inherit` in a repo's file keeps the session's model even when ~/.ensemble/config.json sets one.
 
 # Bundled-agent models and effort per host (EN16 D103, D104; flat keys, read
 # by every skill that dispatches an agent through its scripts/ensemble-agent-model).

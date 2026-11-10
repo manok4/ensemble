@@ -9,6 +9,9 @@
 #   --host codex         ship_model_codex    an operator's Codex model ID
 #
 # Unset means inherit: the session's own model, which is today's behaviour.
+# The literal value `inherit` says the same thing explicitly, and because it is
+# a value rather than an absence it stops the read at its layer: a repo that
+# sets it keeps the session's model even when ~/.ensemble/config.json names one.
 # A present but invalid value is named once on stderr and also inherits, so
 # nothing unvalidated reaches a dispatch. Callers pass what this prints and
 # choose nothing themselves (D103).
@@ -72,6 +75,7 @@ else
 fi
 
 reason=""
+[ "$v" = inherit ] && v=""
 if [ -n "$v" ]; then
   if [ "$HOST" = claude-code ]; then
     # Aliases are lowercase letters only. Rejecting anything else first keeps a

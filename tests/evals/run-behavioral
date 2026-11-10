@@ -125,7 +125,13 @@ $(cat "$dir/prompt.md")"
         cp -R "$dir/change/." . && git add -A && git commit -qm "feat: the change to ship"
         if [ "$(field "$exp" staged)" = True ]; then cp -R "$dir/staged/." . && git add -A; fi
         mkdir -p .ensemble && printf '.ensemble/config.local.yaml\n' >> .git/info/exclude
-        python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("config", [])))' "$exp" \
+        # A ship key the case leaves unset is written as `inherit`, which stops
+        # the read at the repo layer, so the operator's ~/.ensemble/config.json
+        # never decides a case's model.
+        python3 -c 'import json,sys
+cfg = json.load(open(sys.argv[1])).get("config", [])
+keys = {c.split(":", 1)[0].strip() for c in cfg}
+print("\n".join(cfg + ["%s: inherit" % k for k in ("ship_model_claude", "ship_model_codex") if k not in keys]))' "$exp" \
           > .ensemble/config.local.yaml
       fi
     ) >/dev/null 2>&1 || { echo "run-behavioral: could not build the scratch repo for $c" >&2; rc_all=2; i=$((i + 1)); continue; }
