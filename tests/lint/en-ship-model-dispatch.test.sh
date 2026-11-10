@@ -42,7 +42,7 @@ fi
 
 # --- the reference: dispatch on both hosts, return, question, fallback ---
 has "$REF" 'model: $SHIP_MODEL'                                             "the dispatch passes the resolved model"
-has "$REF" 'followed by `/en-ship --in-agent`'                              "the child is invoked with --in-agent"
+has "$REF" 'was invoked by with `--in-agent`'                               "the child is invoked by this run's own skill name, with --in-agent"
 has "$REF" 'ends your turn with the last line `en-ship: needs-input <question>`' "the brief names the question line"
 has "$REF" 'continue this run in session from **Resolve context**'          "a needs-input continuation re-reads branch and PR"
 has "$REF" 'run as if `--in-agent` were passed'                             "a needs-input continuation never dispatches again"

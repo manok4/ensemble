@@ -16,8 +16,10 @@ existing-PR result.
 
 ## The dispatch
 
-One subagent, given this brief verbatim, followed by `/en-ship --in-agent`
-(`$en-ship --in-agent` on Codex) and this run's original arguments:
+One subagent, given this brief verbatim, followed by the skill name this run
+was invoked by with `--in-agent` (`/en-ship --in-agent`, `/ensemble:en-ship
+--in-agent` under the plugin, `$en-ship --in-agent` on Codex) and this run's
+original arguments. A bare name could reach a differently installed copy:
 
 > Invoke the skill named below with these exact arguments. You have no way to ask the user: anything you would ask ends your turn with the last line `en-ship: needs-input <question>`. Return the run report and its last line unchanged.
 

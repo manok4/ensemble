@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "ship",
+  "invocation": "/ensemble:en-ship --no-pr --no-watch",
+  "base_from": "ship-model-dispatch",
+  "config": [],
+  "branch": "feature",
+  "dispatch": null,
+  "pushed": true
+}

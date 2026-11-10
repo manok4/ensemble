@@ -101,7 +101,9 @@ $(cat "$dir/prompt.md")"
       echo "== $c run $i (kind $kind${case_mode:+, mode $case_mode})"
       echo "   scratch: copy $(printf '%s' "$base" | sed "s|$ROOT/||") -> git init -b main, commit"
       [ "$kind" = review ] && echo "   then: branch feature, overlay $(printf '%s' "$dir/change" | sed "s|$ROOT/||"), commit"
-      echo "   claude -p <prompt> --plugin-dir $ROOT --permission-mode bypassPermissions --output-format text${mcp_flags:+ $mcp_flags}"
+      [ "$kind" = ship ] && echo "   then: bare remote origin with main pushed, change/ committed on $(field "$exp" branch), config.local.yaml written, stream-json transcript"
+      dfmt="--output-format text"; [ "$kind" = ship ] && dfmt="--output-format stream-json --verbose"
+      echo "   claude -p <prompt> --plugin-dir $ROOT --permission-mode bypassPermissions $dfmt${mcp_flags:+ $mcp_flags}"
       printf '%s\n' "$prompt" | sed 's/^/   | /'
       i=$((i + 1)); continue
     fi
@@ -114,18 +116,66 @@ $(cat "$dir/prompt.md")"
       if [ "$kind" = review ]; then
         git checkout -qb feature && cp -R "$dir/change/." . && git add -A && git commit -qm "feature"
       fi
+      if [ "$kind" = ship ]; then
+        # A ship needs a remote to push to: a bare repo beside the scratch one,
+        # holding main. The change goes on the case's branch, ahead of it.
+        git init -q --bare "$scratch.remote" && git remote add origin "$scratch.remote" \
+          && git push -q origin main && git fetch -q origin
+        [ "$(field "$exp" branch)" = feature ] && git checkout -qb feature
+        cp -R "$dir/change/." . && git add -A && git commit -qm "feat: the change to ship"
+        if [ "$(field "$exp" staged)" = True ]; then cp -R "$dir/staged/." . && git add -A; fi
+        mkdir -p .ensemble && printf '.ensemble/config.local.yaml\n' >> .git/info/exclude
+        python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("config", [])))' "$exp" \
+          > .ensemble/config.local.yaml
+      fi
     ) >/dev/null 2>&1 || { echo "run-behavioral: could not build the scratch repo for $c" >&2; rc_all=2; i=$((i + 1)); continue; }
     printf '%s\n' "$scratch" > "$out/scratch-path"
     : > "$out/.started"
     start=$(date +%s)
     # Package managers stay offline with install scripts off: a fixture can plant
     # a typosquat (review-new-rows does), and the session must never install it.
+    # A ship case is graded on which model each dispatch ran, which only the
+    # stream-json transcript records; output.txt is then every assistant text
+    # block, parent and child, so the judge reads what both said.
+    fmt="--output-format text"; deny=""
+    if [ "$kind" = ship ]; then
+      fmt="--output-format stream-json --verbose"
+      deny=$(python3 -c 'import json,sys; print(",".join(json.load(open(sys.argv[1])).get("disallowed_tools", [])))' "$exp")
+    fi
     ( cd "$scratch" && ENSEMBLE_ANALYTICS_DIR="$out/analytics" \
         npm_config_ignore_scripts=true npm_config_offline=true npm_config_registry=http://127.0.0.1:9/ \
         PIP_NO_INDEX=1 PIP_INDEX_URL=http://127.0.0.1:9/ \
         timeout 1800 claude -p "$prompt" \
-        --plugin-dir "$ROOT" --permission-mode bypassPermissions --output-format text $mcp_flags ) \
+        --plugin-dir "$ROOT" --permission-mode bypassPermissions $fmt ${deny:+--disallowedTools "$deny"} $mcp_flags ) \
       > "$out/output.txt" 2> "$out/stderr.txt"
+    if [ "$kind" = ship ]; then
+      mv "$out/output.txt" "$out/transcript.jsonl"
+      python3 - "$out/transcript.jsonl" > "$out/output.txt" <<'PY'
+import json, sys
+for line in open(sys.argv[1], encoding="utf-8"):
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        continue
+    if ev.get("type") == "assistant":
+        who = "subagent" if ev.get("parent_tool_use_id") else "session"
+        for b in (ev.get("message") or {}).get("content") or []:
+            if b.get("type") == "text" and b.get("text", "").strip():
+                print("[%s] %s" % (who, b["text"]))
+    elif ev.get("type") == "user":
+        # A subagent's final reply comes back as the tool_result of its Agent
+        # call, not as an assistant message, so it is collected here.
+        for b in (ev.get("message") or {}).get("content") or []:
+            if not isinstance(b, dict) or b.get("type") != "tool_result" or ev.get("parent_tool_use_id"):
+                continue
+            c = b.get("content")
+            text = "".join(x.get("text", "") for x in c if isinstance(x, dict)) if isinstance(c, list) else (c or "")
+            if "agentId:" in text:
+                print("[subagent reply] %s" % text)
+    elif ev.get("type") == "result" and ev.get("result"):
+        print("[result] %s" % ev["result"])
+PY
+    fi
     secs=$(( $(date +%s) - start ))
     if [ "$kind" = review ]; then
       # Headless /en-review prints a summary and writes its JSON envelope to a
@@ -142,6 +192,7 @@ $(cat "$dir/prompt.md")"
       review) EVAL_MODE="$case_mode" "$GRADE" review "$exp" "$out/envelope.json" > "$out/grade-facts.json" ;;
       fix)    "$GRADE" fix "$exp" "$scratch" > "$out/grade-facts.json" ;;
       plan)   "$GRADE" plan "$exp" "$scratch" > "$out/grade-facts.json" ;;
+      ship)   "$GRADE" ship "$exp" "$out/transcript.jsonl" "$scratch" > "$out/grade-facts.json" ;;
       *) echo "{\"error\":\"no grader for kind $kind yet\",\"pass\":false}" > "$out/grade-facts.json"; false ;;
     esac
     gf=$?

@@ -298,4 +298,52 @@ fg=$(grep -E '^TEST_PATH = re.compile' "$REPO_ROOT/skills/en-ship/scripts/ensemb
 gr=$(grep -E '^TEST_PATH = re.compile' "$G")
 assert_eq "$fg" "$gr" "grade's TEST_PATH matches the floor guard's"
 
+
+# --- ship (EN28): the dispatch model from the transcript, the push from the remote ---
+ship_repo() {  # $1=dir; a repo on feature, one commit ahead of a bare origin holding main
+  git init -q --bare "$1.remote" && git init -q -b main "$1" && (cd "$1" && git config user.email t@x && git config user.name t \
+    && echo a > a && git add a && git commit -qm base && git remote add origin "$1.remote" && git push -q origin main \
+    && git checkout -qb feature && echo b > b && git add b && git commit -qm change)
+}
+ship_expect() {  # $1=file $2=dispatch json $3=pushed
+  printf '{"version":1,"kind":"ship","invocation":"/ensemble:en-ship","branch":"feature","dispatch":%s,"pushed":%s}\n' "$2" "$3" > "$1"
+}
+tx_agent() {  # $1=file $2=model $3=child model; one top-level Agent call and one child turn
+  printf '%s\n' \
+    '{"type":"assistant","parent_tool_use_id":null,"message":{"model":"claude-opus-x","content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"model":"'"$2"'","prompt":"brief\n/ensemble:en-ship --in-agent --no-pr"}}]}}' \
+    '{"type":"assistant","parent_tool_use_id":"t1","message":{"model":"'"$3"'","content":[{"type":"text","text":"shipping"}]}}' > "$1"
+}
+ship_repo "$T/sr"
+ship_expect "$T/se.json" '{"model":"sonnet"}' false
+tx_agent "$T/tx.jsonl" sonnet claude-sonnet-x
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 0 "$rc" "ship: one dispatch on the expected model, child on it, nothing pushed, passes"
+tx_agent "$T/tx.jsonl" opus claude-opus-x
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 1 "$rc" "ship: a dispatch on another model fails"
+assert_contains "$out" "dispatch model" "ship: the wrong dispatch model is named"
+tx_agent "$T/tx.jsonl" sonnet claude-opus-x
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 1 "$rc" "ship: a child that ran on another model fails, whatever the call said"
+ship_expect "$T/se.json" 'null' false
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 1 "$rc" "ship: an Agent call where none was expected fails"
+: > "$T/tx.jsonl"
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 0 "$rc" "ship: no dispatch and no push, as expected, passes"
+(cd "$T/sr" && git push -q origin feature)
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 1 "$rc" "ship: a push where none was expected fails"
+ship_expect "$T/se.json" 'null' true
+out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
+assert_exit_code 0 "$rc" "ship: the branch head on the remote counts as pushed"
+for c in ship-model-dispatch ship-model-unset ship-model-default-branch ship-model-refused ship-model-needs-input; do
+  out=$("$G" validate "$CASES/$c"); rc=$?
+  assert_exit_code 0 "$rc" "ship case $c validates"
+done
+printf '{"version":1,"kind":"ship","invocation":"/x","branch":"side","pushed":true,"dispatch":null}\n' > "$T/bad.json"
+mkdir -p "$T/badcase/change" && cp "$T/bad.json" "$T/badcase/expect.json" && echo x > "$T/badcase/prompt.md" && mkdir -p "$T/badcase/base"
+out=$("$G" validate "$T/badcase"); rc=$?
+assert_exit_code 2 "$rc" "ship: a branch other than feature or main is invalid"
+
 report

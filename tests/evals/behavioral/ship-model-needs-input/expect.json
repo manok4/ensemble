@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "kind": "ship",
+  "invocation": "/ensemble:en-ship --no-pr --no-watch",
+  "base_from": "ship-model-dispatch",
+  "config": [
+    "ship_model_claude: sonnet"
+  ],
+  "branch": "feature",
+  "dispatch": {
+    "model": "sonnet"
+  },
+  "pushed": false,
+  "staged": true,
+  "judge": [
+    {
+      "id": "question-returned",
+      "expectation": "The subagent stopped at the secret-scan warning and ended with a line starting en-ship: needs-input, and the session then put that question to the user or stopped with it, without pushing."
+    }
+  ]
+}
