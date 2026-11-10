@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN28
 title: Run /en-ship on a configured model per host
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-11-10
-shipped:
+shipped: 2026-11-10
 deepened:
 covers_requirements: []
 requirements_pending: false
@@ -263,3 +263,4 @@ None.
 > - 2026-11-10 (initial): plan v0 from the conversation request plus two rounds of planning questions. All six recommended answers were taken. Repo research covered the resolver, config reader, conductor stages, en-ship's ask points, Codex TOML rendering and the affected tests.
 > - 2026-11-10 (peer pass 1, codex, revise): applied three P1s. The needs-input continuation re-reads Resolve context and never redispatches. The conductor stops on a Ship agent's needs-input and names `/en-ship`. The Codex scope is stated as conditional on U4.
 > - 2026-11-10 (peer pass 2, codex, revise): applied one P1. U3 gains a live check that the Ship dispatch carries `model: sonnet` and `--in-agent`, with no nested dispatch. The cap is reached.
+> - 2026-11-10 (shipped): built as planned, with five deviations. U1 landed in U2's commit, and the conductor's script copies moved to U3, because `tests/lint/skill-payload.test.sh` fails a carried script that no SKILL.md names yet. U4 took outcome 1 only after the branch review asked for stronger evidence: a `gpt-6-luna` child pushed to a private GitHub scratch repo and opened a draft PR. The review added a snapshot-based dispatch fallback, a stop when the user rejects the dispatch, and the needs-input line on every `--in-agent` run. At the operator's request the branch also added a `ship` kind to `tests/evals` with five behavioural cases. The conductor logs a Ship question as `stage ship failed`, because the trail accepts only `ok`, `skipped` and `failed`.

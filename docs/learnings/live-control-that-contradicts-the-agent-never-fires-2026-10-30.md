@@ -3,7 +3,7 @@ title: A live-test control that contradicts the agent's own instructions never f
 applies_when: Designing the negative control for a test that runs a real model (claude -p, codex exec) and asserts on what it did
 date: 2026-10-30
 tags: [testing, live-tests, negative-controls, models]
-related: []
+related: [docs/learnings/codex-child-mistyped-workdir-reads-as-a-sandbox-limit-2026-11-10.md]
 status: active
 ---
 

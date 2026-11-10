@@ -18,3 +18,4 @@ updated: 2026-11-03
 ## [2026-11-03] capture | EN25 build: gate wrote nothing, all four candidates recorded at their code sites; grader-first note added to tests/evals/README.md | df33a05
 ## [2026-11-04] capture | EN26 build: gate wrote no learning, the verification-pass gap filed as a TD at L4 | 510476d
 ## [2026-11-05] capture | EN27 build: gate wrote no learning, all three candidates are stated with their reasons in skill text and test comments | ddcd79c
+## [2026-11-10] capture | A Codex child that mistypes its workdir looks like a sandbox limit; EN28's peer out-file gap filed as TD44 (L1), plan-index gap added to TD38 | 6b98809
