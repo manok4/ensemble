@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: ensemble-lint
-updated: 2026-11-06
-total_entries: 26
+updated: 2026-11-10
+total_entries: 27
 ---
 
 # Plans — index
@@ -42,3 +42,4 @@ _(none)_
 - [`EN25-improvement_quality-evals-and-guards.md`](../plans/completed/EN25-improvement_quality-evals-and-guards.md) — **EN25** Measure skill behavior and guard the quality bar, from the agent-skills review (shipped 2026-11-03)
 - [`EN26-improvement_review-tiers.md`](../plans/completed/EN26-improvement_review-tiers.md) — **EN26** Review tiers set by a script, so every change gets the right depth of review (shipped 2026-11-04)
 - [`EN27-feature_en-conductor.md`](../plans/completed/EN27-feature_en-conductor.md) — **EN27** Replace /en-flow with /en-conductor, one entry point that routes work and asks only when it must (shipped 2026-11-05)
+- [`EN28-feature_ship-model.md`](../plans/completed/EN28-feature_ship-model.md) — **EN28** Run /en-ship on a configured model per host (shipped 2026-11-10)

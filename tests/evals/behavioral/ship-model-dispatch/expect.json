@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "ship",
+  "invocation": "/ensemble:en-ship --no-pr --no-watch",
+  "config": [
+    "ship_model_claude: sonnet"
+  ],
+  "branch": "feature",
+  "dispatch": {
+    "model": "sonnet"
+  },
+  "pushed": true
+}

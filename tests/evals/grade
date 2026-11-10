@@ -9,13 +9,16 @@ Usage:
   grade judge <expect.json> <output.txt>          LLM judge for expectations no fact settles;
                                                   every verdict must quote the output
   grade plan <expect.json> <scratch-repo>         lints the plan the run wrote and checks its units
+  grade ship <expect.json> <transcript.jsonl> <scratch-repo>
+                                                  reads the stream-json transcript for the ship
+                                                  dispatch and the scratch remote for the push
 
 Facts first: a review run is graded by matching finding locations against the
 defects the case planted, with no model in the loop. Results print as JSON.
 
 Case contract, version 1 (expect.json):
   version         1
-  kind            review | fix | plan
+  kind            review | fix | plan | ship
   base_from       optional; another case whose base/ this one reuses (not with base/)
   invocation      the slash command run in the scratch repo
   modes           review only; any of peer, host, cross, auto (no mode flag: the tier decides)
@@ -33,6 +36,14 @@ Case contract, version 1 (expect.json):
   plan_checks     plan only; [{unit_matching, must_contain, risk, last, before, scope}]
                   scope "plan" checks must_contain against the whole plan file, for
                   policy a plan may settle in Technical design rather than a unit
+  config          ship only; lines written to the scratch repo's .ensemble/config.local.yaml
+  branch          ship only; "feature" (change/ committed on a new branch) or "main"
+                  (change/ committed on main, ahead of origin)
+  staged          ship only; true stages the case's staged/ overlay without committing it
+  disallowed_tools ship only; tool names passed to claude --disallowedTools
+  dispatch        ship only; {"model": <alias>} for one Agent call carrying that model and
+                  --in-agent, whose child turns ran on that model; null for no Agent call
+  pushed          ship only; whether the branch's HEAD reached the scratch remote
   judge           optional; [{id, expectation}]
 """
 import json
@@ -44,7 +55,7 @@ import sys
 import tempfile
 
 SEVERITY = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-KINDS = ("review", "fix", "plan")
+KINDS = ("review", "fix", "plan", "ship")
 LINE_SLACK = 3
 
 
@@ -84,8 +95,9 @@ def validate(case_dir):
         need(os.path.isdir(os.path.join(os.path.dirname(case_dir.rstrip("/")), base_from, "base")),
              "base_from names a case with no base/: %s" % base_from)
     has_change = os.path.isdir(os.path.join(case_dir, "change"))
+    if kind in ("review", "ship"):
+        need(has_change, "change/ is required for kind %s" % kind)
     if kind == "review":
-        need(has_change, "change/ is required for kind review")
         need(isinstance(exp.get("defects"), list), "defects must be a list for kind review")
         for d in exp.get("defects") or []:
             need(isinstance(d.get("file"), str) and isinstance(d.get("lines"), list) and len(d["lines"]) == 2
@@ -94,7 +106,8 @@ def validate(case_dir):
         for key in ("tier", "ran"):
             need(exp.get(key, "quick") in ("quick", "standard", "full"), "%s must be quick, standard or full" % key)
     else:
-        need(not has_change, "change/ is only allowed for kind review")
+        if kind != "ship":
+            need(not has_change, "change/ is only allowed for kinds review and ship")
         for key in ("modes", "defects", "personas_include", "bars", "tier", "ran"):
             need(key not in exp, "%s applies only to kind review" % key)
     if kind == "fix":
@@ -105,6 +118,20 @@ def validate(case_dir):
              "test_command, trailers and stops apply only to kind fix")
     if kind != "plan":
         need("plan_checks" not in exp, "plan_checks applies only to kind plan")
+    if kind == "ship":
+        need(exp.get("branch") in ("feature", "main"), "branch must be feature or main for kind ship")
+        need(isinstance(exp.get("config", []), list) and all(isinstance(c, str) for c in exp.get("config", [])),
+             "config must be a list of strings")
+        need(isinstance(exp.get("disallowed_tools", []), list), "disallowed_tools must be a list")
+        need(isinstance(exp.get("pushed"), bool), "pushed must be true or false for kind ship")
+        d = exp.get("dispatch", "missing")
+        need(d is None or (isinstance(d, dict) and isinstance(d.get("model"), str)),
+             "dispatch must be null or {\"model\": <alias>} for kind ship")
+        need(not exp.get("staged") or os.path.isdir(os.path.join(case_dir, "staged")),
+             "staged: true needs a staged/ overlay")
+    else:
+        for key in ("config", "branch", "staged", "disallowed_tools", "dispatch", "pushed"):
+            need(key not in exp, "%s applies only to kind ship" % key)
     for j in exp.get("judge") or []:
         need(isinstance(j.get("id"), str) and isinstance(j.get("expectation"), str), "each judge entry needs id and expectation")
     if errors:
@@ -473,6 +500,65 @@ def grade_judge(expect_path, output_path):
     sys.exit(0 if ok else 1)
 
 
+# --- ship ------------------------------------------------------------------------
+def ship_dispatches(transcript_path):
+    """Top-level Agent calls, and the model each one's child turns ran on."""
+    calls, child_models = [], {}
+    try:
+        lines = open(transcript_path, encoding="utf-8").read().splitlines()
+    except OSError as exc:
+        fail("cannot read %s: %s" % (transcript_path, exc))
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("type") != "assistant":
+            continue
+        msg = ev.get("message") or {}
+        parent = ev.get("parent_tool_use_id")
+        if parent:
+            child_models.setdefault(parent, set()).add(msg.get("model") or "")
+            continue
+        for block in msg.get("content") or []:
+            if block.get("type") == "tool_use" and block.get("name") in ("Agent", "Task"):
+                inp = block.get("input") or {}
+                calls.append({"id": block.get("id"), "model": inp.get("model"), "prompt": inp.get("prompt") or ""})
+    for c in calls:
+        c["child_models"] = sorted(child_models.get(c["id"], set()))
+    return calls
+
+
+def grade_ship(expect_path, transcript_path, repo):
+    exp = load_json(expect_path)
+    reasons = []
+    calls = ship_dispatches(transcript_path)
+    want = exp.get("dispatch")
+    if want is None:
+        if calls:
+            reasons.append("expected no Agent dispatch, found %d" % len(calls))
+    else:
+        alias = want["model"]
+        ships = [c for c in calls if "--in-agent" in c["prompt"]]
+        if len(ships) != 1:
+            reasons.append("expected one Agent dispatch carrying --in-agent, found %d" % len(ships))
+        else:
+            c = ships[0]
+            if c["model"] != alias:
+                reasons.append("dispatch model %r, expected %r" % (c["model"], alias))
+            if not c["child_models"] or any(alias not in m for m in c["child_models"]):
+                reasons.append("child turns ran on %s, expected %s" % (c["child_models"] or "nothing", alias))
+    branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    head = git_out(repo, "rev-parse", "HEAD").strip()
+    remote = git_out(repo, "ls-remote", "origin", "refs/heads/%s" % branch).split()
+    pushed = bool(remote) and remote[0] == head
+    if pushed != exp["pushed"]:
+        reasons.append("branch %s %s the remote, expected %s" % (
+            branch, "reached" if pushed else "did not reach", "it to" if exp["pushed"] else "it not to"))
+    print(json.dumps({"dispatches": calls, "pushed": pushed, "reasons": reasons, "pass": not reasons}))
+    sys.exit(0 if not reasons else 1)
+
+
 def main():
     args = sys.argv[1:]
     cmd = args[0] if args else ""
@@ -486,9 +572,12 @@ def main():
         grade_judge(args[1], args[2])
     elif cmd == "plan" and len(args) == 3:
         grade_plan(args[1], args[2])
+    elif cmd == "ship" and len(args) == 4:
+        grade_ship(args[1], args[2], args[3])
     else:
         fail("usage: grade validate <case-dir> | grade review|judge <expect.json> <output.txt>"
-             " | grade fix|plan <expect.json> <scratch-repo>", 2)
+             " | grade fix|plan <expect.json> <scratch-repo>"
+             " | grade ship <expect.json> <transcript.jsonl> <scratch-repo>", 2)
 
 
 if __name__ == "__main__":

@@ -229,6 +229,7 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Why it matters:** `index-coverage.plan-missing` is a P1 on every branch from the moment `/en-plan` writes a plan until a sweep regenerates the index. EN18 to EN21 each shipped with it red, and `b22a480` backfilled them by hand. The frontmatter names `en-learn` as the generator, but `/en-learn` maintains only `learning-index.md`.
 - **Suggested fix:** Have `/en-plan`'s auto-commit step append the plan's line under `## Active`, and `/en-learn`'s lifecycle flip move it to `## Completed`, both in the generator's existing line format; or make the lint rule advisory for plans under `active/`.
 - **Logged:** 2026-09-27
+- **Seen again:** 2026-11-10, EN28 post-build lint. `ensemble-lint --fix` now regenerates the index (58d1823) and `/en-learn`'s move refreshes it, but `/en-plan`'s promotion still lints `docs/plans/active` only, which never runs `index-coverage.plan-missing`. The rest of the fix is one `bin/ensemble-lint --fix --quiet --scope docs/generated/plan-index.md` at promotion, the way `/en-learn` does it.
 
 ### TD39. A plan can gate on evidence a called skill never leaves behind
 
@@ -290,6 +291,19 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Proposed check:** skills/en-ship/scripts/ensemble-pr-body: prints the tier script's risk signals when no Risk-Override line exists
 - **Rule key:** risk-stop-self-lift-detection
 - **Logged:** 2026-11-04
+
+### TD44. ensemble_peer_start runs a peer whose findings go nowhere without --out-file
+
+- **Source:** EN28 branch review (/en-review --cross)
+- **Severity:** P2
+- **Confidence:** 9/10
+- **Location:** skills/en-review/scripts/ensemble-peer-invoke: ensemble_peer_start
+- **Why it matters:** Started without --out-file, the peer runs to completion and writes a normal peer_decision, but its findings are saved nowhere, so a review can lose its only cross-agent pass while every outcome line reads as a normal peer run.
+- **Suggested fix:** Make ensemble_peer_start refuse (return 2, naming the flag) when --out-file is absent, in every carrier of ensemble-peer-invoke.
+- **Enforce at:** L1 structure
+- **Proposed check:** skills/en-review/scripts/ensemble-peer-invoke: ensemble_peer_start returns 2 without --out-file, pinned by a case in tests/lint for the helper
+- **Rule key:** peer-start-requires-out-file
+- **Logged:** 2026-11-10
 
 ## Resolved
 

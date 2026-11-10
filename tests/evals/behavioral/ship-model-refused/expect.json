@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "kind": "ship",
+  "invocation": "/ensemble:en-ship --no-pr --no-watch",
+  "base_from": "ship-model-dispatch",
+  "config": [
+    "ship_model_claude: sonnet"
+  ],
+  "branch": "feature",
+  "dispatch": null,
+  "pushed": true,
+  "disallowed_tools": [
+    "Agent"
+  ],
+  "judge": [
+    {
+      "id": "falls-back-in-session",
+      "expectation": "The session could not dispatch the ship to a subagent, said so, and then shipped in the session itself after checking that nothing had changed since the attempt."
+    }
+  ]
+}

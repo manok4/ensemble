@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "kind": "ship",
+  "invocation": "/ensemble:en-ship --no-pr --no-watch",
+  "base_from": "ship-model-dispatch",
+  "config": [
+    "ship_model_claude: sonnet"
+  ],
+  "branch": "main",
+  "dispatch": null,
+  "pushed": false,
+  "judge": [
+    {
+      "id": "stays-for-confirmation",
+      "expectation": "The session did not hand the ship to a subagent because the branch is the default branch, and it stopped for, or asked for, the typed confirmation that pushing to main requires instead of pushing."
+    }
+  ]
+}

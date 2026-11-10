@@ -56,7 +56,7 @@ done
 
 # --- structural rules (EN16 U2/U3), layered on top of discovery ---
 # A skill that names a shared helper in its SKILL.md must carry it.
-for script in ensemble-config-get ensemble-peer-flags ensemble-agent-model; do
+for script in ensemble-config-get ensemble-peer-flags ensemble-agent-model ensemble-ship-model; do
   uncarried=""
   for d in skills/*/; do
     s=$(basename "${d%/}")
@@ -71,6 +71,13 @@ for f in skills/*/scripts/ensemble-peer-flags; do
   d=$(dirname "$f"); [ -f "$d/ensemble-config-get" ] || missing_reader="$missing_reader $(basename "$(dirname "$d")")"
 done
 assert_eq "" "$(echo $missing_reader)" "every carrier of ensemble-peer-flags also carries ensemble-config-get"
+# The ship-model resolver reads through the same reader (EN28).
+missing_reader=""
+for f in skills/*/scripts/ensemble-ship-model; do
+  [ -f "$f" ] || continue
+  d=$(dirname "$f"); [ -f "$d/ensemble-config-get" ] || missing_reader="$missing_reader $(basename "$(dirname "$d")")"
+done
+assert_eq "" "$(echo $missing_reader)" "every carrier of ensemble-ship-model also carries ensemble-config-get"
 # A skill that dispatches agents resolves their model through the resolver,
 # which reads through the config reader; both travel with the agents.
 no_resolver=""
