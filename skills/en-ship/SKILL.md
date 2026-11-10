@@ -22,7 +22,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, exit (peer subprocesses don't ship).
 
-2a. **Model placement.** `eval "$(bash "$SKILL_DIR/scripts/ensemble-detect-host")"; eval "$(bash "$SKILL_DIR/scripts/ensemble-ship-model" --host "$HOST")"`. Stay in session when any of these holds: `SHIP_MODEL` is empty or `--in-agent` was passed; `--interactive` was passed; or the branch is the repo's default branch, whose push needs a typed confirmation. Otherwise rerun this invocation in a subagent on `SHIP_MODEL` per `references/model-dispatch.md`, which owns the brief, the return, `en-ship: needs-input` and the fallback (D144). A parent that dispatches opens no run ledger of its own.
+2a. **Model placement.** `eval "$(bash "$SKILL_DIR/scripts/ensemble-detect-host")"`, then `eval "$(bash "$SKILL_DIR/scripts/ensemble-ship-model" --host "$HOST")"`. Stay in session when any of these holds: `SHIP_MODEL` is empty or `--in-agent` was passed; `--interactive` was passed; or the branch is the repo's default branch, whose push needs a typed confirmation. Otherwise rerun this invocation in a subagent on `SHIP_MODEL` per `references/model-dispatch.md`, which owns the brief, the return, `en-ship: needs-input` and the fallback (D144). A parent that dispatches opens no run ledger of its own.
 2b. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-ship`. Nothing below is told where to record: the helpers find the run themselves. Fire-and-forget, and it never blocks a ship; `references/run-metrics.md` carries the event vocabulary.
 3. **Pre-flight.** Fetch, then let the helper classify: `git fetch origin <base>`, then `bash "$SKILL_DIR/scripts/ensemble-ship-preflight" --base origin/<base> [--scope <path>]... --json`. It returns the branch, `ahead`/`behind`, `published`, `staging_case`, `scope_matched`, `excluded` and `untracked_inventory`, and never stages, fetches or rewrites. A state it cannot ship from (detached HEAD, a conflicted tree, an unresolvable base) exits 1 with a `blocked` reason and the run stops. Pass `--scope` only when the user named the paths this ship is about.
    - **Default-branch protection** — if `HEAD == main`, ask explicitly: "Pushing directly to `main`. Confirm? (y/N)". Default no.
@@ -168,7 +168,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 | `--reviewers <list>` | Request reviewers via `gh pr create --reviewer` |
 | `--no-test-on-changed` | Skip targeted-test step (rare; usually leave on) |
 | `--preflight` | Run steps 1 through 8, write the receipt, print the preflight state, and stop. No commit, push or PR. |
-| `--in-agent` | Already placed on its model by a caller or by step 2a: never dispatch. Internal; `/en-conductor`'s Ship stage passes it. |
+| `--in-agent` | Already placed on its model, whether or not in a subagent: never dispatch. With no way to ask the user, end with the last line `en-ship: needs-input <question>` instead of asking. Internal. |
 | `--interactive` | Restore the pre-EN04 stop-and-ask flow: re-enable the scope-confirm (step 7) and plan-completion (step 8) prompts. Opposite of the hands-off default. (Does not prompt for learnings — that's an en-build-completion checkpoint only.) |
 | `--no-plan-completion-checkpoint` | Skip the plan-completion checkpoint (step 8). Records `plan_completion_checkpoint: skipped_by_user (--no-plan-completion-checkpoint flag)` for audit. |
 

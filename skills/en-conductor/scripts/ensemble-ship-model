@@ -27,7 +27,9 @@ set -u
 
 # The aliases the Claude Code Agent tool accepts as a per-call `model`, checked
 # 2026-11-10 against code.claude.com/docs/en/sub-agents. Aliases, never model
-# IDs: the host owns this set. Add here when the host adds one.
+# IDs: the host owns this set. Add here when the host adds one, and to
+# CLAUDE_ALIASES in ensemble-agent-model: tests/lint/ensemble-ship-model.test.sh
+# fails when the two lists differ.
 SHIP_CLAUDE_ALIASES="haiku,sonnet,opus,fable"
 
 HOST=""; REPO_ROOT=""; HOME_DIR="${HOME:-}"
@@ -63,14 +65,23 @@ CFG="$_self_dir/ensemble-config-get"
 # an absent one and named. The reader's own stderr (an unparseable file) is
 # left to reach the caller.
 v=""
-[ -x "$CFG" ] && v=$("$CFG" "$KEY" --repo-root "$REPO_ROOT" --home "$HOME_DIR")
+if [ -x "$CFG" ]; then
+  v=$("$CFG" "$KEY" --repo-root "$REPO_ROOT" --home "$HOME_DIR")
+else
+  printf 'ensemble-ship-model: %s is missing or not executable, so %s cannot be read; shipping on the session model\n' "$CFG" "$KEY" >&2
+fi
 
 reason=""
 if [ -n "$v" ]; then
   if [ "$HOST" = claude-code ]; then
-    case ",$SHIP_CLAUDE_ALIASES," in
-      *",$v,"*) ;;
-      *) reason="not one of $SHIP_CLAUDE_ALIASES" ;;
+    # Aliases are lowercase letters only. Rejecting anything else first keeps a
+    # comma list ("haiku,sonnet") or a glob ("*") from matching the list below.
+    case "$v" in
+      *[!a-z]*) reason="not one of $SHIP_CLAUDE_ALIASES" ;;
+      *) case ",$SHIP_CLAUDE_ALIASES," in
+           *",$v,"*) ;;
+           *) reason="not one of $SHIP_CLAUDE_ALIASES" ;;
+         esac ;;
     esac
   else
     case "$v" in

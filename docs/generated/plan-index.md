@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: ensemble-lint
-updated: 2026-11-06
-total_entries: 26
+updated: 2026-11-10
+total_entries: 27
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 26
 
 ## Active
 
-_(none)_
+- [`EN28-feature_ship-model.md`](../plans/active/EN28-feature_ship-model.md) — **EN28** Run /en-ship on a configured model per host (in_progress)
 
 ## Completed
 

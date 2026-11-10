@@ -11,13 +11,14 @@ Owned by `en-ship`. Callers depend on this page, not on `SKILL.md`.
 
 | Form | Caller |
 |---|---|
-| `/en-ship --in-agent [--no-watch]` | `en-conductor`, after a green build, from a Ship agent already on `ship_model_<host>` |
+| `/en-ship --in-agent [--no-watch]` | `en-conductor`, after a green build, from a Ship agent already on `ship_model_<host>`, and on that agent's in-session fallback rerun |
+| `/en-ship [--no-watch]` | `en-conductor`, after a green build, where stages run in session; `/en-ship` places itself |
 | `/en-ship [--no-watch] [--auto-merge]` | `en-fix`, after its receipt gate passes on a tree that started clean; each flag only when the user gave it |
 | `--auto-merge` | arms `gh pr merge --auto --squash`; default OFF |
 | `--draft` · `--no-pr` · `--base <branch>` · `--reviewers <list>` | PR shape |
 | `--no-watch` | open the PR and stop, skipping the watch loop |
 | `--preflight` | run the checks (steps 1 through 8), write the receipt, print the preflight state; no commit, push or PR |
-| `--in-agent` | already placed on its model: never dispatch to a subagent (D144) |
+| `--in-agent` | already placed on its model, whether or not the run is in a subagent: never dispatch (D144) |
 | `--interactive` | restore the stop-and-ask prompts for scope and plan completion |
 | `--no-plan-completion-checkpoint` · `--no-test-on-changed` | skip one preflight step; each records that it was skipped |
 | `--allow-secrets` | bypass the secret scan; use sparingly |

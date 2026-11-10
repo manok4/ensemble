@@ -26,9 +26,10 @@ has "$SKILL" 'scripts/ensemble-ship-model" --host "$HOST"'                 "the 
 has "$SKILL" '`SHIP_MODEL` is empty or `--in-agent` was passed'             "unset key or --in-agent stays in session"
 has "$SKILL" '`--interactive` was passed'                                   "--interactive stays in session"
 has "$SKILL" "the branch is the repo's default branch"                      "the default branch stays in session"
-if grep -qF '`HOST` is not `claude-code`' "$SKILL"; then fail "Codex dispatch is verified (EN28 U4): no host stays in session by host alone"; else pass "Codex dispatch is verified (EN28 U4): no host stays in session by host alone"; fi
+assert_not_contains "$(cat "$SKILL")" '`HOST` is not `claude-code`' "Codex dispatch is verified (EN28 U4): no host stays in session by host alone"
 has "$SKILL" 'per `references/model-dispatch.md`'                           "the step points at its reference"
 has "$SKILL" '| `--in-agent` |'                                             "the flag table lists --in-agent"
+has "$SKILL" 'With no way to ask the user, end with the last line `en-ship: needs-input <question>`' "an --in-agent run produces the needs-input line itself"
 
 # --- order: placement after the recursion guard, before the ledger opens ---
 line() { grep -nF -- "$1" "$SKILL" | head -1 | cut -d: -f1; }
@@ -45,9 +46,12 @@ has "$REF" 'followed by `/en-ship --in-agent`'                              "the
 has "$REF" 'ends your turn with the last line `en-ship: needs-input <question>`' "the brief names the question line"
 has "$REF" 'continue this run in session from **Resolve context**'          "a needs-input continuation re-reads branch and PR"
 has "$REF" 'run as if `--in-agent` were passed'                             "a needs-input continuation never dispatches again"
-has "$REF" '`HEAD` matches the recorded value'                              "fallback: HEAD unchanged"
-has "$REF" 'git status --porcelain --untracked-files=no'                    "fallback: tracked tree clean"
-has "$REF" 'gh pr list --head <branch> --state open'                        "fallback: no PR for the branch"
+has "$REF" 'existing-PR result.'                                              "before dispatch: HEAD, tracked content and PR are recorded"
+has "$REF" 'only when all three still match what'                           "fallback compares against the snapshot, not a clean tree"
+has "$REF" 'git diff HEAD; git diff --cached; } | git hash-object --stdin' "the snapshot fingerprints tracked content, not just status"
+has "$REF" '  - the tracked-tree fingerprint;'                                "fallback: tracked content unchanged"
+has "$REF" 'from `gh pr list --head <branch> --state open`'                  "fallback: PR state unchanged"
+has "$REF" '**The user rejected the dispatch** at a permission prompt. Stop' "a user's rejection stops the ship, never reruns it in session"
 has "$REF" 'one `spawn_agent` call with `model: $SHIP_MODEL` and'            "Codex dispatches through spawn_agent with the resolved model"
 has "$REF" '`fork_turns: "none"`, then wait for it'                          "the Codex child starts fresh, not from the parent's history"
 has "$REF" "this Codex CLI's spawn_agent takes no model"                     "a CLI without a model parameter says so and ships in session"
@@ -55,6 +59,7 @@ has "$REF" 'one Agent call, `subagent_type: general-purpose`, with'         "Cla
 
 # --- the contract callers read ---
 has "$CONTRACT" '| `--in-agent` |'                                          "CONTRACT lists --in-agent"
+has "$CONTRACT" '| `/en-ship [--no-watch]` | `en-conductor`, after a green build, where stages run in session' "CONTRACT keeps the conductor's in-session form"
 has "$CONTRACT" '`en-ship: needs-input <question>`'                         "CONTRACT names the needs-input return"
 
 report
