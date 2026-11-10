@@ -11,12 +11,13 @@ Owned by `en-ship`. Callers depend on this page, not on `SKILL.md`.
 
 | Form | Caller |
 |---|---|
-| `/en-ship [--no-watch]` | `en-conductor`, after a green build |
+| `/en-ship --in-agent [--no-watch]` | `en-conductor`, after a green build, from a Ship agent already on `ship_model_<host>` |
 | `/en-ship [--no-watch] [--auto-merge]` | `en-fix`, after its receipt gate passes on a tree that started clean; each flag only when the user gave it |
 | `--auto-merge` | arms `gh pr merge --auto --squash`; default OFF |
 | `--draft` · `--no-pr` · `--base <branch>` · `--reviewers <list>` | PR shape |
 | `--no-watch` | open the PR and stop, skipping the watch loop |
 | `--preflight` | run the checks (steps 1 through 8), write the receipt, print the preflight state; no commit, push or PR |
+| `--in-agent` | already placed on its model: never dispatch to a subagent (D144) |
 | `--interactive` | restore the stop-and-ask prompts for scope and plan completion |
 | `--no-plan-completion-checkpoint` · `--no-test-on-changed` | skip one preflight step; each records that it was skipped |
 | `--allow-secrets` | bypass the secret scan; use sparingly |
@@ -31,6 +32,9 @@ must handle a stop, not assume a PR exists on return.
 
 The PR URL plus pre-flight results. With `--preflight`, the preflight state and
 the receipt, and no PR. On a stop, the failing check and its output.
+Run in a subagent (`--in-agent`), a question it cannot ask ends the run with
+the last line `en-ship: needs-input <question>`; the caller asks the user, or
+stops and names `/en-ship` to run in session.
 A caller must not treat a reported URL as a completed hand-off when the watch
 loop is still running.
 
