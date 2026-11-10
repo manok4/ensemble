@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN28
 title: Run /en-ship on a configured model per host
-status: open
+status: in_progress
 location: active
 created: 2026-11-10
 shipped:
