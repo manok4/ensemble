@@ -20,13 +20,13 @@ has() {  # <file> <fixed string> <label>
   if grep -qF -- "$2" "$1"; then pass "$3"; else fail "$3" "missing in ${1#$REPO_ROOT/}: $2"; fi
 }
 
-# --- the step: resolution and the four stay-in-session conditions ---
+# --- the step: resolution and the three stay-in-session conditions ---
 has "$SKILL" '2a. **Model placement.**'                                     "en-ship has a Model placement step"
 has "$SKILL" 'scripts/ensemble-ship-model" --host "$HOST"'                 "the step resolves the model through ensemble-ship-model"
 has "$SKILL" '`SHIP_MODEL` is empty or `--in-agent` was passed'             "unset key or --in-agent stays in session"
 has "$SKILL" '`--interactive` was passed'                                   "--interactive stays in session"
 has "$SKILL" "the branch is the repo's default branch"                      "the default branch stays in session"
-has "$SKILL" '`HOST` is not `claude-code`'                                  "a host without verified dispatch stays in session"
+if grep -qF '`HOST` is not `claude-code`' "$SKILL"; then fail "Codex dispatch is verified (EN28 U4): no host stays in session by host alone"; else pass "Codex dispatch is verified (EN28 U4): no host stays in session by host alone"; fi
 has "$SKILL" 'per `references/model-dispatch.md`'                           "the step points at its reference"
 has "$SKILL" '| `--in-agent` |'                                             "the flag table lists --in-agent"
 
@@ -39,16 +39,19 @@ else
   fail "Model placement sits between the recursion guard and the run ledger" "lines guard=$g placement=$m ledger=$l"
 fi
 
-# --- the reference: dispatch, return, question, fallback, Codex ---
+# --- the reference: dispatch on both hosts, return, question, fallback ---
 has "$REF" 'model: $SHIP_MODEL'                                             "the dispatch passes the resolved model"
-has "$REF" 'followed by `/en-ship --in-agent` and this'                     "the child is invoked with --in-agent"
+has "$REF" 'followed by `/en-ship --in-agent`'                              "the child is invoked with --in-agent"
 has "$REF" 'ends your turn with the last line `en-ship: needs-input <question>`' "the brief names the question line"
 has "$REF" 'continue this run in session from **Resolve context**'          "a needs-input continuation re-reads branch and PR"
 has "$REF" 'run as if `--in-agent` were passed'                             "a needs-input continuation never dispatches again"
 has "$REF" '`HEAD` matches the recorded value'                              "fallback: HEAD unchanged"
 has "$REF" 'git status --porcelain --untracked-files=no'                    "fallback: tracked tree clean"
 has "$REF" 'gh pr list --head <branch> --state open'                        "fallback: no PR for the branch"
-has "$REF" 'ship_model_codex is set but Codex dispatch is unverified'        "Codex says once that its key is not yet honoured"
+has "$REF" 'one `spawn_agent` call with `model: $SHIP_MODEL` and'            "Codex dispatches through spawn_agent with the resolved model"
+has "$REF" '`fork_turns: "none"`, then wait for it'                          "the Codex child starts fresh, not from the parent's history"
+has "$REF" "this Codex CLI's spawn_agent takes no model"                     "a CLI without a model parameter says so and ships in session"
+has "$REF" 'one Agent call, `subagent_type: general-purpose`, with'         "Claude Code dispatches through the Agent tool"
 
 # --- the contract callers read ---
 has "$CONTRACT" '| `--in-agent` |'                                          "CONTRACT lists --in-agent"
