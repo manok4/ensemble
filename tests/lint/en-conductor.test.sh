@@ -86,6 +86,16 @@ assert_contains "$(section 'Fix outcomes')" 'Redispatch with the original flags'
 assert_contains "$(section 'Fix outcomes')" 'Never decide it yourself' "the conductor never answers needs-decision itself"
 assert_contains "$(section 'Fix outcomes')" "Log \`decision fix redispatch" "a Fix redispatch logs the row that closes the returned agent's run"
 
+# --- Ship's model (EN28 U3, D144): one hop, a question stops, Fix passes none ---
+printf '%s\n' "$st" | grep -E '^\| Ship \|' | grep -qF '`/en-ship --in-agent` as an agent' \
+  && pass "the Ship agent is invoked already placed" || fail "the Ship row must invoke /en-ship --in-agent as an agent"
+has 'scripts/ensemble-ship-model" --host "$HOST"' "the Ship stage resolves its model through ensemble-ship-model"
+has "Ship's agent is dispatched with \`model\` set to \`SHIP_MODEL\`" "the Ship agent carries the resolved model"
+has 'Its in-session fallback rerun keeps `--in-agent`' "the fallback rerun does not dispatch again"
+has '`en-ship: needs-input <question>`, a contract field and not a fallback trigger' "a Ship question is a stop, not a fallback"
+has 'naming the question and `/en-ship` to run in session' "a Ship question names /en-ship for the user"
+has 'The Fix stage passes no model' "the Fix stage passes no model; en-ship places itself"
+
 # --- fallback: a rerun never repeats work that landed ---
 agents=$(section 'Stage agents')
 for clause in 'reruns that stage once in session' 'record `HEAD`' 'git status --porcelain --untracked-files=no' '`gh pr view` finds no PR'; do

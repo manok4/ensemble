@@ -21,7 +21,7 @@ Y() { printf '%s\n' "$1" > "$W/repo/.ensemble/config.local.yaml"; }
 clear_cfg() { rm -f "$W/home/.ensemble/config.json" "$W/repo/.ensemble/config.local.yaml"; }
 
 # The carriers that must exist; every other carrier found is exercised too.
-for skill in en-ship; do
+for skill in en-ship en-conductor; do
   assert_file_exists "$REPO_ROOT/skills/$skill/scripts/ensemble-ship-model" "$skill carries ensemble-ship-model"
 done
 

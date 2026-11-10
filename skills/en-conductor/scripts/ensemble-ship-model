@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# ensemble-ship-model — which model does /en-ship run on, on this host, for
+# this operator (EN28, D144).
+#
+# Reads one flat key through the sibling ensemble-config-get, repo layer
+# (.ensemble/config.local.yaml) before global (~/.ensemble/config.json):
+#
+#   --host claude-code   ship_model_claude   a Claude alias (SHIP_CLAUDE_ALIASES)
+#   --host codex         ship_model_codex    an operator's Codex model ID
+#
+# Unset means inherit: the session's own model, which is today's behaviour.
+# A present but invalid value is named once on stderr and also inherits, so
+# nothing unvalidated reaches a dispatch. Callers pass what this prints and
+# choose nothing themselves (D103).
+#
+# Usage:
+#   ensemble-ship-model --host <claude-code|codex> [--repo-root <dir>] [--home <dir>]
+#
+# Emits eval-able lines (same contract as ensemble-detect-host):
+#   SHIP_MODEL='<alias|id|>'
+#   SHIP_MODEL_SOURCE='config|inherit'
+#
+# Exit 0 for every config state (fail-soft, like the reader). Exit 2 only for a
+# missing or unknown --host, a caller bug, so callers must not discard stderr.
+
+set -u
+
+# The aliases the Claude Code Agent tool accepts as a per-call `model`, checked
+# 2026-11-10 against code.claude.com/docs/en/sub-agents. Aliases, never model
+# IDs: the host owns this set. Add here when the host adds one.
+SHIP_CLAUDE_ALIASES="haiku,sonnet,opus,fable"
+
+HOST=""; REPO_ROOT=""; HOME_DIR="${HOME:-}"
+
+usage() {
+  echo "usage: ensemble-ship-model --host <claude-code|codex> [--repo-root <dir>] [--home <dir>]" >&2
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --host)      [ $# -ge 2 ] || { usage; exit 2; }; HOST="$2"; shift 2 ;;
+    --repo-root) [ $# -ge 2 ] || { usage; exit 2; }; REPO_ROOT="$2"; shift 2 ;;
+    --home)      [ $# -ge 2 ] || { usage; exit 2; }; HOME_DIR="$2"; shift 2 ;;
+    -h|--help)   usage; exit 0 ;;
+    *)           usage; exit 2 ;;
+  esac
+done
+
+case "$HOST" in
+  claude-code) KEY="ship_model_claude" ;;
+  codex)       KEY="ship_model_codex" ;;
+  '')          usage; exit 2 ;;
+  *) echo "ensemble-ship-model: unknown --host '$HOST' (expected claude-code|codex)" >&2; exit 2 ;;
+esac
+
+[ -n "$REPO_ROOT" ] || REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+
+# ${BASH_SOURCE[0]:-$0}: BASH_SOURCE is bash-only; zsh sets $0.
+_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+CFG="$_self_dir/ensemble-config-get"
+
+# Read without --allowed, so a present-but-invalid value can be told apart from
+# an absent one and named. The reader's own stderr (an unparseable file) is
+# left to reach the caller.
+v=""
+[ -x "$CFG" ] && v=$("$CFG" "$KEY" --repo-root "$REPO_ROOT" --home "$HOME_DIR")
+
+reason=""
+if [ -n "$v" ]; then
+  if [ "$HOST" = claude-code ]; then
+    case ",$SHIP_CLAUDE_ALIASES," in
+      *",$v,"*) ;;
+      *) reason="not one of $SHIP_CLAUDE_ALIASES" ;;
+    esac
+  else
+    case "$v" in
+      *[!A-Za-z0-9._-]*) reason="a Codex model ID is letters, digits, '.', '_' and '-' only" ;;
+    esac
+    [ -z "$reason" ] && [ "${#v}" -gt 64 ] && reason="a Codex model ID is at most 64 characters"
+  fi
+fi
+
+if [ -n "$reason" ]; then
+  printf 'ensemble-ship-model: ignoring %s=%s: %s; shipping on the session model\n' "$KEY" "$v" "$reason" >&2
+  v=""
+fi
+
+src="inherit"; [ -n "$v" ] && src="config"
+shellesc() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"; }
+printf 'SHIP_MODEL=%s\n'        "$(shellesc "$v")"
+printf 'SHIP_MODEL_SOURCE=%s\n' "$(shellesc "$src")"
+exit 0
