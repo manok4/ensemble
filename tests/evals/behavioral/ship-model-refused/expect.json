@@ -15,7 +15,7 @@
   "judge": [
     {
       "id": "falls-back-in-session",
-      "expectation": "The session could not dispatch the ship to a subagent, said so, and then shipped in the session itself after checking that nothing had changed since the attempt."
+      "expectation": "The session could not dispatch the ship to a subagent, said so, and then shipped in the session itself. When it did attempt a dispatch, it checked that nothing had changed since the attempt before shipping; when no subagent tool was available at all, there was no attempt to check after."
     }
   ]
 }
