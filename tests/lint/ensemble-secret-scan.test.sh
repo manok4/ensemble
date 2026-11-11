@@ -250,6 +250,14 @@ assert_eq "1" "$RC" "a key in a merge's resolution of a -diff file blocks"
 # scan says so and exits 2 rather than calling it clean.
 OUT=$( cd "$D" && ENSEMBLE_SECRET_SCAN_ASSUME_OLD_GIT=1 bash "$S" --commits mainline..HEAD 2>&1 ); RC=$?
 assert_eq "2" "$RC" "without attribute pinning, a binary merge diff exits 2, never clean"
+# .git/info/attributes outranks GIT_ATTR_SOURCE (PR #149 review), so a local
+# `-diff` there hides a merge resolution even on a new git: same fail-closed exit.
+D=$(repo info-attr-merge)
+diverge "$D" 'feat\n' f.txt 'main\n' f.txt
+( cd "$D" && printf 'f.txt -diff\n' >> .git/info/attributes && { git merge -q mainline >/dev/null 2>&1; true; } \
+    && printf 'const k = "%s";\n' "$AKIA_FIXTURE" > f.txt && git add f.txt && git commit -qm merge )
+scan "$D" --commits mainline..HEAD
+assert_ne "0" "$RC" "a local .git/info/attributes -diff cannot make a merge resolution scan clean"
 
 # Config that re-encodes or narrows git's output is outranked by the scanner's pins.
 D=$(repo log-encoding)
