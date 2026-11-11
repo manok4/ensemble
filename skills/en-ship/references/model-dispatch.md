@@ -35,8 +35,8 @@ configured effort is this skill's explicit instruction to set the parameter.
   `CLAUDE_CODE_EFFORT_LEVEL`, when set in the environment, overrides the call.
 - **Codex:** one `spawn_agent` call with `model: $SHIP_MODEL`,
   `reasoning_effort: $SHIP_EFFORT` and `fork_turns: "none"`, then wait for it.
-  A CLI whose `spawn_agent` takes no `model` cannot place the ship: stay in
-  session and print once
+  With `SHIP_MODEL` set, a CLI whose `spawn_agent` takes no `model` cannot
+  place the ship: stay in session and print once
   `this Codex CLI's spawn_agent takes no model; shipping on the session model.`
   A CLI whose `spawn_agent` takes no `reasoning_effort` dispatches with the
   model alone and prints once

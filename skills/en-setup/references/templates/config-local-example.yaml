@@ -123,7 +123,8 @@ default_branch_fallback: main
 # bind at install time. setup renders ~/.claude/agents/<name>.md (a copy with
 # effort: injected, only when an effort key applies) and ~/.codex/agents/<name>.toml
 # from ~/.ensemble/config.json only (never this file); re-run ./setup after a
-# change. A Claude agent with no effort: inherits the session's effort level.
+# change. A Claude agent with no effort: runs at the session's level on the
+# session's model, and at its model's default on any other (D145).
 # The scheduled sweep's model and effort are `sweep.model` / `sweep.effort`
 # below, read from this file in the checkout on the sweep machine.
 

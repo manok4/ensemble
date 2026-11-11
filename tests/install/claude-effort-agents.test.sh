@@ -4,8 +4,9 @@
 # D104. Persona dispatches pass no per-call `effort` (the Agent tool takes one
 # since Claude Code 2.1.292, D145; TD45), so Claude Code reads a persona's
 # effort from the installed agent file's `effort:` line. An operator's
-# agent_effort_claude_* key therefore binds at install time: setup publishes the agent as a COPY with the line injected
-# when a key applies, and links the checkout's file as before when none does.
+# agent_effort_claude_* key therefore binds at install time: setup publishes
+# the agent as a COPY with the line injected when a key applies, and links the
+# checkout's file as before when none does.
 # Every property below is one a wrong render would violate silently, because
 # Claude Code does not report which effort a subagent ran at.
 

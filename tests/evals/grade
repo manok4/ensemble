@@ -42,9 +42,13 @@ Case contract, version 1 (expect.json):
   staged          ship only; true stages the case's staged/ overlay without committing it
   disallowed_tools ship only; tool names passed to claude --disallowedTools
   dispatch        ship only; {"model": <alias>, "effort": <level>}, either or both, for one
-                  Agent call carrying --in-agent and exactly those values, whose child turns
+                  Agent call carrying --in-agent and exactly those values (an absent key
+                  means the call must not carry it), whose child turns
                   ran on that model (on the session's model when no model is expected, and
-                  the call must then carry none); null for no Agent call
+                  the call must then carry none); null for no Agent call. The effort is
+                  the one the call asked for: stream-json records no child's effective
+                  effort, which lives in the subagent's .meta.json and is checked by hand
+                  (tests/evals/ledger.md)
   pushed          ship only; whether the branch's HEAD reached the scratch remote
   judge           optional; [{id, expectation}]
 """
@@ -560,8 +564,8 @@ def grade_ship(expect_path, transcript_path, repo):
                 if not c["child_models"] or set(c["child_models"]) - set(session_models):
                     reasons.append("child turns ran on %s, expected the session's %s" % (
                         c["child_models"] or "nothing", session_models))
-            if effort is not None and c["effort"] != effort:
-                reasons.append("dispatch effort %r, expected %r" % (c["effort"], effort))
+            if c["effort"] != effort:
+                reasons.append("dispatch effort %r, expected %r" % (c["effort"], effort if effort is not None else "no effort"))
     branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
     head = git_out(repo, "rev-parse", "HEAD").strip()
     remote = git_out(repo, "ls-remote", "origin", "refs/heads/%s" % branch).split()
