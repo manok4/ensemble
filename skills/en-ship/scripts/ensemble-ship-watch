@@ -254,65 +254,77 @@ print(",".join(sorted(r.get("name", "?") for r in pending)))
 
 # --- one poll of the review bots ---------------------------------------------
 # Sets BOTS_PENDING to the reviews a known bot reports running on HEAD_SHA. Each
-# REVIEW_BOTS entry is a login, the marker it writes in a PR comment, and the
-# keys of that marker's JSON whose "status" says a review is running. Only the
-# bot's own latest marker counts, and only for this head: a marker from any
-# other login, that does not parse, or whose review names no commit or another
-# commit is ignored, so a stray comment can never hold the watch open.
+# REVIEW_BOTS entry is a bot account, the marker it writes at the start of a
+# line in a PR comment, and the keys of that marker's JSON whose "status" says
+# a review is running.
+#
+# The comments come from the REST API because it says who wrote them: a marker
+# counts only from an account of type Bot with the exact "<name>[bot]" login,
+# which a person cannot register. GraphQL's author has a login and no type.
+# Only the first marker in a comment counts, so text appended after it cannot
+# override it. A review counts only when it names a commit that prefixes this
+# head. Across the bot's comments it fails closed: any one that reports a
+# review running on this head holds the watch, whatever order they come in.
 poll_review_bots() {
   # The doctor and checks calls succeed between two reads of the comments and
   # would reset the shared count, so a read that always fails would never reach
   # gh-error and the watch would sit out its timeout. Count this read alone.
   consecutive_failures=$BOT_READ_FAILURES
-  gh_json pr view "$PR" $REPO_ARGS --json comments; rc=$?
+  # gh fills {owner}/{repo} from the current checkout when --repo was not given.
+  repo_path="$REPO"; [ -n "$repo_path" ] || repo_path='{owner}/{repo}'
+  gh_json api "repos/$repo_path/issues/$PR/comments" --paginate; rc=$?
   BOT_READ_FAILURES=$consecutive_failures
   [ "$rc" -eq 0 ] || return "$rc"
   BOTS_PENDING=$(HEAD_SHA="$HEAD_SHA" python3 -c '
 import json, os, re, sys
 REVIEW_BOTS = [
-    {"login": "chatgpt-codex-connector", "marker": "codex-review-state:v1",
+    {"login": "chatgpt-codex-connector[bot]", "marker": "codex-review-state:v1",
      "reviews": ["code_review", "security_review"]},
 ]
 head = os.environ.get("HEAD_SHA", "")
-try:
-    data = json.load(sys.stdin)
-except ValueError:
-    data = {}
-comments = data.get("comments") if isinstance(data, dict) else None
-if not isinstance(comments, list):
-    comments = []
 decoder = json.JSONDecoder()
+
+# --paginate prints one JSON array per page, back to back.
+text = sys.stdin.read()
+comments, pos = [], 0
+while True:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    if pos >= len(text):
+        break
+    page, pos = decoder.raw_decode(text, pos)
+    if not isinstance(page, list):
+        sys.exit(1)
+    comments.extend(c for c in page if isinstance(c, dict))
+
 def on_head(sha):
     sha = str(sha or "")
     return bool(head) and len(sha) >= 7 and head.startswith(sha)
+
 pending = []
 for bot in REVIEW_BOTS:
-    pattern = re.compile(r"<!--\s*" + re.escape(bot["marker"]) + r"\s+")
-    state = None
+    pattern = re.compile(r"^[ \t]*<!--[ \t]*" + re.escape(bot["marker"]) + r"[ \t]+", re.M)
     for c in comments:
-        if not isinstance(c, dict):
-            continue
-        login = (c.get("author") or {}).get("login") or ""
-        if login.endswith("[bot]"):
-            login = login[:-len("[bot]")]
-        if login != bot["login"]:
+        user = c.get("user") or {}
+        if user.get("type") != "Bot" or user.get("login") != bot["login"]:
             continue
         body = c.get("body") or ""
-        for m in pattern.finditer(body):
-            try:
-                parsed, _ = decoder.raw_decode(body, m.end())
-            except ValueError:
-                continue
-            if isinstance(parsed, dict):
-                state = parsed
-    if state is None:
-        continue
-    for key in bot["reviews"]:
-        review = state.get(key)
-        if not isinstance(review, dict) or review.get("status") != "running":
+        m = pattern.search(body)
+        if not m:
             continue
-        if on_head(review.get("commit_sha") or state.get("commit_sha")):
-            pending.append(bot["login"] + ":" + key)
+        try:
+            state, _ = decoder.raw_decode(body, m.end())
+        except ValueError:
+            continue
+        if not isinstance(state, dict):
+            continue
+        for key in bot["reviews"]:
+            review = state.get(key)
+            if not isinstance(review, dict) or review.get("status") != "running":
+                continue
+            name = bot["login"][:-len("[bot]")] + ":" + key
+            if on_head(review.get("commit_sha")) and name not in pending:
+                pending.append(name)
 print(",".join(pending))
 ' < "$OUT_FILE" 2>/dev/null) || {
     FATAL_STATE="gh-error"; FATAL_REASON="unparseable-comments"
@@ -320,6 +332,7 @@ print(",".join(pending))
   }
   return 0
 }
+
 
 # --- the loop ----------------------------------------------------------------
 note "watching PR #$PR (heartbeat every ${HEARTBEAT}s, giving up after ${MAX_SECONDS}s)"
@@ -362,7 +375,7 @@ while :; do
       fi
     else
       # Checks unsettled again (a re-run): the bot state read earlier is stale.
-      BOTS_PENDING=""; last_bots=""
+      BOTS_PENDING=""; last_bots=""; BOT_READ_FAILURES=0
     fi
   fi
 
