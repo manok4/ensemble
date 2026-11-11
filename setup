@@ -460,7 +460,9 @@ config_defaults() {
   "agent_model_codex_ceiling": null,
   "agent_effort_codex_ceiling": null,
   "ship_model_claude": null,
-  "ship_model_codex": null
+  "ship_model_codex": null,
+  "ship_effort_claude": null,
+  "ship_effort_codex": null
 }
 EOF
 }
