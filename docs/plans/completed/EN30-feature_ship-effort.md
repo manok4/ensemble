@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN30
 title: Run /en-ship at a configured effort per host
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-11-11
-shipped:
+shipped: 2026-11-11
 deepened:
 covers_requirements: []
 requirements_pending: false
