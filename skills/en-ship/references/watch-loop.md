@@ -10,6 +10,19 @@ non-zero exit would make an ordinary CI failure indistinguishable from an
 inability to look at the PR at all, which is the defect this whole path exists
 to avoid.
 
+`checks-settled` also waits for review bots that are not status checks. Once
+the checks settle, the watch reads the PR's comments for a known bot's state
+marker and keeps polling, under the same timeout and heartbeat, while that
+marker reports a review running on the head. The bots it knows are the
+`REVIEW_BOTS` list in the script; today that is the ChatGPT Codex connector's
+`codex-review-state:v1` marker. A marker counts only from the bot's own
+account (REST `user.type` is `Bot` and the login is exactly
+`chatgpt-codex-connector[bot]`), only as the first marker in its comment, and
+only for a review whose `commit_sha` prefixes the head. One such comment
+reporting a review running is enough to keep waiting.
+`SHIP_WATCH_REVIEW_BOTS_PENDING` names any review still running when the watch
+returns.
+
 | `SHIP_WATCH_STATE` | Exit | What this step does |
 |---|---|---|
 | `checks-settled`, reason `checks-green` | 0 | Fetch findings once (below). No findings → exit `clean`. |
@@ -17,7 +30,7 @@ to avoid.
 | `merged` / `closed` | 0 | Exit `settled-externally`, **after the open-findings sweep below**. |
 | `head-moved` | 0 | **Cancel a stale tick**: this tick's CI results are dead, because they describe a commit that is no longer the head. Discard them and re-run the watch. |
 | `doctor-failed` / `gh-error` | 1 | Exit `blocked`, quoting `SHIP_WATCH_REASON` and `SHIP_WATCH_DETAIL`. No repair attempted. |
-| `timeout` | 2 | Exit `escalated`, naming what was still pending. |
+| `timeout` | 2 | Exit `escalated`, naming what was still pending: checks, and any review in `SHIP_WATCH_REVIEW_BOTS_PENDING`. |
 
 ## Fetching the findings
 

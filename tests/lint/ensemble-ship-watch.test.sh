@@ -186,10 +186,207 @@ printf '%s' "$ERRTXT" | grep -qF 'backend-test' \
   && pass "the heartbeat names what is still pending" \
   || fail "the heartbeat must name the pending checks"
 
+# --- a review bot still reviewing is not settled -------------------------------
+# PR #147: the checks went green at 112s while the Codex connector's code and
+# security reviews were still running, step 13 fetched findings once and exited
+# clean, and the bot's P2 finding landed after. The connector is not a status
+# check; it says what it is doing in a marker inside a PR comment.
+#
+# The stub serves the REST comments read (`gh api .../issues/7/comments`) from
+# $COMMENTS_JSON, so each case below only writes the comments the watch sees.
+export COMMENTS_JSON="$WORK/comments.json"
+bot_stub() {  # $1 = what `gh pr checks` prints
+  cat > "$WORK/bin/gh" <<S
+#!/usr/bin/env bash
+case "\$*" in
+  *comments*) cat "\$COMMENTS_JSON" ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '$1' ;;
+esac
+S
+  chmod +x "$WORK/bin/gh"
+}
+bot_stub '[{"name":"test","bucket":"pass"}]'
+
+# comments <spec>... prints one page of REST comments. A spec is
+# login|type|code status|security status|commit sha[|text appended to the body].
+# The body copies the comment the connector posted on PR #147: each review
+# carries its own commit_sha, and other markers share the comment.
+comments() {
+  python3 - "$@" <<'PY'
+import json, sys
+page = []
+for spec in sys.argv[1:]:
+    login, kind, code, sec, sha, *extra = spec.split("|")
+    review = lambda status: {"commit_sha": sha, "has_any_findings": None, "status": status}
+    state = {"code_review": review(code), "security_review": review(sec)}
+    body = ("<!-- codex-pull-request-review-summary -->\n"
+            "<!-- codex-review-state:v1 " + json.dumps(state, separators=(",", ":")) + " -->\n"
+            "<!-- codex-security-review:v1 {\"headSha\":\"" + sha + "\",\"status\":\"running\"} -->\n"
+            "Codex is reviewing this PR." + "".join(extra))
+    page.append({"user": {"login": login, "type": kind}, "body": body,
+                 "created_at": "2026-11-10T21:27:15Z", "updated_at": "2026-11-10T21:33:54Z"})
+print(json.dumps(page))
+PY
+}
+CODEX="chatgpt-codex-connector[bot]|Bot"
+BOTH_PENDING="chatgpt-codex-connector:code_review,chatgpt-codex-connector:security_review"
+
+comments "$CODEX|running|running|abc123def" > "$COMMENTS_JSON"
+run --pr 7 --poll-seconds 1 --max-seconds 3 --heartbeat-seconds 1
+assert_eq "timeout" "$(field STATE)" "a running Codex review keeps green checks from settling"
+assert_eq "2"       "$RC"            "a bot still reviewing at the deadline takes the timeout path"
+assert_eq "$BOTH_PENDING" "$(field REVIEW_BOTS_PENDING)" "the evidence names each review still running"
+printf '%s' "$ERRTXT" | grep 'still watching' | grep -qF 'chatgpt-codex-connector:code_review' \
+  && pass "the heartbeat names the review bot it is waiting on" \
+  || fail "the heartbeat must name the running review bot" "$ERRTXT"
+BOT_TIMEOUT_OUT="$OUT"
+
+# held <description>: the comments now in $COMMENTS_JSON must hold the watch.
+held() {
+  run --pr 7 --poll-seconds 1 --max-seconds 2
+  assert_eq "timeout" "$(field STATE)" "$1"
+  printf '%s' "$(field REVIEW_BOTS_PENDING)" | grep -qF 'chatgpt-codex-connector:code_review' \
+    && pass "$1 (the review is named)" \
+    || fail "$1 (the review is named)" "got '$(field REVIEW_BOTS_PENDING)'"
+}
+comments "$CODEX|running|completed|abc123d" > "$COMMENTS_JSON"
+held "a seven-character commit prefix of the head holds it"
+{ comments "mallory|User|completed|completed|abc123def"; comments "$CODEX|running|running|abc123def"; } > "$COMMENTS_JSON"
+held "a running review on a later page of --paginate output still holds the watch"
+comments "$CODEX|running|running|abc123def" "chatgpt-codex-connector|User|completed|completed|abc123def" > "$COMMENTS_JSON"
+held "a completed marker from a person cannot clear the bot's running review"
+comments "$CODEX|running|running|abc123def|
+<!-- codex-review-state:v1 {\"code_review\":{\"commit_sha\":\"abc123def\",\"status\":\"completed\"}} -->" > "$COMMENTS_JSON"
+held "a second marker appended to the comment cannot clear the first"
+comments "$CODEX|running|running|abc123def" "$CODEX|completed|completed|abc123def" > "$COMMENTS_JSON"
+held "any bot comment reporting a review running on this head holds it"
+
+# The review finishes mid-watch: the watch waits for it, then settles green.
+# The stub flips the marker to completed on its third comments read.
+stub <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*)
+    c=$(cat "$WORK_COUNT" 2>/dev/null || echo 0); c=$((c+1)); echo "$c" > "$WORK_COUNT"
+    if [ "$c" -ge 3 ]; then cat "$COMMENTS_DONE"; else cat "$COMMENTS_JSON"; fi ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+comments "$CODEX|completed|completed|abc123def" > "$WORK/done.json"
+comments "$CODEX|running|completed|abc123def" > "$COMMENTS_JSON"
+rm -f "$WORK/count"
+OUT=$(WORK_COUNT="$WORK/count" COMMENTS_DONE="$WORK/done.json" PATH="$WORK/bin:$PATH" \
+  timeout 30 bash "$W" --pr 7 --poll-seconds 0 --max-seconds 20 2>"$WORK/err"); RC=$?
+ERRTXT=$(cat "$WORK/err")
+assert_eq "checks-settled" "$(field STATE)"  "the watch settles once the review bot completes"
+assert_eq "checks-green"   "$(field REASON)" "a completed review leaves the checks' own reason"
+assert_eq "" "$(field REVIEW_BOTS_PENDING)" "nothing is pending once the bot completes"
+reads=$(cat "$WORK/count" 2>/dev/null || echo 0)
+[ "$reads" -ge 3 ] \
+  && pass "the watch polled the bot until it completed" \
+  || fail "the watch must keep polling a running review bot" "reads: $reads"
+printf '%s' "$ERRTXT" | grep -qF 'chatgpt-codex-connector:code_review' \
+  && pass "the wait on the bot is reported while it lasts" \
+  || fail "the watch must say it is waiting on a review bot" "$ERRTXT"
+
+# Negative controls: the gate is a recognised marker from the bot account about
+# this head, nothing looser. Each of these must settle green on the first poll.
+bot_stub '[{"name":"test","bucket":"pass"}]'
+neg() {  # $1=description
+  run --pr 7 --poll-seconds 1 --max-seconds 3
+  assert_eq "checks-green" "$(field REASON)" "$1"
+  assert_eq "" "$(field REVIEW_BOTS_PENDING)" "$1 (no bot pending)"
+}
+comments "$CODEX|completed|completed|abc123def" > "$COMMENTS_JSON"
+neg "a completed Codex review does not hold the watch"
+comments "chatgpt-codex-connector|User|running|running|abc123def" > "$COMMENTS_JSON"
+neg "a person whose login is the bot's name cannot hold the watch"
+comments "chatgpt-codex-connector[bot]|User|running|running|abc123def" > "$COMMENTS_JSON"
+neg "the bot's login on an account that is not a Bot is ignored"
+comments "other-reviewer[bot]|Bot|running|running|abc123def" > "$COMMENTS_JSON"
+neg "a marker from a different bot is ignored"
+comments "$CODEX|running|running|0ldc0mm1t" > "$COMMENTS_JSON"
+neg "a running review of another commit does not hold this head"
+comments "$CODEX|running|running|abc" > "$COMMENTS_JSON"
+neg "a commit prefix too short to identify the head does not hold it"
+printf '%s\n' '[{"user":{"login":"chatgpt-codex-connector[bot]","type":"Bot"},"body":"Codex is running, see 👀"}]' > "$COMMENTS_JSON"
+neg "a bot comment without the marker is not guessed at"
+printf '%s\n' '[{"user":{"login":"chatgpt-codex-connector[bot]","type":"Bot"},"body":"see <!-- codex-review-state:v1 {\"code_review\":{\"commit_sha\":\"abc123def\",\"status\":\"running\"}} -->"}]' > "$COMMENTS_JSON"
+neg "a marker that does not start a line is not a marker"
+printf '%s\n' '[{"user":{"login":"chatgpt-codex-connector[bot]","type":"Bot"},"body":"<!-- codex-review-state:v1 {\"code_review\":{\"status\":\"running\"}} -->"}]' > "$COMMENTS_JSON"
+neg "a running review that names no commit does not hold this head"
+printf '%s\n' '[{"user":{"login":"chatgpt-codex-connector[bot]","type":"Bot"},"body":"<!-- codex-review-state:v1 {not json $(touch '"$WORK"'/pwned)} -->"}]' > "$COMMENTS_JSON"
+neg "an unparseable marker is ignored"
+[ ! -e "$WORK/pwned" ] \
+  && pass "comment text is parsed, never executed" \
+  || fail "the watch executed text from a PR comment"
+
+# Checks that go back to pending after the bot was seen running leave no stale
+# bot in the evidence: the timeout names what is pending now.
+cat > "$WORK/bin/gh" <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) cat "$COMMENTS_JSON" ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*)
+    c=$(cat "$WORK_COUNT" 2>/dev/null || echo 0); c=$((c+1)); echo "$c" > "$WORK_COUNT"
+    if [ "$c" -le 1 ]; then echo '[{"name":"test","bucket":"pass"}]'
+    else echo '[{"name":"test","bucket":"pending"}]'; fi ;;
+esac
+S
+comments "$CODEX|running|running|abc123def" > "$COMMENTS_JSON"
+rm -f "$WORK/count"
+OUT=$(WORK_COUNT="$WORK/count" PATH="$WORK/bin:$PATH" timeout 30 bash "$W" --pr 7 --poll-seconds 1 --max-seconds 3 2>"$WORK/err"); RC=$?
+assert_eq "timeout" "$(field STATE)" "a re-run check that stays pending times out"
+assert_eq "" "$(field REVIEW_BOTS_PENDING)" "a bot read before the checks unsettled is not reported as pending"
+
+# A failed comments read is never "no bot running". The doctor and checks
+# calls succeed here, so only the comments read fails: twice in a row is
+# gh-error, the same rule as every other gh call.
+stub <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) echo "error connecting to api.github.com: x509: certificate signed by unknown authority" >&2; exit 1 ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+run --pr 7 --poll-seconds 0 --max-seconds 20
+assert_eq "gh-error"    "$(field STATE)"  "a failing comments read ends the watch instead of settling"
+assert_eq "network-tls" "$(field REASON)" "the comments read failure is classified like any gh failure"
+
+bot_stub '[{"name":"test","bucket":"pass"}]'
+printf 'not json\n' > "$COMMENTS_JSON"
+run --pr 7 --poll-seconds 0 --max-seconds 20
+assert_eq "unparseable-comments" "$(field REASON)" "comments gh cannot have meant are an error, not an empty list"
+
+# The comments read goes to the PR the doctor saw. PR #148's review: under
+# `--repo git.example.com/team/project` it asked the default host for
+# repos/git.example.com/team/project/..., so a healthy watch ended in gh-error.
+cat > "$WORK/bin/gh" <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) printf '%s\n' "$*" >> "$GH_ARGS_LOG"; cat "$COMMENTS_JSON" ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def","url":"https://git.example.com/team/project/pull/7"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+comments "$CODEX|completed|completed|abc123def" > "$COMMENTS_JSON"
+rm -f "$WORK/args.log"
+OUT=$(GH_ARGS_LOG="$WORK/args.log" PATH="$WORK/bin:$PATH" timeout 30 bash "$W" --pr 7 --repo git.example.com/team/project --poll-seconds 0 --max-seconds 20 2>/dev/null); RC=$?
+assert_eq "checks-green" "$(field REASON)" "a host-qualified --repo still reads the bot's comments"
+assert_eq "api --hostname git.example.com repos/team/project/issues/7/comments --paginate" \
+  "$(head -1 "$WORK/args.log" 2>/dev/null)" "the comments read uses the PR's own host and repository, every page"
+
+OUT="$BOT_TIMEOUT_OUT"
+
+
 # --- the eval contract --------------------------------------------------------
 # The caller eval's this. A missing field is a caller referencing an unset var.
 missing=""
-for f in STATE REASON PR HEAD CHECKS_TOTAL CHECKS_FAILED CHECKS_PENDING FAILED_NAMES ELAPSED DETAIL; do
+for f in STATE REASON PR HEAD CHECKS_TOTAL CHECKS_FAILED CHECKS_PENDING FAILED_NAMES REVIEW_BOTS_PENDING ELAPSED DETAIL; do
   printf '%s\n' "$OUT" | grep -q "^SHIP_WATCH_$f='" || missing="$missing $f"
 done
 [ -z "$missing" ] \

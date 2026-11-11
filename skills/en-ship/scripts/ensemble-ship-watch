@@ -28,6 +28,15 @@
 #   the script reproduced the forty-minute hang it was written to prevent. The
 #   wrapper now returns a status and records FATAL_*; only top-level code emits.
 #
+# A REVIEW BOT STILL REVIEWING IS NOT SETTLED.  Some review bots are not status
+# checks. On PR #147 the checks went green while the Codex connector's reviews
+# were still running; the watch settled, the caller fetched findings once and
+# exited clean, and the bot's finding landed after. So once the checks settle,
+# the watch reads the PR's comments for the state marker a known bot posts and
+# keeps waiting, under the same timeout and heartbeat, while one says it is
+# running on this head. REVIEW_BOTS below is the whole list: a bot is waited on
+# only through a marker it is known to write, parsed as JSON and never run.
+#
 # WHAT IT DOES NOT DO.  It never fixes, comments, pushes, merges or resolves. It
 # reports a state and exits; /en-ship decides. That split is what keeps the
 # trusted-source gate and the repair-cycle cap in the skill, where they are
@@ -47,16 +56,18 @@
 #   SHIP_WATCH_CHECKS_FAILED='<n>'
 #   SHIP_WATCH_CHECKS_PENDING='<n>'
 #   SHIP_WATCH_FAILED_NAMES='<comma-separated>'
+#   SHIP_WATCH_REVIEW_BOTS_PENDING='<comma-separated bot:review still running>'
 #   SHIP_WATCH_ELAPSED='<seconds>'
 #   SHIP_WATCH_DETAIL='<captured stderr on gh-error, else empty>'
 #
 # Exit codes:
 #   0  a state the caller can act on (checks-settled, merged, closed, head-moved)
 #   1  the watch could not proceed (doctor-failed, gh-error)
-#   2  timeout — max-seconds elapsed with checks still pending
+#   2  timeout — max-seconds elapsed with checks or a review bot still pending
 #   3  usage error
 #
-# checks-settled means every check has a conclusion, not that they passed. A red
+# checks-settled means every check has a conclusion and no known review bot is
+# still reviewing the head, not that the checks passed. A red
 # check is a settled state: the caller repairs it. Reporting "not clean" as a
 # non-zero exit would make an ordinary CI failure indistinguishable from an
 # inability to look.
@@ -94,6 +105,7 @@ START=$(date +%s)
 LAST_BEAT=$START
 STATE=""; REASON=""; DETAIL=""
 TOTAL=0; FAILED=0; PENDING=0; FAILED_NAMES=""; HEAD_SHA="${EXPECT_HEAD}"
+BOTS_PENDING=""; BOT_READ_FAILURES=0; PR_HOST=""; PR_REPO=""
 
 emit() {  # $1=state $2=reason [$3=detail]
   STATE="$1"; REASON="$2"; DETAIL="${3:-}"
@@ -108,6 +120,7 @@ emit() {  # $1=state $2=reason [$3=detail]
   printf "SHIP_WATCH_CHECKS_FAILED='%s'\n"  "$FAILED"
   printf "SHIP_WATCH_CHECKS_PENDING='%s'\n" "$PENDING"
   printf "SHIP_WATCH_FAILED_NAMES='%s'\n"   "$(esc "$FAILED_NAMES")"
+  printf "SHIP_WATCH_REVIEW_BOTS_PENDING='%s'\n" "$(esc "$BOTS_PENDING")"
   printf "SHIP_WATCH_ELAPSED='%s'\n"        "$elapsed"
   printf "SHIP_WATCH_DETAIL='%s'\n"         "$(esc "$DETAIL")"
   case "$STATE" in
@@ -177,13 +190,16 @@ check_fatal() {
 
 # --- doctor: never drive a PR you have not health-checked --------------------
 doctor() {
-  gh_json pr view "$PR" $REPO_ARGS --json state,isCrossRepository,headRefOid,headRepositoryOwner || return $?
+  gh_json pr view "$PR" $REPO_ARGS --json state,isCrossRepository,headRefOid,headRepositoryOwner,url || return $?
   parsed=$(python3 -c '
-import json, sys
+import json, re, sys
 d = json.load(sys.stdin)
 print(d.get("state", ""))
 print("true" if d.get("isCrossRepository") else "false")
 print(d.get("headRefOid", "") or "")
+m = re.match(r"https?://([^/]+)/([^/]+/[^/]+)/pull/[0-9]+/?$", d.get("url") or "")
+print(m.group(1) if m else "")
+print(m.group(2) if m else "")
 ' < "$OUT_FILE" 2>/dev/null) || {
     FATAL_STATE="doctor-failed"; FATAL_REASON="unparseable-pr-view"
     FATAL_DETAIL=$(head -c 200 "$OUT_FILE"); return 2
@@ -191,6 +207,8 @@ print(d.get("headRefOid", "") or "")
   pr_state=$(printf '%s\n' "$parsed" | sed -n 1p)
   cross=$(printf   '%s\n' "$parsed" | sed -n 2p)
   HEAD_SHA=$(printf '%s\n' "$parsed" | sed -n 3p)
+  PR_HOST=$(printf  '%s\n' "$parsed" | sed -n 4p)
+  PR_REPO=$(printf  '%s\n' "$parsed" | sed -n 5p)
 
   case "$pr_state" in
     MERGED) emit merged "merged-externally" ;;
@@ -239,12 +257,100 @@ print(",".join(sorted(r.get("name", "?") for r in pending)))
   return 0
 }
 
+# --- one poll of the review bots ---------------------------------------------
+# Sets BOTS_PENDING to the reviews a known bot reports running on HEAD_SHA. Each
+# REVIEW_BOTS entry is a bot account, the marker it writes at the start of a
+# line in a PR comment, and the keys of that marker's JSON whose "status" says
+# a review is running.
+#
+# The comments come from the REST API because it says who wrote them: a marker
+# counts only from an account of type Bot with the exact "<name>[bot]" login,
+# which a person cannot register. GraphQL's author has a login and no type.
+# Only the first marker in a comment counts, so text appended after it cannot
+# override it. A review counts only when it names a commit that prefixes this
+# head. Across the bot's comments it fails closed: any one that reports a
+# review running on this head holds the watch, whatever order they come in.
+poll_review_bots() {
+  # The doctor and checks calls succeed between two reads of the comments and
+  # would reset the shared count, so a read that always fails would never reach
+  # gh-error and the watch would sit out its timeout. Count this read alone.
+  consecutive_failures=$BOT_READ_FAILURES
+  # The PR's own URL names its host and repository, so this read reaches the
+  # PR the doctor and checks calls see, on GitHub Enterprise or under --repo
+  # HOST/OWNER/REPO alike. gh resolves {owner}/{repo} only when no URL came back.
+  if [ -n "$PR_HOST" ] && [ -n "$PR_REPO" ]; then
+    gh_json api --hostname "$PR_HOST" "repos/$PR_REPO/issues/$PR/comments" --paginate; rc=$?
+  else
+    gh_json api "repos/{owner}/{repo}/issues/$PR/comments" --paginate; rc=$?
+  fi
+  BOT_READ_FAILURES=$consecutive_failures
+  [ "$rc" -eq 0 ] || return "$rc"
+  BOTS_PENDING=$(HEAD_SHA="$HEAD_SHA" python3 -c '
+import json, os, re, sys
+REVIEW_BOTS = [
+    {"login": "chatgpt-codex-connector[bot]", "marker": "codex-review-state:v1",
+     "reviews": ["code_review", "security_review"]},
+]
+head = os.environ.get("HEAD_SHA", "")
+decoder = json.JSONDecoder()
+
+# --paginate prints one JSON array per page, back to back.
+text = sys.stdin.read()
+comments, pos = [], 0
+while True:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    if pos >= len(text):
+        break
+    page, pos = decoder.raw_decode(text, pos)
+    if not isinstance(page, list):
+        sys.exit(1)
+    comments.extend(c for c in page if isinstance(c, dict))
+
+def on_head(sha):
+    sha = str(sha or "")
+    return bool(head) and len(sha) >= 7 and head.startswith(sha)
+
+pending = []
+for bot in REVIEW_BOTS:
+    pattern = re.compile(r"^[ \t]*<!--[ \t]*" + re.escape(bot["marker"]) + r"[ \t]+", re.M)
+    for c in comments:
+        user = c.get("user") or {}
+        if user.get("type") != "Bot" or user.get("login") != bot["login"]:
+            continue
+        body = c.get("body") or ""
+        m = pattern.search(body)
+        if not m:
+            continue
+        try:
+            state, _ = decoder.raw_decode(body, m.end())
+        except ValueError:
+            continue
+        if not isinstance(state, dict):
+            continue
+        for key in bot["reviews"]:
+            review = state.get(key)
+            if not isinstance(review, dict) or review.get("status") != "running":
+                continue
+            name = bot["login"][:-len("[bot]")] + ":" + key
+            if on_head(review.get("commit_sha")) and name not in pending:
+                pending.append(name)
+print(",".join(pending))
+' < "$OUT_FILE" 2>/dev/null) || {
+    FATAL_STATE="gh-error"; FATAL_REASON="unparseable-comments"
+    FATAL_DETAIL=$(head -c 200 "$OUT_FILE"); return 2
+  }
+  return 0
+}
+
+
 # --- the loop ----------------------------------------------------------------
 note "watching PR #$PR (heartbeat every ${HEARTBEAT}s, giving up after ${MAX_SECONDS}s)"
 doctor || true
 check_fatal
 
 last_signature=""
+last_bots=""
 backoff=15
 [ -n "$POLL" ] && backoff="$POLL"
 PENDING_NAMES=""
@@ -258,13 +364,28 @@ while :; do
       note "checks: $TOTAL total, $FAILED failed, $PENDING pending${FAILED_NAMES:+ (failed: $FAILED_NAMES)}"
       last_signature="$signature"
     fi
+    settled=""
     if [ "${PENDING:-0}" -eq 0 ] && [ "${TOTAL:-0}" -gt 0 ]; then
-      emit checks-settled "$([ "${FAILED:-0}" -gt 0 ] && printf 'checks-failed' || printf 'checks-green')"
+      settled="$([ "${FAILED:-0}" -gt 0 ] && printf 'checks-failed' || printf 'checks-green')"
     fi
     if [ "${TOTAL:-0}" -eq 0 ]; then
       # No checks configured at all is settled, not pending. Waiting for checks
       # a repo does not run is the same silent hang in a different costume.
-      emit checks-settled "no-checks-configured"
+      settled="no-checks-configured"
+    fi
+    if [ -n "$settled" ]; then
+      poll_review_bots; bots_rc=$?
+      check_fatal
+      if [ "$bots_rc" -eq 0 ]; then
+        [ -z "$BOTS_PENDING" ] && emit checks-settled "$settled"
+        if [ "$BOTS_PENDING" != "$last_bots" ]; then
+          note "checks settled; waiting on review bots: $BOTS_PENDING"
+          last_bots="$BOTS_PENDING"
+        fi
+      fi
+    else
+      # Checks unsettled again (a re-run): the bot state read earlier is stale.
+      BOTS_PENDING=""; last_bots=""; BOT_READ_FAILURES=0
     fi
   fi
 
@@ -273,7 +394,7 @@ while :; do
   now=$(date +%s); elapsed=$(( now - START ))
   [ "$elapsed" -ge "$MAX_SECONDS" ] && emit timeout "still-pending-after-${MAX_SECONDS}s"
   if [ $(( now - LAST_BEAT )) -ge "$HEARTBEAT" ]; then
-    note "still watching, ${elapsed}s elapsed, ${PENDING} pending${PENDING_NAMES:+: $PENDING_NAMES}"
+    note "still watching, ${elapsed}s elapsed, ${PENDING} pending${PENDING_NAMES:+: $PENDING_NAMES}${BOTS_PENDING:+; review bots running: $BOTS_PENDING}"
     LAST_BEAT=$now
   fi
 
