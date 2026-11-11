@@ -8,7 +8,7 @@ auto-reverts, auto-stashes, or works around the problem on the user's behalf.
 |---|---|
 | Lint or typecheck fails | Stop; surface; suggest `/en-review` |
 | Targeted tests fail | Stop; surface failing test names; suggest `/en-qa` |
-| Secret scan matches high-confidence pattern | Stop; print offenders; require `--allow-secrets` to override |
+| Secret scan matches high-confidence pattern (step 6, or step 11 before the push) | Stop; print offenders with their commit; remedy by source per `secret-patterns.md`. At step 11 the ship commit stays local for the user to unwind |
 | Merge conflict | Stop; do not attempt ship on conflicted tree |
 | Push target is the default branch | Refuse until the step-3 confirmation is given verbatim. There is no flag for this: a typed confirmation is the whole mechanism, and a flag would let a caller pre-authorise it in a config file. |
 | `gh pr create` fails (auth, repo permissions) | Surface error; commit + push succeed regardless; user can open PR manually |

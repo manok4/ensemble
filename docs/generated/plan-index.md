@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: ensemble-lint
-updated: 2026-11-10
-total_entries: 27
+updated: 2026-11-11
+total_entries: 28
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 27
 
 ## Active
 
-_(none)_
+- [`EN29-bug_ship-secret-scan-coverage.md`](../plans/active/EN29-bug_ship-secret-scan-coverage.md) — **EN29** Scan every line a ship pushes, with remediation that works (in_progress)
 
 ## Completed
 

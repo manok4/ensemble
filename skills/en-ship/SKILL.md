@@ -34,7 +34,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 4. **Hands-off mode (default).** `/en-ship` is **hands-off by default** (EN04): you run it, walk away, and it lands a mergeable PR without mid-flow prompts. The scope-confirm (step 7) is auto-accepted and the plan-completion checkpoint (step 8) auto-flips a verifiably-complete plan; `--interactive` restores the stop-and-ask flow for both.
 
    - **Safety floor - always hard-stops, even hands-off (never auto-resolved):**
-     - **Secret-scan match** (step 6) - stop; do not ship secrets.
+     - **Secret-scan match** (steps 6, 7, 11) - stop; do not ship secrets.
      - **Push to the default branch** (`HEAD == main`/default, step 3) - explicit confirmation required.
      - **Destructive-guardrail hit** (`en-guardrail` intercept on any command) - its prompt fires regardless.
    - **Learning capture is NOT decided here.** It lives at `/en-build`'s completion checkpoint (D38), at the point of insight; this skill never prompts for learnings.
@@ -63,9 +63,11 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
      **An empty selection is reported as empty, never as a pass.** Zero tests found is a finding about the project's configuration, not a green check.
    - On any failure → stop, surface, and offer `/en-review` or `/en-qa` to triage.
    - **On success, write a receipt for what this run actually ran.** Skipped on a valid receipt → **write nothing**; never record a check that did not run. Otherwise `bash "$SKILL_DIR/scripts/ensemble-verification-receipt" write --check lint=passed --check typecheck=passed --check targeted_tests=passed --base origin/<base> --by en-ship`, plus `--dep <path>` per lockfile. It records `targeted_tests`, never `full_suite`, so a pre-push hook that requires the suite still runs it, and the write merges into a receipt for the identical tree rather than replacing it. Never fatal: a failed write is a warning.
-6. **Secret scan on the lines this push would add.** `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --staged`. **Never hand-roll greps for this**; `references/secret-patterns.md` says why, and the helper masks every preview so its own output cannot leak.
-   - **Exit 1** (high-confidence pattern or red-flag filename) → stop; report pattern, path and line; suggest `git restore <file>`, the per-line `# pragma: ensemble-allow-secret`, or `--allow-secrets` (rare, and it downgrades rather than silences).
+6. **Secret scan on what the push sends.** One helper, three runs: `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --outgoing origin/<base>` here, every outgoing commit's patch, message and added paths, merges included; `--staged` as step 7's last action; and `--outgoing` again at step 11. **Never hand-roll greps for this**; `references/secret-patterns.md` says why, and the helper masks every preview so its own output cannot leak.
+   - **Exit 1** (high-confidence pattern or red-flag filename) → stop; report each finding with its remedy (`references/secret-patterns.md`, *Remedy by source*). A staged line → `git restore --staged <file>` and fix it, or the per-line `# pragma: ensemble-allow-secret`; `--allow-secrets` only rarely. `commit <sha>` → rewrite that commit (amend, or rebase or squash with the user's approval), never `--allow-secrets`.
+   - **`NOTICE`** → that commit is already on the remote; it never blocks. Tell the user to rotate the key.
    - **Exit 0 with warnings** (heuristic matches) → surface and let the user confirm; report the pragma-suppressed count so nobody forgets those lines exist.
+   - **Exit 2** → stop. A scan that could not read its range is not a pass.
 6a. **Floor guard: refuse a lowered quality bar.** `bash "$SKILL_DIR/scripts/ensemble-floor-guard" --base origin/<base>`. It blocks a deleted test, a skipped test, a silenced checker and a lowered coverage threshold, and reports removed assertions and stubs; `references/floor-guard.md` has the patterns and the exception rules.
    - **Exit 1** → stop and list each blocked move. Ask the user for a reason per move; with one, re-run adding `--pending-exception "<move> <path>: <reason>"` and carry each as a `Floor-Exception:` trailer into the step-10 commit. Never invent a reason. A secret-scan pragma the user approved at step 6 takes their reason from there.
    - **Exit 2** → stop. A guard that could not run is not a pass.
@@ -82,6 +84,8 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    **Never `git add .` or `git add -A`.** A bare stage absorbs whatever is in the tree, which on a machine with unrelated edits in flight commits work the user never offered and cannot easily find afterwards.
 
    Show what will be committed (`git diff --cached` summary) plus what was deliberately excluded. **Hands-off (default):** auto-accept the computed scope and continue. **`--interactive`:** the user confirms or revises before proceeding.
+
+   Once the scope is final, run step 6's `--staged` scan on it.
 
 8. **Plan completion checkpoint.** After every blocking preflight check and before committing, so the lifecycle flip lands in the same commit as the ship and a later failure cannot leave a plan recorded as shipped when no PR opened. Informational: no outcome blocks the PR except `config_drift` and `provenance_conflict`. It catches plans left at `status: in_progress` OR `open` that `/en-learn capture`'s lifecycle flip should have completed; the `open` case is the recovery path for a build that skipped the `open → in_progress` flip.
 
@@ -108,7 +112,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
    )"
    ```
    Pending floor-guard exceptions from step 6a go in the body as `Floor-Exception: <move> <path>: <reason>` trailers, one per line.
-11. **Push.**
+11. **Push.** First `bash "$SKILL_DIR/scripts/ensemble-secret-scan" --outgoing origin/<base>`, handled as step 6, with this run's `--allow-secrets` if any, and not re-asking warnings step 6 confirmed: it covers step 8's flip and step 10's commit and message. Exit 1 stops before the push; the ship commit stays local, and the report names `git reset --soft HEAD~1` for the user to run. Never run it yourself.
    - Feature branch → `git push -u origin <branch>`.
    - Default branch (after explicit confirmation) → `git push origin <default>`.
 12. **Open PR via `gh pr create`.** Title from the commit subject, or a summary across commits when there are several.
@@ -182,7 +186,7 @@ Pre-flight + commit + push + PR. Last-mile shipping; assumes `/en-review` and `/
 
 | Failure | Behavior |
 |---|---|
-| Secret scan matches a high-confidence pattern | Stop; report the pattern, path and line; `--allow-secrets` is the only override, and it downgrades rather than silences. |
+| Secret scan matches a high-confidence pattern | Stop; report the pattern, path, line and commit, with step 6's remedy for where it sits. |
 | Push target is the default branch | Refuse until the step-3 confirmation is given verbatim. There is no flag for this: a typed confirmation is the whole mechanism, and a flag would let a caller pre-authorise it in a config file. |
 | Unstaged dirty tree at start | Resolve it with step 7's state machine: scope-matching changes are staged path by path, everything else is preserved and excluded. "Stage all" is not offered — it was, and on a tree holding unrelated work it commits what the user never offered. |
 
