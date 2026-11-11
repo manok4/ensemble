@@ -105,7 +105,7 @@ START=$(date +%s)
 LAST_BEAT=$START
 STATE=""; REASON=""; DETAIL=""
 TOTAL=0; FAILED=0; PENDING=0; FAILED_NAMES=""; HEAD_SHA="${EXPECT_HEAD}"
-BOTS_PENDING=""
+BOTS_PENDING=""; BOT_READ_FAILURES=0
 
 emit() {  # $1=state $2=reason [$3=detail]
   STATE="$1"; REASON="$2"; DETAIL="${3:-}"
@@ -257,10 +257,16 @@ print(",".join(sorted(r.get("name", "?") for r in pending)))
 # REVIEW_BOTS entry is a login, the marker it writes in a PR comment, and the
 # keys of that marker's JSON whose "status" says a review is running. Only the
 # bot's own latest marker counts, and only for this head: a marker from any
-# other login, about another commit, or that does not parse is ignored, so a
-# stray comment can never hold the watch open.
+# other login, that does not parse, or whose review names no commit or another
+# commit is ignored, so a stray comment can never hold the watch open.
 poll_review_bots() {
-  gh_json pr view "$PR" $REPO_ARGS --json comments || return $?
+  # The doctor and checks calls succeed between two reads of the comments and
+  # would reset the shared count, so a read that always fails would never reach
+  # gh-error and the watch would sit out its timeout. Count this read alone.
+  consecutive_failures=$BOT_READ_FAILURES
+  gh_json pr view "$PR" $REPO_ARGS --json comments; rc=$?
+  BOT_READ_FAILURES=$consecutive_failures
+  [ "$rc" -eq 0 ] || return "$rc"
   BOTS_PENDING=$(HEAD_SHA="$HEAD_SHA" python3 -c '
 import json, os, re, sys
 REVIEW_BOTS = [
@@ -278,7 +284,7 @@ if not isinstance(comments, list):
 decoder = json.JSONDecoder()
 def on_head(sha):
     sha = str(sha or "")
-    return not head or not sha or head.startswith(sha) or sha.startswith(head)
+    return bool(head) and len(sha) >= 7 and head.startswith(sha)
 pending = []
 for bot in REVIEW_BOTS:
     pattern = re.compile(r"<!--\s*" + re.escape(bot["marker"]) + r"\s+")
@@ -354,6 +360,9 @@ while :; do
           last_bots="$BOTS_PENDING"
         fi
       fi
+    else
+      # Checks unsettled again (a re-run): the bot state read earlier is stale.
+      BOTS_PENDING=""; last_bots=""
     fi
   fi
 

@@ -15,8 +15,8 @@ the checks settle, the watch reads the PR's comments for a known bot's state
 marker and keeps polling, under the same timeout and heartbeat, while that
 marker reports a review running on the head. The bots it knows are the
 `REVIEW_BOTS` list in the script; today that is the ChatGPT Codex connector's
-`codex-review-state:v1` marker. A marker from another login, for another
-commit, or that does not parse holds nothing. `SHIP_WATCH_REVIEW_BOTS_PENDING`
+`codex-review-state:v1` marker. A marker from another login, that does not
+parse, or whose review names no commit or another commit holds nothing. `SHIP_WATCH_REVIEW_BOTS_PENDING`
 names any review still running when the watch returns.
 
 | `SHIP_WATCH_STATE` | Exit | What this step does |

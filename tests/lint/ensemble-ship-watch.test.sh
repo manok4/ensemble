@@ -289,6 +289,25 @@ neg "an unparseable marker is ignored"
 [ ! -e "$WORK/pwned" ] \
   && pass "comment text is parsed, never executed" \
   || fail "the watch executed text from a PR comment"
+printf '%s\n' '{"comments":[{"author":{"login":"chatgpt-codex-connector"},"body":"<!-- codex-review-state:v1 {\"code_review\":{\"status\":\"running\"}} -->"}]}' > "$COMMENTS_JSON"
+neg "a running review that names no commit does not hold this head"
+codex_comment chatgpt-codex-connector running running abc > "$COMMENTS_JSON"
+neg "a commit prefix too short to identify the head does not hold it"
+
+# A failed comments read is never "no bot running". The doctor and checks
+# calls succeed here, so only the new read fails: twice in a row is gh-error,
+# the same rule as every other gh call.
+stub <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) echo "error connecting to api.github.com: x509: certificate signed by unknown authority" >&2; exit 1 ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+run --pr 7 --poll-seconds 0 --max-seconds 20
+assert_eq "gh-error"    "$(field STATE)"  "a failing comments read ends the watch instead of settling"
+assert_eq "network-tls" "$(field REASON)" "the comments read failure is classified like any gh failure"
 
 OUT="$BOT_TIMEOUT_OUT"
 
