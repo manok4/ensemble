@@ -32,10 +32,11 @@
 #   Claude  model: one of the aliases the Agent tool accepts (CLAUDE_ALIASES)
 #   Codex   model: ^[A-Za-z0-9._-]{1,64}$ (an operator ID; Ensemble names none)
 #   effort (both hosts): low | medium | high | xhigh
-# Claude Code has no per-call effort: a dispatch ignores AGENT_EFFORT there, and
-# `setup` renders it into the installed agent file's `effort:` instead (D104),
-# which is the one place the host reads a subagent's effort. A file without
-# one inherits the session's effort level.
+# On Claude Code a persona dispatch ignores AGENT_EFFORT: `setup` renders it
+# into the installed agent file's `effort:` instead (D104). The Agent tool has
+# taken a per-call `effort` since Claude Code 2.1.292 (D145); moving personas
+# to it is TD45. A file without one runs at the session's level on the
+# session's model, and at its model's default on any other.
 #
 # Usage:
 #   ensemble-agent-model --agent <name> --host <claude-code|codex> --agent-file <path>

@@ -305,6 +305,19 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Rule key:** peer-start-requires-out-file
 - **Logged:** 2026-11-10
 
+### TD45. Persona agents bind Claude effort at install time though the Agent tool now takes it per call
+
+- **Source:** EN30 U4 (D145)
+- **Severity:** P3
+- **Confidence:** 7/10
+- **Location:** setup (the Claude effort renderer); skills/*/references/agent-dispatch.md; skills/en-review/references/peer-model-policy.md
+- **Why it matters:** The Agent tool has taken a per-call `effort` since Claude Code 2.1.292, yet persona effort still binds through an `effort:` line `setup` injects. That forces a COPY instead of a symlink for any agent with an effort key, and a rerun of `./setup` after every change to `agent_effort_claude_*`. A persona on a model other than the session's, with no `effort:`, runs at that model's default rather than any configured level.
+- **Suggested fix:** Pass `effort: $AGENT_EFFORT` from `ensemble-agent-model` at each persona dispatch, as D145 does for `/en-ship`, and retire the install-time render once every carrier passes it. Settle the precedence against a repo's `.claude/agents/` copy and `CLAUDE_CODE_EFFORT_LEVEL` first.
+- **Enforce at:** L1 structure
+- **Proposed check:** tests/lint/persona-effort-dispatch.test.sh: every persona Agent dispatch site passes `effort` from ensemble-agent-model
+- **Rule key:** persona-effort-per-call
+- **Logged:** 2026-11-11
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
