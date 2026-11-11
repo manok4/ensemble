@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# ensemble-ship-model — which model does /en-ship run on, on this host, for
-# this operator (EN28, D144).
+# ensemble-ship-model — which model and effort does /en-ship run on, on this
+# host, for this operator (EN28 D144, EN30 D145).
 #
-# Reads one flat key through the sibling ensemble-config-get, repo layer
+# Reads two flat keys through the sibling ensemble-config-get, repo layer
 # (.ensemble/config.local.yaml) before global (~/.ensemble/config.json):
 #
 #   --host claude-code   ship_model_claude   a Claude alias (SHIP_CLAUDE_ALIASES)
+#                        ship_effort_claude  one of SHIP_EFFORTS
 #   --host codex         ship_model_codex    an operator's Codex model ID
+#                        ship_effort_codex   one of SHIP_EFFORTS
+#
+# The effort follows every rule below that the model does. Unset, a Claude
+# child on another model runs at that model's default effort, and a Codex
+# child inherits the session's.
 #
 # Unset means inherit: the session's own model, which is today's behaviour.
 # The literal value `inherit` says the same thing explicitly, and because it is
@@ -22,6 +28,7 @@
 # Emits eval-able lines (same contract as ensemble-detect-host):
 #   SHIP_MODEL='<alias|id|>'
 #   SHIP_MODEL_SOURCE='config|inherit'
+#   SHIP_EFFORT='<low|medium|high|xhigh|>'
 #
 # Exit 0 for every config state (fail-soft, like the reader). Exit 2 only for a
 # missing or unknown --host, a caller bug, so callers must not discard stderr.
@@ -34,6 +41,9 @@ set -u
 # CLAUDE_ALIASES in ensemble-agent-model: tests/lint/ensemble-ship-model.test.sh
 # fails when the two lists differ.
 SHIP_CLAUDE_ALIASES="haiku,sonnet,opus,fable"
+# Effort levels, the same set as every effort key (D104). `max` is left out on
+# purpose (D95).
+SHIP_EFFORTS="low,medium,high,xhigh"
 
 HOST=""; REPO_ROOT=""; HOME_DIR="${HOME:-}"
 
@@ -52,8 +62,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$HOST" in
-  claude-code) KEY="ship_model_claude" ;;
-  codex)       KEY="ship_model_codex" ;;
+  claude-code) KEY="ship_model_claude"; EKEY="ship_effort_claude" ;;
+  codex)       KEY="ship_model_codex";  EKEY="ship_effort_codex" ;;
   '')          usage; exit 2 ;;
   *) echo "ensemble-ship-model: unknown --host '$HOST' (expected claude-code|codex)" >&2; exit 2 ;;
 esac
@@ -67,11 +77,12 @@ CFG="$_self_dir/ensemble-config-get"
 # Read without --allowed, so a present-but-invalid value can be told apart from
 # an absent one and named. The reader's own stderr (an unparseable file) is
 # left to reach the caller.
-v=""
+v=""; e=""
 if [ -x "$CFG" ]; then
   v=$("$CFG" "$KEY" --repo-root "$REPO_ROOT" --home "$HOME_DIR")
+  e=$("$CFG" "$EKEY" --repo-root "$REPO_ROOT" --home "$HOME_DIR")
 else
-  printf 'ensemble-ship-model: %s is missing or not executable, so %s cannot be read; shipping on the session model\n' "$CFG" "$KEY" >&2
+  printf 'ensemble-ship-model: %s is missing or not executable, so %s and %s cannot be read; shipping on the session model\n' "$CFG" "$KEY" "$EKEY" >&2
 fi
 
 reason=""
@@ -100,8 +111,22 @@ if [ -n "$reason" ]; then
   v=""
 fi
 
+[ "$e" = inherit ] && e=""
+if [ -n "$e" ]; then
+  # Lowercase letters only first, so a list ("high,low") or a glob cannot match.
+  case "$e" in
+    *[!a-z]*) ok=0 ;;
+    *) case ",$SHIP_EFFORTS," in *",$e,"*) ok=1 ;; *) ok=0 ;; esac ;;
+  esac
+  if [ "$ok" = 0 ]; then
+    printf 'ensemble-ship-model: ignoring %s=%s: not one of %s; shipping at the default effort\n' "$EKEY" "$e" "$SHIP_EFFORTS" >&2
+    e=""
+  fi
+fi
+
 src="inherit"; [ -n "$v" ] && src="config"
 shellesc() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"; }
 printf 'SHIP_MODEL=%s\n'        "$(shellesc "$v")"
 printf 'SHIP_MODEL_SOURCE=%s\n' "$(shellesc "$src")"
+printf 'SHIP_EFFORT=%s\n'       "$(shellesc "$e")"
 exit 0

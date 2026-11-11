@@ -3,7 +3,7 @@ type: plan-index
 generated: true
 generator: ensemble-lint
 updated: 2026-11-11
-total_entries: 28
+total_entries: 29
 ---
 
 # Plans — index
@@ -44,3 +44,4 @@ _(none)_
 - [`EN27-feature_en-conductor.md`](../plans/completed/EN27-feature_en-conductor.md) — **EN27** Replace /en-flow with /en-conductor, one entry point that routes work and asks only when it must (shipped 2026-11-05)
 - [`EN28-feature_ship-model.md`](../plans/completed/EN28-feature_ship-model.md) — **EN28** Run /en-ship on a configured model per host (shipped 2026-11-10)
 - [`EN29-bug_ship-secret-scan-coverage.md`](../plans/completed/EN29-bug_ship-secret-scan-coverage.md) — **EN29** Scan every line a ship pushes, with remediation that works (shipped 2026-11-11)
+- [`EN30-feature_ship-effort.md`](../plans/completed/EN30-feature_ship-effort.md) — **EN30** Run /en-ship at a configured effort per host (shipped 2026-11-11)

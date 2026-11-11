@@ -233,9 +233,10 @@ render_codex_agent() {  # <agent.md> <dst.toml> -> 0 rendered, 1 refused (reason
   return 0
 }
 
-# Claude Code reads a subagent's effort from the `effort:` line of the installed
-# agent file and nowhere else (the Agent tool has no effort parameter), so an
-# operator's agent_effort_claude_* key can only bind at install time (D104).
+# Claude Code reads a persona's effort from the `effort:` line of the installed
+# agent file, because persona dispatches pass no per-call `effort` (the Agent
+# tool takes one since 2.1.292, D145; TD45), so an operator's
+# agent_effort_claude_* key binds at install time (D104).
 # When a key applies to an agent, the file is published as a COPY with the
 # line injected; otherwise the symlink stays and the checkout remains the
 # source of truth. Rendered from the global config only, like the Codex TOML.
@@ -460,7 +461,9 @@ config_defaults() {
   "agent_model_codex_ceiling": null,
   "agent_effort_codex_ceiling": null,
   "ship_model_claude": null,
-  "ship_model_codex": null
+  "ship_model_codex": null,
+  "ship_effort_claude": null,
+  "ship_effort_codex": null
 }
 EOF
 }

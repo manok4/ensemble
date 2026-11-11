@@ -85,13 +85,17 @@ default_branch_fallback: main
 # review_host_model_alias -> agent_model_claude_ceiling. Old spellings resolve
 # for one release; setup names any it finds.
 
-# The model /en-ship runs on, per host (EN28, D144). Read at run time by
-# /en-ship and /en-conductor's Ship stage through scripts/ensemble-ship-model,
-# so a change needs no ./setup. Set, /en-ship reruns itself in a subagent on
-# that model, staying in session for --interactive or the default branch.
+# The model and effort /en-ship runs on, per host (EN28 D144, EN30 D145). Read
+# at run time by /en-ship and /en-conductor's Ship stage through
+# scripts/ensemble-ship-model, so a change needs no ./setup. Either one set,
+# /en-ship reruns itself in a subagent on that model and effort, staying in
+# session for --interactive or the default branch. Without an effort, a Claude
+# child on another model runs at that model's default, not the session's.
 # ship_model_claude:                     # alias (haiku | sonnet | opus | fable); unset = the session's model
 # ship_model_codex:                      # your Codex model ID; unset = the session's model
-# `inherit` in a repo's file keeps the session's model even when ~/.ensemble/config.json sets one.
+# ship_effort_claude:                    # low | medium | high | xhigh; unset = the model's default
+# ship_effort_codex:                     # low | medium | high | xhigh; unset = the session's effort
+# `inherit` in a repo's file keeps the default even when ~/.ensemble/config.json sets a model or effort.
 
 # Bundled-agent models and effort per host (EN16 D103, D104; flat keys, read
 # by every skill that dispatches an agent through its scripts/ensemble-agent-model).
@@ -120,7 +124,8 @@ default_branch_fallback: main
 # bind at install time. setup renders ~/.claude/agents/<name>.md (a copy with
 # effort: injected, only when an effort key applies) and ~/.codex/agents/<name>.toml
 # from ~/.ensemble/config.json only (never this file); re-run ./setup after a
-# change. A Claude agent with no effort: inherits the session's effort level.
+# change. A Claude agent with no effort: runs at the session's level on the
+# session's model, and at its model's default on any other (D145).
 # The scheduled sweep's model and effort are `sweep.model` / `sweep.effort`
 # below, read from this file in the checkout on the sweep machine.
 

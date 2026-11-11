@@ -127,11 +127,11 @@ $(cat "$dir/prompt.md")"
         mkdir -p .ensemble && printf '.ensemble/config.local.yaml\n' >> .git/info/exclude
         # A ship key the case leaves unset is written as `inherit`, which stops
         # the read at the repo layer, so the operator's ~/.ensemble/config.json
-        # never decides a case's model.
+        # never decides a case's model or effort.
         python3 -c 'import json,sys
 cfg = json.load(open(sys.argv[1])).get("config", [])
 keys = {c.split(":", 1)[0].strip() for c in cfg}
-print("\n".join(cfg + ["%s: inherit" % k for k in ("ship_model_claude", "ship_model_codex") if k not in keys]))' "$exp" \
+print("\n".join(cfg + ["%s: inherit" % k for k in ("ship_model_claude", "ship_model_codex", "ship_effort_claude", "ship_effort_codex") if k not in keys]))' "$exp" \
           > .ensemble/config.local.yaml
       fi
     ) >/dev/null 2>&1 || { echo "run-behavioral: could not build the scratch repo for $c" >&2; rc_all=2; i=$((i + 1)); continue; }

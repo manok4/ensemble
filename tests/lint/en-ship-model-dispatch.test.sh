@@ -23,7 +23,8 @@ has() {  # <file> <fixed string> <label>
 # --- the step: resolution and the three stay-in-session conditions ---
 has "$SKILL" '2a. **Model placement.**'                                     "en-ship has a Model placement step"
 has "$SKILL" 'scripts/ensemble-ship-model" --host "$HOST"'                 "the step resolves the model through ensemble-ship-model"
-has "$SKILL" '`SHIP_MODEL` is empty or `--in-agent` was passed'             "unset key or --in-agent stays in session"
+has "$SKILL" '`SHIP_MODEL` and `SHIP_EFFORT` are both empty, or `--in-agent` was passed' "both keys unset or --in-agent stays in session"
+has "$SKILL" 'in a subagent on `SHIP_MODEL` and `SHIP_EFFORT`'             "the dispatch carries the model and the effort"
 has "$SKILL" '`--interactive` was passed'                                   "--interactive stays in session"
 has "$SKILL" "the branch is the repo's default branch"                      "the default branch stays in session"
 assert_not_contains "$(cat "$SKILL")" '`HOST` is not `claude-code`' "Codex dispatch is verified (EN28 U4): no host stays in session by host alone"
@@ -52,10 +53,20 @@ has "$REF" 'git diff HEAD; git diff --cached; } | git hash-object --stdin' "the 
 has "$REF" '  - the tracked-tree fingerprint;'                                "fallback: tracked content unchanged"
 has "$REF" 'from `gh pr list --head <branch> --state open`'                  "fallback: PR state unchanged"
 has "$REF" '**The user rejected the dispatch** at a permission prompt. Stop' "a user's rejection stops the ship, never reruns it in session"
-has "$REF" 'one `spawn_agent` call with `model: $SHIP_MODEL` and'            "Codex dispatches through spawn_agent with the resolved model"
+has "$REF" 'one `spawn_agent` call with `model: $SHIP_MODEL`,'            "Codex dispatches through spawn_agent with the resolved model"
 has "$REF" '`fork_turns: "none"`, then wait for it'                          "the Codex child starts fresh, not from the parent's history"
 has "$REF" "this Codex CLI's spawn_agent takes no model"                     "a CLI without a model parameter says so and ships in session"
 has "$REF" 'one Agent call, `subagent_type: general-purpose`, with'         "Claude Code dispatches through the Agent tool"
+
+# --- effort (EN30, D145) ---
+has "$REF" '`SHIP_MODEL` or `SHIP_EFFORT` is set'                            "either key sends the run to the reference"
+has "$REF" 'Pass each value only when it is set: an effort-only ship omits `model`' "each argument is passed only when set"
+has "$REF" '`model: $SHIP_MODEL` and `effort: $SHIP_EFFORT`'                 "Claude Code passes the effort per call"
+has "$REF" 'Code before 2.1.292 refuses `effort`, which is a refused dispatch below' "the Claude version floor is named"
+has "$REF" '`CLAUDE_CODE_EFFORT_LEVEL`, when set in the environment, overrides the call' "the environment override is named"
+has "$REF" '`reasoning_effort: $SHIP_EFFORT`'                                 "Codex passes reasoning_effort"
+has "$REF" "takes no reasoning_effort; the ship runs at the session's effort." "a Codex CLI without reasoning_effort says so with a model set"
+has "$REF" 'takes no reasoning_effort; shipping in session.'                 "a Codex CLI without reasoning_effort ships in session on effort alone"
 
 # --- the contract callers read ---
 has "$CONTRACT" '| `--in-agent` |'                                          "CONTRACT lists --in-agent"

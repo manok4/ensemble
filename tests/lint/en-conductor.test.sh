@@ -91,10 +91,13 @@ printf '%s\n' "$st" | grep -E '^\| Ship \|' | grep -qF '`/en-ship --in-agent` as
   && pass "the Ship agent is invoked already placed" || fail "the Ship row must invoke /en-ship --in-agent as an agent"
 has 'scripts/ensemble-ship-model" --host "$HOST"' "the Ship stage resolves its model through ensemble-ship-model"
 has "Ship's agent is dispatched with \`model\` set to \`SHIP_MODEL\`" "the Ship agent carries the resolved model"
+has '`effort` set to `SHIP_EFFORT` (`reasoning_effort` on Codex)' "the Ship agent carries the resolved effort (EN30, D145)"
+has 'Each is passed only when it is non-empty, so an effort-only config reaches the agent with no `model`' "each Ship argument is passed only when set"
+assert_not_contains "$(cat "$SK")" 'and with no `model` otherwise' "the unconditional model omission is gone"
 has 'Its in-session fallback rerun keeps `--in-agent`' "the fallback rerun does not dispatch again"
 has '`en-ship: needs-input <question>`, a contract field and not a fallback trigger' "a Ship question is a stop, not a fallback"
 has 'naming the question and `/en-ship` to run in session' "a Ship question names /en-ship for the user"
-has 'The Fix stage passes no model' "the Fix stage passes no model; en-ship places itself"
+has 'The Fix stage passes neither' "the Fix stage passes no model or effort; en-ship places itself"
 
 # --- fallback: a rerun never repeats work that landed ---
 agents=$(section 'Stage agents')

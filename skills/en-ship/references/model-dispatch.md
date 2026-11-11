@@ -1,9 +1,10 @@
 # Running a ship on its configured model
 
-Read at step 2a when it dispatches: `SHIP_MODEL` is set and none of the
-stay-in-session conditions holds. The decision is
-D144: a cheaper model runs the mechanical part of shipping, including the watch
-loop's fixes, while the session that called `/en-ship` keeps its own model.
+Read at step 2a when it dispatches: `SHIP_MODEL` or `SHIP_EFFORT` is set and
+none of the stay-in-session conditions holds. The decisions are D144 and D145:
+a cheaper model, at an effort the operator picks, runs the mechanical part of
+shipping, including the watch loop's fixes, while the session that called
+`/en-ship` keeps its own model and effort.
 
 ## Before dispatch
 
@@ -23,12 +24,25 @@ original arguments. A bare name could reach a differently installed copy:
 
 > Invoke the skill named below with these exact arguments. You have no way to ask the user: anything you would ask ends your turn with the last line `en-ship: needs-input <question>`. Return the run report and its last line unchanged.
 
+Pass each value only when it is set: an effort-only ship omits `model`, so the
+child runs on the session's model, and a model-only ship omits the effort. The
+configured effort is this skill's explicit instruction to set the parameter.
+
 - **Claude Code:** one Agent call, `subagent_type: general-purpose`, with
-  `model: $SHIP_MODEL`.
-- **Codex:** one `spawn_agent` call with `model: $SHIP_MODEL` and
-  `fork_turns: "none"`, then wait for it. A CLI whose `spawn_agent` takes no
-  `model` cannot place the ship: stay in session and print once
+  `model: $SHIP_MODEL` and `effort: $SHIP_EFFORT`. Without an effort, a child
+  on another model runs at that model's default, not the session's. Claude
+  Code before 2.1.292 refuses `effort`, which is a refused dispatch below.
+  `CLAUDE_CODE_EFFORT_LEVEL`, when set in the environment, overrides the call.
+- **Codex:** one `spawn_agent` call with `model: $SHIP_MODEL`,
+  `reasoning_effort: $SHIP_EFFORT` and `fork_turns: "none"`, then wait for it.
+  With `SHIP_MODEL` set, a CLI whose `spawn_agent` takes no `model` cannot
+  place the ship: stay in session and print once
   `this Codex CLI's spawn_agent takes no model; shipping on the session model.`
+  A CLI whose `spawn_agent` takes no `reasoning_effort` dispatches with the
+  model alone and prints once
+  `this Codex CLI's spawn_agent takes no reasoning_effort; the ship runs at the session's effort.`
+  With only an effort set there is nothing left to place: stay in session and
+  print `this Codex CLI's spawn_agent takes no reasoning_effort; shipping in session.`
 
 `--in-agent` is what stops the child from dispatching again. Never drop it.
 
@@ -66,3 +80,12 @@ and opened a draft PR. Both are in `tests/evals/ledger.md` (2026-11-10). The
 Codex check ran under `danger-full-access`. Whether a child under a narrower
 sandbox keeps the session's network access is unverified; a sandbox with
 network off blocks a push in session too.
+
+Effort (2026-11-11, D145): on Claude Code 2.1.322 an Agent call with
+`model: haiku, effort: low` from a Sonnet session ran its turns on
+`claude-haiku-5-5`, and the subagent's transcript and meta recorded
+`"effort":"low"`. On Codex CLI 0.167.0 the `spawn_agent` schema reads
+"Reasoning effort override for the new agent. Omit to inherit the parent
+effort", and a child given `gpt-6-luna` and `low` from a `medium` session
+recorded `low` in its rollout's `turn_context`. Read a child's effort from
+those records, never from its own account.
