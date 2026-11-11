@@ -3,10 +3,10 @@ type: plan
 plan_type: bug
 plan_id: EN29
 title: Scan every line a ship pushes, with remediation that works
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-11-10
-shipped:
+shipped: 2026-11-11
 deepened:
 covers_requirements: []
 requirements_pending: false
