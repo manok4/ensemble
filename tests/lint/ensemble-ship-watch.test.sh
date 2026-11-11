@@ -186,10 +186,116 @@ printf '%s' "$ERRTXT" | grep -qF 'backend-test' \
   && pass "the heartbeat names what is still pending" \
   || fail "the heartbeat must name the pending checks"
 
+# --- a review bot still reviewing is not settled -------------------------------
+# PR #147: the checks went green at 112s while the Codex connector's code and
+# security reviews were still running, step 13 fetched findings once and exited
+# clean, and the bot's P2 finding landed after. The connector is not a status
+# check; it says what it is doing in a marker inside a PR comment.
+#
+# The stub serves `gh pr view --json comments` from $WORK/comments.json, so each
+# case below only has to write the comments it wants the watch to see.
+stub <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) cat "$COMMENTS_JSON" ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+export COMMENTS_JSON="$WORK/comments.json"
+
+# codex_comment <login> <code status> <security status> <commit sha>
+# The body copies the shape the connector posted on PR #147: each review carries
+# its own commit_sha, and other markers share the comment.
+codex_comment() {
+  python3 - "$@" <<'PY'
+import json, sys
+login, code, sec, sha = sys.argv[1:5]
+review = lambda status: {"commit_sha": sha, "has_any_findings": None, "status": status}
+state = {"code_review": review(code), "security_review": review(sec)}
+body = ("<!-- codex-pull-request-review-summary -->\n"
+        "<!-- codex-review-state:v1 " + json.dumps(state, separators=(",", ":")) + " -->\n"
+        "<!-- codex-security-review:v1 {\"headSha\":\"" + sha + "\",\"status\":\"running\"} -->\n"
+        "Codex is reviewing this PR.")
+print(json.dumps({"comments": [{"author": {"login": login}, "body": body}]}))
+PY
+}
+
+codex_comment chatgpt-codex-connector running running abc123def > "$COMMENTS_JSON"
+run --pr 7 --poll-seconds 1 --max-seconds 3 --heartbeat-seconds 1
+assert_eq "timeout" "$(field STATE)" "a running Codex review keeps green checks from settling"
+assert_eq "2"       "$RC"            "a bot still reviewing at the deadline takes the timeout path"
+assert_eq "chatgpt-codex-connector:code_review,chatgpt-codex-connector:security_review" \
+  "$(field REVIEW_BOTS_PENDING)" "the evidence names each review still running"
+printf '%s' "$ERRTXT" | grep 'still watching' | grep -qF 'chatgpt-codex-connector:code_review' \
+  && pass "the heartbeat names the review bot it is waiting on" \
+  || fail "the heartbeat must name the running review bot" "$ERRTXT"
+BOT_TIMEOUT_OUT="$OUT"
+
+# The review finishes mid-watch: the watch waits for it, then settles green.
+# The stub flips the marker to completed on its third comments read.
+stub <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*)
+    c=$(cat "$WORK_COUNT" 2>/dev/null || echo 0); c=$((c+1)); echo "$c" > "$WORK_COUNT"
+    if [ "$c" -ge 3 ]; then cat "$COMMENTS_DONE"; else cat "$COMMENTS_JSON"; fi ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+codex_comment "chatgpt-codex-connector[bot]" completed completed abc123def > "$WORK/done.json"
+codex_comment "chatgpt-codex-connector[bot]" running completed abc123def > "$COMMENTS_JSON"
+rm -f "$WORK/count"
+OUT=$(WORK_COUNT="$WORK/count" COMMENTS_DONE="$WORK/done.json" PATH="$WORK/bin:$PATH" \
+  timeout 30 bash "$W" --pr 7 --poll-seconds 0 --max-seconds 20 2>"$WORK/err"); RC=$?
+ERRTXT=$(cat "$WORK/err")
+assert_eq "checks-settled" "$(field STATE)"  "the watch settles once the review bot completes"
+assert_eq "checks-green"   "$(field REASON)" "a completed review leaves the checks' own reason"
+assert_eq "" "$(field REVIEW_BOTS_PENDING)" "nothing is pending once the bot completes"
+reads=$(cat "$WORK/count" 2>/dev/null || echo 0)
+[ "$reads" -ge 3 ] \
+  && pass "the watch polled the bot until it completed" \
+  || fail "the watch must keep polling a running review bot" "reads: $reads"
+printf '%s' "$ERRTXT" | grep -qF 'chatgpt-codex-connector:code_review' \
+  && pass "the wait on the bot is reported while it lasts" \
+  || fail "the watch must say it is waiting on a review bot" "$ERRTXT"
+
+# Negative controls: the gate is a recognised marker from a known bot about this
+# head, nothing looser. Each of these must settle green on the first poll.
+stub <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) cat "$COMMENTS_JSON" ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+neg() {  # $1=description
+  run --pr 7 --poll-seconds 1 --max-seconds 3
+  assert_eq "checks-green" "$(field REASON)" "$1"
+  assert_eq "" "$(field REVIEW_BOTS_PENDING)" "$1 (no bot pending)"
+}
+codex_comment chatgpt-codex-connector completed completed abc123def > "$COMMENTS_JSON"
+neg "a completed Codex review does not hold the watch"
+codex_comment mallory running running abc123def > "$COMMENTS_JSON"
+neg "the marker from a login that is not the bot is ignored"
+codex_comment chatgpt-codex-connector running running 0ldc0mm1t > "$COMMENTS_JSON"
+neg "a running review of another commit does not hold this head"
+printf '%s\n' '{"comments":[{"author":{"login":"chatgpt-codex-connector"},"body":"Codex is running, see 👀"}]}' > "$COMMENTS_JSON"
+neg "a bot comment without the marker is not guessed at"
+printf '%s\n' '{"comments":[{"author":{"login":"chatgpt-codex-connector"},"body":"<!-- codex-review-state:v1 {not json $(touch '"$WORK"'/pwned)} -->"}]}' > "$COMMENTS_JSON"
+neg "an unparseable marker is ignored"
+[ ! -e "$WORK/pwned" ] \
+  && pass "comment text is parsed, never executed" \
+  || fail "the watch executed text from a PR comment"
+
+OUT="$BOT_TIMEOUT_OUT"
+
 # --- the eval contract --------------------------------------------------------
 # The caller eval's this. A missing field is a caller referencing an unset var.
 missing=""
-for f in STATE REASON PR HEAD CHECKS_TOTAL CHECKS_FAILED CHECKS_PENDING FAILED_NAMES ELAPSED DETAIL; do
+for f in STATE REASON PR HEAD CHECKS_TOTAL CHECKS_FAILED CHECKS_PENDING FAILED_NAMES REVIEW_BOTS_PENDING ELAPSED DETAIL; do
   printf '%s\n' "$OUT" | grep -q "^SHIP_WATCH_$f='" || missing="$missing $f"
 done
 [ -z "$missing" ] \

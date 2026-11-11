@@ -28,6 +28,15 @@
 #   the script reproduced the forty-minute hang it was written to prevent. The
 #   wrapper now returns a status and records FATAL_*; only top-level code emits.
 #
+# A REVIEW BOT STILL REVIEWING IS NOT SETTLED.  Some review bots are not status
+# checks. On PR #147 the checks went green while the Codex connector's reviews
+# were still running; the watch settled, the caller fetched findings once and
+# exited clean, and the bot's finding landed after. So once the checks settle,
+# the watch reads the PR's comments for the state marker a known bot posts and
+# keeps waiting, under the same timeout and heartbeat, while one says it is
+# running on this head. REVIEW_BOTS below is the whole list: a bot is waited on
+# only through a marker it is known to write, parsed as JSON and never run.
+#
 # WHAT IT DOES NOT DO.  It never fixes, comments, pushes, merges or resolves. It
 # reports a state and exits; /en-ship decides. That split is what keeps the
 # trusted-source gate and the repair-cycle cap in the skill, where they are
@@ -47,16 +56,18 @@
 #   SHIP_WATCH_CHECKS_FAILED='<n>'
 #   SHIP_WATCH_CHECKS_PENDING='<n>'
 #   SHIP_WATCH_FAILED_NAMES='<comma-separated>'
+#   SHIP_WATCH_REVIEW_BOTS_PENDING='<comma-separated bot:review still running>'
 #   SHIP_WATCH_ELAPSED='<seconds>'
 #   SHIP_WATCH_DETAIL='<captured stderr on gh-error, else empty>'
 #
 # Exit codes:
 #   0  a state the caller can act on (checks-settled, merged, closed, head-moved)
 #   1  the watch could not proceed (doctor-failed, gh-error)
-#   2  timeout — max-seconds elapsed with checks still pending
+#   2  timeout — max-seconds elapsed with checks or a review bot still pending
 #   3  usage error
 #
-# checks-settled means every check has a conclusion, not that they passed. A red
+# checks-settled means every check has a conclusion and no known review bot is
+# still reviewing the head, not that the checks passed. A red
 # check is a settled state: the caller repairs it. Reporting "not clean" as a
 # non-zero exit would make an ordinary CI failure indistinguishable from an
 # inability to look.
@@ -94,6 +105,7 @@ START=$(date +%s)
 LAST_BEAT=$START
 STATE=""; REASON=""; DETAIL=""
 TOTAL=0; FAILED=0; PENDING=0; FAILED_NAMES=""; HEAD_SHA="${EXPECT_HEAD}"
+BOTS_PENDING=""
 
 emit() {  # $1=state $2=reason [$3=detail]
   STATE="$1"; REASON="$2"; DETAIL="${3:-}"
@@ -108,6 +120,7 @@ emit() {  # $1=state $2=reason [$3=detail]
   printf "SHIP_WATCH_CHECKS_FAILED='%s'\n"  "$FAILED"
   printf "SHIP_WATCH_CHECKS_PENDING='%s'\n" "$PENDING"
   printf "SHIP_WATCH_FAILED_NAMES='%s'\n"   "$(esc "$FAILED_NAMES")"
+  printf "SHIP_WATCH_REVIEW_BOTS_PENDING='%s'\n" "$(esc "$BOTS_PENDING")"
   printf "SHIP_WATCH_ELAPSED='%s'\n"        "$elapsed"
   printf "SHIP_WATCH_DETAIL='%s'\n"         "$(esc "$DETAIL")"
   case "$STATE" in
@@ -239,12 +252,76 @@ print(",".join(sorted(r.get("name", "?") for r in pending)))
   return 0
 }
 
+# --- one poll of the review bots ---------------------------------------------
+# Sets BOTS_PENDING to the reviews a known bot reports running on HEAD_SHA. Each
+# REVIEW_BOTS entry is a login, the marker it writes in a PR comment, and the
+# keys of that marker's JSON whose "status" says a review is running. Only the
+# bot's own latest marker counts, and only for this head: a marker from any
+# other login, about another commit, or that does not parse is ignored, so a
+# stray comment can never hold the watch open.
+poll_review_bots() {
+  gh_json pr view "$PR" $REPO_ARGS --json comments || return $?
+  BOTS_PENDING=$(HEAD_SHA="$HEAD_SHA" python3 -c '
+import json, os, re, sys
+REVIEW_BOTS = [
+    {"login": "chatgpt-codex-connector", "marker": "codex-review-state:v1",
+     "reviews": ["code_review", "security_review"]},
+]
+head = os.environ.get("HEAD_SHA", "")
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    data = {}
+comments = data.get("comments") if isinstance(data, dict) else None
+if not isinstance(comments, list):
+    comments = []
+decoder = json.JSONDecoder()
+def on_head(sha):
+    sha = str(sha or "")
+    return not head or not sha or head.startswith(sha) or sha.startswith(head)
+pending = []
+for bot in REVIEW_BOTS:
+    pattern = re.compile(r"<!--\s*" + re.escape(bot["marker"]) + r"\s+")
+    state = None
+    for c in comments:
+        if not isinstance(c, dict):
+            continue
+        login = (c.get("author") or {}).get("login") or ""
+        if login.endswith("[bot]"):
+            login = login[:-len("[bot]")]
+        if login != bot["login"]:
+            continue
+        body = c.get("body") or ""
+        for m in pattern.finditer(body):
+            try:
+                parsed, _ = decoder.raw_decode(body, m.end())
+            except ValueError:
+                continue
+            if isinstance(parsed, dict):
+                state = parsed
+    if state is None:
+        continue
+    for key in bot["reviews"]:
+        review = state.get(key)
+        if not isinstance(review, dict) or review.get("status") != "running":
+            continue
+        if on_head(review.get("commit_sha") or state.get("commit_sha")):
+            pending.append(bot["login"] + ":" + key)
+print(",".join(pending))
+' < "$OUT_FILE" 2>/dev/null) || {
+    FATAL_STATE="gh-error"; FATAL_REASON="unparseable-comments"
+    FATAL_DETAIL=$(head -c 200 "$OUT_FILE"); return 2
+  }
+  return 0
+}
+
 # --- the loop ----------------------------------------------------------------
 note "watching PR #$PR (heartbeat every ${HEARTBEAT}s, giving up after ${MAX_SECONDS}s)"
 doctor || true
 check_fatal
 
 last_signature=""
+last_bots=""
 backoff=15
 [ -n "$POLL" ] && backoff="$POLL"
 PENDING_NAMES=""
@@ -258,13 +335,25 @@ while :; do
       note "checks: $TOTAL total, $FAILED failed, $PENDING pending${FAILED_NAMES:+ (failed: $FAILED_NAMES)}"
       last_signature="$signature"
     fi
+    settled=""
     if [ "${PENDING:-0}" -eq 0 ] && [ "${TOTAL:-0}" -gt 0 ]; then
-      emit checks-settled "$([ "${FAILED:-0}" -gt 0 ] && printf 'checks-failed' || printf 'checks-green')"
+      settled="$([ "${FAILED:-0}" -gt 0 ] && printf 'checks-failed' || printf 'checks-green')"
     fi
     if [ "${TOTAL:-0}" -eq 0 ]; then
       # No checks configured at all is settled, not pending. Waiting for checks
       # a repo does not run is the same silent hang in a different costume.
-      emit checks-settled "no-checks-configured"
+      settled="no-checks-configured"
+    fi
+    if [ -n "$settled" ]; then
+      poll_review_bots; bots_rc=$?
+      check_fatal
+      if [ "$bots_rc" -eq 0 ]; then
+        [ -z "$BOTS_PENDING" ] && emit checks-settled "$settled"
+        if [ "$BOTS_PENDING" != "$last_bots" ]; then
+          note "checks settled; waiting on review bots: $BOTS_PENDING"
+          last_bots="$BOTS_PENDING"
+        fi
+      fi
     fi
   fi
 
@@ -273,7 +362,7 @@ while :; do
   now=$(date +%s); elapsed=$(( now - START ))
   [ "$elapsed" -ge "$MAX_SECONDS" ] && emit timeout "still-pending-after-${MAX_SECONDS}s"
   if [ $(( now - LAST_BEAT )) -ge "$HEARTBEAT" ]; then
-    note "still watching, ${elapsed}s elapsed, ${PENDING} pending${PENDING_NAMES:+: $PENDING_NAMES}"
+    note "still watching, ${elapsed}s elapsed, ${PENDING} pending${PENDING_NAMES:+: $PENDING_NAMES}${BOTS_PENDING:+; review bots running: $BOTS_PENDING}"
     LAST_BEAT=$now
   fi
 
