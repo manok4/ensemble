@@ -105,7 +105,7 @@ START=$(date +%s)
 LAST_BEAT=$START
 STATE=""; REASON=""; DETAIL=""
 TOTAL=0; FAILED=0; PENDING=0; FAILED_NAMES=""; HEAD_SHA="${EXPECT_HEAD}"
-BOTS_PENDING=""; BOT_READ_FAILURES=0
+BOTS_PENDING=""; BOT_READ_FAILURES=0; PR_HOST=""; PR_REPO=""
 
 emit() {  # $1=state $2=reason [$3=detail]
   STATE="$1"; REASON="$2"; DETAIL="${3:-}"
@@ -190,13 +190,16 @@ check_fatal() {
 
 # --- doctor: never drive a PR you have not health-checked --------------------
 doctor() {
-  gh_json pr view "$PR" $REPO_ARGS --json state,isCrossRepository,headRefOid,headRepositoryOwner || return $?
+  gh_json pr view "$PR" $REPO_ARGS --json state,isCrossRepository,headRefOid,headRepositoryOwner,url || return $?
   parsed=$(python3 -c '
-import json, sys
+import json, re, sys
 d = json.load(sys.stdin)
 print(d.get("state", ""))
 print("true" if d.get("isCrossRepository") else "false")
 print(d.get("headRefOid", "") or "")
+m = re.match(r"https?://([^/]+)/([^/]+/[^/]+)/pull/[0-9]+/?$", d.get("url") or "")
+print(m.group(1) if m else "")
+print(m.group(2) if m else "")
 ' < "$OUT_FILE" 2>/dev/null) || {
     FATAL_STATE="doctor-failed"; FATAL_REASON="unparseable-pr-view"
     FATAL_DETAIL=$(head -c 200 "$OUT_FILE"); return 2
@@ -204,6 +207,8 @@ print(d.get("headRefOid", "") or "")
   pr_state=$(printf '%s\n' "$parsed" | sed -n 1p)
   cross=$(printf   '%s\n' "$parsed" | sed -n 2p)
   HEAD_SHA=$(printf '%s\n' "$parsed" | sed -n 3p)
+  PR_HOST=$(printf  '%s\n' "$parsed" | sed -n 4p)
+  PR_REPO=$(printf  '%s\n' "$parsed" | sed -n 5p)
 
   case "$pr_state" in
     MERGED) emit merged "merged-externally" ;;
@@ -270,9 +275,14 @@ poll_review_bots() {
   # would reset the shared count, so a read that always fails would never reach
   # gh-error and the watch would sit out its timeout. Count this read alone.
   consecutive_failures=$BOT_READ_FAILURES
-  # gh fills {owner}/{repo} from the current checkout when --repo was not given.
-  repo_path="$REPO"; [ -n "$repo_path" ] || repo_path='{owner}/{repo}'
-  gh_json api "repos/$repo_path/issues/$PR/comments" --paginate; rc=$?
+  # The PR's own URL names its host and repository, so this read reaches the
+  # PR the doctor and checks calls see, on GitHub Enterprise or under --repo
+  # HOST/OWNER/REPO alike. gh resolves {owner}/{repo} only when no URL came back.
+  if [ -n "$PR_HOST" ] && [ -n "$PR_REPO" ]; then
+    gh_json api --hostname "$PR_HOST" "repos/$PR_REPO/issues/$PR/comments" --paginate; rc=$?
+  else
+    gh_json api "repos/{owner}/{repo}/issues/$PR/comments" --paginate; rc=$?
+  fi
   BOT_READ_FAILURES=$consecutive_failures
   [ "$rc" -eq 0 ] || return "$rc"
   BOTS_PENDING=$(HEAD_SHA="$HEAD_SHA" python3 -c '

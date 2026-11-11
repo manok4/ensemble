@@ -362,6 +362,24 @@ printf 'not json\n' > "$COMMENTS_JSON"
 run --pr 7 --poll-seconds 0 --max-seconds 20
 assert_eq "unparseable-comments" "$(field REASON)" "comments gh cannot have meant are an error, not an empty list"
 
+# The comments read goes to the PR the doctor saw. PR #148's review: under
+# `--repo git.example.com/team/project` it asked the default host for
+# repos/git.example.com/team/project/..., so a healthy watch ended in gh-error.
+cat > "$WORK/bin/gh" <<'S'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) printf '%s\n' "$*" >> "$GH_ARGS_LOG"; cat "$COMMENTS_JSON" ;;
+  *"pr view"*) echo '{"state":"OPEN","isCrossRepository":false,"headRefOid":"abc123def","url":"https://git.example.com/team/project/pull/7"}' ;;
+  *"pr checks"*) echo '[{"name":"test","bucket":"pass"}]' ;;
+esac
+S
+comments "$CODEX|completed|completed|abc123def" > "$COMMENTS_JSON"
+rm -f "$WORK/args.log"
+OUT=$(GH_ARGS_LOG="$WORK/args.log" PATH="$WORK/bin:$PATH" timeout 30 bash "$W" --pr 7 --repo git.example.com/team/project --poll-seconds 0 --max-seconds 20 2>/dev/null); RC=$?
+assert_eq "checks-green" "$(field REASON)" "a host-qualified --repo still reads the bot's comments"
+assert_eq "api --hostname git.example.com repos/team/project/issues/7/comments --paginate" \
+  "$(head -1 "$WORK/args.log" 2>/dev/null)" "the comments read uses the PR's own host and repository, every page"
+
 OUT="$BOT_TIMEOUT_OUT"
 
 
