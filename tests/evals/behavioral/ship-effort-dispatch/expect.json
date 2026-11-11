@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "kind": "ship",
+  "invocation": "/ensemble:en-ship --no-pr --no-watch",
+  "base_from": "ship-model-dispatch",
+  "config": [
+    "ship_effort_claude: high"
+  ],
+  "branch": "feature",
+  "dispatch": {
+    "effort": "high"
+  },
+  "pushed": true
+}

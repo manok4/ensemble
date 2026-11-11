@@ -4,7 +4,8 @@
   "invocation": "/ensemble:en-ship --no-pr --no-watch",
   "base_from": "ship-model-dispatch",
   "config": [
-    "ship_model_claude: sonnet"
+    "ship_model_claude: sonnet",
+    "ship_effort_claude: high"
   ],
   "branch": "main",
   "dispatch": null,

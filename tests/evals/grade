@@ -41,8 +41,10 @@ Case contract, version 1 (expect.json):
                   (change/ committed on main, ahead of origin)
   staged          ship only; true stages the case's staged/ overlay without committing it
   disallowed_tools ship only; tool names passed to claude --disallowedTools
-  dispatch        ship only; {"model": <alias>} for one Agent call carrying that model and
-                  --in-agent, whose child turns ran on that model; null for no Agent call
+  dispatch        ship only; {"model": <alias>, "effort": <level>}, either or both, for one
+                  Agent call carrying --in-agent and exactly those values, whose child turns
+                  ran on that model (on the session's model when no model is expected, and
+                  the call must then carry none); null for no Agent call
   pushed          ship only; whether the branch's HEAD reached the scratch remote
   judge           optional; [{id, expectation}]
 """
@@ -125,8 +127,9 @@ def validate(case_dir):
         need(isinstance(exp.get("disallowed_tools", []), list), "disallowed_tools must be a list")
         need(isinstance(exp.get("pushed"), bool), "pushed must be true or false for kind ship")
         d = exp.get("dispatch", "missing")
-        need(d is None or (isinstance(d, dict) and isinstance(d.get("model"), str)),
-             "dispatch must be null or {\"model\": <alias>} for kind ship")
+        need(d is None or (isinstance(d, dict) and set(d) <= {"model", "effort"} and d
+                           and all(isinstance(v, str) for v in d.values())),
+             "dispatch must be null or {\"model\": <alias>, \"effort\": <level>}, at least one, for kind ship")
         need(not exp.get("staged") or os.path.isdir(os.path.join(case_dir, "staged")),
              "staged: true needs a staged/ overlay")
     else:
@@ -502,8 +505,8 @@ def grade_judge(expect_path, output_path):
 
 # --- ship ------------------------------------------------------------------------
 def ship_dispatches(transcript_path):
-    """Top-level Agent calls, and the model each one's child turns ran on."""
-    calls, child_models = [], {}
+    """Top-level Agent calls, the model each one's child turns ran on, and the session's."""
+    calls, child_models, session_models = [], {}, set()
     try:
         lines = open(transcript_path, encoding="utf-8").read().splitlines()
     except OSError as exc:
@@ -520,34 +523,45 @@ def ship_dispatches(transcript_path):
         if parent:
             child_models.setdefault(parent, set()).add(msg.get("model") or "")
             continue
+        session_models.add(msg.get("model") or "")
         for block in msg.get("content") or []:
             if block.get("type") == "tool_use" and block.get("name") in ("Agent", "Task"):
                 inp = block.get("input") or {}
-                calls.append({"id": block.get("id"), "model": inp.get("model"), "prompt": inp.get("prompt") or ""})
+                calls.append({"id": block.get("id"), "model": inp.get("model"), "effort": inp.get("effort"),
+                              "prompt": inp.get("prompt") or ""})
     for c in calls:
         c["child_models"] = sorted(child_models.get(c["id"], set()))
-    return calls
+    return calls, sorted(session_models - {""})
 
 
 def grade_ship(expect_path, transcript_path, repo):
     exp = load_json(expect_path)
     reasons = []
-    calls = ship_dispatches(transcript_path)
+    calls, session_models = ship_dispatches(transcript_path)
     want = exp.get("dispatch")
     if want is None:
         if calls:
             reasons.append("expected no Agent dispatch, found %d" % len(calls))
     else:
-        alias = want["model"]
+        alias, effort = want.get("model"), want.get("effort")
         ships = [c for c in calls if "--in-agent" in c["prompt"]]
         if len(ships) != 1:
             reasons.append("expected one Agent dispatch carrying --in-agent, found %d" % len(ships))
         else:
             c = ships[0]
-            if c["model"] != alias:
-                reasons.append("dispatch model %r, expected %r" % (c["model"], alias))
-            if not c["child_models"] or any(alias not in m for m in c["child_models"]):
-                reasons.append("child turns ran on %s, expected %s" % (c["child_models"] or "nothing", alias))
+            if alias is not None:
+                if c["model"] != alias:
+                    reasons.append("dispatch model %r, expected %r" % (c["model"], alias))
+                if not c["child_models"] or any(alias not in m for m in c["child_models"]):
+                    reasons.append("child turns ran on %s, expected %s" % (c["child_models"] or "nothing", alias))
+            else:
+                if c["model"] is not None:
+                    reasons.append("dispatch model %r, expected no model" % c["model"])
+                if not c["child_models"] or set(c["child_models"]) - set(session_models):
+                    reasons.append("child turns ran on %s, expected the session's %s" % (
+                        c["child_models"] or "nothing", session_models))
+            if effort is not None and c["effort"] != effort:
+                reasons.append("dispatch effort %r, expected %r" % (c["effort"], effort))
     branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
     head = git_out(repo, "rev-parse", "HEAD").strip()
     remote = git_out(repo, "ls-remote", "origin", "refs/heads/%s" % branch).split()

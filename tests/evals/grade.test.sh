@@ -337,7 +337,42 @@ assert_exit_code 1 "$rc" "ship: a push where none was expected fails"
 ship_expect "$T/se.json" 'null' true
 out=$("$G" ship "$T/se.json" "$T/tx.jsonl" "$T/sr"); rc=$?
 assert_exit_code 0 "$rc" "ship: the branch head on the remote counts as pushed"
-for c in ship-model-dispatch ship-model-unset ship-model-default-branch ship-model-refused ship-model-needs-input; do
+# --- ship effort (EN30, D145): the call's effort, and an effort-only call carries no model ---
+tx_agent_e() {  # $1=file $2=input json fields $3=child model; parent on claude-opus-x
+  printf '%s\n' \
+    '{"type":"assistant","parent_tool_use_id":null,"message":{"model":"claude-opus-x","content":[{"type":"tool_use","id":"t1","name":"Agent","input":{'"$2"',"prompt":"brief\n/ensemble:en-ship --in-agent --no-pr"}}]}}' \
+    '{"type":"assistant","parent_tool_use_id":"t1","message":{"model":"'"$3"'","content":[{"type":"text","text":"shipping"}]}}' > "$1"
+}
+ship_repo "$T/se2"
+ship_expect "$T/se2.json" '{"model":"sonnet","effort":"high"}' false
+tx_agent_e "$T/tx2.jsonl" '"model":"sonnet","effort":"high"' claude-sonnet-x
+out=$("$G" ship "$T/se2.json" "$T/tx2.jsonl" "$T/se2"); rc=$?
+assert_exit_code 0 "$rc" "ship: model and effort both carried passes"
+tx_agent_e "$T/tx2.jsonl" '"model":"sonnet","effort":"low"' claude-sonnet-x
+out=$("$G" ship "$T/se2.json" "$T/tx2.jsonl" "$T/se2"); rc=$?
+assert_exit_code 1 "$rc" "ship: the wrong effort fails"
+assert_contains "$out" "dispatch effort" "ship: the wrong effort is named"
+tx_agent_e "$T/tx2.jsonl" '"model":"sonnet"' claude-sonnet-x
+out=$("$G" ship "$T/se2.json" "$T/tx2.jsonl" "$T/se2"); rc=$?
+assert_exit_code 1 "$rc" "ship: a missing effort fails"
+assert_contains "$out" "dispatch effort" "ship: the missing effort is named"
+ship_expect "$T/se2.json" '{"effort":"high"}' false
+tx_agent_e "$T/tx2.jsonl" '"effort":"high"' claude-opus-x
+out=$("$G" ship "$T/se2.json" "$T/tx2.jsonl" "$T/se2"); rc=$?
+assert_exit_code 0 "$rc" "ship: an effort-only call with no model, child on the session model, passes"
+tx_agent_e "$T/tx2.jsonl" '"model":"sonnet","effort":"high"' claude-sonnet-x
+out=$("$G" ship "$T/se2.json" "$T/tx2.jsonl" "$T/se2"); rc=$?
+assert_exit_code 1 "$rc" "ship: an effort-only expectation fails when the call carries a model"
+assert_contains "$out" "expected no model" "ship: the unexpected model is named"
+tx_agent_e "$T/tx2.jsonl" '"effort":"high"' claude-sonnet-x
+out=$("$G" ship "$T/se2.json" "$T/tx2.jsonl" "$T/se2"); rc=$?
+assert_exit_code 1 "$rc" "ship: an effort-only child off the session model fails"
+printf '{"version":1,"kind":"ship","invocation":"/x","branch":"feature","pushed":true,"dispatch":{}}\n' > "$T/bad2.json"
+mkdir -p "$T/badcase2/change" "$T/badcase2/base" && cp "$T/bad2.json" "$T/badcase2/expect.json" && echo x > "$T/badcase2/prompt.md"
+out=$("$G" validate "$T/badcase2"); rc=$?
+assert_exit_code 2 "$rc" "ship: a dispatch with neither model nor effort is invalid"
+
+for c in ship-model-dispatch ship-model-unset ship-model-default-branch ship-model-refused ship-model-needs-input ship-effort-dispatch; do
   out=$("$G" validate "$CASES/$c"); rc=$?
   assert_exit_code 0 "$rc" "ship case $c validates"
 done

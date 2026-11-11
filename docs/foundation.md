@@ -436,7 +436,7 @@ The count read **fourteen** until 2026-09-03, and had done since en-flow, now `e
 
 - **Purpose.** Get clean changes onto the remote with a conventional commit and a PR, hands-off by default (D38), ending in one named state (D57).
 - **Process (high-level).** (`skills/en-ship/SKILL.md` is canonical; this is a summary.)
-  1. Resolve context once: branch, base, existing PR (an existing PR is updated, never re-created). Recursion guard. Model placement: with `ship_model_<host>` set, rerun in a subagent on that model unless the run may need the user (D144).
+  1. Resolve context once: branch, base, existing PR (an existing PR is updated, never re-created). Recursion guard. Model placement: with `ship_model_<host>` or `ship_effort_<host>` set, rerun in a subagent on that model and effort unless the run may need the user (D144, D145).
   2. Pre-flight: fetch the base, then `ensemble-ship-preflight` classifies the tree (ahead/behind, published, staging case, excluded and untracked inventory) and blocks on a detached HEAD, a conflicted tree or an unresolvable base. Conflicts are predicted with `git merge-tree`; a published branch is never rewritten without approval.
   3. Verification: a valid receipt from `/en-build` skips lint, typecheck and tests, with no partial credit (D58); otherwise run them, selecting targeted tests by the project's `test_changed_command`, then its `test_impact` map, then the sibling heuristic, and label the selection `graph` or `approximate`. The secret scan and `git diff --check` always run. A passing run writes its own receipt (D82).
   4. Staging by the preflight's case: push existing commits, stage the computed allowlist path by path, preserve and exclude the rest, or stop as a no-op. Never `git add .`.

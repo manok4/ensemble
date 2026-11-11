@@ -3,11 +3,13 @@
   "kind": "ship",
   "invocation": "/ensemble:en-ship --no-pr --no-watch",
   "config": [
-    "ship_model_claude: sonnet"
+    "ship_model_claude: sonnet",
+    "ship_effort_claude: high"
   ],
   "branch": "feature",
   "dispatch": {
-    "model": "sonnet"
+    "model": "sonnet",
+    "effort": "high"
   },
   "pushed": true
 }
