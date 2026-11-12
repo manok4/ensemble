@@ -11,7 +11,7 @@ Owned by `en-plan`. Callers depend on this page, not on `SKILL.md`.
 | `/en-plan --from-legacy <path>` | migrating a legacy plan |
 | `--no-peer` · `--no-reloop` · `--max-iterations <N>` | peer-loop control |
 | `--branch-on-default <y\|current\|no-commit>` | pre-answers the default-branch checkpoint for unattended runs |
-| `--orchestrated` | a caller is driving: refuses under `plan_store: linear`, takes the default `plan_type`, skips the `/en-fix` offer and the capture prompt, and asks only a product or preference call or an irreversible action |
+| `--orchestrated` | a caller is driving: refuses under `plan_store: linear`, takes the default `plan_type`, skips the `/en-fix` offer and the capture prompt, and asks only about an irreversible action, taking its recommended answer on everything else |
 
 An unattended caller must pass `--branch-on-default`, or the default-branch
 checkpoint will block.

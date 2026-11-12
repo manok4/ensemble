@@ -132,9 +132,9 @@ case "$out" in *peer-review-resolutions*) fail "a host finding id <iteration>-h<
 
 # --- orchestrated question classification (EN27 U1) ---
 # A caller holds the question tool, so en-plan decides what it can and asks only
-# what is the user's. An orchestrated run must still ask a product or preference call.
+# what is the user's. An orchestrated run asks only about an irreversible action (D146).
 orch=$(grep -F 'Under `--orchestrated`, classify' "$PLAN_SKILL")
-for clause in 'repo fact is looked up' 'product or preference call, or an irreversible action, is asked' 'takes your recommended answer'; do
+for clause in 'repo fact is looked up' 'an irreversible action is asked' 'product and preference calls included' 'takes your recommended answer'; do
   case "$orch" in *"$clause"*) pass "orchestrated classification: $clause" ;;
     *) fail "step 7 must classify an orchestrated question: $clause" "check Under \`--orchestrated\` in en-plan step 7" ;; esac
 done

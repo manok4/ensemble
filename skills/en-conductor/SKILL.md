@@ -28,13 +28,13 @@ One skill to work through. It reads the request, picks the route, runs each stag
 
 ## Question policy
 
-This session holds the only question tool in the run, so every question reaches the user through it. Classify each question, in this order:
+This session holds the only question tool in the run, so every question reaches the user through it. Use your best judgment and keep going: make every reversible call yourself, and report the calls you made at the end. Classify each question, in this order:
 
 1. **If running or reading something can answer it, do that.**
-2. **If it is a product or preference call, or an irreversible action, ask,** even when the call could be reversed later.
-3. **Decide everything else,** log it with `log decision`, and list it in the report.
+2. **If the answer commits an irreversible action, ask.** Irreversible means no later commit on the branch can undo it: deleting or rewriting data outside the repo, a push to the default branch, publishing a package, or any other effect beyond the branch and the PR this run exists to open.
+3. **Decide everything else, product and preference calls included.** Take the answer you would have recommended, log it with `log decision <stage> call '<question>: <choice>, over <alternative>'`, and list it in the report.
 
-So which test seam to use is decided, and which of two user-facing error messages to show is asked. Log an asked question and its answer with `log question`. Existing stops are unchanged: `/en-build`'s typed confirmations, a P0 in review, and never merging.
+So which test seam to use and which of two user-facing error messages to show are both decided and reported, and dropping a table is asked. The PR is where the user reviews those calls, and any of them can be reversed there. A skill running in this session, such as `/en-plan`, follows the same rule, and each call it makes is logged here too. Log an asked question and its answer with `log question`. Existing stops are unchanged: a risk stop (D142), `/en-build`'s typed confirmations, a P0 in review, and never merging.
 
 **When `$QUESTION_TOOL` does not resolve,** as in a headless session, a call the policy reserves for the user ends the run with `en-conductor: stopped at <stage>: <question>`. It is never guessed.
 
@@ -53,7 +53,7 @@ So which test seam to use is decided, and which of two user-facing error message
 
    **Free text goes in single quotes, with each `'` written as `'\''`.** On every `start`, `log` and `finish`, and for any path in a shell command. A request, a condition or a stage's reason is data: double quotes would run a `$(...)` inside it, and a heredoc ends at any line equal to its delimiter.
 5. **Run the stages** for the route, per `## Stages`. Log each with `log stage <stage> <ok|skipped|failed> '<evidence>'` and print one line per stage. A long stage agent shows nothing until it returns, and the trail on disk names the last finished stage.
-6. **Report.** Route, the definition of done and whether it holds, the stages, on the fix route the `en-fix:` line verbatim, every decision and question from the trail, and the PR URL with its exit state, or the branch when nothing was pushed. Close the trail with `finish <done|stopped> <stage> '<reason>'`, which records the route, state and stage results on this run's own ledger and prints that ledger's path. Close the run with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish '<that path>'`, or skip this when it printed nothing. The last line is `en-conductor: done` or `en-conductor: stopped at <stage>: <reason>`, on every path.
+6. **Report.** Route, the definition of done and whether it holds, the stages, on the fix route the `en-fix:` line verbatim, every decision and question from the trail, the calls you made without asking under their own heading, each with its choice and the alternative so the user can reverse it on the PR, and the PR URL with its exit state, or the branch when nothing was pushed. Close the trail with `finish <done|stopped> <stage> '<reason>'`, which records the route, state and stage results on this run's own ledger and prints that ledger's path. Close the run with `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish '<that path>'`, or skip this when it printed nothing. The last line is `en-conductor: done` or `en-conductor: stopped at <stage>: <reason>`, on every path.
 
 ## Stages
 
@@ -100,7 +100,7 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 | `en-fix: ready <branch>` | Report the branch and that nothing was pushed. Name `/en-qa` as the next step when `needs_browser` is true for the branch diff |
 | `en-fix: needs-plan clean <condition>` | Log `decision route plan '<condition>'`, which closes the Fix agent's run, and take the plan route |
 | `en-fix: needs-plan edited <condition>` | Stop, name the condition, and say the edits are on the branch. Whether to keep them is the user's call |
-| `en-fix: needs-decision <question>` | Answer it from something you can run or read, or ask the user. Never decide it yourself: `/en-fix` returns this only for a call that is the user's, so with no question tool the run stops with the question. Before redispatching, confirm `HEAD` and `git status --porcelain --untracked-files=no` match what they were when this line returned, or stop and name what changed. Log `decision fix redispatch '<question>: <answer>'`, which closes the returned agent's run. Redispatch with the original flags plus one `--decision '<question>: <answer>'` per answer so far. Stop after two redispatches |
+| `en-fix: needs-decision <question>` | Classify it under `## Question policy`: answer it from something you can run or read, ask the user only when the answer commits an irreversible action, and otherwise decide it and log the `call`. With no question tool, an irreversible one stops the run with the question. Before redispatching, confirm `HEAD` and `git status --porcelain --untracked-files=no` match what they were when this line returned, or stop and name what changed. Log `decision fix redispatch '<question>: <answer>'`, which closes the returned agent's run. Redispatch with the original flags plus one `--decision '<question>: <answer>'` per answer so far. Stop after two redispatches |
 | `en-fix: split <concern>; <concern>` | Report each concern as its own `/en-conductor <concern>` |
 | `en-fix: stopped <reason>` | Report it verbatim |
 
