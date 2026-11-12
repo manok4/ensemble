@@ -40,12 +40,17 @@ make one: a person may have split the issue by hand, and a rolled-back publish l
 ones behind. Both are `/en-build`'s and `/en-plan`'s refusals to make, so they route as an issue
 with no plan.
 
+**An open PR for the issue** is one whose head branch starts with the identifier, because
+`/en-build` names the branch from it: `gh pr list --state open --json number,headRefName --jq
+'.[] | select(.headRefName | ascii_downcase | startswith("<ident, lowercase>-")) | .number'`
+prints a number. Only the In Review row reads it.
+
 The first row that holds wins:
 
 | The issue | Route | Why |
 |---|---|---|
 | state completed or canceled | stop, naming the state | there is nothing left to do on it |
-| a published plan, parent In Review | stop, naming `/en-resolve-pr` for its open PR | the build finished and shipped, so a rerun would cut a second branch and rebuild Done units |
+| a published plan, parent In Review | stop, naming `/en-resolve-pr` when the issue has an open PR, else `/en-qa` then `/en-ship` on its built branch | `/en-build` sets In Review before QA and Ship, and `--no-ship` leaves it there, so the state alone does not mean a PR exists; either way the build finished, and a rerun would cut a second branch and rebuild Done units |
 | a published plan, parent In Progress | plan route with the Plan stage skipped, building `<IDENT>` in session | a build ran and stopped; `/en-build` reconciles its sub-issues against the branch and asks the user, which needs the session's question tool |
 | a published plan | plan route with the Plan stage skipped, building `<IDENT>` | `/en-plan` published it, and `/en-build` checks it is buildable |
 | a linked design: a `docs/designs/*.md` whose frontmatter carries exactly `linear_issue: <IDENT>`, or a comment (`list_comments`) whose first line is `Design: <path>` | plan route | `/en-brainstorm <IDENT>` settled the design, and `/en-plan <IDENT>` consumes it without re-asking (D120) |

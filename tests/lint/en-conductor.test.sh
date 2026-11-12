@@ -113,6 +113,10 @@ rows=$(printf '%s\n' "$rl" | grep -oE '^\| (state completed|a published plan, pa
 expected=$(printf '%s\n' '| state completed' '| a published plan, parent In Review' '| a published plan, parent In Progress' '| a published plan |' '| a linked design' '| otherwise')
 [ "$rows" = "$expected" ] && pass "routing rows: done, In Review, In Progress, published plan, linked design, then text" \
   || fail "the routing rows are out of order or missing" "$rows"
+# /en-build sets In Review before QA and Ship, so In Review alone never means a PR exists.
+printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Review' | grep -qF '/en-qa` then `/en-ship`' \
+  && pass "In Review without an open PR names the remaining QA and Ship steps" || fail "the In Review row must send an unshipped build to /en-qa then /en-ship"
+assert_contains "$rl" 'startswith("<ident, lowercase>-")' "an open PR is found by the identifier-named branch"
 printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Progress' | grep -qF 'in session' \
   && pass "an interrupted build resumes in session, where its reconcile can ask" || fail "the In Progress row must build in session"
 # A published plan is the Verification Contract, spelled as en-build's format writes it.
