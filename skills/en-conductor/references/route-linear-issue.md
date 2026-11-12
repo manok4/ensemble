@@ -50,7 +50,7 @@ The first row that holds wins:
 | The issue | Route | Why |
 |---|---|---|
 | state completed or canceled | stop, naming the state | there is nothing left to do on it |
-| a published plan, parent In Review | stop, naming `/en-resolve-pr` when the issue has an open PR, else `/en-qa` then `/en-ship` on its built branch | `/en-build` sets In Review before QA and Ship, and `--no-ship` leaves it there, so the state alone does not mean a PR exists; either way the build finished, and a rerun would cut a second branch and rebuild Done units |
+| a published plan, parent In Review | stop, naming `/en-resolve-pr` when the issue has an open PR, else `/en-ship` on its built branch, preceded by `/en-qa` only when `needs_browser` is true for that branch's diff (`references/diff-signal-detection.md`) | `/en-build` sets In Review before QA and Ship, and `--no-ship` leaves it there, so the state alone does not mean a PR exists; either way the build finished, and a rerun would cut a second branch and rebuild Done units |
 | a published plan, parent In Progress | plan route with the Plan stage skipped, building `<IDENT>` in session | a build ran and stopped; `/en-build` reconciles its sub-issues against the branch and asks the user, which needs the session's question tool |
 | a published plan | plan route with the Plan stage skipped, building `<IDENT>` | `/en-plan` published it, and `/en-build` checks it is buildable |
 | a linked design: a `docs/designs/*.md` whose frontmatter carries exactly `linear_issue: <IDENT>`, or a comment (`list_comments`) whose first line is `Design: <path>` | plan route | `/en-brainstorm <IDENT>` settled the design, and `/en-plan <IDENT>` consumes it without re-asking (D120) |

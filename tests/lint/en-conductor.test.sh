@@ -114,8 +114,11 @@ expected=$(printf '%s\n' '| state completed' '| a published plan, parent In Revi
 [ "$rows" = "$expected" ] && pass "routing rows: done, In Review, In Progress, published plan, linked design, then text" \
   || fail "the routing rows are out of order or missing" "$rows"
 # /en-build sets In Review before QA and Ship, so In Review alone never means a PR exists.
-printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Review' | grep -qF '/en-qa` then `/en-ship`' \
-  && pass "In Review without an open PR names the remaining QA and Ship steps" || fail "the In Review row must send an unshipped build to /en-qa then /en-ship"
+in_review=$(printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Review')
+printf '%s\n' "$in_review" | grep -qF 'else `/en-ship` on its built branch' \
+  && pass "In Review without an open PR names the remaining Ship step" || fail "the In Review row must send an unshipped build to /en-ship"
+printf '%s\n' "$in_review" | grep -qF '`/en-qa` only when `needs_browser` is true' \
+  && pass "and names /en-qa only when the branch needs a browser" || fail "the In Review row must gate /en-qa on needs_browser"
 assert_contains "$rl" 'startswith("<ident, lowercase>-")' "an open PR is found by the identifier-named branch"
 printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Progress' | grep -qF 'in session' \
   && pass "an interrupted build resumes in session, where its reconcile can ask" || fail "the In Progress row must build in session"
