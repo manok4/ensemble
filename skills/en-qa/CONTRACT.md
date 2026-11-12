@@ -35,6 +35,7 @@ A QA report. Callers branch on these fields:
 | Phase 2 | ran, or skipped with one named reason (no URL, no driver, no frontend files changed, `--system-only`) |
 | bugs | each with root cause, fix commit, regression test; those past the per-run cap listed unfixed |
 | impact undetermined | changed files no flow could be attributed to |
+| evidence | `link: <url>` or `link: none: <reason>`, plus the run page's path; present whenever Phase 2 ran |
 
 **Branch on these exact spellings.** An absent flow is the failure this shape
 exists to prevent; do not read absence as a pass.
@@ -44,7 +45,9 @@ exists to prevent; do not read absence as a pass.
 Inherited from the caller. **Permitted:** edit source to fix a reproduced bug,
 add its regression test, and commit each fix atomically as `fix(qa): …` on the
 current branch; bootstrap the project's own test framework only with a person's
-consent. **Excluded:** pushing, opening PRs, installing a browser stack to make a
+consent; write evidence (screenshots, one video per flow, the run page) under
+the run's gitignored output dir and one symlink to it under `~/.ensemble/qa/`.
+**Excluded:** pushing, opening PRs, installing a browser stack to make a
 run possible, committing a guessed fix, and any edit outside a reproduced bug.
 `--no-fix` narrows the envelope to reporting.
 

@@ -53,6 +53,29 @@ or a timeout usually means a stale ref or a page still settling. If the same
 action fails again, the driver is not working: record it, end Phase 2 under the
 one-driver rule above, and say which action failed.
 
+## Recording a flow
+
+SKILL.md step 7 records each in-scope flow's golden path with the run's own
+driver, then hands the file to `ensemble-qa-evidence video`. Start the recorder
+at the flow's entry point and stop it at the verified end state, or at the
+failing step.
+
+- **T3 Code:** `preview_recording_start` with the flow's tab, then
+  `preview_recording_stop` on the same tab, which returns the recording's local
+  path (at most 50 MiB). That path is the `--src`.
+- **Playwright MCP:** its run-code tool, `browser_run_code_unsafe` or
+  `browser_run_code`, whichever the host lists. Start with
+  `async page => { await page.screencast.start({ path: '<abs run-dir>/<id>.raw.webm' }) }`
+  and stop with `async page => { await page.screencast.stop() }`; the `path`
+  given at start is the `--src`. An error from either call means
+  `unavailable: playwright has no screencast`.
+- **Any other host-native surface** records only if it lists a recording tool;
+  otherwise the flow's `video` is `unavailable: <driver> has no recorder`.
+
+**Never install a recorder**, for the same reason the run never installs a
+driver. A recording that fails never changes the flow's outcome; screenshots
+remain the evidence.
+
 ## Playwright MCP patterns
 
 Only when selection landed on Playwright MCP. Its tools appear under the host's
@@ -107,7 +130,7 @@ browser_wait_for({ text: "Welcome back" })
 ### Capture evidence
 
 ```
-browser_take_screenshot({ path: ".test-output/qa-<flow-name>-<step>.png" })
+browser_take_screenshot({ path: ".test-output/qa/<run-id>/<flow-id>-<step>.png" })
 ```
 
 For bugs: capture before-fix and after-fix screenshots. Include both in the QA report.
@@ -175,4 +198,4 @@ Heuristics:
 
 ## Output evidence
 
-Save screenshots under `.test-output/qa/` (gitignored by default). The QA report references them as relative paths. After the QA pass, the user can review the screenshots manually if anything looks off.
+Save screenshots and recordings in the run dir, `.test-output/qa/<run-id>/` (gitignored by default). The QA report references them as relative paths. At the end of Phase 2, `ensemble-qa-evidence page` renders the run as one `index.html` that plays each flow's video beside its screenshots, and `ensemble-qa-evidence link` prints the page's tailnet URL on a machine that has opted in, or the local path and how to opt in.

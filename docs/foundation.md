@@ -416,9 +416,9 @@ The count read **fourteen** until 2026-09-03, and had done since en-flow, now `e
   3. Browser-phase detector: Phase 2 runs when the diff can change what a user sees or does in a browser (`needs_browser`, shared `diff-signal-detection`, where a path match is a candidate and unsure counts as yes) or `--browser`; `--system-only` wins. Fail closed when the diff cannot be classified.
   4. Phase 2, scoped to the change: attribute changed files to the flows they reach and exercise only those, golden path plus edge cases; unattributable files are reported as impact undetermined rather than triggering a sweep; `--all-flows` is the explicit sweep. Flows needing external interaction are skipped with the reason.
   5. Per bug: reproduce, root cause, fix, regression test that exercises a real interface, atomic `fix(qa):` commit, re-verify. Capped per run.
-  6. Report: every selected flow ends Pass, Fail or Skip with reason; screenshots under `.test-output/qa/`.
+  6. Report: every selected flow ends Pass, Fail or Skip with reason. Evidence stays in the gitignored run dir `.test-output/qa/<run-id>/`: screenshots, a video of each flow's golden path or failing step recorded with the run's driver, and one `index.html` run page, linked over the tailnet on a machine that has opted in (D148).
 - **Cross-review.** Off; bug fixes are mechanical. **Learning capture.** Not here; `/en-build`'s checkpoint owns it (D26).
-- **Reference files.** `references/browser-driver.md` (selection, per-driver patterns, auth, token cost), `references/diff-signal-detection.md` (`needs_browser`).
+- **Reference files.** `references/browser-driver.md` (selection, per-driver patterns, recording, auth, token cost), `references/diff-signal-detection.md` (`needs_browser`). Script: `ensemble-qa-evidence` (`video`, `page`, `link`, and the print-only `setup`).
 
 #### 5.2.7 `en-learn`
 
