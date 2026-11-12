@@ -237,6 +237,13 @@ printf '%s' "$flow" | grep -qF -- '--orchestrated' \
   && pass "the boundary keys on --orchestrated, which en-conductor passes and en-plan declares" \
   || fail "the /en-conductor boundary must key on an explicit --orchestrated flag" "check linear-publish.md, en-plan's flag table and en-conductor's Plan stage"
 
+# An identifier request is the one exception (D147): the identifier survives the
+# publish, so the conductor can build it. A free-text request still refuses.
+printf '%s' "$flow" | grep -qF 'unless the request is an identifier' \
+  && grep -E '^1\. ' "$REPO_ROOT/skills/en-plan/SKILL.md" | grep -qF 'unless the request is an issue identifier' \
+  && pass "the boundary lets an identifier request through, and only that" \
+  || fail "the /en-conductor boundary must exempt an identifier request" "check linear-publish.md and en-plan's step 1"
+
 # --- 11. .gitignore carries the two archive entries, precisely ---------------
 has "$IGNORE" '^\.ensemble/archive-plans/' ".gitignore ignores .ensemble/archive-plans/"
 hasnt "$IGNORE" '^\.ensemble/archive-designs/' ".gitignore no longer carries archive-designs/"

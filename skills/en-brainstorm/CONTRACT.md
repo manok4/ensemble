@@ -7,6 +7,7 @@ Owned by `en-brainstorm`. Callers depend on this page, not on `SKILL.md`.
 | Form | Caller |
 |---|---|
 | `/en-brainstorm <request>` | `en-conductor`, on the brainstorm route; a person |
+| `/en-brainstorm <IDENT>` | `en-conductor`, on the brainstorm route for a Linear issue, under `plan_store: linear` (D147) |
 
 ## Non-interactive guarantee
 

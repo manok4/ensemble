@@ -24,7 +24,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 ## Process
 
-1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`. **With `--orchestrated`**, read `plan_store` as the Linear publish step does; on `linear`, refuse now, per `references/linear-publish.md`'s `/en-conductor` boundary.
+1. **Detect host.** Source `references/host-detect.md`. Resolve `PEER_CMD`, `PEER_MODE`. **With `--orchestrated`**, read `plan_store` as the Linear publish step does; on `linear`, refuse now unless the request is an issue identifier, per `references/linear-publish.md`'s `/en-conductor` boundary.
 2. **Recursion guard.** If `ENSEMBLE_PEER_REVIEW=true`, skip the Outside Voice pass.
 3. **Resume or create.**
    - **`--resume <plan-path|IDENT>`** (explicit) — load the named plan, preserve its `plan_id`, `plan_type`, `created` and `generator`, and run the rest of the flow over it. This is how a `/en-sweep` draft becomes a peer-reviewed plan. Status stays `draft` until the status-flip step. An identifier (`ENG-412`) amends a published plan: read `references/linear-intake.md`.
@@ -145,7 +145,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
 
 | Flag | Effect |
 |---|---|
-| `--orchestrated` | A caller is driving. Detect host refuses under `plan_store: linear`; the source, route, frontier and capture steps change as they say. The reject path, the cap-hit question and the destructive-order refusal stay. |
+| `--orchestrated` | A caller is driving. Detect host refuses under `plan_store: linear` unless the request is an identifier; the source, route, frontier and capture steps change as they say. The reject path, the cap-hit question and the destructive-order refusal stay. |
 | `--no-peer` | Skip peer review entirely. Plan is left at `status: open` with `peer_review_verdict: null` (legacy/no-peer mode). |
 | `--no-reloop` | Run the initial peer pass only; never re-invoke. (Pre-finalize-loop behavior.) |
 | `--max-iterations <N>` | Raise the re-loop cap above 1. |
