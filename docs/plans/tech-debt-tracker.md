@@ -318,6 +318,19 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Rule key:** persona-effort-per-call
 - **Logged:** 2026-11-11
 
+### TD46. ensemble-lint does not catch tailnet hostnames or private IPs in docs
+
+- **Source:** EN31 build review
+- **Severity:** P2
+- **Confidence:** 8/10
+- **Location:** skills/en-setup/references/templates/ensemble-lint (check_no_absolute_paths, line 180)
+- **Why it matters:** EN31 plan carried a real MagicDNS name (a .ts.net host) as a config example inside backticks, bound for a public repo; path.absolute exempts code spans, so only a reviewer caught it and the unpushed history had to be rewritten
+- **Suggested fix:** Add a rule that flags *.ts.net MagicDNS names and RFC1918 or 100.64.0.0/10 IPv4 addresses anywhere in docs, code spans included, with <host>.<tailnet>.ts.net as the accepted placeholder; copy the template to bin/ per AGENTS.md
+- **Enforce at:** L2 static
+- **Proposed check:** skills/en-setup/references/templates/ensemble-lint: flag *.ts.net hosts and private IPv4 in docs, code spans included
+- **Rule key:** private-host-in-docs
+- **Logged:** 2026-11-12
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29
