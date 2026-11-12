@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN31
 title: en-qa records a video per verified flow, viewable over the tailnet
-status: open
+status: in_progress
 location: active
 created: 2026-11-12
 shipped:

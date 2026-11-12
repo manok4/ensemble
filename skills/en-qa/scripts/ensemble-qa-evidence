@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# ensemble-qa-evidence — keep a QA run's evidence and render it as one page.
+#
+# /en-qa records each verified flow's golden path with the driver it already
+# uses. This script does every mechanical step after the recorder stops, so the
+# skill's prose only says when to call it.
+#
+# Two rules hold on every path:
+#   - The recorder's file is only ever read. Every write goes to a temp name in
+#     the run dir and is renamed into place after it succeeds, and a source that
+#     already sits where the output would go is left alone.
+#   - Evidence never fails a QA run. `video` prints `video: unavailable: <why>`
+#     and exits 0 rather than erroring; a filename is printed only when that
+#     file exists and is non-empty.
+#
+# Usage:
+#   ensemble-qa-evidence video --run-dir <dir> --flow <id> --src <path>
+#   ensemble-qa-evidence page  --run-dir <dir>
+#
+# Exit codes: 0 done (including an unavailable video), 1 page had no readable
+# flows.json, 64 usage error.
+
+set -u
+
+usage() {
+  cat >&2 <<'EOF'
+usage: ensemble-qa-evidence video --run-dir <dir> --flow <id> --src <path>
+       ensemble-qa-evidence page  --run-dir <dir>
+EOF
+  exit 64
+}
+
+# Keep [A-Za-z0-9._-]; anything else becomes '-'.
+sanitize() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._-' '-'; }
+one_line() { printf '%s' "$1" | tr '\n' ' ' | sed 's/ *$//'; }
+
+cmd_video() {
+  local dir="" flow="" src=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --run-dir) [ $# -ge 2 ] || usage; dir="$2"; shift 2 ;;
+      --flow)    [ $# -ge 2 ] || usage; flow="$2"; shift 2 ;;
+      --src)     [ $# -ge 2 ] || usage; src="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$dir" ] && [ -n "$flow" ] && [ -n "$src" ] || usage
+
+  local id; id=$(sanitize "$flow")
+  if [ ! -s "$src" ]; then
+    echo "video: unavailable: no recording at $src"; return 0
+  fi
+
+  local base ext
+  base=${src##*/}
+  case "$base" in
+    ?*.*) ext=$(sanitize "${base##*.}" | tr 'A-Z' 'a-z') ;;
+    *)    ext="" ;;
+  esac
+  [ -n "$ext" ] || ext=webm
+
+  # A source that already is the output (same inode, so symlinks and a
+  # case-insensitive filesystem count) is reported in place: no encode, no copy.
+  local f
+  for f in "$id.mp4" "$id.$ext"; do
+    if [ -e "$dir/$f" ] && [ "$src" -ef "$dir/$f" ]; then
+      echo "video: $f"; return 0
+    fi
+  done
+
+  local err tmp
+  err=$(mkdir -p "$dir" 2>&1) || {
+    echo "video: unavailable: could not write $id.$ext: $(one_line "$err")"; return 0
+  }
+
+  if command -v ffmpeg >/dev/null 2>&1; then
+    tmp="$dir/.$id.tmp.$$.mp4"
+    # Even dimensions: libx264 refuses odd ones under yuv420p, and a recorder
+    # sizes its frames from the viewport, which can be odd.
+    if ffmpeg -nostdin -loglevel error -y -i "$src" \
+         -vf 'mpdecimate,setpts=N/FRAME_RATE/TB,scale=trunc(iw/2)*2:trunc(ih/2)*2' \
+         -an -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$tmp" </dev/null >&2 \
+       && [ -s "$tmp" ] && mv -f "$tmp" "$dir/$id.mp4" 2>/dev/null; then
+      echo "video: $id.mp4"; return 0
+    fi
+    rm -f "$tmp"
+    echo "ffmpeg failed; kept the raw recording" >&2
+  fi
+
+  tmp="$dir/.$id.tmp.$$.$ext"
+  if err=$(cp "$src" "$tmp" 2>&1) && [ -s "$tmp" ] && err=$(mv -f "$tmp" "$dir/$id.$ext" 2>&1); then
+    echo "video: $id.$ext"
+  else
+    rm -f "$tmp" 2>/dev/null
+    echo "video: unavailable: could not write $id.$ext: $(one_line "${err:-empty copy}")"
+  fi
+  return 0
+}
+
+cmd_page() {
+  local dir=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --run-dir) [ $# -ge 2 ] || usage; dir="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$dir" ] || usage
+
+  local rc
+  python3 - "$dir" <<'PY'
+import html, json, os, re, sys
+from urllib.parse import quote
+
+d = sys.argv[1]
+try:
+    with open(os.path.join(d, "flows.json"), encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    sys.exit(3)
+if not isinstance(data, dict) or not isinstance(data.get("flows"), list):
+    sys.exit(3)
+
+def esc(v):
+    return html.escape("" if v is None else str(v), quote=True)
+
+# One rule for every src and href: a plain relative path, no scheme, no '%',
+# no space, not absolute, no '..' segment. Anything else renders as text.
+LOCAL = re.compile(r"^[A-Za-z0-9._/-]+$")
+def local(v):
+    if not isinstance(v, str) or not LOCAL.match(v) or v.startswith("/"):
+        return None
+    if ".." in v.split("/"):
+        return None
+    return quote(v, safe="/")
+
+TYPES = {"mp4": "video/mp4", "webm": "video/webm"}
+run_id = esc(data.get("run_id") or os.path.basename(os.path.abspath(d)))
+
+out = []
+for fl in data["flows"]:
+    if not isinstance(fl, dict):
+        continue
+    outcome = esc(fl.get("outcome"))
+    out.append('<section class="flow">')
+    out.append('<h2><span class="id">%s</span> %s <span class="outcome o-%s">%s</span></h2>'
+               % (esc(fl.get("id")), esc(fl.get("name")), outcome.lower(), outcome))
+    if fl.get("reason"):
+        out.append('<p class="reason">%s</p>' % esc(fl.get("reason")))
+    v = fl.get("video")
+    src = local(v)
+    if src:
+        t = TYPES.get(src.rsplit(".", 1)[-1].lower())
+        type_attr = ' type="%s"' % t if t else ""
+        out.append('<video controls preload="metadata"><source src="%s"%s></video>' % (src, type_attr))
+    else:
+        out.append('<p class="novideo">Video: %s</p>' % (esc(v) if v else "none"))
+    shots = fl.get("screenshots") or []
+    if isinstance(shots, list) and shots:
+        out.append('<ul class="shots">')
+        for s in shots:
+            q = local(s)
+            if q:
+                out.append('<li><a href="%s"><img src="%s" alt="%s"></a></li>' % (q, q, esc(s)))
+            else:
+                out.append('<li><code>%s</code></li>' % esc(s))
+        out.append("</ul>")
+    out.append("</section>")
+
+page = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA run %(run)s</title>
+<style>
+:root { --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7;
+        --pass: #1a7f37; --fail: #cf222e; --skip: #9a6700; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161618; --fg: #f5f5f7; --muted: #a1a1a6; --line: #3a3a3c;
+          --pass: #3fb950; --fail: #f85149; --skip: #d29922; }
+}
+body { margin: 0 auto; max-width: 960px; padding: 24px 16px; background: var(--bg);
+       color: var(--fg); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+h1 { font-size: 20px; margin: 0 0 16px; }
+.flow { border-top: 1px solid var(--line); padding: 16px 0; }
+h2 { font-size: 16px; margin: 0 0 8px; }
+.id { color: var(--muted); font-weight: normal; }
+.outcome { font-size: 13px; padding: 1px 8px; border: 1px solid currentColor; border-radius: 10px; }
+.o-pass { color: var(--pass); } .o-fail { color: var(--fail); } .o-skip { color: var(--skip); }
+.reason, .novideo { color: var(--muted); margin: 0 0 8px; }
+video { width: 100%%; max-height: 70vh; background: #000; border-radius: 6px; }
+.shots { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.shots img { max-width: 220px; border: 1px solid var(--line); border-radius: 4px; }
+code { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<h1>QA run %(run)s</h1>
+%(body)s
+</body>
+</html>
+""" % {"run": run_id, "body": "\n".join(out)}
+
+target = os.path.join(d, "index.html")
+tmp = os.path.join(d, ".index.html.tmp.%d" % os.getpid())
+try:
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(page)
+    os.replace(tmp, target)
+except OSError as e:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    print("page: could not write %s: %s" % (target, e), file=sys.stderr)
+    sys.exit(4)
+PY
+  rc=$?
+  case $rc in
+    0) echo "page: $dir/index.html" ;;
+    4) return 1 ;;
+    127) echo "page: python3 not available" >&2; return 1 ;;
+    *) echo "page: no readable flows.json in $dir" >&2; return 1 ;;
+  esac
+}
+
+[ $# -ge 1 ] || usage
+cmd="$1"; shift
+case "$cmd" in
+  video) cmd_video "$@" ;;
+  page)  cmd_page "$@" ;;
+  *) usage ;;
+esac
