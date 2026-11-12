@@ -33,7 +33,7 @@ WORK=$(mktemp -d); trap 'chmod -R u+rwx "$WORK" 2>/dev/null; rm -rf "$WORK"' EXI
 # A PATH with no ffmpeg on it, built from links to the tools the script uses,
 # so the no-encoder case holds on a runner that ships ffmpeg in /usr/bin.
 BARE="$WORK/bare"; mkdir -p "$BARE"
-for t in bash cp mv rm mkdir tr dirname basename cat python3 git ln find sed date id; do
+for t in bash cp mv rm mkdir tr dirname basename cat python3 git ln find sed id jq; do
   p=$(command -v "$t" 2>/dev/null) && ln -s "$p" "$BARE/$t"
 done
 STUB="$WORK/stub"; mkdir -p "$STUB"
@@ -197,5 +197,71 @@ printf '{"flows": 3}' > "$E/flows.json"
 run "$BARE" page --run-dir "$E"
 assert_eq "1" "$RC" "page with a non-list flows exits 1"
 assert_file_missing "$E/index.html" "a malformed ledger writes no page"
+
+# --- link: an opted-in machine prints the tailnet URL ------------------------
+H2="$WORK/home"; mkdir -p "$H2/.ensemble"
+printf '{"qa_evidence_base_url": "https://box.tail.ts.net:8443/"}\n' > "$H2/.ensemble/config.json"
+R="$WORK/demo"; mkdir -p "$R" && git -C "$R" init -q
+RD="$R/.test-output/qa/20261112T000000Z"; mkdir -p "$RD"
+RD_ABS=$(cd -P "$RD" && pwd)
+run "$BARE" link --run-dir "$RD" --home "$H2"
+assert_eq "0" "$RC" "link exits 0"
+assert_eq "link: https://box.tail.ts.net:8443/demo/20261112T000000Z/index.html
+page: $RD_ABS/index.html" "$OUT" "link prints the tailnet URL, trailing slash stripped, then the page path"
+REG="$H2/.ensemble/qa/demo"
+[ -L "$REG/20261112T000000Z" ] && [ "$REG/20261112T000000Z" -ef "$RD" ] \
+  && pass "the run is registered as a symlink to its run dir" \
+  || fail "the run is registered as a symlink to its run dir" "$(ls -la "$REG" 2>&1)"
+
+# --- link: dangling registrations are pruned, live ones kept ------------------
+LIVE="$WORK/live-run"; mkdir -p "$LIVE"
+ln -s "$WORK/gone-run" "$REG/dangling"; ln -s "$LIVE" "$REG/live"
+run "$BARE" link --run-dir "$RD" --home "$H2"
+run "$BARE" link --run-dir "$RD" --home "$H2"
+[ -L "$REG/dangling" ] && fail "a dangling registration is pruned" || pass "a dangling registration is pruned"
+[ -L "$REG/live" ] && pass "a live sibling registration is kept" || fail "a live sibling registration is kept"
+assert_eq "2" "$(ls -A "$REG" | wc -l | tr -d ' ')" "linking a run twice leaves one symlink for it"
+
+# --- link: outside a git repo the slug is `local` ------------------------------
+LOOSE="$WORK/loose/20261112T010000Z"; mkdir -p "$LOOSE"
+run "$BARE" link --run-dir "$LOOSE" --home "$H2"
+assert_contains "$OUT" "link: https://box.tail.ts.net:8443/local/20261112T010000Z/index.html" "a run dir outside git uses slug local"
+
+# --- link: a machine that has not opted in says how ---------------------------
+H3="$WORK/home-none"; mkdir -p "$H3"
+run "$BARE" link --run-dir "$RD" --home "$H3"
+assert_eq "0" "$RC" "link without the key still exits 0"
+line1=$(printf '%s\n' "$OUT" | sed -n 1p); line2=$(printf '%s\n' "$OUT" | sed -n 2p)
+case "$line1" in
+  "link: none: this machine has not opted in; run: bash /"*"ensemble-qa-evidence setup") pass "an opted-out machine names the setup command" ;;
+  *) fail "an opted-out machine names the setup command" "$line1" ;;
+esac
+assert_eq "page: $RD_ABS/index.html" "$line2" "an opted-out machine still prints the page path"
+assert_file_missing "$H3/.ensemble/qa" "an opted-out machine registers nothing"
+
+# --- setup: prints the machine commands, writes nothing -----------------------
+cat > "$STUB/tailscale" <<'TS'
+#!/bin/sh
+[ "$1 $2" = "status --json" ] || exit 2
+printf '{"Self":{"DNSName":"box.tail.ts.net."}}\n'
+TS
+chmod +x "$STUB/tailscale"
+H4="$WORK/home-setup"; mkdir -p "$H4"
+before=$(find "$H4" | sort)
+OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup 2>"$WORK/err"); RC=$?
+assert_eq "0" "$RC" "setup exits 0 with tailscale up"
+assert_contains "$OUT" "tailscale serve --bg --https=8443 http://127.0.0.1:8765" "setup prints the serve command"
+assert_contains "$OUT" "https://box.tail.ts.net:8443" "setup prints the base URL, trailing dot stripped"
+assert_not_contains "$OUT" "box.tail.ts.net.:" "the DNS name loses its trailing dot"
+assert_contains "$OUT" "launchctl bootstrap" "setup prints the launchd step"
+assert_contains "$OUT" "--directory</string><string>$H4/.ensemble/qa</string>" "the server roots at the machine registry"
+assert_eq "$before" "$(find "$H4" | sort)" "setup writes nothing"
+OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup --port 9000 --https-port 9443 2>/dev/null)
+assert_contains "$OUT" "tailscale serve --bg --https=9443 http://127.0.0.1:9000" "setup honours its port flags"
+
+printf '#!/bin/sh\necho "failed to connect to local tailscaled" >&2\nexit 1\n' > "$STUB/tailscale"
+OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup 2>"$WORK/err"); RC=$?
+assert_eq "1" "$RC" "setup exits 1 when tailscale is down"
+assert_contains "$(cat "$WORK/err")" "setup: tailscale not available:" "a down tailscale is named"
 
 report

@@ -16,9 +16,16 @@
 # Usage:
 #   ensemble-qa-evidence video --run-dir <dir> --flow <id> --src <path>
 #   ensemble-qa-evidence page  --run-dir <dir>
+#   ensemble-qa-evidence link  --run-dir <dir> [--home <dir>]
+#   ensemble-qa-evidence setup [--port <n>] [--https-port <n>]
 #
-# Exit codes: 0 done (including an unavailable video), 1 page had no readable
-# flows.json, 64 usage error.
+# `link` registers the run dir as a symlink under ~/.ensemble/qa/<repo>/ and,
+# when this machine has set qa_evidence_base_url, prints the tailnet URL of its
+# page. `setup` prints the one-time commands that serve ~/.ensemble/qa to the
+# tailnet and set that key; it runs none of them.
+#
+# Exit codes: 0 done (including an unavailable video or link), 1 page had no
+# readable flows.json or setup found no tailscale, 64 usage error.
 
 set -u
 
@@ -26,9 +33,14 @@ usage() {
   cat >&2 <<'EOF'
 usage: ensemble-qa-evidence video --run-dir <dir> --flow <id> --src <path>
        ensemble-qa-evidence page  --run-dir <dir>
+       ensemble-qa-evidence link  --run-dir <dir> [--home <dir>]
+       ensemble-qa-evidence setup [--port <n>] [--https-port <n>]
 EOF
   exit 64
 }
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
+SELF="$SELF_DIR/$(basename "${BASH_SOURCE[0]:-$0}")"
 
 # Keep [A-Za-z0-9._-]; anything else becomes '-'.
 sanitize() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._-' '-'; }
@@ -108,7 +120,7 @@ cmd_page() {
   [ -n "$dir" ] || usage
 
   local rc
-  python3 - "$dir" <<'PY'
+  python3 -B - "$dir" <<'PY'
 import html, json, os, re, sys
 from urllib.parse import quote
 
@@ -225,10 +237,129 @@ PY
   esac
 }
 
+cmd_link() {
+  local dir="" home="${HOME:-}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --run-dir) [ $# -ge 2 ] || usage; dir="$2"; shift 2 ;;
+      --home)    [ $# -ge 2 ] || usage; home="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$dir" ] || usage
+
+  local abs
+  abs=$(cd -P "$dir" 2>/dev/null && pwd) || {
+    echo "link: none: no run dir at $dir"; echo "page: $dir/index.html"; return 0
+  }
+  local page="page: $abs/index.html"
+  local run_id top slug
+  run_id=$(sanitize "$(basename "$abs")")
+  if top=$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null) && [ -n "$top" ]; then
+    slug=$(sanitize "$(basename "$top")")
+  else
+    top="$abs"; slug=local
+  fi
+
+  local base
+  base=$(bash "$SELF_DIR/ensemble-config-get" qa_evidence_base_url --repo-root "$top" --home "$home" 2>/dev/null)
+  base=${base%/}
+  if [ -z "$base" ]; then
+    echo "link: none: this machine has not opted in; run: bash $SELF setup"; echo "$page"; return 0
+  fi
+
+  local reg="$home/.ensemble/qa/$slug" err l
+  if ! err=$(mkdir -p "$reg" 2>&1); then
+    echo "link: none: $(one_line "$err")"; echo "$page"; return 0
+  fi
+  # A run whose worktree is gone leaves a dangling link; prune them here.
+  for l in "$reg"/* "$reg"/.[!.]*; do
+    if [ -L "$l" ] && [ ! -e "$l" ]; then rm -f "$l"; fi
+  done
+  if [ -d "$reg/$run_id" ] && [ ! -L "$reg/$run_id" ]; then
+    echo "link: none: $reg/$run_id exists and is not a link"; echo "$page"; return 0
+  fi
+  if ! err=$(ln -sfn "$abs" "$reg/$run_id" 2>&1); then
+    echo "link: none: $(one_line "$err")"; echo "$page"; return 0
+  fi
+  echo "link: $base/$slug/$run_id/index.html"
+  echo "$page"
+}
+
+cmd_setup() {
+  local port=8765 https=8443
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --port)       [ $# -ge 2 ] || usage; port="$2"; shift 2 ;;
+      --https-port) [ $# -ge 2 ] || usage; https="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  case "$port" in ''|*[!0-9]*) usage ;; esac
+  case "$https" in ''|*[!0-9]*) usage ;; esac
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    echo "setup: tailscale not available: not on PATH" >&2; return 1
+  fi
+  local json dns
+  if ! json=$(tailscale status --json 2>&1); then
+    echo "setup: tailscale not available: $(one_line "$json" | cut -c1-200)" >&2; return 1
+  fi
+  dns=$(printf '%s' "$json" | python3 -B -c '
+import json, sys
+try:
+    print((json.load(sys.stdin).get("Self") or {}).get("DNSName", "").rstrip("."))
+except Exception:
+    pass' 2>/dev/null)
+  if [ -z "$dns" ]; then
+    echo "setup: tailscale not available: no Self.DNSName in tailscale status --json" >&2; return 1
+  fi
+
+  local url="https://$dns:$https" root
+  root=$(printf '%s' "${HOME:-}/.ensemble/qa" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+  cat <<SETUP
+# One-time setup: serve this Mac's QA runs to your tailnet at $url
+# Run these yourself; this script changes nothing.
+
+mkdir -p ~/.ensemble/qa
+
+cat > ~/Library/LaunchAgents/dev.ensemble.qa-evidence.plist <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.ensemble.qa-evidence</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string><string>-m</string><string>http.server</string><string>$port</string>
+    <string>--bind</string><string>127.0.0.1</string>
+    <string>--directory</string><string>$root</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict>
+</plist>
+PLIST
+
+launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/dev.ensemble.qa-evidence.plist
+
+tailscale serve --bg --https=$https http://127.0.0.1:$port
+
+[ -f ~/.ensemble/config.json ] || echo '{}' > ~/.ensemble/config.json
+jq '.qa_evidence_base_url = "$url"' ~/.ensemble/config.json > ~/.ensemble/config.json.tmp && mv ~/.ensemble/config.json.tmp ~/.ensemble/config.json
+
+curl -sfI $url/
+
+# The Mac must stay awake for the link to answer.
+SETUP
+}
+
 [ $# -ge 1 ] || usage
 cmd="$1"; shift
 case "$cmd" in
   video) cmd_video "$@" ;;
   page)  cmd_page "$@" ;;
+  link)  cmd_link "$@" ;;
+  setup) cmd_setup "$@" ;;
   *) usage ;;
 esac
