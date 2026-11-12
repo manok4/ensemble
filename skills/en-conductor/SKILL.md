@@ -17,7 +17,7 @@ One skill to work through. It reads the request, picks the route, runs each stag
 
 ## Invocation
 
-`/en-conductor <request>`, where the request is free text or a path to a design doc. Only the flags below are flags: any other flag-shaped word in the request stays text, and `--auto-merge` is refused.
+`/en-conductor <request>`, where the request is free text, a path to a design doc, or a Linear issue identifier (`ENG-123`). Only the flags below are flags: any other flag-shaped word in the request stays text, and `--auto-merge` is refused.
 
 | Flag | Effect |
 |---|---|
@@ -45,6 +45,7 @@ So which test seam to use and which of two user-facing error messages to show ar
 3. **Route.** State the route in one line with the reason that decided it. The first match wins:
    - `--resume`: go to `## Resume`.
    - `--plan <path>` or a `docs/designs/*.md` input: the plan route.
+   - A Linear issue identifier: read `references/route-linear-issue.md`, which routes on the issue's state. A published plan is built, a linked design is planned, and any other issue takes the rules below against its title and description.
    - Words asking to explore or compare options: brainstorm.
    - A new product, or `docs/foundation.md` absent with a product-shaped request: foundation.
    - A request matching `## Named, never invoked`: name the command, print `en-conductor: done`, and stop. No trail is written.
@@ -61,13 +62,13 @@ Plan route: Plan, Build, QA, Learn, Ship. Fix route: Fix. Brainstorm and foundat
 
 | Stage | Where | Invocation | Gate |
 |---|---|---|---|
-| Plan | session | invoke `/en-plan --orchestrated --branch-on-default y <request>`, skipped under `--plan` | plan file at `status: open`, with its path logged as the stage's evidence. `draft` stops and names `/en-plan --resume`. A `plan_store: linear` refusal stops and repeats its next command |
+| Plan | session | invoke `/en-plan --orchestrated --branch-on-default y <request>`, skipped under `--plan` | plan file at `status: open`, with its path logged as the stage's evidence. `draft` stops and names `/en-plan --resume`. A `plan_store: linear` refusal stops and repeats its next command. For an issue, `references/route-linear-issue.md` owns the invocation and the gate |
 | Build | agent, or session | invoke `/en-build <plan-path> --orchestrated` | audit `verdict: ok` and a `review-verdict:` trailer in `git log <merge-base>..HEAD`. A failed audit stops before Ship and names `/en-review --peer <sha>`. `gate_required: U<N>` or `needs-decision: U<N>: <question>` logs `decision build redispatch '<the line>'` and reruns `/en-build <plan-path> --from U<N> --orchestrated` in session, where the skill's own prompt reaches the user |
 | QA | agent | invoke `/en-qa`, only when `needs_browser` is true for the branch diff (`references/diff-signal-detection.md`) | every system check passes and no flow is `Fail`. A `Fail` stops the run before Ship and names the flow |
 | Learn | session | invoke `/en-learn capture`, only under `## Learn rule`; skipped when Ship is skipped | a `stage` row and a `decision` row either way, never asked |
 | Ship | agent | invoke `/en-ship --in-agent` as an agent and on its fallback rerun, or `/en-ship` where stages run in session, adding `--no-watch` when given; never `--auto-merge`; skipped under `--no-ship` or `local_only` | `gh pr view --json url,state,isDraft` confirms the PR, and the exit state is recorded. See below |
 | Fix | agent | invoke `/en-fix <request> --orchestrated`, adding `--no-ship` under `--no-ship` or `local_only`, and `--no-watch` when given | branch on the seven `en-fix:` lines, per `## Fix outcomes` |
-| Brainstorm | session | invoke `/en-brainstorm <request>` | the run ends, naming `/en-conductor <design-path>` |
+| Brainstorm | session | invoke `/en-brainstorm <request>` | the run ends, naming `/en-conductor <design-path>`, or `/en-conductor <IDENT>` for an issue |
 | Foundation | session | invoke `/en-foundation <request>` | the run ends, naming the next command |
 
 A stage's report is a claim, which is why Build and Ship confirm it from git and GitHub. **Never re-run simplify or review at the top level:** `/en-build` runs `/en-simplify` and `/en-review --cross` inside its own post-build phase (D52).
@@ -76,7 +77,7 @@ A stage's report is a claim, which is why Build and Ship confirm it from git and
 
 **QA and Ship have no question tool.** Both contracts allow it: `/en-qa` never blocks when a caller drives, and `/en-ship` is hands-off by default. A stop from either is reported as a stop, never rerun. **A question from Ship** arrives as the last line `en-ship: needs-input <question>`, a contract field and not a fallback trigger: log `stage ship failed 'needs-input: <question>'` and stop at Ship, naming the question and `/en-ship` to run in session, where it reaches the user. `/en-ship`'s typed confirmation for a push to the default branch cannot arise, because the plan route leaves the default branch at the Plan stage.
 
-**Build placement.** Build in session when `HOST` is not `claude-code`, or when `grep -Eiq '^- \*\*(Risk:\*\* (destructive|high)|Gated:\*\* true)' <plan-path>` matches, because typed confirmations must reach the user. Otherwise use a fresh subagent. When `HOST` is not `claude-code`, every other agent stage also runs in session: nesting there is unverified.
+**Build placement.** Build in session when `HOST` is not `claude-code`, or when `grep -Eiq '^- \*\*(Risk:\*\* (destructive|high)|Gated:\*\* true)' <plan-path>` matches, because typed confirmations must reach the user. For a plan in Linear, `references/route-linear-issue.md` says what the grep reads. Otherwise use a fresh subagent. When `HOST` is not `claude-code`, every other agent stage also runs in session: nesting there is unverified.
 
 ## Learn rule
 
@@ -98,7 +99,7 @@ A stage marked `agent` runs in a fresh subagent, which keeps this session small 
 |---|---|
 | `en-fix: shipped <pr-url> <exit-state>` | Confirm the PR, and apply Ship's exit-state meaning |
 | `en-fix: ready <branch>` | Report the branch and that nothing was pushed. Name `/en-qa` as the next step when `needs_browser` is true for the branch diff |
-| `en-fix: needs-plan clean <condition>` | Log `decision route plan '<condition>'`, which closes the Fix agent's run, and take the plan route |
+| `en-fix: needs-plan clean <condition>` | Log `decision route plan '<condition>'`, which closes the Fix agent's run, and take the plan route. An identifier under `plan_store: local` stops instead, per `references/route-linear-issue.md` |
 | `en-fix: needs-plan edited <condition>` | Stop, name the condition, and say the edits are on the branch. Whether to keep them is the user's call |
 | `en-fix: needs-decision <question>` | Classify it under `## Question policy`: answer it from something you can run or read, ask the user only when the answer commits an irreversible action, and otherwise decide it and log the `call`. With no question tool, an irreversible one stops the run with the question. Before redispatching, confirm `HEAD` and `git status --porcelain --untracked-files=no` match what they were when this line returned, or stop and name what changed. Log `decision fix redispatch '<question>: <answer>'`, which closes the returned agent's run. Redispatch with the original flags plus one `--decision '<question>: <answer>'` per answer so far. Stop after two redispatches |
 | `en-fix: split <concern>; <concern>` | Report each concern as its own `/en-conductor <concern>` |

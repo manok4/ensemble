@@ -83,6 +83,70 @@ grep -qE '^- \*\*Risk:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/pla
   && grep -qE '^- \*\*Gated:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/plan-template.md" \
   && pass "the plan template still writes those fields" || fail "the plan template no longer writes - **Risk:** and - **Gated:**"
 
+# --- a Linear identifier routes on the issue's state (D147) ---
+RL="$REPO_ROOT/skills/en-conductor/references/route-linear-issue.md"
+assert_file_exists "$RL" "the Linear routing reference exists"
+# Step 3's first match wins, so the identifier bullet must sit before the text rules.
+route_bullets=$(section Process | grep -E '^   - ' | cut -c1-40)
+id_at=$(printf '%s\n' "$route_bullets" | grep -n 'A Linear issue identifier' | cut -d: -f1)
+explore_at=$(printf '%s\n' "$route_bullets" | grep -n 'Words asking to explore' | cut -d: -f1)
+plan_at=$(printf '%s\n' "$route_bullets" | grep -n '`--plan <path>`' | cut -d: -f1)
+[ -n "$id_at" ] && [ -n "$explore_at" ] && [ -n "$plan_at" ] && [ "$plan_at" -lt "$id_at" ] && [ "$id_at" -lt "$explore_at" ] \
+  && pass "step 3 tests an identifier after --plan and before the text rules" \
+  || fail "step 3's identifier bullet must sit between --plan and the explore rule" "plan=$plan_at id=$id_at explore=$explore_at"
+section Process | grep -E '^   - A Linear issue identifier' | grep -qF '`references/route-linear-issue.md`' \
+  && pass "the identifier bullet hands off to the routing reference" || fail "the identifier bullet must name references/route-linear-issue.md"
+rl=$(cat "$RL")
+assert_contains "$rl" 'plan_store --allowed local,linear --default local --strict' "the store is read fail-closed"
+assert_contains "$rl" 'only the fix route can take an identifier' "under plan_store: local only /en-fix takes an identifier"
+assert_contains "$rl" 'So does an `en-fix: needs-plan clean` return' "under local, a needs-plan return stops instead of reaching /en-plan"
+assert_contains "$(section 'Fix outcomes')" 'An identifier under `plan_store: local` stops instead' "the Fix outcomes table carries that stop"
+# The identifier shape is the callees': a looser one routes what they refuse.
+id_re='^[A-Z][A-Z0-9]*-[0-9]+$'
+assert_contains "$rl" "\`$id_re\`" "the identifier shape is stated"
+grep -qF -- "\`$id_re\`" "$REPO_ROOT/skills/en-plan/references/linear-intake.md" \
+  && pass "it matches en-plan's identifier shape" || fail "the identifier shape must match en-plan's linear-intake.md"
+# The table's order is its meaning: a shipped or done issue stops before anything
+# builds, an interrupted build resumes in session, and a published plan is built
+# before a linked design is planned again.
+rows=$(printf '%s\n' "$rl" | grep -oE '^\| (state completed|a published plan, parent In Review|a published plan, parent In Progress|a published plan \||a linked design|otherwise)')
+expected=$(printf '%s\n' '| state completed' '| a published plan, parent In Review' '| a published plan, parent In Progress' '| a published plan |' '| a linked design' '| otherwise')
+[ "$rows" = "$expected" ] && pass "routing rows: done, In Review, In Progress, published plan, linked design, then text" \
+  || fail "the routing rows are out of order or missing" "$rows"
+# /en-build sets In Review before QA and Ship, so In Review alone never means a PR exists.
+in_review=$(printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Review')
+printf '%s\n' "$in_review" | grep -qF 'else `/en-ship` on its built branch' \
+  && pass "In Review without an open PR names the remaining Ship step" || fail "the In Review row must send an unshipped build to /en-ship"
+printf '%s\n' "$in_review" | grep -qF '`/en-qa` only when `needs_browser` is true' \
+  && pass "and names /en-qa only when the branch needs a browser" || fail "the In Review row must gate /en-qa on needs_browser"
+assert_contains "$rl" 'startswith("<ident, lowercase>-")' "an open PR is found by the identifier-named branch"
+printf '%s\n' "$rl" | grep -E '^\| a published plan, parent In Progress' | grep -qF 'in session' \
+  && pass "an interrupted build resumes in session, where its reconcile can ask" || fail "the In Progress row must build in session"
+# A published plan is the Verification Contract, spelled as en-build's format writes it.
+assert_contains "$rl" 'ends with a `## Verification Contract` heading' "a published plan is detected by its Verification Contract"
+grep -qF -- '`## Verification Contract` heading' "$REPO_ROOT/skills/en-build/references/linear-plan-format.md" \
+  && pass "en-build's plan format still writes that heading" || fail "linear-plan-format.md no longer names the ## Verification Contract heading"
+assert_contains "$rl" 'Sub-issues alone do not' "sub-issues alone never count as a plan"
+assert_contains "$rl" "grep -lx 'linear_issue: <IDENT>' docs/designs/*.md" "a design is found by its exact frontmatter key"
+assert_contains "$rl" "log \`stage plan skipped '<IDENT>'\`" "a skipped Plan stage logs the identifier Resume reads"
+# The Plan stage must not cut a <plan_id>-<slug> branch: the PR would not carry the identifier.
+assert_contains "$rl" '`/en-plan --orchestrated --branch-on-default no-commit <IDENT>`' "the Plan stage passes no-commit for an identifier"
+assert_not_contains "$rl" '--branch-on-default y <IDENT>' "and never y"
+grep -qE '^\| `no-commit` \| Stay on the current branch' "$REPO_ROOT/skills/en-plan/references/plan-default-branch-checkpoint.md" \
+  && pass "en-plan's no-commit stays on the current branch" || fail "en-plan's no-commit handler must stay on the current branch"
+assert_contains "$rl" 'no file under `docs/plans/active/`' "the Plan gate waits for the verified archive"
+for call in '/en-build <IDENT> --orchestrated' '/en-brainstorm <IDENT>' '/en-fix <IDENT> --orchestrated'; do
+  assert_contains "$rl" "\`$call\`" "each stage receives the identifier: $call"
+done
+# Linear rewrites `- ` to `* ` and a listing can truncate, so placement reads each
+# sub-issue in full, with both markers.
+assert_contains "$rl" '`get_issue` each one' "placement reads each sub-issue in full"
+assert_contains "$rl" 'with `[-*]` in place of the leading `-`' "placement reads Linear's rewritten list marker"
+case "$placement" in '^- '*) pass "the placement grep starts with the marker the reference swaps" ;; *) fail "the placement grep no longer starts with '^- '" "$placement" ;; esac
+assert_contains "$(cat "$REPO_ROOT/skills/en-plan/CONTRACT.md")" '`/en-plan <IDENT> --orchestrated --branch-on-default no-commit`' "en-plan's contract accepts the identifier form"
+assert_contains "$(cat "$REPO_ROOT/skills/en-build/CONTRACT.md")" '`/en-build <IDENT> --orchestrated`' "en-build's contract accepts the identifier form"
+assert_contains "$(cat "$REPO_ROOT/skills/en-brainstorm/CONTRACT.md")" '`/en-brainstorm <IDENT>`' "en-brainstorm's contract accepts the identifier form"
+
 # --- a redispatch keeps the run's restrictions, and the question policy answers ---
 assert_contains "$(section 'Fix outcomes')" 'Redispatch with the original flags' "a redispatch keeps --no-ship"
 assert_contains "$(section 'Fix outcomes')" 'Classify it under `## Question policy`' "needs-decision goes through the question policy"
