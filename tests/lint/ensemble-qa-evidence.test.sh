@@ -33,20 +33,25 @@ WORK=$(mktemp -d); trap 'chmod -R u+rwx "$WORK" 2>/dev/null; rm -rf "$WORK"' EXI
 # A PATH with no ffmpeg on it, built from links to the tools the script uses,
 # so the no-encoder case holds on a runner that ships ffmpeg in /usr/bin.
 BARE="$WORK/bare"; mkdir -p "$BARE"
-for t in bash cp mv rm mkdir tr dirname basename cat python3 git ln find sed id jq; do
+for t in bash cp mv rm mkdir tr dirname basename cat cut python3 git ln sed jq; do
   p=$(command -v "$t" 2>/dev/null) && ln -s "$p" "$BARE/$t"
 done
 STUB="$WORK/stub"; mkdir -p "$STUB"
 
-# An ffmpeg stub: logs its argv, writes a non-empty file at its last argument
-# when $1 is ok, exits 1 when it is fail.
+# An ffmpeg stub: logs its argv. Mode ok writes a non-empty file at its last
+# argument; partial writes one and then exits 1, as a real encode that dies
+# mid-write does; empty exits 0 having written nothing; fail just exits 1.
 ffmpeg_stub() {
   cat > "$STUB/ffmpeg" <<EOF
 #!/bin/sh
 printf '%s\n' "\$@" >> "$WORK/ffmpeg.argv"
-[ "$1" = ok ] || exit 1
 for last; do :; done
-printf 'encoded' > "\$last"
+case "$1" in
+  ok) printf 'encoded' > "\$last" ;;
+  partial) printf 'half' > "\$last"; exit 1 ;;
+  empty) : > "\$last" ;;
+  *) exit 1 ;;
+esac
 EOF
   chmod +x "$STUB/ffmpeg"; : > "$WORK/ffmpeg.argv"
 }
@@ -67,8 +72,8 @@ run "$STUB:$BARE" video --run-dir "$D" --flow F3 --src "$WORK/rec.webm"
 assert_eq "0" "$RC" "video exits 0 on an encode"
 assert_eq "video: F3.mp4" "$OUT" "an encode prints the mp4 name, and only that line"
 [ -s "$D/F3.mp4" ] && pass "the encoded clip is in the run dir" || fail "the encoded clip is in the run dir"
-grep -q 'mpdecimate' "$WORK/ffmpeg.argv" \
-  && pass "the encode strips idle frames" || fail "the encode strips idle frames" "$(cat "$WORK/ffmpeg.argv")"
+grep -q 'mpdecimate=max=' "$WORK/ffmpeg.argv" \
+  && pass "the encode compresses idle frames, with a bound" || fail "the encode compresses idle frames, with a bound" "$(cat "$WORK/ffmpeg.argv")"
 assert_file_exists "$WORK/rec.webm" "the source survives an encode"
 
 # --- video: no ffmpeg keeps the raw recording ---------------------------------
@@ -100,14 +105,45 @@ run "$BARE" video --run-dir "$D" --flow F6 --src "$WORK/empty.webm"
 assert_eq "video: unavailable: no recording at $WORK/empty.webm" "$OUT" "an empty source counts as missing"
 
 # --- video: a failed encode falls back to the raw file, leaving no debris -----
-ffmpeg_stub fail
-rm -f "$D"/F7.*
-run "$STUB:$BARE" video --run-dir "$D" --flow F7 --src "$WORK/rec.webm"
-assert_eq "video: F7.webm" "$OUT" "a failed encode keeps the raw recording"
-assert_contains "$ERRTXT" "ffmpeg failed; kept the raw recording" "a failed encode says so on stderr"
-assert_file_missing "$D/F7.mp4" "a failed encode leaves no mp4"
-leftover=$(ls -A "$D" | grep -c '^\.F7\.tmp\.' || true)
-assert_eq "0" "$leftover" "a failed encode leaves no temp file"
+for mode in partial empty; do
+  ffmpeg_stub "$mode"
+  rm -f "$D"/F7.*
+  run "$STUB:$BARE" video --run-dir "$D" --flow F7 --src "$WORK/rec.webm"
+  assert_eq "video: F7.webm" "$OUT" "a failed encode ($mode) keeps the raw recording"
+  assert_contains "$ERRTXT" "ffmpeg failed; kept the raw recording" "a failed encode ($mode) says so on stderr"
+  assert_file_missing "$D/F7.mp4" "a failed encode ($mode) leaves no mp4"
+  leftover=$(ls -A "$D" | grep -c '^\.F7\.tmp\.' || true)
+  assert_eq "0" "$leftover" "a failed encode ($mode) leaves no temp file"
+done
+
+# --- video: a directory where the clip would go is unavailable ----------------
+mkdir -p "$D/F10.mp4" "$D/F10.webm"
+ffmpeg_stub ok
+run "$STUB:$BARE" video --run-dir "$D" --flow F10 --src "$WORK/rec.webm"
+assert_eq "video: unavailable: F10.mp4 in the run dir is a directory" "$OUT" "a directory at the clip's name is never reported as the clip"
+assert_eq "" "$(ls -A "$D/F10.mp4")" "nothing is moved inside that directory"
+
+# --- video: a real encoder, when this machine has one -------------------------
+# The stub proves the argv; only a real ffmpeg proves the filter chain runs and
+# keeps the clip watchable. An odd-sized, mostly idle source covers the scale
+# filter and the idle bound.
+if FF=$(command -v ffmpeg); then
+  ln -sf "$FF" "$BARE/ffmpeg"
+  "$FF" -nostdin -loglevel error -y -f lavfi -i "color=c=white:size=101x99:rate=25:duration=4" \
+    -c:v libvpx-vp9 "$WORK/idle.webm" 2>/dev/null || "$FF" -nostdin -loglevel error -y \
+    -f lavfi -i "color=c=white:size=101x99:rate=25:duration=4" "$WORK/idle.webm"
+  run "$BARE" video --run-dir "$D" --flow R1 --src "$WORK/idle.webm"
+  assert_eq "video: R1.mp4" "$OUT" "a real ffmpeg encodes an odd-sized recording"
+  secs=$("$FF" -nostdin -hide_banner -i "$D/R1.mp4" -f null - 2>&1 | tr '\r' '\n' \
+    | sed -n 's/.*time=00:00:\([0-9][0-9]\)\.\([0-9]\).*/\1\2/p' | tail -1)
+  # 4s of idle at a bound of 4 dropped frames in 5 keeps about 0.8s, never a flash.
+  [ "${secs:-0}" -ge 5 ] && [ "${secs:-0}" -lt 40 ] \
+    && pass "idle time is compressed, not deleted (${secs:-0} tenths of a second)" \
+    || fail "idle time is compressed, not deleted" "encoded length ${secs:-unknown} tenths"
+  rm -f "$BARE/ffmpeg"
+else
+  pass "real-encoder case skipped: no ffmpeg on this machine"
+fi
 
 # --- video: a source already in place is never touched ------------------------
 # The P1 the plan's review found twice: encoding or copying a file over itself.
@@ -202,7 +238,7 @@ assert_file_missing "$E/index.html" "a malformed ledger writes no page"
 H2="$WORK/home"; mkdir -p "$H2/.ensemble"
 printf '{"qa_evidence_base_url": "https://box.tail.ts.net:8443/"}\n' > "$H2/.ensemble/config.json"
 R="$WORK/demo"; mkdir -p "$R" && git -C "$R" init -q
-RD="$R/.test-output/qa/20261112T000000Z"; mkdir -p "$RD"
+RD="$R/.test-output/qa/20261112T000000Z"; mkdir -p "$RD"; printf '{"flows": []}' > "$RD/flows.json"
 RD_ABS=$(cd -P "$RD" && pwd)
 run "$BARE" link --run-dir "$RD" --home "$H2"
 assert_eq "0" "$RC" "link exits 0"
@@ -223,9 +259,31 @@ run "$BARE" link --run-dir "$RD" --home "$H2"
 assert_eq "2" "$(ls -A "$REG" | wc -l | tr -d ' ')" "linking a run twice leaves one symlink for it"
 
 # --- link: outside a git repo the slug is `local` ------------------------------
-LOOSE="$WORK/loose/20261112T010000Z"; mkdir -p "$LOOSE"
+LOOSE="$WORK/loose/.test-output/qa/20261112T010000Z"; mkdir -p "$LOOSE"; printf '{"flows": []}' > "$LOOSE/flows.json"
 run "$BARE" link --run-dir "$LOOSE" --home "$H2"
 assert_contains "$OUT" "link: https://box.tail.ts.net:8443/local/20261112T010000Z/index.html" "a run dir outside git uses slug local"
+
+# --- link: only a QA run dir is ever published --------------------------------
+# A --run-dir of the repo root would serve .env and .git to the tailnet.
+before=$(ls -A "$REG" | sort | tr '\n' ' ')
+for bad in "$R" "$R/.test-output/qa" "$H2"; do
+  run "$BARE" link --run-dir "$bad" --home "$H2"
+  assert_eq "0" "$RC" "link on a non-run dir still exits 0 ($bad)"
+  assert_contains "$OUT" "is not a QA run dir" "a non-run dir is refused ($bad)"
+done
+NOLEDGER="$R/.test-output/qa/20261112T030000Z"; mkdir -p "$NOLEDGER"
+run "$BARE" link --run-dir "$NOLEDGER" --home "$H2"
+assert_contains "$OUT" "is not a QA run dir" "a run dir with no flows.json is refused"
+assert_eq "$before" "$(ls -A "$REG" | sort | tr '\n' ' ')" "a refused dir registers nothing"
+run "$BARE" link --run-dir "$WORK/nowhere" --home "$H2"
+assert_eq "link: none: no run dir at $WORK/nowhere" "$(printf '%s\n' "$OUT" | sed -n 1p)" "a missing run dir is named"
+
+# --- link: a real directory at the registry name is never replaced ------------
+RD2="$R/.test-output/qa/20261112T020000Z"; mkdir -p "$RD2"; printf '{"flows": []}' > "$RD2/flows.json"
+mkdir -p "$REG/20261112T020000Z"; printf 'keep' > "$REG/20261112T020000Z/mine.txt"
+run "$BARE" link --run-dir "$RD2" --home "$H2"
+assert_contains "$OUT" "link: none: $REG/20261112T020000Z exists and is not a link" "a real directory at the registry name is refused"
+assert_eq "keep" "$(cat "$REG/20261112T020000Z/mine.txt")" "the existing directory is untouched"
 
 # --- link: a machine that has not opted in says how ---------------------------
 H3="$WORK/home-none"; mkdir -p "$H3"
@@ -251,17 +309,35 @@ before=$(find "$H4" | sort)
 OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup 2>"$WORK/err"); RC=$?
 assert_eq "0" "$RC" "setup exits 0 with tailscale up"
 assert_contains "$OUT" "tailscale serve --bg --https=8443 http://127.0.0.1:8765" "setup prints the serve command"
-assert_contains "$OUT" "https://box.tail.ts.net:8443" "setup prints the base URL, trailing dot stripped"
+assert_contains "$OUT" ".qa_evidence_base_url = \"https://box.tail.ts.net:8443\"" "setup sets the key link reads, trailing dot stripped"
+assert_contains "$OUT" "mkdir -p ~/.ensemble/qa ~/Library/LaunchAgents" "setup creates LaunchAgents before writing into it"
 assert_not_contains "$OUT" "box.tail.ts.net.:" "the DNS name loses its trailing dot"
 assert_contains "$OUT" "launchctl bootstrap" "setup prints the launchd step"
 assert_contains "$OUT" "--directory</string><string>$H4/.ensemble/qa</string>" "the server roots at the machine registry"
 assert_eq "$before" "$(find "$H4" | sort)" "setup writes nothing"
+# The contract between the two subcommands: run setup's own config lines in a
+# scratch home, and link then prints a URL.
+H5="$WORK/home-roundtrip"; mkdir -p "$H5"
+printf '%s\n' "$OUT" | grep -E '^(mkdir -p ~|\[ -f ~|jq )' > "$WORK/config-lines.sh"
+HOME="$H5" PATH="$BARE" bash "$WORK/config-lines.sh"
+run "$BARE" link --run-dir "$RD" --home "$H5"
+assert_contains "$OUT" "link: https://box.tail.ts.net:8443/demo/20261112T000000Z/index.html" "link reads the key setup's printed commands set"
 OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup --port 9000 --https-port 9443 2>/dev/null)
 assert_contains "$OUT" "tailscale serve --bg --https=9443 http://127.0.0.1:9000" "setup honours its port flags"
+HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup --port abc >/dev/null 2>&1
+assert_eq "64" "$?" "a non-numeric port is a usage error"
+
+printf '#!/bin/sh\necho "{}"\n' > "$STUB/tailscale"
+OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup 2>"$WORK/err"); RC=$?
+assert_eq "1" "$RC" "setup exits 1 when tailscale reports no DNS name"
+assert_contains "$(cat "$WORK/err")" "no Self.DNSName" "a missing DNS name is named"
+OUT=$(HOME="$H4" PATH="$BARE" bash "$S" setup 2>"$WORK/err"); RC=$?
+assert_eq "1" "$RC" "setup exits 1 when tailscale is not installed"
+assert_contains "$(cat "$WORK/err")" "setup: tailscale not available: not on PATH" "a missing tailscale is named"
 
 printf '#!/bin/sh\necho "failed to connect to local tailscaled" >&2\nexit 1\n' > "$STUB/tailscale"
 OUT=$(HOME="$H4" PATH="$STUB:$BARE" bash "$S" setup 2>"$WORK/err"); RC=$?
 assert_eq "1" "$RC" "setup exits 1 when tailscale is down"
-assert_contains "$(cat "$WORK/err")" "setup: tailscale not available:" "a down tailscale is named"
+assert_contains "$(cat "$WORK/err")" "setup: tailscale not available: failed to connect to local tailscaled" "a down tailscale is named, with its error"
 
 report

@@ -30,6 +30,7 @@ has "$QA_SKILL" 'ensemble-qa-evidence" video' "step 7 keeps each flow's recordin
 has "$QA_SKILL" 'ensemble-qa-evidence" page' "step 9 renders the run page"
 has "$QA_SKILL" 'ensemble-qa-evidence" link' "step 9 links the run page"
 has "$QA_SKILL" "never changes the flow's outcome" "a recording failure never changes an outcome"
+has "$QA_SKILL" "file names relative to the run dir" "ledger media paths are relative to the run dir, as the page resolves them"
 
 # --- the driver reference names each recorder, and the run-dir screenshot path
 has "$QA_DRIVER" 'preview_recording_start' "T3 Code records with its preview recorder"
@@ -41,7 +42,7 @@ grep -qF '.test-output/qa-' "$QA_DRIVER" \
 # --- the contract returns the link, and the conductor relays it ---------------
 grep -qE '^\| evidence \|' "$QA_CONTRACT" \
   && pass "the contract returns an evidence field" || fail "the contract returns an evidence field"
-grep -E '^\| QA \|' "$CONDUCTOR" | grep -qF 'evidence' \
+grep -E '^\| QA \|' "$CONDUCTOR" | grep -qF "log stage qa ok '<link line>'" \
   && pass "the conductor's QA stage relays the evidence line" \
   || fail "the conductor's QA stage relays the evidence line"
 

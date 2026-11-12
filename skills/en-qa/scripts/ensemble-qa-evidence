@@ -63,11 +63,10 @@ cmd_video() {
     echo "video: unavailable: no recording at $src"; return 0
   fi
 
-  local base ext
+  local base ext=""
   base=${src##*/}
   case "$base" in
     ?*.*) ext=$(sanitize "${base##*.}" | tr 'A-Z' 'a-z') ;;
-    *)    ext="" ;;
   esac
   [ -n "$ext" ] || ext=webm
 
@@ -75,8 +74,15 @@ cmd_video() {
   # case-insensitive filesystem count) is reported in place: no encode, no copy.
   local f
   for f in "$id.mp4" "$id.$ext"; do
-    if [ -e "$dir/$f" ] && [ "$src" -ef "$dir/$f" ]; then
+    if [ "$src" -ef "$dir/$f" ]; then
       echo "video: $f"; return 0
+    fi
+  done
+  # mv onto a directory moves the clip inside it and succeeds, which would
+  # print a name that is not a file.
+  for f in "$id.mp4" "$id.$ext"; do
+    if [ -d "$dir/$f" ]; then
+      echo "video: unavailable: $f in the run dir is a directory"; return 0
     fi
   done
 
@@ -87,11 +93,14 @@ cmd_video() {
 
   if command -v ffmpeg >/dev/null 2>&1; then
     tmp="$dir/.$id.tmp.$$.mp4"
-    # Even dimensions: libx264 refuses odd ones under yuv420p, and a recorder
-    # sizes its frames from the viewport, which can be odd.
+    # Compress idle time, never delete it: resample to 10 fps, drop at most 4
+    # unchanged frames in a row, and re-time at 10 fps. Unbounded mpdecimate
+    # timed by the input's frame rate turned a 9s recording into a 0.08s
+    # flash. Even dimensions, because libx264 refuses odd ones under yuv420p
+    # and a recorder sizes its frames from the viewport.
     if ffmpeg -nostdin -loglevel error -y -i "$src" \
-         -vf 'mpdecimate,setpts=N/FRAME_RATE/TB,scale=trunc(iw/2)*2:trunc(ih/2)*2' \
-         -an -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$tmp" </dev/null >&2 \
+         -vf 'fps=10,mpdecimate=max=4,setpts=N/10/TB,scale=trunc(iw/2)*2:trunc(ih/2)*2' \
+         -r 10 -an -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$tmp" </dev/null >&2 \
        && [ -s "$tmp" ] && mv -f "$tmp" "$dir/$id.mp4" 2>/dev/null; then
       echo "video: $id.mp4"; return 0
     fi
@@ -229,11 +238,13 @@ except OSError as e:
     sys.exit(4)
 PY
   rc=$?
+  # The heredoc exits 3 for an unreadable ledger and 4 for a failed write.
   case $rc in
     0) echo "page: $dir/index.html" ;;
+    3) echo "page: no readable flows.json in $dir" >&2; return 1 ;;
     4) return 1 ;;
     127) echo "page: python3 not available" >&2; return 1 ;;
-    *) echo "page: no readable flows.json in $dir" >&2; return 1 ;;
+    *) echo "page: render failed (python3 exit $rc)" >&2; return 1 ;;
   esac
 }
 
@@ -252,9 +263,20 @@ cmd_link() {
   abs=$(cd -P "$dir" 2>/dev/null && pwd) || {
     echo "link: none: no run dir at $dir"; echo "page: $dir/index.html"; return 0
   }
-  local page="page: $abs/index.html"
-  local run_id top slug
-  run_id=$(sanitize "$(basename "$abs")")
+  local page_line="page: $abs/index.html"
+  # Only a QA run dir is ever published to the tailnet: a stray --run-dir of
+  # the repo root or $HOME would otherwise serve .env and .git to every node.
+  local run_id
+  run_id=$(basename "$abs")
+  local d='[0-9]'
+  case "$abs" in
+    */.test-output/qa/$d$d$d$d$d$d$d${d}T$d$d$d$d$d${d}Z) ;;
+    *) run_id="" ;;
+  esac
+  if [ -z "$run_id" ] || [ ! -f "$abs/flows.json" ]; then
+    echo "link: none: $abs is not a QA run dir"; echo "$page_line"; return 0
+  fi
+  local top slug
   if top=$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null) && [ -n "$top" ]; then
     slug=$(sanitize "$(basename "$top")")
   else
@@ -265,25 +287,25 @@ cmd_link() {
   base=$(bash "$SELF_DIR/ensemble-config-get" qa_evidence_base_url --repo-root "$top" --home "$home" 2>/dev/null)
   base=${base%/}
   if [ -z "$base" ]; then
-    echo "link: none: this machine has not opted in; run: bash $SELF setup"; echo "$page"; return 0
+    echo "link: none: this machine has not opted in; run: bash $SELF setup"; echo "$page_line"; return 0
   fi
 
   local reg="$home/.ensemble/qa/$slug" err l
   if ! err=$(mkdir -p "$reg" 2>&1); then
-    echo "link: none: $(one_line "$err")"; echo "$page"; return 0
+    echo "link: none: $(one_line "$err")"; echo "$page_line"; return 0
   fi
   # A run whose worktree is gone leaves a dangling link; prune them here.
   for l in "$reg"/* "$reg"/.[!.]*; do
     if [ -L "$l" ] && [ ! -e "$l" ]; then rm -f "$l"; fi
   done
   if [ -d "$reg/$run_id" ] && [ ! -L "$reg/$run_id" ]; then
-    echo "link: none: $reg/$run_id exists and is not a link"; echo "$page"; return 0
+    echo "link: none: $reg/$run_id exists and is not a link"; echo "$page_line"; return 0
   fi
   if ! err=$(ln -sfn "$abs" "$reg/$run_id" 2>&1); then
-    echo "link: none: $(one_line "$err")"; echo "$page"; return 0
+    echo "link: none: $(one_line "$err")"; echo "$page_line"; return 0
   fi
   echo "link: $base/$slug/$run_id/index.html"
-  echo "$page"
+  echo "$page_line"
 }
 
 cmd_setup() {
@@ -321,7 +343,7 @@ except Exception:
 # One-time setup: serve this Mac's QA runs to your tailnet at $url
 # Run these yourself; this script changes nothing.
 
-mkdir -p ~/.ensemble/qa
+mkdir -p ~/.ensemble/qa ~/Library/LaunchAgents
 
 cat > ~/Library/LaunchAgents/dev.ensemble.qa-evidence.plist <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

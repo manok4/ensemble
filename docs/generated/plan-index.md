@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: ensemble-lint
-updated: 2026-11-11
-total_entries: 29
+updated: 2026-11-12
+total_entries: 30
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 29
 
 ## Active
 
-_(none)_
+- [`EN31-feature_en-qa-video-evidence.md`](../plans/active/EN31-feature_en-qa-video-evidence.md) — **EN31** en-qa records a video per verified flow, viewable over the tailnet (in_progress)
 
 ## Completed
 

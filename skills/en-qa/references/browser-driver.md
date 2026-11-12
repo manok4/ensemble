@@ -55,8 +55,8 @@ one-driver rule above, and say which action failed.
 
 ## Recording a flow
 
-SKILL.md step 7 records each in-scope flow's golden path with the run's own
-driver, then hands the file to `ensemble-qa-evidence video`. Start the recorder
+SKILL.md's "Record the golden path" records each in-scope flow's golden path
+with the run's own driver, then hands the file to `ensemble-qa-evidence video`. Start the recorder
 at the flow's entry point and stop it at the verified end state, or at the
 failing step.
 
@@ -65,9 +65,11 @@ failing step.
   path (at most 50 MiB). That path is the `--src`.
 - **Playwright MCP:** its run-code tool, `browser_run_code_unsafe` or
   `browser_run_code`, whichever the host lists. Start with
-  `async page => { await page.screencast.start({ path: '<abs run-dir>/<id>.raw.webm' }) }`
+  `async page => { await page.screencast.start({ path: '/tmp/en-qa-<run-id>-<id>.webm' }) }`
   and stop with `async page => { await page.screencast.stop() }`; the `path`
-  given at start is the `--src`. An error from either call means
+  given at start is the `--src`. It sits outside the run dir on purpose:
+  `video` only reads its source, so a raw file written into the run dir would
+  stay there beside the clip. An error from either call means
   `unavailable: playwright has no screencast`.
 - **Any other host-native surface** records only if it lists a recording tool;
   otherwise the flow's `video` is `unavailable: <driver> has no recorder`.
@@ -198,4 +200,4 @@ Heuristics:
 
 ## Output evidence
 
-Save screenshots and recordings in the run dir, `.test-output/qa/<run-id>/` (gitignored by default). The QA report references them as relative paths. At the end of Phase 2, `ensemble-qa-evidence page` renders the run as one `index.html` that plays each flow's video beside its screenshots, and `ensemble-qa-evidence link` prints the page's tailnet URL on a machine that has opted in, or the local path and how to opt in.
+Save screenshots in the run dir, `.test-output/qa/<run-id>/` (gitignored by default), where `video` also puts each clip. The ledger and the QA report name them by file name relative to the run dir, such as `F3-golden-1.png`, because the run page resolves them from there. At the end of Phase 2, `ensemble-qa-evidence page` renders the run as one `index.html` that plays each flow's video beside its screenshots, and `ensemble-qa-evidence link` prints the page's tailnet URL on a machine that has opted in, or the local path and how to opt in.
