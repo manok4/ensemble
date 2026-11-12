@@ -24,13 +24,15 @@ has 'ENSEMBLE_PEER_REVIEW=true' "it has a recursion guard"
 
 # --- the question policy's order is its meaning ---
 qp=$(section 'Question policy')
-order=$(printf '%s\n' "$qp" | grep -E '^[123]\. ' | cut -c1-40)
+order=$(printf '%s\n' "$qp" | grep -E '^[123]\. ' | cut -c1-60)
 first=$(printf '%s\n' "$order" | sed -n 1p); second=$(printf '%s\n' "$order" | sed -n 2p); third=$(printf '%s\n' "$order" | sed -n 3p)
 case "$first"  in *'running or reading'*) pass "first, answer by running or reading" ;; *) fail "branch 1 must answer by running or reading" "$first" ;; esac
-case "$second" in *'product or preference'*) pass "second, ask a product or preference call" ;; *) fail "branch 2 must ask a product or preference call" "$second" ;; esac
+case "$second" in *'irreversible action, ask'*) pass "second, ask only an irreversible action" ;; *) fail "branch 2 must ask only an irreversible action" "$second" ;; esac
 case "$third"  in *'Decide everything else'*) pass "third, decide the rest" ;; *) fail "branch 3 must decide the rest" "$third" ;; esac
-printf '%s\n' "$qp" | grep -E '^2\. ' | grep -qF 'even when the call could be reversed later' \
-  && pass "a reversible product call is still asked" || fail "branch 2 must hold for a reversible call"
+printf '%s\n' "$qp" | grep -E '^3\. ' | grep -qF 'product and preference calls included' \
+  && pass "a reversible product call is decided, not asked" || fail "branch 3 must cover product and preference calls"
+assert_contains "$qp" "log decision <stage> call" "a decided call is logged"
+has 'the calls you made without asking under their own heading' "the report lists the calls made without asking"
 assert_contains "$qp" 'en-conductor: stopped at <stage>: <question>' "with no question tool, a reserved call ends the run"
 
 # --- stages, in order ---
@@ -81,9 +83,9 @@ grep -qE '^- \*\*Risk:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/pla
   && grep -qE '^- \*\*Gated:\*\* ' "$REPO_ROOT/skills/en-plan/references/templates/plan-template.md" \
   && pass "the plan template still writes those fields" || fail "the plan template no longer writes - **Risk:** and - **Gated:**"
 
-# --- a redispatch keeps the run's restrictions, and only the user answers ---
+# --- a redispatch keeps the run's restrictions, and the question policy answers ---
 assert_contains "$(section 'Fix outcomes')" 'Redispatch with the original flags' "a redispatch keeps --no-ship"
-assert_contains "$(section 'Fix outcomes')" 'Never decide it yourself' "the conductor never answers needs-decision itself"
+assert_contains "$(section 'Fix outcomes')" 'Classify it under `## Question policy`' "needs-decision goes through the question policy"
 assert_contains "$(section 'Fix outcomes')" "Log \`decision fix redispatch" "a Fix redispatch logs the row that closes the returned agent's run"
 
 # --- Ship's model (EN28 U3, D144): one hop, a question stops, Fix passes none ---
