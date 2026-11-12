@@ -40,11 +40,11 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 
    **Scope first: map the change to flows.** Take the changed files and attribute each to the flows (foundation §6 F-IDs) it can reach, through routes, components, and the modules those import. **Exercise only those flows.** This is QA of a change, not a release regression sweep: walking twenty flows for a one-route edit spends most of the run re-proving things nobody touched, and buries the finding that matters in a wall of green.
 
-   **Write the flow ledger before the first flow runs.** Put every selected flow into `.test-output/qa/<run-id>/flows.json` with `outcome: pending`, and update the entry as each flow ends; print one line per flow as it completes. A Phase 2 run is long enough for the context to be compacted under it, and after that the only record of which flows were selected, which ran and what each found is this file. The report at step 9 is derived from it, never from memory.
+   **Write the flow ledger before the first flow runs.** `<run-id>` is the UTC time Phase 2 starts, as `YYYYMMDDTHHMMSSZ`, and `.test-output/qa/<run-id>/` is the run dir. Put every selected flow into `.test-output/qa/<run-id>/flows.json` with `outcome: pending`, as one object, `{"run_id": "<run-id>", "flows": [...]}`, each entry carrying `id`, `name`, `outcome`, `reason`, `video` and `screenshots`. `video` and each `screenshots` entry are file names relative to the run dir (`F3.mp4`, `F3-golden-1.png`), never repo-relative paths, because the run page resolves them from the run dir. Update the entry as each flow ends; print one line per flow as it completes. A Phase 2 run is long enough for the context to be compacted under it, and after that the only record of which flows were selected, which ran and what each found is this file. The report at step 9 is derived from it, never from memory.
 
    **When attribution is incomplete, say so — do not fall back to everything.** If a changed file cannot be attributed to any flow (a shared utility, a build-config change, no route map available), exercise the flows you *did* attribute, then list the unattributed files in the report under "impact undetermined". Expanding silently to the full catalogue trades a stated gap for an unstated cost, and the reader can no longer tell which flows were run because they were implicated and which were swept up. `--flow <name>` overrides attribution; `--all-flows` is the explicit way to ask for the sweep.
 
-   For each in-scope flow, exercise the golden path (navigate to the entry point, do what a user would, verify the end state), then these edge cases, capturing a screenshot at each decision point. Screenshots go to disk under `.test-output/qa/`, with whichever driver; only the path enters the report, so image bytes never sit in context. For a visual bug, capture the element or region at fault rather than the whole viewport, so the evidence shows the defect at a size a reader can judge:
+   For each in-scope flow, exercise the golden path (navigate to the entry point, do what a user would, verify the end state), then these edge cases, capturing a screenshot at each decision point. Screenshots go to disk in the run dir, with whichever driver; only the path enters the report, so image bytes never sit in context. For a visual bug, capture the element or region at fault rather than the whole viewport, so the evidence shows the defect at a size a reader can judge:
 
    | Edge case | What to check |
    |---|---|
@@ -57,6 +57,8 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    | **Keyboard-only** | Tab through the flow; focus order; every action reachable |
    | **Mobile viewport** | 375x667; the flow still works |
 
+   **Record the golden path.** Start the driver's recorder (`references/browser-driver.md`, "Recording a flow") at the flow's entry point and stop it at the verified end state, or at the failing step on `Fail`. Then run `bash "$SKILL_DIR/scripts/ensemble-qa-evidence" video --run-dir <run-dir> --flow <id> --src <recording>` and store its value, the text after `video: `, in the flow's `video` field. Edge cases are not recorded. A re-verify after a `fix(qa):` commit re-records and replaces the clip. A recorder that fails to start or stop never changes the flow's outcome: the field reads `unavailable: <reason>`.
+
    **A flow that cannot be driven automatically is Skipped, never faked.** OAuth handoffs, email or SMS confirmation, real payments, third-party APIs without a sandbox: when a human is driving, ask whether to do that step manually; when a caller is driving, record `Skip — needs external interaction: <what>` and continue.
 8. **Bug protocol** (for each bug found):
    - Reproduce — confirm consistently.
@@ -67,7 +69,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - Re-verify — re-run failing flow + regression test.
 8a. **Done means every in-scope flow has an outcome.** The run ends one of two ways: a report in which **every flow selected at step 7 is marked Pass, Fail, or Skip with its reason**, or a preflight blocker that stopped QA before any flow could run, named alongside what would clear it. Ending in neither, or dropping a flow from the report because nothing could reach it, is the failure this bar exists to prevent — an absent flow reads as a flow that passed.
 
-9. **Output QA report**, from the flow ledger: system-check status, flows exercised, bugs found and fixed, follow-ups recorded, regression tests added, screenshot paths, skipped flows with reasons.
+9. **Output QA report**, from the flow ledger: system-check status, flows exercised, bugs found and fixed, follow-ups recorded, regression tests added, screenshot paths, skipped flows with reasons. When Phase 2 ran, first render the run page with `bash "$SKILL_DIR/scripts/ensemble-qa-evidence" page --run-dir <run-dir>`, then `bash "$SKILL_DIR/scripts/ensemble-qa-evidence" link --run-dir <run-dir>`, and print its `link:` and `page:` lines in the report as `Evidence:`. A `link: none: <reason>` line is reported as it reads.
 10. **Close the run.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" finish`. **Every terminal path closes the run**: a failed Phase 1, a lost driver and a pause for judgement each end here.
 
 ## Flags
@@ -169,6 +171,7 @@ qa:
 ## Browser QA
 
 URL: https://preview-fr07.vercel.app
+Evidence: link: https://qa-mini.example.ts.net:8443/app/20261112T161420Z/index.html · page: <repo>/.test-output/qa/20261112T161420Z/index.html
 
 ### Golden-path flows
 
