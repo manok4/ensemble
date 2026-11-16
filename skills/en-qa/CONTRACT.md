@@ -9,7 +9,7 @@ never on `SKILL.md` internals and never on a file inside this directory.
 |---|---|
 | `/en-qa` | `en-loop`'s Morning Review, as independent verification of the loop's branch |
 | `/en-qa` | `en-conductor`, on the plan route, when the branch diff needs a browser |
-| `/en-qa [--url <url>] [--browser \| --system-only] [--flow <name> \| --all-flows] [--no-fix]` | a person |
+| `/en-qa [--url <url>] [--browser \| --system-only] [--flow <name> \| --all-flows] [--driver <auto\|host\|playwright>] [--no-fix]` | a person |
 
 This skill is model-invocable on purpose. A `disable-model-invocation: true`
 flag would let only a person run it, and the callers above would have nothing
@@ -32,7 +32,7 @@ A QA report. Callers branch on these fields:
 |---|---|
 | system checks | `lint`, `typecheck`, `tests`: pass or fail; a failure stops the run before any flow |
 | per flow | `Pass` · `Fail` · `Skip — <reason>`; **every flow selected for the run has one**, none is absent |
-| Phase 2 | ran, or skipped with one named reason (no URL, no driver, no frontend files changed, `--system-only`) |
+| Phase 2 | ran, or skipped with one named reason (no URL, no driver or the forced driver missing, no frontend files changed, `--system-only`) |
 | bugs | each with root cause, fix commit, regression test; those past the per-run cap listed unfixed |
 | impact undetermined | changed files no flow could be attributed to |
 | evidence | `link: <url>` or `link: none: <reason>`, plus the run page's path; present whenever Phase 2 ran |

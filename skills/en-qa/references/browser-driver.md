@@ -11,6 +11,13 @@ Which browser surface a QA run drives, and how to use each one.
 3. **Neither** — Phase 1 only. Name the drivers that were looked for, so the
    report distinguishes "no browser here" from "browser QA was skipped".
 
+That order is `auto`. `--driver host` or `--driver playwright`, or the
+`qa_driver` key in `.ensemble/config.local.yaml` or `~/.ensemble/config.json`,
+picks one driver and skips the order (SKILL.md's "Select a browser driver"). Set `qa_driver:
+playwright` where the host pane makes poor evidence. One T3 Code run saved
+1280x800 screenshots and video too blurred to read; Playwright MCP opens its
+own Chrome window, so the pane's size does not touch its evidence.
+
 **Never introduce a third stack.** Do not install Puppeteer, a standalone
 Playwright, or any other automation surface to make a run possible. A project
 with no usable driver is reporting a fact about itself; installing one turns a
@@ -65,9 +72,11 @@ failing step.
   path (at most 50 MiB). That path is the `--src`.
 - **Playwright MCP:** its run-code tool, `browser_run_code_unsafe` or
   `browser_run_code`, whichever the host lists. Start with
-  `async page => { await page.screencast.start({ path: '/tmp/en-qa-<run-id>-<id>.webm' }) }`
+  `async page => { await page.screencast.start({ path: '/tmp/en-qa-<run-id>-<id>.webm', size: page.viewportSize() }) }`
   and stop with `async page => { await page.screencast.stop() }`; the `path`
-  given at start is the `--src`. It sits outside the run dir on purpose:
+  given at start is the `--src`. Without `size`, Playwright scales the
+  viewport down to fit 800x800, so a 1280x800 page records at 800x500 and its
+  text blurs. It sits outside the run dir on purpose:
   `video` only reads its source, so a raw file written into the run dir would
   stay there beside the clip. An error from either call means
   `unavailable: playwright has no screencast`.
@@ -88,6 +97,16 @@ the host lists it) before the first call. If no host lists one, this driver is
 absent and selection moves on; that is not a reason to install one.
 
 ## Canonical patterns
+
+### Set the viewport
+
+```
+browser_resize({ width: 1280, height: 800 })
+```
+
+Once, before the first flow. Without it the page takes the size of Playwright's
+window, which varies by machine, and screenshots and video change size with it.
+After the mobile edge case, resize back to 1280x800.
 
 ### Navigate and snapshot
 
@@ -156,7 +175,7 @@ Run at the end of the QA pass to release the browser context.
 
 ## Common pitfalls
 
-- **Don't trust visual stability across viewports.** A flow that works at 1280x720 may fail at 375x667. Always exercise mobile viewport (`browser_resize({ width: 375, height: 667 })`) for any flow involving forms or navigation.
+- **Don't trust visual stability across viewports.** A flow that works at 1280x800 may fail at 375x667. Always exercise mobile viewport (`browser_resize({ width: 375, height: 667 })`) for any flow involving forms or navigation.
 
 - **Re-snapshot after every navigation.** Refs are stale after a page change. Browser-state in skill memory is unreliable; query the page.
 

@@ -26,7 +26,7 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
    - PR comment containing a Vercel/Cloudflare preview URL (regex match).
    - Local dev server detection (e.g., `localhost:3000` if a dev server is responsive).
    - User asks if none found.
-5. **Select a browser driver, then keep it.** Per `references/browser-driver.md`. In order:
+5. **Select a browser driver, then keep it.** Per `references/browser-driver.md`. First read the requested driver: the `--driver` flag, else `bash "$SKILL_DIR/scripts/ensemble-config-get" qa_driver --allowed auto,host,playwright --default auto --strict`. The flag beats the key. A non-zero exit means the key holds an unknown value: skip Phase 2 and name the value, rather than guessing a driver. `host` or `playwright` uses only that driver, and when it is missing, Phase 2 is skipped with that driver named. The run never falls back to another driver, because a project that set `playwright` to get away from a host pane would get the pane's evidence with no sign of it. `auto` selects in order:
    1. **A host-native browser surface**, if the harness has one that can navigate, inspect rendered state, click and type, screenshot, and read console errors: T3 Code's preview tools, or the Claude desktop app's browser pane. Prefer it: it needs no install and is already permitted. Act one dependent step per message and make the dev server reachable first (`references/browser-driver.md`).
    2. **Playwright MCP**, when present.
    3. Neither → Phase 1 only, and say which drivers were looked for.
@@ -83,13 +83,14 @@ System checks plus live browser end-to-end testing. Bug fixes commit atomically 
 | `--all-flows` | Exercise the whole §6 catalogue, not just flows the change reaches. The explicit way to ask for a regression sweep. |
 | `--no-fix` | Find bugs, don't fix; output as a list for triage |
 | `--mobile-only` / `--desktop-only` | Limit viewports |
+| `--driver <auto\|host\|playwright>` | Force the browser driver for this run; beats the `qa_driver` config key. Step 5 has the rules. |
 
 ## When Phase 2 is skipped
 
 Surface a one-line note in the report: "Browser QA skipped — <reason>." Reasons:
 
 - No URL provided and none detected.
-- No usable browser driver (host-native or Playwright MCP).
+- No usable browser driver (host-native or Playwright MCP), or the driver `--driver` or `qa_driver` forced is missing, or `qa_driver` holds an unknown value.
 - Branch is doc-only (`git diff --name-only` shows only `docs/`).
 - **No frontend files changed** (detector `needs_browser: false`, no `--browser`) — per `references/diff-signal-detection.md`.
 - `--system-only` flag.
@@ -202,7 +203,7 @@ Evidence: link: https://qa-mini.example.ts.net:8443/app/20261112T161420Z/index.h
 |---|---|
 | Lint fails | Surface; exit. Don't proceed to browser. |
 | Test suite fails | Surface failing tests; exit. Don't proceed. |
-| No usable browser driver | Phase 1 only; name the drivers looked for. Never install one to proceed. |
+| No usable browser driver | Phase 1 only; name the drivers looked for, or the forced one. Never install one to proceed. |
 | URL unreachable | Surface; ask user for a different URL or `--system-only`. |
 | Bug found but root cause unclear | Surface the symptom; capture screenshot; mark as "needs human" in the report; don't commit a guessed fix. |
 | Regression test passes on unfixed code | The test isn't actually exercising the fix. Surface; iterate on the test until it fails on unfixed code. |

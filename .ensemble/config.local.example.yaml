@@ -47,6 +47,12 @@
 #       email: qa-primary@example.com
 #       password: $QA_PRIMARY_PASSWORD
 
+# Which browser /en-qa drives (flat key, read with ensemble-config-get; the
+# --driver flag beats it). auto prefers the host's own browser, such as T3
+# Code's preview pane, then Playwright MCP. host or playwright uses only that
+# one and skips browser QA when it is missing. An unknown value skips it too.
+# qa_driver: auto                        # auto | host | playwright
+
 # --- Build behavior ---
 
 # Default branch (used when the repo doesn't have a clear default).
