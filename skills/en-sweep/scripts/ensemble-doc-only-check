@@ -2,6 +2,8 @@
 # ensemble-doc-only-check — runtime allowlist enforcement for en-sweep PRs.
 # Verifies that every staged path is under docs/, AGENTS.md, CLAUDE.md, or .ensemble/sweep-summary.md.
 # Exits non-zero (and lists offenders) if any path falls outside the allowlist.
+# Also refuses any staged change to docs/foundation.md's Strategy section, which
+# only its author edits (through /en-foundation --strategy).
 
 set -eu
 
@@ -23,6 +25,27 @@ if [ -n "$OFFENDERS" ]; then
   echo "If a code-level pattern needs fixing, file it as a TD-entry in docs/plans/tech-debt-tracker.md" >&2
   echo "and let /en-plan + /en-build handle it. Sweep never touches source code." >&2
   exit 1
+fi
+
+# The Strategy section is the author's. Compare it, as the sibling reader sees
+# it, in HEAD and in the index; any difference, marker date included, is an
+# edit sweep may not make. A reader error on either side fails closed.
+if printf '%s\n' "$CHANGED_PATHS" | grep -qx 'docs/foundation.md'; then
+  READER="$(cd "$(dirname "$0")" && pwd)/ensemble-strategy-section"
+  WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
+  git show HEAD:docs/foundation.md > "$WORK/head.md" 2>/dev/null || : > "$WORK/head.md"
+  git show :docs/foundation.md > "$WORK/staged.md" 2>/dev/null || : > "$WORK/staged.md"
+  for side in HEAD staged; do
+    f="$WORK/head.md"; [ "$side" = staged ] && f="$WORK/staged.md"
+    if ! "$READER" "$f" > "$f.section" 2>/dev/null; then
+      echo "ERROR: cannot read the Strategy section in $side docs/foundation.md; resolve the duplicate heading outside sweep" >&2
+      exit 1
+    fi
+  done
+  if ! cmp -s "$WORK/head.md.section" "$WORK/staged.md.section"; then
+    echo "ERROR: en-sweep never edits the Strategy section; file a strategy-drift TD instead" >&2
+    exit 1
+  fi
 fi
 
 echo "ensemble-doc-only-check: ✓ all staged paths under docs/ allowlist"

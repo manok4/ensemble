@@ -64,6 +64,17 @@ This catches the case where the user shipped without invoking `/en-learn` to fli
 | TD entries cited as `Resolves: TD<n>` in completed plans | Mark resolved in tech-debt-tracker.md (in scope) |
 | Duplicate TD entries (same finding from multiple sources) | Merge; preserve all source citations (in scope) |
 
+### G. Strategy (`docs/foundation.md` §1)
+
+Read the section with `bash "$SKILL_DIR/scripts/ensemble-strategy-section"`. Skip this category when `docs/foundation.md` does not exist.
+
+| Check | Action |
+|---|---|
+| The reader prints nothing: no marked Strategy section | `bash "$SKILL_DIR/scripts/ensemble-td-append" --tracker docs/plans/tech-debt-tracker.md --rule-key strategy-missing --source /en-sweep --severity P3 --confidence 10 --enforce-at "L4 skill" --location docs/foundation.md --title "No Strategy section" --why "No review can check a change against the project's principles" --fix "Run /en-foundation --strategy"`. The rule key means a weekly run files it once (exit 4 on a repeat is expected, not an error) |
+| An ST line's checkable claim (a count, a named file or flag, a "never" or "no" statement) contradicts the repo | One entry per ST-ID: the same command with `--rule-key strategy-drift-st<N>`, `--severity P3`, `--confidence` as judged, `--title "ST<N> no longer matches the repo"`, `--why` quoting the line and the contradicting fact, `--fix "Run /en-foundation --strategy"` |
+
+Sweep never edits the Strategy section, in its fix-up PRs or anywhere else: the author owns it. A drift entry is the whole output. A principle stated as intent ("we prefer small changes") is not a checkable claim and is never filed.
+
 ## Code-level findings (out of scope; → tech-debt-tracker)
 
 When `/en-sweep`'s checks surface a code-level pattern, **never** open a fix-up PR. Instead, append an entry to `docs/plans/tech-debt-tracker.md` per `references/tech-debt-tracker-format.md`:

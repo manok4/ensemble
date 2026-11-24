@@ -139,4 +139,42 @@ assert_exit_code 0 "$rc" "empty stage exits 0"
 assert_contains "$output" "nothing staged" "empty-stage notes nothing-staged"
 rm -rf "$TMP"
 
+# --- Strategy section: sweep never edits it (EN32 U8) ---
+# The author owns docs/foundation.md's Strategy section; a staged change to it,
+# marker date included, is refused. A reader error on either revision fails
+# closed before any comparison.
+FX="$REPO_ROOT/tests/strategy/fixtures"
+strategy_repo() {  # $1 = fixture committed as docs/foundation.md
+  TMP=$(mktemp -d); setup_temp_repo "$TMP"; pushd "$TMP" >/dev/null
+  mkdir -p docs && cp "$1" docs/foundation.md && git add docs/foundation.md && git commit -qm foundation
+}
+staged_check() { git add docs/foundation.md; output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"; }
+
+strategy_repo "$FX/numbered.md"
+printf '\n- G2. Small.\n' >> docs/foundation.md
+staged_check
+assert_exit_code 0 "$rc" "an edit outside the Strategy section is accepted"
+
+strategy_repo "$FX/numbered.md"
+sed -i.bak 's/^Every command prints plain text\.$/Every command prints plain text, always./' docs/foundation.md && rm docs/foundation.md.bak
+staged_check
+assert_exit_code 1 "$rc" "an edit inside the Strategy section is refused"
+assert_contains "$output" "en-sweep never edits the Strategy section; file a strategy-drift TD instead" "the refusal says what to do instead"
+
+strategy_repo "$FX/numbered.md"
+sed -i.bak 's/author-approved 2026-11-01/author-approved 2026-11-02/' docs/foundation.md && rm docs/foundation.md.bak
+staged_check
+assert_exit_code 1 "$rc" "moving only the marker date is refused"
+
+strategy_repo "$FX/no-marker.md"
+printf '\nMore text.\n' >> docs/foundation.md
+staged_check
+assert_exit_code 0 "$rc" "with no Strategy section in HEAD or the index the check passes"
+
+strategy_repo "$FX/duplicate.md"
+sed -i.bak 's/^### ST2\. Also small$/### ST2. Also very small/' docs/foundation.md && rm docs/foundation.md.bak
+staged_check
+assert_exit_code 1 "$rc" "two Strategy headings fail closed"
+assert_contains "$output" "cannot read the Strategy section in HEAD docs/foundation.md" "and name the revision the reader could not read"
+
 report

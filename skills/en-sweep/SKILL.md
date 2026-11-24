@@ -58,6 +58,7 @@ Doc-drift cleanup. **Scheduled** (default weekly) with an activity gate that ski
 
     The user reviews each draft plan, flips `status: draft → open` to accept (or moves to `archive/` to decline). To flesh out a draft into a full plan with peer review and R-ID coverage, run `/en-plan --resume docs/plans/active/<plan>.md`.
 8b. **Recurrence scan (opt-in).** If `sweep.recurrence_scan: true`, a correction made in two or more merged PRs becomes one routed TD entry, committed as its own `td-recurrence` batch. Follow `references/recurrence-scan.md`.
+8c. **Strategy.** Per `references/sweep-checks.md` §G: file `strategy-missing` when `docs/foundation.md` has no Strategy section, and `strategy-drift-st<N>` when an ST line's factual claim no longer matches the repo, both through `ensemble-td-append`. Sweep never edits the Strategy section, in a fix-up PR or anywhere else: the author owns it, and the fix is `/en-foundation --strategy`. Step 11's `ensemble-doc-only-check` refuses a batch that touches it.
 9. **Categorize findings strictly into doc batches; surface code-level findings to `tech-debt-tracker.md`.** Per `references/sweep-checks.md`. Code-level findings get appended via the format in `references/tech-debt-tracker-format.md`.
 10. **Guard 2 — no-material-diff termination.** If no batches were produced, write `.ensemble/sweep-result.json` with an empty `prs` list (step 14) and exit; no PR, no comment.
 11. **Stage + verify each batch.**
