@@ -7,6 +7,11 @@
 
 set -eu
 
+# Every path below is repo-relative; run from the root so a call from a
+# subdirectory cannot resolve them elsewhere and pass. Outside a repo, refuse.
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "ensemble-doc-only-check: not inside a git repository" >&2; exit 1; }
+cd "$ROOT"
+
 # --no-renames: under rename detection a move lists only its new path, so a
 # source file moved into docs/ would pass with its deleted source unseen.
 CHANGED_PATHS=$(git diff --cached --name-only --no-renames 2>/dev/null || true)

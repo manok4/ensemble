@@ -200,4 +200,15 @@ printf 'x\n' > docs/other.md && git add docs/other.md
 output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
 assert_exit_code 0 "$rc" "an untouched foundation with two Strategy headings does not block other docs"
 
+# Run from a subdirectory: the repo-relative paths must still resolve.
+strategy_repo "$FX/numbered.md"
+sed -i.bak 's/author-approved 2026-11-01/author-approved 2026-11-02/' docs/foundation.md && rm docs/foundation.md.bak
+git add docs/foundation.md; mkdir -p sub
+output=$(cd sub && "$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "a Strategy edit is refused when the check runs from a subdirectory"
+
+TMP=$(mktemp -d)
+output=$(cd "$TMP" && "$CHECK" 2>&1); rc=$?; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "outside a git repository the check refuses"
+
 report
