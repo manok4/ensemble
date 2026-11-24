@@ -4,6 +4,7 @@
 
 set -u
 
+here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 
@@ -36,6 +37,18 @@ if [ -f CLAUDE.md ]; then
 fi
 
 [ -f docs/foundation.md ]        && check "docs/foundation.md present" green        || check "docs/foundation.md present" yellow "Run /en-foundation"
+# The Strategy section, read by the sibling reader every other consumer uses.
+# No repair is offered: only the author writes it, through /en-foundation.
+if [ -f docs/foundation.md ]; then
+  strategy=$("$here/ensemble-strategy-section" docs/foundation.md 2>/dev/null); strategy_rc=$?
+  if [ "$strategy_rc" -eq 3 ]; then
+    check "Strategy section" yellow "Two Strategy headings in docs/foundation.md"
+  elif [ -n "$strategy" ]; then
+    check "Strategy section" green
+  else
+    check "Strategy section" yellow "No Strategy section; run /en-foundation --strategy"
+  fi
+fi
 [ -f docs/architecture.md ]      && check "docs/architecture.md present" green      || check "docs/architecture.md present" yellow "Run /en-foundation"
 [ -d docs/plans/active ]         && check "docs/plans/active/ present" green        || check "docs/plans/active/ present" yellow "Run /en-setup"
 [ -d docs/plans/completed ]      && check "docs/plans/completed/ present" green     || check "docs/plans/completed/ present" yellow "Run /en-setup"
