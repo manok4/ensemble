@@ -6,7 +6,7 @@ The IDs Ensemble assigns and the rules that keep them stable.
 
 | ID | Where assigned | Format | Stability rule |
 |---|---|---|---|
-| `ST<N>` | `foundation.md` Section 1 (Strategy) | `ST1`, `ST2`, … | Append-only. A retired principle stays numbered and is marked "(retired YYYY-MM-DD)", never deleted or reused. |
+| `ST<N>` | `foundation.md` Section 1 (Strategy) | `ST1`, `ST2`, … | Append-only. A retired principle stays numbered and is marked "(retired YYYY-MM-DD)", never deleted or reused. `scripts/ensemble-strategy-section --ids` lists the declared IDs. |
 | `R<N>` | `foundation.md` Section 5 (Functional Requirements) | `R1`, `R2`, … | Append-only. Removed requirements get marked `deprecated`, not deleted. |
 | `A<N>` | `foundation.md` Section 3 (Users & Actors) | `A1`, `A2`, … | Append-only. |
 | `F<N>` | `foundation.md` Section 6 (User Experience) | `F1`, `F2`, … | Append-only. |
