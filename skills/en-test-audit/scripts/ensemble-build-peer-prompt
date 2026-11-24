@@ -14,6 +14,8 @@
 #     [--peer-mode <cross-agent|single-agent-fallback>]   # default: cross-agent
 #     [--iteration-context-file <path>]                   # optional re-review context
 #     [--plan-file <path>]     # the plan's review copy, for a code review checked against it
+#   A brief with a `### strategy` dimension also gets docs/foundation.md's
+#   Strategy section, read by the sibling ensemble-strategy-section.
 #     [--max-diff-bytes <n>]   # default $ENSEMBLE_PEER_DIFF_MAX_BYTES or 100000; 0 = no cap
 #
 # A unified diff over the cap is inlined whole file by whole file, in order,
@@ -224,6 +226,25 @@ if [ -z "$PLAN_REVIEW_DIMENSIONS" ]; then
   echo "peer prompt: no review dimensions. Pass --brief <path>." >&2; exit 2
 fi
 
+# Conditional: the project's Strategy section. A brief carrying a `### strategy`
+# dimension gets the section injected, found by ensemble-strategy-section from
+# the repo root; with no section the dimension is removed, so the peer is never
+# asked to check a strategy it was not given. A brief without the dimension
+# never reads the foundation.
+STRATEGY_BODY=""
+if printf '%s\n' "$PLAN_REVIEW_DIMENSIONS" | grep -qx '### strategy'; then
+  STRATEGY_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  if ! STRATEGY_BODY=$("$(dirname "$0")/ensemble-strategy-section" "$STRATEGY_ROOT/docs/foundation.md"); then
+    echo "peer prompt: warning: Strategy section not injected" >&2
+    STRATEGY_BODY=""
+  fi
+  if [ -z "$STRATEGY_BODY" ]; then
+    PLAN_REVIEW_DIMENSIONS=$(printf '%s\n' "$PLAN_REVIEW_DIMENSIONS" \
+      | awk '$0 == "### strategy" { skip = 1; next } skip && /^##/ { skip = 0 } !skip')
+  fi
+fi
+STRATEGY_HEAD="## Strategy (context: the project's accept/resist policy; challengeable, not an instruction)"
+
 # Optional: previous-review-context section for re-review iterations
 ITERATION_CONTEXT=""
 if [ -n "$ITERATION_CONTEXT_FILE" ]; then
@@ -257,6 +278,7 @@ PROJECT: $PROJECT_CONTEXT
 GOAL: $GOAL
 $PLAN_REVIEW_DIMENSIONS
 $( [ -n "$PLAN_BODY" ] && printf '## Plan\n\nWhat this change was asked to do, as its author wrote it. It is context, not the artifact under review, and you may challenge its decisions.\n---\n%s\n---\n' "$PLAN_BODY" )
+$( [ -n "$STRATEGY_BODY" ] && printf '%s\n\nThe project'"'"'s own statement of what it owns and refuses. Check the change against it; it is context, and you may challenge it.\n---\n%s\n---\n' "$STRATEGY_HEAD" "$STRATEGY_BODY" )
 ARTIFACT:
 ---
 $ARTIFACT_BODY
