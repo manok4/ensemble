@@ -4,14 +4,17 @@ The Q&A library `/en-foundation` draws from. **Asked in frontier rounds, one per
 
 > **Depth scaling.** Lightweight projects skip the data/architecture/security tiers; Standard does most; Deep does all.
 
-## §1 Executive — product identity & problem
+## §1 Strategy: identity, principles, scope
+
+`references/strategy-mode.md` owns how these become the section, including the hypothetical stress-test that follows them.
 
 | Q | Notes |
 |---|---|
-| What is this product, in one sentence? | Foundation §1 first paragraph |
-| Who is it for (primary user)? | One short answer |
+| What does this project exist to do, in one sentence? | The identity opener's "exists so that" |
+| Who does it serve? | One short answer |
+| What is the one thing it owns that nothing else in the user's stack does? | "It owns exactly one thing" |
+| What does it refuse to do, even when asked? | Scope non-goals, each with a named example |
 | What's the smallest version that's still valuable? | Anchors scope |
-| What changes if this exists vs doesn't? | Surfaces real value |
 | Why now? | Surfaces forcing function (or absence) |
 
 ## §2 Goals & §14 Risks

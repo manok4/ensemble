@@ -55,6 +55,12 @@ foundation because every later plan inherits them.
 "Handles 10k concurrent users" in a foundation with no load evidence is a wish.
 Flag it, or flag that it needs qualifying.
 
+### G. A Strategy that cannot judge a change
+
+§1 Strategy is what every later code review checks a change against. Flag an ST
+line a reviewer could not apply to a concrete PR ("we value quality"), and a
+Scope non-goal with no named example of what it rules out.
+
 Do not flag: prose style, heading order, section naming, or the absence of
 sections the project does not need.
 

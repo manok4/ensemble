@@ -1,6 +1,6 @@
 ---
 name: en-foundation
-description: "Produce or retrofit the foundational artifacts: docs/foundation.md (PRD, tech direction, architecture), docs/architecture.md, AGENTS.md, CLAUDE.md; the draft is peer-reviewed. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'PRD and architecture'."
+description: "Produce or retrofit the foundational artifacts: docs/foundation.md (strategy, PRD, tech direction, architecture), docs/architecture.md, AGENTS.md, CLAUDE.md; the draft is peer-reviewed. Trigger phrases: 'create foundation', 'foundation doc', 'new product', 'retrofit foundation', 'PRD and architecture', 'write the strategy'."
 ---
 
 
@@ -28,6 +28,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 
 2a. **Start the run ledger.** `bash "$SKILL_DIR/scripts/ensemble-run-metrics" start --skill en-foundation`. Fire-and-forget; the peer pass below records into it without being told where, per `references/run-metrics.md`.
 3. **Detect mode.**
+   - `--strategy` → strategy-only mode: follow `references/strategy-mode.md`, then close at step 17. Steps 4 to 16 do not run.
    - `--retrofit` flag, or `docs/foundation.md` exists with `status: draft` → retrofit/edit mode.
    - Otherwise → fresh mode.
 4. **Orient, and write down what you already know.** Read in parallel:
@@ -39,7 +40,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
    **Output a known-facts ledger** before moving on: for each discovery group (§1, §2, §3, §5, §6, §7, §8, §9, §10, §11, §13, §14), record `answered` (with the value and where it came from), `partial`, or `unknown`. The ledger is what step 6 subtracts against, and it is the difference between a Deep run costing 30–45 questions and costing what is genuinely still open. Surface it in one line: *"Orient answered §7 (stack: TypeScript/Bun/Postgres, from package.json) and §10 (12 routes, from src/api/); §1–§6 and §14 are open."* Write the ledger to `/tmp/ensemble/en-foundation/<run-id>/ledger.md` and update it as answers arrive: a discovery loop runs long enough for the context to be compacted, and the draft at step 9 is written from the file, not from memory of the dialogue.
 5. **Right-size depth.** Lightweight / Standard / Deep — picks based on project complexity. Default Standard.
 6. **Discovery loop.** Walk the topic groups in `references/foundation-questions.md`:
-   - §1 Executive identity & problem
+   - §1 Strategy: identity, principles, scope
    - §2 Goals & non-goals (G-IDs)
    - §3 Users & roles (A-IDs)
    - §5 Functional requirements (R-IDs assigned here, append-only thereafter; AE-IDs for acceptance examples)
@@ -82,7 +83,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 8. **Resolve `plan_id_prefix`.** Derive a 2–3 uppercase-letter suggestion from `{{PROJECT_NAME}}` (e.g. `Ensemble` → `EN`; `Ella Website` → `EW`; `User Dashboard Service` → `UDS`). Ask the user to accept or override:
    > "Plan-ID prefix for this project? Suggested: `EN` (used like `EN03`). Press enter to accept, or type a 2–3 uppercase-letter alternative."
    Validate: 2–3 chars, `[A-Z]+`, not in the reserved set `{R, U, AE, TD}`. On retrofit (foundation already exists with a `plan_id_prefix:`), keep the existing value — never silently change it after plans have been minted. If the user declines to set one, use `FR` as the fallback.
-9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`, from the ledger file. Settle structure and the hard calls in reasoning; write the document once, in the output. On a retrofit the file already exists: edit it surgically and rewrite only sections that mostly change.
+9. **Draft `docs/foundation.md`** using `references/templates/foundation-template.md`, from the ledger file. §1 Strategy is drafted by `references/strategy-mode.md` steps 2 to 8: a fresh run skips its history gate and mining, and no section is written without the author's explicit approval of its full text. Settle structure and the hard calls in reasoning; write the document once, in the output. On a retrofit the file already exists: edit it surgically and rewrite only sections that mostly change.
 
     **Report at the precision you actually have.** This document is the root every plan in the project cites, so a number invented here is load-bearing for the life of the repo.
     - **Never upgrade a directional goal into a measurable one.** If the user said "faster onboarding", write that. Do not render it as "onboarding under 5 minutes" because a target reads better — nobody committed to that number.
@@ -114,6 +115,7 @@ Combined PRD + technical direction + initial architecture seed for a project. Ru
 | Flag | Effect |
 |---|---|
 | `--retrofit` | Back-fill the foundation for an existing project from its code; see below. Also implied when `docs/foundation.md` exists with `status: draft`. |
+| `--strategy` | Write or revise only the Strategy section (§1), with the author, per `references/strategy-mode.md`: evidence from merged PRs, a one-at-a-time hypothetical stress-test, explicit approval. Stops below 20 commits unless the author says to proceed. |
 | `--no-peer` | Skip the Outside Voice review of the draft. |
 
 ## Retrofit mode (`--retrofit`)

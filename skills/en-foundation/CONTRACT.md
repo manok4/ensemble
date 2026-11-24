@@ -8,6 +8,7 @@ Owned by `en-foundation`. Callers depend on this page, not on `SKILL.md`.
 |---|---|
 | `/en-foundation <request>` | `en-conductor`, on the foundation route; a person |
 | `--retrofit` | back-fill the foundation for an existing project from its code |
+| `--strategy` | write or revise only the Strategy section (§1) with the author; stops below 20 commits unless the author says to proceed |
 | `--no-peer` | skip the Outside Voice review of the draft |
 
 ## Non-interactive guarantee
