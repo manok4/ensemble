@@ -47,6 +47,7 @@ Put shared agent guidance here, never in `CLAUDE.md`, which only imports this fi
 | Topic | Source of truth |
 |---|---|
 | Product vision, requirements, skill and agent catalog, architecture | [`docs/foundation.md`](./docs/foundation.md): §5 skills, §6 agents, §9 architecture, §18 doc lints |
+| Strategy: what Ensemble owns, refuses, and how a change is judged | [`docs/foundation.md`](./docs/foundation.md) §1 (ST-IDs) |
 | Decisions and the rules they create | D-IDs in `docs/foundation.md` §4.1. `/en-learn` writes new ADRs to `docs/decisions/NNNN-<slug>.md`, created on first use |
 | In-flight plans | [`docs/plans/active/`](./docs/plans/active/) |
 | Shipped plans | [`docs/plans/completed/`](./docs/plans/completed/), listed in [`docs/generated/plan-index.md`](./docs/generated/plan-index.md) |
@@ -88,7 +89,7 @@ When several skills could apply: use the one the user names; else the most speci
 ## Conventions
 
 - **Repo-relative paths only** in artifacts. No absolute paths (`/Users/...`, `C:\...`).
-- **Stable IDs:** `R<N>` requirements, `D<N>` decisions, `U<N>` plan units (never renumbered), `EN<NN>` plans (`plan_id_prefix: EN`), `TD<N>` tracked debt.
+- **Stable IDs:** `ST<N>` strategy principles, `R<N>` requirements, `D<N>` decisions, `U<N>` plan units (never renumbered), `EN<NN>` plans (`plan_id_prefix: EN`), `TD<N>` tracked debt.
 - **Conventional commits:** `<type>(<scope>): <subject>`, types `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Subject ≤ 50 chars, imperative.
 - **Skills are self-contained.** A file two skills share is copied byte-identical into each. Edit every copy in the same change; `tests/parity/` fails on drift. Edit `ensemble-lint` in its `en-setup` template, then copy it to `bin/` (`tests/lint/bin-template-sync.test.sh`).
 - **Generated files are never hand-edited:** `docs/generated/` and `docs/learnings/index.md`.

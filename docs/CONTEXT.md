@@ -27,6 +27,13 @@ A numbered capability the product must have, identified by an **R-ID** and
 declared in the foundation. Units cite the R-IDs they cover, which is how a
 finished plan is checked against what was actually asked for.
 
+### Strategy
+The project's accept/resist policy: §1 of the foundation, opened by an
+author-approved marker, with principles identified by **ST-IDs** (`ST1`, `ST2`,
+…) and a Scope of non-goals. The peer checks every change against it; only
+`/en-foundation --strategy` writes it, with the author. Not a roadmap and not a
+vision statement: a line that cannot judge a concrete change does not belong.
+
 ### Tech debt item
 A known defect or gap recorded rather than fixed, identified by a **TD** number.
 Filing one is a decision to defer with the reasoning attached — distinct from
