@@ -2,8 +2,8 @@
 type: plan-index
 generated: true
 generator: ensemble-lint
-updated: 2026-11-12
-total_entries: 30
+updated: 2026-11-24
+total_entries: 31
 ---
 
 # Plans — index
@@ -12,7 +12,7 @@ total_entries: 30
 
 ## Active
 
-_(none)_
+- [`EN32-feature_strategy-section.md`](../plans/active/EN32-feature_strategy-section.md) — **EN32** Strategy section in the foundation, consumed across skills (in_progress)
 
 ## Completed
 
