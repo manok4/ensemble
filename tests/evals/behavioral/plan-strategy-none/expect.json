@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "base_from": "plan-strategy-touch",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [
+    {
+      "unit_matching": ".",
+      "scope": "plan",
+      "must_contain": ["Strategy: none touched"]
+    }
+  ]
+}

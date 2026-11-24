@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "base_from": "plan-strategy-touch",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [
+    {
+      "unit_matching": ".",
+      "scope": "plan",
+      "must_contain": ["Strategy: ST2"]
+    }
+  ],
+  "judge": [
+    {
+      "id": "names-st2-crossed",
+      "expectation": "The plan's Decisions, assumptions & risks section names ST2 (No network calls) as a principle this work crosses, rather than proceeding as if the strategy did not apply."
+    }
+  ]
+}

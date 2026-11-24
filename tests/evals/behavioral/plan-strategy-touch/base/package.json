@@ -1,0 +1,7 @@
+{
+  "name": "report-cli",
+  "version": "2.3.0",
+  "private": true,
+  "bin": { "report": "bin/report.js" },
+  "scripts": { "test": "node --test" }
+}
