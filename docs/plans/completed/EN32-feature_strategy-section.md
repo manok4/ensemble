@@ -3,10 +3,10 @@ type: plan
 plan_type: feature
 plan_id: EN32
 title: Strategy section in the foundation, consumed across skills
-status: in_progress
-location: active
+status: completed
+location: completed
 created: 2026-11-24
-shipped:
+shipped: 2026-11-24
 deepened:
 covers_requirements: []
 requirements_pending: true
@@ -458,3 +458,4 @@ None resolved.
 > - 2026-11-24 (peer pass 1, codex): revise. Applied all six findings (5 P1, 1 P2): plain-text citation rule, one recognition shared by reader, lint and check-health, behavioral cases for en-plan, manual procedures for en-foundation and sweep drift, doc-only-check guard on the Strategy section, Strategy: Scope titles.
 > - 2026-11-24 (peer pass 2, codex): revise, cap reached. Applied both findings: delta mode replaces only the located section (P1); the sweep guard fails closed on a reader error (P2).
 > - 2026-11-24: the user accepted the plan as-is at the cap; status open.
+> - 2026-11-24 (shipped by /en-build): all ten units landed. Deviations: the reader copies for en-review, en-test-audit and en-sweep landed with their callers (U4, U8), since skill-payload rejects an unreached script; strategy-only mode skips steps 4 to 16, not 4 to 10; intake names only principles the work could break, strain or change, after the first behavioral pass; the doc-only guard checks the batch since the merge-base with `--no-renames` from the repo root (three bypasses found in review); fences follow CommonMark run-length matching. Ensemble's own section has seven principles by its author's choice. The sweep runner's unverified merge is TD47.

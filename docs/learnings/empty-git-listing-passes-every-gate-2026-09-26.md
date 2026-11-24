@@ -1,8 +1,8 @@
 ---
 title: A gate over a git file listing passes silently when the listing fails
-applies_when: Writing a script that checks "every file (or declaration) in a git listing" and derives the pathspec from config or frontmatter
+applies_when: Writing a script that checks "every file (or declaration) in a git listing", or a guard that decides what a batch changed
 date: 2026-09-26
-tags: [git, shell, verifiers, silent-failure]
+tags: [git, shell, verifiers, silent-failure, guards]
 related: []
 status: active
 ---
@@ -22,3 +22,16 @@ reported every violation. It was found by review, not by a test, because every
 fixture used a named subdirectory. Use `.` for the whole tree, die on a non-zero
 exit from any listing a gate iterates, and give the whole-repo scope its own
 scenario.
+
+The listing can also succeed and still not show the change. EN32's
+`ensemble-doc-only-check` passed three bypasses a review found, each a listing
+that was valid but narrower than the batch: `git diff --cached` against `HEAD`
+misses an edit committed on the branch before the check runs; under default
+rename detection `--name-only` prints only a rename's new path, so a source
+file moved into `docs/` hides its deletion; and `ls-tree` / `ls-files`
+resolve pathspecs against the current directory, so a call from a
+subdirectory finds nothing. A guard lists against the branch's merge-base with
+the default branch, with `--no-renames`, from the repo root, and gives each of
+those three cases a test.
+
+Last updated 2026-11-24.

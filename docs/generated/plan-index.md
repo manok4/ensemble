@@ -12,7 +12,7 @@ total_entries: 31
 
 ## Active
 
-- [`EN32-feature_strategy-section.md`](../plans/active/EN32-feature_strategy-section.md) — **EN32** Strategy section in the foundation, consumed across skills (in_progress)
+_(none)_
 
 ## Completed
 
@@ -46,3 +46,4 @@ total_entries: 31
 - [`EN29-bug_ship-secret-scan-coverage.md`](../plans/completed/EN29-bug_ship-secret-scan-coverage.md) — **EN29** Scan every line a ship pushes, with remediation that works (shipped 2026-11-11)
 - [`EN30-feature_ship-effort.md`](../plans/completed/EN30-feature_ship-effort.md) — **EN30** Run /en-ship at a configured effort per host (shipped 2026-11-11)
 - [`EN31-feature_en-qa-video-evidence.md`](../plans/completed/EN31-feature_en-qa-video-evidence.md) — **EN31** en-qa records a video per verified flow, viewable over the tailnet (shipped 2026-11-12)
+- [`EN32-feature_strategy-section.md`](../plans/completed/EN32-feature_strategy-section.md) — **EN32** Strategy section in the foundation, consumed across skills (shipped 2026-11-24)
