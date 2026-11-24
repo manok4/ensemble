@@ -7,13 +7,15 @@
     {
       "unit_matching": ".",
       "scope": "plan",
-      "must_contain": ["Strategy: ST2"]
+      "must_contain": [
+        "Strategy:"
+      ]
     }
   ],
   "judge": [
     {
-      "id": "names-st2-crossed",
-      "expectation": "The plan's Decisions, assumptions & risks section names ST2 (No network calls) as a principle this work crosses, rather than proceeding as if the strategy did not apply."
+      "id": "names-st2",
+      "expectation": "The plan's `Strategy:` line names ST2 (No network calls), and its Decisions, assumptions & risks section names ST2 as a principle this work crosses, rather than proceeding as if the strategy did not apply."
     }
   ]
 }

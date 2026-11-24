@@ -177,7 +177,7 @@ pre-flight. /en-plan keeps the two in sync (structured drives prose).
 
 - **Requirements traceability:**
   - Cite R-IDs from `foundation.md`. If `foundation.md` doesn't exist yet (State-2 retrofit), set `covers_requirements: []` and `requirements_pending: true`. Lint upgrades to P1 once foundation has R-IDs.
-  - When the foundation has a Strategy section (`scripts/ensemble-strategy-section` prints it), name the principles the plan bears on in one line under `## Requirements covered`: `Strategy: ST2, ST4`, or `Strategy: none touched`. Omit the line when it prints nothing. ST-IDs are cited in plain text so the lint resolves them.
+  - When the foundation has a Strategy section (`scripts/ensemble-strategy-section` prints it), name the principles the plan's work could break, strain or change in one line under `## Requirements covered`: `Strategy: ST2, ST4`, or `Strategy: none touched`. Omit the line when it prints nothing. ST-IDs are cited in plain text so the lint resolves them.
 
 - **Execution note:**
   - `test-first` — write a failing test, then implementation. Default for new behavior with clear contracts.
