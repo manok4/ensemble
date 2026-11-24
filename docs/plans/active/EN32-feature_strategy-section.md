@@ -3,7 +3,7 @@ type: plan
 plan_type: feature
 plan_id: EN32
 title: Strategy section in the foundation, consumed across skills
-status: open
+status: in_progress
 location: active
 created: 2026-11-24
 shipped:
