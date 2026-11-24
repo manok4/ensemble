@@ -177,4 +177,27 @@ staged_check
 assert_exit_code 1 "$rc" "two Strategy headings fail closed"
 assert_contains "$output" "cannot read the Strategy section in HEAD docs/foundation.md" "and name the revision the reader could not read"
 
+# A rename shows only its new path under git's default rename detection, so a
+# moved foundation would skip the Strategy comparison, and a source file moved
+# into docs/ would pass the allowlist with its deleted source unseen.
+strategy_repo "$FX/numbered.md"
+git mv docs/foundation.md docs/foundation-old.md
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "renaming the foundation away is refused as a Strategy edit"
+assert_contains "$output" "en-sweep never edits the Strategy section" "the rename refusal names the Strategy rule"
+
+TMP=$(mktemp -d); setup_temp_repo "$TMP"; pushd "$TMP" >/dev/null
+mkdir -p src docs && printf 'code\n' > src/x.js && git add src/x.js && git commit -qm code
+git mv src/x.js docs/x.js
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "moving a source file into docs/ is refused"
+assert_contains "$output" "src/x.js" "the refusal names the source path the move deleted"
+
+# A foundation the batch does not touch is never read, so a repo whose HEAD
+# already has two Strategy headings can still ship unrelated doc fixes.
+strategy_repo "$FX/duplicate.md"
+printf 'x\n' > docs/other.md && git add docs/other.md
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 0 "$rc" "an untouched foundation with two Strategy headings does not block other docs"
+
 report
