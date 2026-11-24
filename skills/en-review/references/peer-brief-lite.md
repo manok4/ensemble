@@ -34,7 +34,7 @@ dimensions below is a valid, expected result.
 
 ### strategy
 
-Present only when the project has a Strategy section, shown above under `## Strategy (context: ...)`.
+Present only when the project has a Strategy section, given below under `## Strategy (context: ...)`.
 
 | Category | Examples |
 |---|---|

@@ -44,7 +44,7 @@ No rule runs on files under `docs/plans/legacy/`. Archived plans are frozen hist
 | `cross-link.broken-path` | P1 | Markdown link to a path that doesn't exist |
 | `cross-link.broken-td` | P1 | `(see TD<N>)` or `Resolves: TD<N>` resolves to nothing |
 
-### `strategy.*` — Strategy section
+### `strategy.*`: Strategy section
 
 | Rule | Severity | Notes |
 |---|---|---|

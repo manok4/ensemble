@@ -25,6 +25,11 @@ Run `bash "$SKILL_DIR/scripts/ensemble-strategy-section"`.
   than the marker's date, and each accepted or declined on its own. It never
   redrafts the section from scratch.
 - **It prints nothing:** the repo has no approved section, and the run drafts one.
+  First check for an unmarked heading the reader would match (`## Strategy` or
+  `## <N>. Strategy`, outside fenced code). If there is one, ask the author
+  whether it is the strategy: on yes, step 7 writes into that heading and adds
+  the marker; on no, it is retitled before step 7 adds a section, so the file
+  never holds two Strategy headings.
 - **It exits 3:** `docs/foundation.md` has two Strategy headings. Stop and ask
   the author which one is the strategy. Write nothing until they answer.
 - **`--strategy` with no `docs/foundation.md`:** stop and say to run
@@ -89,6 +94,8 @@ write nothing, and stop.
 
 - **Delta mode:** replace only the lines of the section the reader located,
   wherever it sits and whatever its number. Nothing else in the file moves.
+- **An unmarked heading the author named in step 1:** replace its body and add
+  the marker; nothing else moves.
 - **No section yet:** retitle §1 in place to `## 1. Strategy` and replace its
   body. With no §1, insert the section after the title block, before the first
   `##` heading.
@@ -117,7 +124,7 @@ to Resolved with `Resolved: YYYY-MM-DD by /en-foundation --strategy`.
 
 ## 10. Peer
 
-Under `--strategy`, run the Outside Voice review (SKILL.md step 11) with the
+Under `--strategy`, run the Outside Voice review that SKILL.md describes, with the
 section the reader prints, written to a temp file, as `--artifact-file`, and
 `--goal "Strategy review"`. A fresh or retrofit run keeps its whole-foundation
 pass, which covers §1.

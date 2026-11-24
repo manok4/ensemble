@@ -14,9 +14,9 @@
 #     [--peer-mode <cross-agent|single-agent-fallback>]   # default: cross-agent
 #     [--iteration-context-file <path>]                   # optional re-review context
 #     [--plan-file <path>]     # the plan's review copy, for a code review checked against it
+#     [--max-diff-bytes <n>]   # default $ENSEMBLE_PEER_DIFF_MAX_BYTES or 100000; 0 = no cap
 #   A brief with a `### strategy` dimension also gets docs/foundation.md's
 #   Strategy section, read by the sibling ensemble-strategy-section.
-#     [--max-diff-bytes <n>]   # default $ENSEMBLE_PEER_DIFF_MAX_BYTES or 100000; 0 = no cap
 #
 # A unified diff over the cap is inlined whole file by whole file, in order,
 # until the budget is spent; the files left over are listed by path and size
@@ -277,8 +277,7 @@ $SINGLE_AGENT_NOTE
 PROJECT: $PROJECT_CONTEXT
 GOAL: $GOAL
 $PLAN_REVIEW_DIMENSIONS
-$( [ -n "$PLAN_BODY" ] && printf '## Plan\n\nWhat this change was asked to do, as its author wrote it. It is context, not the artifact under review, and you may challenge its decisions.\n---\n%s\n---\n' "$PLAN_BODY" )
-$( [ -n "$STRATEGY_BODY" ] && printf '%s\n\nThe project'"'"'s own statement of what it owns and refuses. Check the change against it; it is context, and you may challenge it.\n---\n%s\n---\n' "$STRATEGY_HEAD" "$STRATEGY_BODY" )
+$( [ -n "$PLAN_BODY" ] && printf '## Plan\n\nWhat this change was asked to do, as its author wrote it. It is context, not the artifact under review, and you may challenge its decisions.\n---\n%s\n---\n' "$PLAN_BODY" )$( [ -n "$STRATEGY_BODY" ] && printf '\n%s\n\nThe project'"'"'s own statement of what it owns and refuses. Check the change against it; it is context, and you may challenge it.\n---\n%s\n---\n' "$STRATEGY_HEAD" "$STRATEGY_BODY" )
 ARTIFACT:
 ---
 $ARTIFACT_BODY

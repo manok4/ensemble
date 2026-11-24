@@ -84,4 +84,18 @@ assert_contains "$err" "more than one Strategy section in $FX/duplicate.md" "two
 run --bogus "$FX/numbered.md"
 assert_exit_code 2 "$rc" "an unknown flag exits 2"
 
+# Fences close only on a run of their own character at least as long, so a
+# fenced example of the format inside the section is neither a boundary, a
+# marker nor a declaration.
+run "$FX/nested-fence.md"
+assert_contains "$out" "Last line of the section." "a ## line inside a nested fence does not end the section"
+run --ids "$FX/nested-fence.md"
+assert_eq "ST1" "$out" "an ST heading inside a nested fence is not declared"
+run "$FX/marker-in-fence.md"
+assert_eq "" "$out" "a marker only inside a ~~~ fence does not make the section count"
+run --ids "$FX/h1-boundary.md"
+assert_eq "ST1" "$out" "an uppercase heading is found and an # heading ends the section"
+run --ids "$FX/crlf.md"
+assert_eq "ST1" "$out" "a CRLF foundation reads the same as LF"
+
 report

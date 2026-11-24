@@ -1,4 +1,4 @@
-# Demo — Foundation
+# Demo: Foundation
 
 ## 1. Strategy
 

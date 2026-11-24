@@ -93,14 +93,13 @@ fi
 # not be present. Resolve it rather than hardcoding a layout: this script runs
 # both from the repo root and from inside en-setup's own scripts/ directory, and
 # a fixed skills/... path is only correct in the first case.
-_ch_dir="$(cd "$(dirname "$0")" && pwd)"
 guardrail_bin=""
 # Both candidates are relative to this script, so neither hardcodes a sibling
 # skill's path: the first is the installed layout (skills/<skill>/scripts/), the
 # second the source-repo layout (scripts/ beside skills/). A glob stands in for
 # the skill directory so this file states no path into a sibling's helpers.
-for _c in "$_ch_dir/../../en-guardrail/bin/install-guardrail" \
-          "$_ch_dir"/../skills/*/bin/install-guardrail; do
+for _c in "$here/../../en-guardrail/bin/install-guardrail" \
+          "$here"/../skills/*/bin/install-guardrail; do
   [ -x "$_c" ] && { guardrail_bin="$_c"; break; }
 done
 
@@ -124,7 +123,7 @@ fi
 # repo-rooted path used here until 2026-09-03 resolved only from the root of the
 # ensemble checkout, so everywhere else it took the "Reinstall the plugin"
 # branch and reported the lint missing when it was sitting two directories up.
-_ch_lint="$_ch_dir/../references/templates/ensemble-lint"
+_ch_lint="$here/../references/templates/ensemble-lint"
 if [ -f "$_ch_lint" ]; then
   if (cd "$repo_root" && "$_ch_lint" --quiet --scope docs/ 2>/dev/null); then
     check "ensemble-lint --scope docs/ runs clean" green

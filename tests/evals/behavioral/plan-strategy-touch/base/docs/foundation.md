@@ -9,7 +9,7 @@ depth: lightweight
 plan_id_prefix: RP
 ---
 
-# report — Foundation
+# report: Foundation
 
 ## 1. Strategy
 

@@ -27,11 +27,9 @@ missing() {
   grep -qF 'Ask them one at a time with `QUESTION_TOOL`' "$f" || echo "one at a time"
   grep -qF '/tmp/ensemble/en-foundation/<run-id>/strategy-evidence.md' "$f" || echo "evidence sheet path"
   grep -qF "$SILENCE" "$f" || echo "silence is not approval"
-  grep -qF 'That section is the baseline. The run
-  keeps it and proposes only line-level changes' "$f" || echo "delta keeps baseline"
+  grep -qF 'keeps it and proposes only line-level changes' "$f" || echo "delta keeps baseline"
   grep -qF '`(retired YYYY-MM-DD)`, with its number never reused' "$f" || echo "retire rule"
-  grep -qF 'rule key
-`strategy-missing`' "$f" || echo "close strategy-missing debt"
+  grep -qF 'Resolved: YYYY-MM-DD by /en-foundation --strategy' "$f" || echo "close strategy-missing debt"
 }
 
 assert_eq "" "$(missing "$MODE")" "strategy-mode.md carries every gate"
@@ -41,6 +39,12 @@ grep -vF "$HISTORY" "$MODE" > "$tmp"
 assert_contains "$(missing "$tmp")" "history gate" "removing the history gate turns the pin red"
 grep -vF "$SILENCE" "$MODE" > "$tmp"
 assert_contains "$(missing "$tmp")" "silence is not approval" "removing the approval sentence turns the pin red"
+grep -vF 'keeps it and proposes only line-level changes' "$MODE" > "$tmp"
+assert_contains "$(missing "$tmp")" "delta keeps baseline" "removing the delta-mode line turns the pin red"
+grep -vF 'Resolved: YYYY-MM-DD by /en-foundation --strategy' "$MODE" > "$tmp"
+assert_contains "$(missing "$tmp")" "close strategy-missing debt" "removing the debt-closing line turns the pin red"
+step9=$(awk '/^9\. \*\*Draft/{f=1} f&&/^10\. \*\*/{exit} f' "$F/SKILL.md")
+assert_contains "$step9" "steps 1 to 8" "a fresh or retrofit run starts strategy-mode at Locate"
 
 flags=$(awk '/^## Flags/{f=1; next} f&&/^## /{exit} f' "$F/SKILL.md")
 assert_contains "$flags" '`--strategy`' "SKILL.md's Flags table names --strategy"

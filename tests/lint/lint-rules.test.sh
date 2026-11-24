@@ -1439,6 +1439,18 @@ st_lint
 assert_eq "1" "$(printf '%s\n' "$output" | grep -c 'cross-link.broken-st')" "backticked and fenced IDs are examples; only the plain-text one fires"
 assert_contains "$output" "Citation of ST6" "the plain-text citation is the one reported"
 
+setup_minimum; st_foundation "$ST_MARKED"; st_plan 'A double-backtick span: ``ST7``, and `` `ST8` `` with a literal backtick.
+
+````
+```
+ST9 inside a fence shown in a fence
+```
+````
+
+A real citation of ST6.'
+st_lint
+assert_eq "1" "$(printf '%s\n' "$output" | grep -c 'cross-link.broken-st')" "double-backtick spans and nested fences are examples too"
+
 setup_minimum; st_foundation "$ST_MARKED## 2. Goals
 
 ### ST4. Declared outside

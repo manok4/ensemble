@@ -136,7 +136,7 @@ Start from the trust boundary: name where untrusted data enters the diff, then f
 
 ### strategy
 
-Present only when the project has a Strategy section, shown above under `## Strategy (context: ...)`.
+Present only when the project has a Strategy section, given below under `## Strategy (context: ...)`.
 
 | Category | Examples |
 |---|---|

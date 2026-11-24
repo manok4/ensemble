@@ -448,6 +448,11 @@ assert_exit_code 0 "$rc" "[strategy] an unmarked section still builds"
 assert_not_contains "$s_none" "## Strategy (context:" "[strategy] an unmarked section is not injected"
 assert_not_contains "$s_none" "### strategy" "[strategy] without a section the strategy dimension is removed"
 assert_contains "$s_none" "### correctness" "[strategy] removing it keeps the other dimensions"
+assert_not_contains "$s_none" "**Unamended**" "[strategy] removing the dimension removes its rows too"
+assert_not_contains "$s_none" "Strategy: ST<N>" "[strategy] removing the dimension removes its title guidance"
+s_none_lite=$(sp --brief "$LITE")
+assert_not_contains "$s_none_lite" "**Unamended**" "[strategy] the lite brief loses the dimension's rows with no section"
+assert_contains "$s_none_lite" "### standards" "[strategy] the lite brief keeps the dimension before it"
 
 rm "$SR/docs/foundation.md"
 s_absent=$(sp --brief "$FULL"); rc=$?
@@ -462,6 +467,7 @@ assert_exit_code 0 "$rc" "[strategy] two Strategy headings still build"
 assert_contains "$(cat "$SR/err")" "more than one Strategy section" "[strategy] two Strategy headings warn on stderr"
 assert_not_contains "$s_dup" "## Strategy (context:" "[strategy] two Strategy headings inject nothing"
 assert_not_contains "$s_dup" "### strategy" "[strategy] two Strategy headings remove the dimension"
+assert_not_contains "$s_dup" "**Unamended**" "[strategy] two Strategy headings remove the dimension's rows"
 rm -rf "$SR"
 
 report
