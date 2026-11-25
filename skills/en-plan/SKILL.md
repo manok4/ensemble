@@ -71,6 +71,7 @@ Concrete implementation plan with stable U-IDs and Outside Voice peer review. Ha
    - Prefer a unit that cuts a **narrow but complete path** through the layers it touches, so it is verifiable on its own, over a horizontal slice of one layer that leaves nothing demonstrable.
    - Tightly-coupled changes batch into one unit; independent concerns split. Auth, payments and migrations always get their own unit even when small.
    - **Never renumber after assignment** (per `references/stable-ids.md`).
+   - **Re-check the route.** One unit, the planning questions asked the user nothing, and nobody chose to plan at the Route step's offer: test `references/plan-or-fix.md` again on what research and the breakdown found. When no condition holds, offer `/en-fix` as the Route step does, under its refusals, with each choice you settled in the command: `/en-fix <request>; settled: <choice>: <answer>`.
 
    **Wide refactors are the exception to all of the above**, because one mechanical change whose blast radius fans across the codebase cannot be a single unit that lands green. Sequence it expand → migrate → contract per `references/wide-refactors.md`, which owns the batching and the risk split. A breaking schema change (a rename, a type change, a dropped column) is the same exception, with the concurrency-safe sequence in that file's *Breaking schema changes* section.
 

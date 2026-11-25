@@ -144,6 +144,14 @@ printf '%s' "$impr" | grep -qF 'no `/en-debug`' && printf '%s' "$impr" | grep -q
   && printf '%s' "$impr" | grep -qF 'only when triage marked the request ambiguous' \
   && pass "an improvement skips /en-debug and confirms its spec only when ambiguous" \
   || fail "the **Improvement:** bullet must skip /en-debug, print a three-line spec, and confirm only when ambiguous" "$impr"
+# plan-or-fix.md sends a choice the agent can make itself to /en-fix, so this
+# line is the only place the user sees it before the PR (D151). It sits outside
+# the Bug and Improvement bullets because both paths make such choices.
+choices=$(step_line_matching "$und" '\*\*Choices\.\*\*')
+printf '%s' "$choices" | grep -qF 'On either path, before the Change step' \
+  && printf '%s' "$choices" | grep -qF 'whether the request settled it or you did' \
+  && pass "both paths print each choice made without asking, and who settled it" \
+  || fail "step $und must carry a **Choices.** bullet covering both paths" "$choices"
 
 # --- /en-fix EMB-43 "this is an improvement" with a Bug label: the user wins ---
 tri_text=$(step_text "$tri")
