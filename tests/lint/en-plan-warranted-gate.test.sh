@@ -109,7 +109,32 @@ else
   pass "the write-step offer was removed"
 fi
 
-# --- 6. en-fix reads the same list ---
+# --- 6. the route is re-tested after a one-unit breakdown (D151) ---
+# A plan that ends with one unit and asked the user nothing settled nothing
+# /en-fix would not: condition 3 cannot hold, and condition 1 never did. The
+# re-check sits in the breakdown step, after research and the question rounds,
+# and reuses step 5's offer and refusals rather than inventing a second gate.
+units=$(grep -nE '^[0-9]+\. \*\*Break into units' "$SKILL" | head -1 | cut -d: -f1)
+recheck=$(grep -nF -- '- **Re-check the route.**' "$SKILL" | head -1 | cut -d: -f1)
+next=$(awk -v u="$units" 'NR>u && /^[0-9]+\. \*\*/ {print NR; exit}' "$SKILL")
+recheck_line=$(awk -v r="$recheck" 'NR==r' "$SKILL")
+if [ -n "$recheck" ] && [ -n "$units" ] && [ "$recheck" -gt "$units" ] && [ "$recheck" -lt "$next" ]; then
+  pass "the route re-check sits in the unit breakdown step (line $recheck)"
+else
+  fail "the route re-check must sit in the unit breakdown step" "units=$units recheck=$recheck next=$next"
+fi
+missing=""
+for c in 'One unit' 'asked the user nothing' "nobody chose to plan at the Route step's offer" 'references/plan-or-fix.md' 'as the Route step does, under its refusals' 'settled: <choice>: <answer>'; do
+  printf '%s' "$recheck_line" | grep -qF "$c" || missing="$missing '$c'"
+done
+[ -z "$missing" ] \
+  && pass "the re-check fires on one unit with no question asked and reuses step 5's offer and refusals" \
+  || fail "the re-check lost a clause" "missing:$missing"
+grep -qF 'Nor is a choice you can make yourself whose answer is cheap to reverse' "$LIST" \
+  && pass "condition 1 excludes a choice the agent can make that is cheap to reverse" \
+  || fail "plan-or-fix.md condition 1 must exclude agent-settleable, reversible choices"
+
+# --- 7. en-fix reads the same list ---
 assert_eq "$(hash_file "$LIST")" "$(hash_file "$REPO_ROOT/skills/en-fix/references/plan-or-fix.md")" \
   "en-plan and en-fix carry the same plan-or-fix.md"
 

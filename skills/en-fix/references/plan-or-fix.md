@@ -6,7 +6,7 @@ Read by `/en-conductor` when it routes, by `/en-plan` when it right-sizes a requ
 
 ## Plan when any of these holds
 
-1. **An open decision.** Something the user should settle before code: which architecture, a behaviour trade-off, or more than one reasonable reading that leads to a different design. Unclear wording with no design behind it, such as which of two error messages to show, is one question `/en-fix` asks before editing, not a plan.
+1. **An open decision.** Something the user should settle before code: which architecture, a behaviour trade-off, or more than one reasonable reading that leads to a different design. Unclear wording with no design behind it, such as which of two error messages to show, is one question `/en-fix` asks before editing, not a plan. Nor is a choice you can make yourself whose answer is cheap to reverse, such as a default for an edge case: `/en-fix` names it and the answer it took in its spec.
 2. **A risk surface.** Authentication, payments, migrations, external contracts, or a destructive data operation. These are the small changes that most want a written plan and a peer pass.
 3. **Parts that must land in order, or that a reviewer could judge apart.** An expand, migrate, contract sequence, or a unit whose interface a later unit calls. Several commits alone do not count: a refactor that makes room and the change that uses it is one change. Unrelated concerns in one request do not count either: they share no goal, so each is its own `/en-fix` run and its own PR.
 4. **More than one session.** Work that will not be finished and reviewed in one sitting, where the plan file is the handoff across a context reset.
