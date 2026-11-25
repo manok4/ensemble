@@ -17,7 +17,7 @@ plan_id_prefix: EN
 
 ## Table of Contents
 
-- [1. Executive Summary](#1-executive-summary)
+- [1. Strategy](#1-strategy)
 - [2. Goals and Non-Goals](#2-goals-and-non-goals)
 - [3. User and Use Cases](#3-user-and-use-cases)
 - [4. Product Decisions](#4-product-decisions)
@@ -43,19 +43,52 @@ plan_id_prefix: EN
 
 ---
 
-## 1. Executive Summary
+## 1. Strategy
 
-Ensemble is an **11-skill, 11-agent** product-development toolkit that takes work from rough idea to shipped, documented, peer-reviewed code. It is host-agnostic — every skill detects whether it is running under Claude Code or Codex and adapts tool names, peer-review CLI invocations, and platform-specific behaviors accordingly.
+<!-- strategy: author-approved 2026-11-24 -->
 
-The toolkit has five design pillars:
+Ensemble exists so that one person can take work from idea to a reviewed, documented pull request with AI agents, without the reasoning living only in a chat. It serves a solo operator who builds with Claude Code and Codex; a second person on a shared repo is tolerated, never designed for. It owns exactly one thing: the plan-driven loop in which one agent writes the change, the other model reviews it, and every decision lands in the repo.
 
-1. **Document-as-source-of-truth.** Every phase produces a durable artifact (`AGENTS.md`/`CLAUDE.md`, `foundation.md`, `docs/architecture.md`, `docs/designs/*.md`, `docs/plans/active/<PREFIX><NN>-<plan_type>_<slug>.md`, `docs/learnings/**/*.md`) and the next phase reads it. The repo is the system of record — anything not in the repo is illegible to the agent.
-2. **Map, not encyclopedia.** Top-level `AGENTS.md` and `CLAUDE.md` are short pointer indexes (~100 lines) that lead the agent into deeper sources of truth in `docs/`. SKILL.md files follow the same principle — process logic in the file, templates and long checklists in `references/`.
-3. **Cross-agent peer review.** Claude Code and Codex review each other's work via CLI subprocess at high-leverage gates: end of `en-plan`, per unit during `en-build`, and on demand via `/en-review --peer`.
-4. **Compounding knowledge.** Every solved problem, pattern, and decision is captured in `docs/learnings/` with frontmatter, queryable by future runs. `en-learn` updates `docs/architecture.md` after material changes; `en-sweep` runs event-driven drift cleanup (on every PR merge to `main`) so doc debt gets paid down continuously.
-5. **Lean by design.** A SKILL.md fits in 24KB (about 6K tokens; lines are not a measure, since they run 70–130 characters here); agents are short specialist prompts (~40–120 lines). Conditional dispatch, depth-scaled questioning, mid-tier model defaults for peer review.
+### ST1. The repo is the system of record
 
-Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from Superpowers (TDD discipline, worktree isolation, two-stage review), Gstack (live browser QA, confidence-calibrated findings), Compound Engineering (persona-driven review, autofix-class routing, learnings store, stable IDs), and OpenAI's harness-engineering essay (map-not-encyclopedia AGENTS.md, plans split by lifecycle, doc lints, recurring drift cleanup, failure-→-capability-gap operating principle).
+Decisions, learnings and this strategy live in `docs/`. Plans live there too, or in the tracker a repo opts into, and every build commit names where its plan came from. A decision made in chat is captured before the work moves on. Agent memory holds the user's preferences only, never project facts.
+
+### ST2. The writer never reviews its own work
+
+The host implements and a different model reviews the change. With only one host CLI installed, a fresh instance reviews and the report says single-agent. The peer returns findings and never edits. A skipped or degraded review is named in the report, never passed off as a normal one.
+
+### ST3. A rule is a script, a lint or a test
+
+A step a skill must not skip is enforced by code that fails when the step is skipped, not by stronger prose. A guard is proven by breaking its target and watching it go red.
+
+### ST4. Skills are self-contained and lean
+
+Each skill carries every file it uses, copied byte-identical where shared, and its SKILL.md stays under the byte cap. A new check replaces an existing step or stays off the hot path.
+
+### ST5. The user makes the irreversible calls
+
+Reversible calls are decided and reported. Destructive data changes, production-state changes, risk-surface overrides and merges to the default branch wait for the user's own words. One exception: `/en-sweep`'s doc-only PRs merge unattended once `ensemble-doc-only-check` and a clean review pass.
+
+### ST6. Evidence stays on the user's machines
+
+Run ledgers, analytics and QA video are written locally and never uploaded, on opt-in or otherwise. The only network calls are the host and peer CLIs and services the user configures.
+
+### ST7. Quality, then speed, then cost
+
+Extra depth (research, review passes, model effort) is paid for when it measurably lifts the result, and the run ledger is how it is measured. A cheaper path that lowers the result is not a saving.
+
+### Scope
+
+- Not a host beyond Claude Code and Codex: no Cursor, Gemini or Copilot adapters.
+- Not a merger of code: `/en-conductor` stops at a ready-for-review PR.
+- No telemetry (data leaving the machine), update check or cross-machine sync.
+- Not a reviewer zoo: one dimension reviewer, dispatched once per dimension.
+- No separate PRD, TDD and architecture documents: one foundation.
+- No iron-law TDD as a global gate: execution posture is a per-unit signal.
+- No heavy question ritual: no decision briefs with completeness scores.
+
+A change aligns when it moves a decision into the repo, replaces a prose rule with a check, or removes a step.
+A change should be resisted when it adds a step to the hot path without removing one, sends project data off the machine, or lets an agent make a call reserved for the user.
 
 ---
 
@@ -79,13 +112,7 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 
 ### 2.2 Non-Goals
 
-- A separate, classical PRD/TDD/architecture split (collapsed into one foundation doc).
-- Iron-law red-green-refactor TDD as a global gate (kept as per-unit signal).
-- A 50-agent reviewer zoo (kept lean: 4 always-on, 3 conditional reviewers, 3 research agents).
-- Multi-platform support beyond Claude Code and Codex (no Cursor, Gemini, Copilot, etc. in scope for v1).
-- Cross-machine memory sync, telemetry, or update-check infrastructure.
-- A heavy AskUserQuestion ritual (decision-brief format with completeness scores, ELI10 paragraphs, etc.).
-- An orchestrator that merges, or that decides a call reserved for the user. `/en-conductor` stops at a ready-for-review PR and asks for those calls (D143).
+Non-goals live in §1 Strategy, Scope.
 
 ---
 
@@ -274,6 +301,7 @@ Ensemble replaces the existing `prod-dev-skills` set, borrowing selectively from
 - **D147. `/en-conductor` takes a Linear issue identifier and routes on the issue's state (amends D143, the `/en-conductor` boundary in `/en-plan`'s Linear publish).** `/en-plan`, `/en-build`, `/en-brainstorm` and `/en-fix` each took an identifier, but the one entry point did not, so a triaged issue needed the user to work out which skill it was ready for. Now `/en-conductor ENG-123`, under `plan_store: linear`, reads the issue and takes the first that holds: completed or canceled stops; a published plan (the description's `## Verification Contract`, not sub-issues alone, which a person may have made) stops when the parent is In Review (naming `/en-resolve-pr` when the issue has an open PR, and `/en-ship` when it has none, preceded by `/en-qa` only when the branch diff needs a browser, since `/en-build` sets In Review before they run), builds in session when it is In Progress so `/en-build`'s reconcile reaches the user, and otherwise builds `/en-build <IDENT>`; a design linked by `linear_issue:` or a `Design:` comment goes to `/en-plan <IDENT>`, which consumes it (D120); any other issue routes on its title and description by the rules free text takes, to brainstorm, plan or fix. Every stage receives the identifier, not the issue's text, so each skill keeps its own admission and links its work to the issue. **The boundary moves:** `/en-plan --orchestrated` refused all of `plan_store: linear` because the conductor held a plan path the publish archives. An identifier survives the publish, so the refusal now applies only to a free-text request. Under `plan_store: local` an identifier can take only the fix route, since the other skills refuse one there. The Plan stage passes `--branch-on-default no-commit`, so `/en-build` names the branch from the identifier and the PR links to the issue. Build placement reads each sub-issue's full description for the risk and gate fields, building in session when any cannot be read. **Cost:** routing makes two or three Linear reads before the trail opens, and a published plan the conductor builds was never reviewed in this run, which is the same trust `/en-build <IDENT>` run by hand gives it.
 - **D148. `/en-qa` keeps a video of each verified flow, local and gitignored, and reaches it over the tailnet, never by upload (EN31).** Phase 2 kept screenshots only, and a screenshot shows an end state, not that an action led to it. Now each in-scope flow's golden path, or its failing step on `Fail`, is recorded with the driver the run already chose: `preview_recording_start` and `preview_recording_stop` on T3 Code, `page.screencast` through the run-code tool on Playwright MCP. `ensemble-qa-evidence` keeps the clip in the gitignored `.test-output/qa/<run-id>/`, stripping idle frames into H.264 MP4 when ffmpeg is on PATH and keeping the raw file otherwise, renders the run as one self-contained `index.html`, and links the run dir under `~/.ensemble/qa/<repo>/<run-id>`. A machine that has opted in with the print-only `setup` subcommand serves that directory from a loopback `python3 -m http.server` behind `tailscale serve --https=8443`, so a second Mac on the tailnet opens the page and nothing leaves the user's devices. **Rejected:** `gh pr comment --attach`, because every clip on this public repo would be public, and a PR-body link, because `/en-ship` runs in a fresh agent with no channel to the QA run. The QA report and `/en-conductor`'s report carry the link instead. **Not changed:** the trust-strategy design's video-on-FAIL default (`docs/designs/2026-09-26-agent-trust-strategy-design.md`) still governs its future ship-time verifier, which judges a ship rather than showing a reviewer the change. A recording failure never changes a flow's outcome, a driver with no recorder keeps screenshots and reports the video as unavailable, and nothing installs a recorder. **Cost:** raw recordings run up to 50 MiB each and nothing prunes old runs, and the link answers only while the recording Mac is awake and its worktree exists. Enforcement tier: script behaviour in `tests/lint/ensemble-qa-evidence.test.sh`, wording pins in `tests/lint/en-qa-video-evidence.test.sh`, and live runs checked by hand.
 - **D149. `/en-qa` can be told which browser to drive, and Playwright records at full size (amends D61, D135).** D61's order always picks the host's own browser when it has one, so a T3 Code run had no way out of its preview pane, and one such run (2026-11-16) saved 1280x800 screenshots and video too blurred to read. The skill passed T3's files through byte for byte, so the blur came from the capture, not from en-qa. A `--driver <auto|host|playwright>` flag and a flat `qa_driver` key, read through `ensemble-config-get --strict` at either config layer, now pick the driver; `auto` keeps D61's order. **A forced driver never falls back:** when it is missing, or the key holds an unknown value, Phase 2 is skipped with the reason named, because a project that set `playwright` to escape the pane would otherwise get the pane's evidence with nothing saying so. D61's one-driver rule and its ban on installing a driver are unchanged. **Playwright evidence was soft too:** `page.screencast.start` without `size` scales the viewport down to fit 800x800, so a 1280x800 page recorded at 800x500, and Playwright's headed window has no fixed viewport (one measured 1200x1223). The reference now sets 1280x800 with `browser_resize` before the first flow and passes `size: page.viewportSize()`; checked live on 2026-11-16, the recording came out 1280x800 and sharp, and `scale: css` screenshots were sharp at 1x. **Cost:** a repo that sets `playwright` loses the host pane's zero-setup advantage and depends on the Playwright MCP plugin being connected. Enforcement tier: `tests/lint/en-qa-driver-select.test.sh`, wording pins plus the key's real resolution through en-qa's bundled reader.
+- **D150. A repo's strategy is §1 of its foundation, with stable ST-IDs, checked by the peer on every review.** Ensemble's principles and non-goals sat in four places in this document (§1, §2.2, §3.3, §17) and drifted unnoticed: §1 counted "11-skill, 11-agent" against 18 skills, and §2.2 said "no telemetry" beside D106 and D129's analytics ledger. Nothing checked a change against the product's principles: `en-review` checks plan coverage, and an `/en-fix` change has no plan. A study of the external `/vision` skill (`docs/reviews/strategy-section-review.md`) kept its document shape (an identity opener, principles, non-goals, an "aligns when / should be resisted when" pair) and its hypothetical stress-test, and named the result a strategy. The section is `## 1. Strategy`, counted only with the marker `<!-- strategy: author-approved YYYY-MM-DD -->`, holding a handful of principles declared `### ST<N>.` (the anatomy suggests 3 to 6; Ensemble's own, by its author's choice, has seven) and a Scope of concrete non-goals; §2.2 becomes a pointer to it. **ST, not S,** because a bare `S<N>` collides with "S3" in adopting repos. One reader, `ensemble-strategy-section`, owns finding the section, and the lint embeds the same recognition under a test that runs both. `/en-foundation --strategy` is the only writer: evidence from merged PRs, a one-at-a-time stress-test, explicit approval of the full text, a stop below 20 commits unless the author says to proceed, and append-only IDs. `en-review`'s peer prompt builder injects the section when the brief carries a `strategy` dimension, so `en-review`'s SKILL.md, 27 bytes under its cap, did not change. `/en-plan` names the ST-IDs a plan could break or change; the lint resolves plain-text ST citations (`cross-link.broken-st`, P1 with a section, P3 without; IDs in code spans and fences are examples) and flags two Strategy headings (`strategy.duplicate-section`). Repos already on Ensemble adopt it by detection, not migration: `/en-setup` State 3 shows a yellow row and `/en-sweep` files a `strategy-missing` entry, both pointing at `/en-foundation --strategy`; sweep files drift per ST-ID and `ensemble-doc-only-check` refuses any sweep edit to the section. A repo with no section behaves as before. Writing Ensemble's own section reconciled three older lines rather than reversing them: the "no telemetry" of D9 means data leaving the machine, which the local ledger never does; D101's unattended sweep merge is ST5's one named exception; and D118's Linear plan store is ST1's opt-in tracker. **Not changed:** `/en-fix` triage (it runs `en-review`, which carries the check), the host persona reviewers (the peer is the only checker, so with the peer off nothing checks the strategy), and the external skill, which is not installed (unpinned `npx`, a root file outside `docs/`, no IDs). **Cost:** about 70 more lines in every peer prompt in a repo with a strategy, bounded by the section's 40 to 70 line anatomy. Enforcement tier: `tests/strategy/strategy-section.test.sh` and `consumers-agree.test.sh`, the lint-rule cases, `tests/build-peer-prompt/build-peer-prompt.test.sh`, `tests/en-setup/strategy-advisory.test.sh`, the doc-only and `tests/en-sweep/strategy-debt.test.sh` cases, and wording pins on plan intake, strategy mode and sweep; the authoring and drift judgments are recorded manual procedures in `tests/evals/ledger.md`.
 ---
 
 ## 5. Skill Catalog
@@ -344,8 +372,9 @@ The count read **fourteen** until 2026-09-03, and had done since en-flow, now `e
   5. Synthesize for approval; resolve `plan_id_prefix` (2–3 uppercase letters, `FR` fallback, never changed once plans exist); draft from the template at the precision the user actually gave, no invented metrics, no surviving placeholders, the user's terminology.
   6. Section review with the user; Outside Voice review of the draft through the shared builder and invoke helper, routed by this skill's own brief, at the peer's default tier; apply, defer or disagree.
   7. Seed `docs/architecture.md`; write `AGENTS.md` and `CLAUDE.md` from the templates; on a new project emit the bootstrap plan; flip the foundation to `active` on acceptance; hand off to `/en-build` or `/en-plan`.
+- **Strategy (D150).** §1 is drafted per `references/strategy-mode.md`. `--strategy` runs only that flow on an existing foundation: locate the section (an approved one is the baseline for line-level changes), stop below 20 commits unless the author says to proceed, mine merged PRs into an evidence sheet under `/tmp/ensemble/`, draft, stress-test with 8 to 12 hypotheticals asked one at a time, write only on explicit approval of the full text, consolidate repeats elsewhere, resolve a `strategy-missing` tech-debt entry, and run the peer on the section alone.
 - **Cross-review.** On by default; `--no-peer` disables. **Agents.** `repo-research` only (D56).
-- **Reference files.** `references/foundation-questions.md`, `references/peer-brief.md`, `references/stable-ids.md`, the four templates plus the plan template for the bootstrap plan, the shared peer files (`host-detect.md`, `outside-voice.md`, `peer-contract.md`, `finding-schema.md`), `references/research-dispatch.md`.
+- **Reference files.** `references/foundation-questions.md`, `references/strategy-mode.md`, `references/peer-brief.md`, `references/stable-ids.md`, the four templates plus the plan template for the bootstrap plan, the shared peer files (`host-detect.md`, `outside-voice.md`, `peer-contract.md`, `finding-schema.md`), `references/research-dispatch.md`.
 
 #### 5.2.3 `en-plan`
 
@@ -928,6 +957,7 @@ brainstorm → docs/designs/*.md
 
 | ID | Where assigned | Format | Stability rule |
 |---|---|---|---|
+| `ST<N>` | `foundation.md` Section 1 (Strategy) | `ST1`, `ST2`, … | Append-only. A retired principle stays numbered, marked "(retired YYYY-MM-DD)", never deleted or reused (D150). |
 | `R<N>` | `foundation.md` Section 5 (Functional Requirements) | `R1`, `R2`, … | Append-only. Removed requirements get marked deprecated, not deleted. |
 | `A<N>` | `foundation.md` Section 3 (Users & Actors) | `A1`, `A2`, … | Append-only. |
 | `F<N>` | `foundation.md` Section 6 (User Experience) | `F1`, `F2`, … | Append-only. |
@@ -1370,7 +1400,7 @@ Mechanical checks on the knowledge store. Catch drift early, before it compounds
 
 - **Frontmatter validity.** Every artifact's frontmatter parses, has required fields, uses valid enum values (per `references/learning-frontmatter-schema.md`, etc.).
 - **ID stability.** R-IDs in `foundation.md` are append-only (no renumbering). U-IDs in plans are stable (no renumbering after assignment). Plan IDs (`<PREFIX><NN>`) are unique. The `plan_id_prefix:` in foundation drives new plans; legacy `FR` plans are honored alongside.
-- **Cross-link integrity.** Every `(see R3)`, `(see U5)`, `(see EN07)` / `(see FR07)`, `(see <path>)` resolves. Broken cross-refs are P1 lints. The plan-prefix matcher reads `plan_id_prefix:` from foundation plus all prefixes observed in `docs/plans/{active,completed}/`.
+- **Cross-link integrity.** Every `(see R3)`, `(see U5)`, `(see EN07)` / `(see FR07)`, `(see <path>)` resolves. Broken cross-refs are P1 lints. A plain-text ST-ID must be declared inside the foundation's marked Strategy section (`cross-link.broken-st`): P1 when the section exists, P3 when it does not, and never checked inside a code span or fenced block. Two Strategy headings are `strategy.duplicate-section`, P1 (D150). The plan-prefix matcher reads `plan_id_prefix:` from foundation plus all prefixes observed in `docs/plans/{active,completed}/`.
 - **Status correctness.** `docs/plans/active/*.md` files have `status: draft | open | in_progress | abandoned`. `docs/plans/completed/*.md` files have `status: completed`. Mismatches are P1. `plan_type` must be one of `feature`, `improvement`, `bug`.
 - **No absolute paths.** No artifact contains `/Users/...`, `C:\...`, or other absolute filesystem paths. Repo-relative only.
 - **Freshness.** `docs/architecture.md` `updated:` field is within the freshness window (30 days by default, configurable). Stale → P2 advisory; very stale (90+ days) → P1.

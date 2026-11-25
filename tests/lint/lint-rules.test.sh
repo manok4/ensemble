@@ -1350,6 +1350,128 @@ files_unit 1 '`src/gone.ts` (modify)' | files_plan EN77 completed completed
 files_lint
 assert_not_contains "$output" "unit.files-" "a completed plan's since-deleted path fires nothing"
 
+# --- cross-link.broken-st / strategy.duplicate-section ---
+# An ST<N> in plain text is a citation of a Strategy principle; one in an
+# inline code span or a fenced block is an example and is never checked.
+st_foundation() {  # $1 = body appended after the frontmatter
+  cat > "$TMP/docs/foundation.md" <<EOF
+---
+project: Test
+type: foundation
+status: draft
+created: 2026-04-29
+updated: 2026-04-29
+owner: Test
+depth: standard
+---
+
+# Test foundation
+
+$1
+## 5. Functional Requirements
+
+### R1. First requirement
+EOF
+}
+ST_MARKED='## 1. Strategy
+
+<!-- strategy: author-approved 2026-04-29 -->
+
+### ST1. Plain output
+
+'
+st_plan() {  # $1 = body
+  cat > "$TMP/docs/plans/active/FR50-test.md" <<EOF
+---
+type: plan
+plan_type: feature
+fr_id: FR50
+title: Strategy citation test
+status: open
+location: active
+created: 2026-04-29
+covers_requirements: [R1]
+requirements_pending: false
+---
+
+# FR50
+
+$1
+EOF
+}
+st_lint() { output=$(cd "$TMP" && "$LINT" --scope docs/ 2>&1); }
+
+setup_minimum; st_foundation "$ST_MARKED"; st_plan "Touches ST1."
+st_lint
+assert_not_contains "$output" "cross-link.broken-st" "a citation the Strategy section declares resolves"
+
+setup_minimum; st_foundation "$ST_MARKED"; st_plan "Touches ST9."
+st_lint
+echo "$output" | grep -q '\[P1\] cross-link.broken-st docs/plans/active/FR50-test.md .*ST9' \
+  && { FIRED="$FIRED cross-link.broken-st"; pass "an undeclared ST citation is P1 when the section exists"; } \
+  || fail "an undeclared ST citation is P1 when the section exists" "$output"
+
+setup_minimum; st_foundation '## 1. Strategy
+
+### ST1. Plain output
+'; st_plan "Touches ST1."
+st_lint
+echo "$output" | grep -q '\[P3\] cross-link.broken-st .*ST1' \
+  && pass "with no marked section a citation is P3" \
+  || fail "with no marked section a citation is P3" "$output"
+
+setup_minimum; rm "$TMP/docs/foundation.md"; st_plan "Touches ST1."
+st_lint
+assert_not_contains "$output" "cross-link.broken-st" "with no foundation the rule does not run"
+
+setup_minimum; st_foundation "$ST_MARKED"; st_plan "Stored in S3 per STEP1 and BEST1."
+st_lint
+assert_not_contains "$output" "cross-link.broken-st" "S3, STEP1 and BEST1 are not ST citations"
+
+setup_minimum; st_foundation "$ST_MARKED"; st_plan 'An example: `ST7` in a span.
+
+```
+### ST8. Fenced example
+```
+
+A real citation of ST6.'
+st_lint
+assert_eq "1" "$(printf '%s\n' "$output" | grep -c 'cross-link.broken-st')" "backticked and fenced IDs are examples; only the plain-text one fires"
+assert_contains "$output" "Citation of ST6" "the plain-text citation is the one reported"
+
+setup_minimum; st_foundation "$ST_MARKED"; st_plan 'A double-backtick span: ``ST7``, and `` `ST8` `` with a literal backtick.
+
+````
+```
+ST9 inside a fence shown in a fence
+```
+````
+
+A real citation of ST6.'
+st_lint
+assert_eq "1" "$(printf '%s\n' "$output" | grep -c 'cross-link.broken-st')" "double-backtick spans and nested fences are examples too"
+
+setup_minimum; st_foundation "$ST_MARKED## 2. Goals
+
+### ST4. Declared outside
+"; st_plan "Touches ST4."
+st_lint
+echo "$output" | grep -q '\[P1\] cross-link.broken-st .*ST4' \
+  && pass "an ST heading outside the section does not declare it" \
+  || fail "an ST heading outside the section does not declare it" "$output"
+
+setup_minimum; st_foundation "$ST_MARKED## 2. Strategy
+
+<!-- strategy: author-approved 2026-04-29 -->
+"; st_plan "Touches ST1."
+st_lint
+echo "$output" | grep -q '\[P1\] strategy.duplicate-section docs/foundation.md' \
+  && { FIRED="$FIRED strategy.duplicate-section"; pass "two Strategy headings are P1 on the foundation"; } \
+  || fail "two Strategy headings are P1 on the foundation" "$output"
+echo "$output" | grep -q '\[P3\] cross-link.broken-st .*ST1' \
+  && pass "with duplicate headings citations are checked as if no section exists" \
+  || fail "with duplicate headings citations are checked as if no section exists" "$output"
+
 # --- the architecture template names only rules a case above saw the lint emit ---
 for tpl in "$REPO_ROOT"/skills/*/references/templates/architecture-template.md; do
   ids=$(awk '$0=="## Lint rules"{f=1; next} f&&/^## /{exit} f' "$tpl" | grep -oE '^- `[a-z-]+\.[a-z0-9.-]+`' | grep -oE '[a-z-]+\.[a-z0-9.-]+')

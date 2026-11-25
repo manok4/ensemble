@@ -38,10 +38,17 @@ No rule runs on files under `docs/plans/legacy/`. Archived plans are frozen hist
 | Rule | Severity | Notes |
 |---|---|---|
 | `cross-link.broken-r` | P1 | `(see R<N>)` resolves to nothing in foundation |
+| `cross-link.broken-st` | P1 / P3 | A plain-text `ST<N>` declared by no `### ST<N>.` heading inside the foundation's marked Strategy section; P1 when the section exists, P3 when it does not. IDs in code spans or fenced blocks are examples and never checked |
 | `cross-link.broken-u` | P1 | `(see U<N>)` resolves to nothing in the cited plan; a unit the file also cites as `<PLAN-ID> U<N>` belongs to that plan and is skipped |
 | `cross-link.broken-fr` | P1 | `(see <PREFIX><NN>)` resolves to no plan file in `active/`, `completed/` or `legacy/`; `<PREFIX>` is the foundation `plan_id_prefix:` or any prefix observed in plan filenames |
 | `cross-link.broken-path` | P1 | Markdown link to a path that doesn't exist |
 | `cross-link.broken-td` | P1 | `(see TD<N>)` or `Resolves: TD<N>` resolves to nothing |
+
+### `strategy.*`: Strategy section
+
+| Rule | Severity | Notes |
+|---|---|---|
+| `strategy.duplicate-section` | P1 | `docs/foundation.md` has more than one `## Strategy` heading, so no consumer can say which counts |
 
 ### `status.*` — status correctness
 

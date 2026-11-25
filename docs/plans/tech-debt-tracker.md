@@ -331,6 +331,19 @@ Filed by /en-review (confidence 6) — sub-threshold; surfaced for later review.
 - **Rule key:** private-host-in-docs
 - **Logged:** 2026-11-12
 
+### TD47. Sweep runner merges without re-checking the PR
+
+- **Source:** /en-review (EN32 branch review)
+- **Severity:** P2
+- **Confidence:** 7/10
+- **Location:** skills/en-sweep/scripts/ensemble-sweep-runner
+- **Why it matters:** merge_from_result trusts the agent-written merge_eligible flag and green CI; nothing re-runs the doc-only and Strategy guard on the PR that merges, though SKILL.md says it is verified
+- **Suggested fix:** Fetch each eligible PR head and run the base-relative ensemble-doc-only-check before gh pr merge; leave the PR open on failure
+- **Enforce at:** L2 static
+- **Proposed check:** skills/en-sweep/scripts/ensemble-sweep-runner: re-run ensemble-doc-only-check against each eligible PR head before gh pr merge
+- **Rule key:** sweep-runner-merge-unverified
+- **Logged:** 2026-11-24
+
 ## Resolved
 
 ### TD1. ~~Peer review blocks one tool call, so a killed or truncated call reads as success~~ RESOLVED 2026-08-29

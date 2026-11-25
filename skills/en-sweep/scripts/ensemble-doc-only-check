@@ -2,10 +2,32 @@
 # ensemble-doc-only-check — runtime allowlist enforcement for en-sweep PRs.
 # Verifies that every staged path is under docs/, AGENTS.md, CLAUDE.md, or .ensemble/sweep-summary.md.
 # Exits non-zero (and lists offenders) if any path falls outside the allowlist.
+# Also refuses any staged change to docs/foundation.md's Strategy section, which
+# only its author edits (through /en-foundation --strategy).
 
 set -eu
 
-CHANGED_PATHS=$(git diff --cached --name-only 2>/dev/null || true)
+# Every path below is repo-relative; run from the root so a call from a
+# subdirectory cannot resolve them elsewhere and pass. Outside a repo, refuse.
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "ensemble-doc-only-check: not inside a git repository" >&2; exit 1; }
+cd "$ROOT"
+
+# The batch is everything since the branch left the default branch, committed
+# or staged: comparing only the index with HEAD missed an edit committed before
+# the check ran. Without a default branch to find, HEAD is the base.
+BASE=""
+for ref in origin/HEAD main master; do
+  if git rev-parse -q --verify "$ref^{commit}" >/dev/null; then
+    BASE=$(git merge-base HEAD "$ref" 2>/dev/null) && break
+  fi
+done
+[ -n "$BASE" ] || BASE=HEAD
+
+# --no-renames: under rename detection a move lists only its new path, so a
+# source file moved into docs/ would pass with its deleted source unseen. A
+# listing that fails is refused, never read as "nothing staged".
+CHANGED_PATHS=$(git diff --cached --name-only --no-renames "$BASE") \
+  || { echo "ensemble-doc-only-check: cannot list the batch against $BASE" >&2; exit 1; }
 
 if [ -z "$CHANGED_PATHS" ]; then
   echo "ensemble-doc-only-check: nothing staged" >&2
@@ -23,6 +45,31 @@ if [ -n "$OFFENDERS" ]; then
   echo "If a code-level pattern needs fixing, file it as a TD-entry in docs/plans/tech-debt-tracker.md" >&2
   echo "and let /en-plan + /en-build handle it. Sweep never touches source code." >&2
   exit 1
+fi
+
+# The Strategy section is the author's. Compare it, as the sibling reader sees
+# it, at the base and in the index; any difference, marker date included, is an
+# edit sweep may not make. A reader error on either side fails closed. The
+# trigger is the foundation's index entry (mode and blob) differing from the base's,
+# not the path list, so a rename, deletion or mode change cannot route around it.
+base_entry=$(git ls-tree "$BASE" -- docs/foundation.md 2>/dev/null | awk '{print $1, $3}')
+index_entry=$(git ls-files -s -- docs/foundation.md | awk '{print $1, $2}')
+if [ "$base_entry" != "$index_entry" ]; then
+  READER="$(cd "$(dirname "$0")" && pwd)/ensemble-strategy-section"
+  WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
+  git show "$BASE":docs/foundation.md > "$WORK/base.md" 2>/dev/null || : > "$WORK/base.md"
+  git show :docs/foundation.md > "$WORK/staged.md" 2>/dev/null || : > "$WORK/staged.md"
+  for side in base staged; do
+    f="$WORK/$side.md"
+    if ! "$READER" "$f" > "$f.section" 2>/dev/null; then
+      echo "ERROR: cannot read the Strategy section in $side docs/foundation.md; resolve the duplicate heading outside sweep" >&2
+      exit 1
+    fi
+  done
+  if ! cmp -s "$WORK/base.md.section" "$WORK/staged.md.section"; then
+    echo "ERROR: en-sweep never edits the Strategy section; file a strategy-drift TD instead" >&2
+    exit 1
+  fi
 fi
 
 echo "ensemble-doc-only-check: ✓ all staged paths under docs/ allowlist"

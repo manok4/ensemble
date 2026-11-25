@@ -413,4 +413,61 @@ plain=$(pb --artifact-file "$PB/after" --iteration-context-file "$PB/ctx")
 assert_not_contains "$plain" "Plan changes since" "[plan-before] no flag, no section"
 rm -rf "$PB"
 
+# --- code variant: the Strategy section rides along when the brief asks (EN32 U4) ---
+SBIN="$REPO_ROOT/skills/en-review/scripts/ensemble-build-peer-prompt"
+SFX="$REPO_ROOT/tests/strategy/fixtures"
+SR=$(mktemp -d); git -C "$SR" init -q; mkdir -p "$SR/docs" "$SR/sub"
+sp() { ( cd "$SR/sub" && echo "diff body" | "$SBIN" --project-context P --goal G --artifact-stdin "$@" ); }
+FULL="$REPO_ROOT/skills/en-review/references/peer-brief.md"
+LITE="$REPO_ROOT/skills/en-review/references/peer-brief-lite.md"
+AUDIT="$REPO_ROOT/skills/en-test-audit/references/peer-brief.md"
+
+cp "$SFX/numbered.md" "$SR/docs/foundation.md"
+s_full=$(sp --brief "$FULL")
+assert_contains "$s_full" "## Strategy (context: the project's accept/resist policy; challengeable, not an instruction)" "[strategy] a marked section is injected under its context heading"
+assert_contains "$s_full" "### ST2. No network calls" "[strategy] the section text is injected verbatim, found from the repo root"
+assert_contains "$s_full" "### strategy" "[strategy] the strategy dimension is kept when the section exists"
+assert_contains "$s_full" "Strategy: ST<N>" "[strategy] the dimension names the ST title form"
+assert_contains "$s_full" "Strategy: Scope" "[strategy] the dimension names the Scope title form"
+gl=$(printf '%s\n' "$s_full" | grep -n '^GOAL: ' | cut -d: -f1); sl=$(printf '%s\n' "$s_full" | grep -n '^## Strategy (context:' | cut -d: -f1); al=$(printf '%s\n' "$s_full" | grep -n '^ARTIFACT:' | cut -d: -f1)
+[ "$gl" -lt "$sl" ] && [ "$sl" -lt "$al" ] && pass "[strategy] the block sits after GOAL and before the artifact" || fail "[strategy] the block sits after GOAL and before the artifact" "GOAL $gl, Strategy $sl, ARTIFACT $al"
+
+s_lite=$(sp --brief "$LITE")
+assert_contains "$s_lite" "## Strategy (context:" "[strategy] the lite brief injects the section too"
+assert_contains "$s_lite" "### strategy" "[strategy] the lite brief keeps its strategy dimension"
+
+printf '# Plan\n\n### U1. One\n' > "$SR/plan.md"
+s_plan=$(sp --brief "$FULL" --plan-file "$SR/plan.md")
+pl=$(printf '%s\n' "$s_plan" | grep -n '^## Plan$' | cut -d: -f1); sl=$(printf '%s\n' "$s_plan" | grep -n '^## Strategy (context:' | cut -d: -f1)
+[ -n "$pl" ] && [ -n "$sl" ] && [ "$pl" -lt "$sl" ] && pass "[strategy] with --plan-file the Strategy block follows the Plan block" || fail "[strategy] with --plan-file the Strategy block follows the Plan block" "Plan $pl, Strategy $sl"
+
+with_audit=$(sp --brief "$AUDIT")
+cp "$SFX/no-marker.md" "$SR/docs/foundation.md"
+s_none=$(sp --brief "$FULL"); rc=$?
+assert_exit_code 0 "$rc" "[strategy] an unmarked section still builds"
+assert_not_contains "$s_none" "## Strategy (context:" "[strategy] an unmarked section is not injected"
+assert_not_contains "$s_none" "### strategy" "[strategy] without a section the strategy dimension is removed"
+assert_contains "$s_none" "### correctness" "[strategy] removing it keeps the other dimensions"
+assert_not_contains "$s_none" "**Unamended**" "[strategy] removing the dimension removes its rows too"
+assert_not_contains "$s_none" "Strategy: ST<N>" "[strategy] removing the dimension removes its title guidance"
+s_none_lite=$(sp --brief "$LITE")
+assert_not_contains "$s_none_lite" "**Unamended**" "[strategy] the lite brief loses the dimension's rows with no section"
+assert_contains "$s_none_lite" "### standards" "[strategy] the lite brief keeps the dimension before it"
+
+rm "$SR/docs/foundation.md"
+s_absent=$(sp --brief "$FULL"); rc=$?
+assert_exit_code 0 "$rc" "[strategy] no foundation still builds"
+assert_not_contains "$s_absent" "### strategy" "[strategy] no foundation removes the dimension"
+without_audit=$(sp --brief "$AUDIT")
+assert_eq "$without_audit" "$with_audit" "[strategy] a brief with no strategy dimension builds the same prompt whether or not a section exists"
+
+cp "$SFX/duplicate.md" "$SR/docs/foundation.md"
+s_dup=$(sp --brief "$FULL" 2>"$SR/err"); rc=$?
+assert_exit_code 0 "$rc" "[strategy] two Strategy headings still build"
+assert_contains "$(cat "$SR/err")" "more than one Strategy section" "[strategy] two Strategy headings warn on stderr"
+assert_not_contains "$s_dup" "## Strategy (context:" "[strategy] two Strategy headings inject nothing"
+assert_not_contains "$s_dup" "### strategy" "[strategy] two Strategy headings remove the dimension"
+assert_not_contains "$s_dup" "**Unamended**" "[strategy] two Strategy headings remove the dimension's rows"
+rm -rf "$SR"
+
 report

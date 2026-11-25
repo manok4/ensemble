@@ -12,6 +12,10 @@
     {
       "prompt": "Draft the product requirements and technical direction for the app",
       "top_k": 3
+    },
+    {
+      "prompt": "Write down this repo's strategy: what it owns, what it refuses, and how to judge a change",
+      "top_k": 3
     }
   ],
   "negative": [

@@ -134,6 +134,17 @@ Start from the trust boundary: name where untrusted data enters the diff, then f
 | **Migration ordering** | Migration depends on a column added in a later migration; chronologically out-of-order numbering |
 | **Data integrity** | New constraint that existing data would violate (need backfill first) |
 
+### strategy
+
+Present only when the project has a Strategy section, given below under `## Strategy (context: ...)`.
+
+| Category | Examples |
+|---|---|
+| **Resisted** | The change matches the strategy's "A change should be resisted when" test, or contradicts what an ST line states |
+| **Unamended** | The change alters what an ST line states, and the diff does not amend that line in `docs/foundation.md` |
+
+Title a finding `Strategy: ST<N> <what it crosses>`. A change that crosses a Scope non-goal or the "should be resisted when" line without contradicting a numbered principle is `Strategy: Scope <what it crosses>`. P1 when the change crosses an explicit refusal or non-goal, P2 otherwise. When a principle looks wrong for this change, say so in the finding rather than enforcing it.
+
 ## Where a finding points
 
 Use `<file>:<line>` for code, the section name for prose, or `global` when it is

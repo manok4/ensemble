@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "kind": "plan",
+  "invocation": "/ensemble:en-plan --no-peer --branch-on-default current",
+  "plan_checks": [
+    {
+      "unit_matching": ".",
+      "scope": "plan",
+      "must_contain": [
+        "Strategy:"
+      ]
+    }
+  ],
+  "judge": [
+    {
+      "id": "names-st1",
+      "expectation": "The plan's `Strategy:` line, under Requirements covered, names ST1 (Output stays plain text), since a new output format could change what the CLI prints."
+    }
+  ]
+}

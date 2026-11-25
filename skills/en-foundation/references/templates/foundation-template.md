@@ -37,9 +37,29 @@ This document combines product requirements, technical direction, and architectu
 
 ---
 
-## 1. Executive Summary
+## 1. Strategy
 
-<2-3 paragraphs: what this product is, who it's for, why now, and the highest-level design choices.>
+<!-- strategy: author-approved {{TODAY}} -->
+
+{{PROJECT_NAME}} exists so that <the outcome it produces>. It serves <who>. It owns exactly one thing: <the one job no other tool in the user's stack does>.
+
+### ST1. <principle heading>
+
+<1-3 declarative present-tense lines a reviewer can apply to a concrete PR.>
+
+### ST2. <principle heading>
+
+<...3 to 6 principles in all.>
+
+### Scope
+
+- Not <a concrete non-goal, with a named example of what it rules out>.
+- ...
+
+A change aligns when <the test, in one sentence>.
+A change should be resisted when <the test, in one sentence>.
+
+<!-- Strategy anatomy: 40 to 70 lines. No roadmap, no feature list, no marketing voice. `/en-foundation --strategy` writes this section with the author; ST-IDs are append-only, and a retired principle is marked "(retired YYYY-MM-DD)", never deleted or reused. Skills find the section by its heading and the marker line, never by number. -->
 
 ---
 
@@ -52,7 +72,7 @@ This document combines product requirements, technical direction, and architectu
 
 ### 2.2 Non-Goals
 
-- ...
+Non-goals live in §1 Strategy, Scope.
 
 ---
 
@@ -233,7 +253,7 @@ Top-level UX flows. Each flow has a stable F-ID and a brief description with scr
 
 | Section | Lightweight | Standard | Deep |
 |---|---|---|---|
-| §1 Executive | 1 | 2 | 3 |
+| §1 Strategy | 2 | 3 | 4 |
 | §2 Goals | 2 | 4 | 6 |
 | §3 Users | 1 | 2 | 3 |
 | §4 Decisions | as-they-arise | as-they-arise | as-they-arise |

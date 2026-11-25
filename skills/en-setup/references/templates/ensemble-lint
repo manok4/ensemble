@@ -450,9 +450,89 @@ check_fr_id_collisions() {
   rm -f "$seen_fr_file"
 }
 
-# --- Rule: cross-link.broken-r / broken-u / broken-fr / broken-td ---
+# --- Strategy section recognition ---
+# The same recognition as the ensemble-strategy-section script, embedded because
+# this lint is copied into a repo's bin/ and cannot call a skill script.
+# tests/strategy/consumers-agree.test.sh runs both over the same fixtures.
+# Prints "dup", "absent", or "present" followed by the declared ST-IDs.
+strategy_scan() {
+  [ -f "$1" ] || { echo absent; return 0; }
+  awk '
+    { sub(/\r$/, ""); line[NR] = $0 }
+    END {
+      fch = ""; heads = 0; start = 0
+      for (i = 1; i <= NR; i++) {
+        l = line[i]
+        if (fch != "") {
+          code[i] = 1; t = l; sub(/^ ? ? ?/, "", t); n = 0
+          while (substr(t, n + 1, 1) == fch) n++
+          if (n >= flen && substr(t, n + 1) ~ /^[ \t]*$/) fch = ""
+          continue
+        }
+        if (match(l, /^ ? ? ?(```+|~~~+)/)) {
+          t = substr(l, RSTART, RLENGTH); sub(/^ */, "", t)
+          fch = substr(t, 1, 1); flen = length(t); code[i] = 1; continue
+        }
+        if (tolower(l) ~ /^##[ \t]+([0-9]+\.[ \t]+)?strategy[ \t]*$/) { heads++; if (!start) start = i }
+      }
+      if (heads > 1) { print "dup"; exit }
+      if (!start) { print "absent"; exit }
+      stop = NR
+      for (i = start + 1; i <= NR; i++)
+        if (!code[i] && line[i] ~ /^##?[ \t]/) { stop = i - 1; break }
+      marked = 0
+      for (i = start + 1; i <= stop; i++)
+        if (!code[i] && line[i] ~ /^<!-- strategy: author-approved [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] -->$/) { marked = 1; break }
+      if (!marked) { print "absent"; exit }
+      print "present"
+      for (i = start; i <= stop; i++)
+        if (!code[i] && line[i] ~ /^### ST[0-9]+\./) { id = line[i]; sub(/^### /, "", id); sub(/\..*$/, "", id); print id }
+    }
+  ' "$1"
+}
+
+# Prints a file without its fenced blocks and inline code spans, so only plain
+# text remains: an ID inside code is an example, never a citation. Fences follow
+# strategy_scan's rule; a span is a backtick run closed by a run of equal length.
+strip_code() {
+  awk '
+    { sub(/\r$/, "") }
+    fch != "" {
+      t = $0; sub(/^ ? ? ?/, "", t); n = 0
+      while (substr(t, n + 1, 1) == fch) n++
+      if (n >= flen && substr(t, n + 1) ~ /^[ \t]*$/) fch = ""
+      next
+    }
+    match($0, /^ ? ? ?(```+|~~~+)/) {
+      t = substr($0, RSTART, RLENGTH); sub(/^ */, "", t)
+      fch = substr(t, 1, 1); flen = length(t); next
+    }
+    { print }
+  ' "$1" | sed -E 's/``([^`]|`[^`])*``//g; s/`[^`]*`//g'
+}
+
+# Scanned once per run, on first use.
+STRATEGY_STATE=""; STRATEGY_IDS=""
+strategy_load() {
+  [ -n "$STRATEGY_STATE" ] && return 0
+  local out; out=$(strategy_scan docs/foundation.md)
+  STRATEGY_STATE=$(printf '%s\n' "$out" | head -1)
+  STRATEGY_IDS=$(printf '%s\n' "$out" | tail -n +2)
+}
+
+# --- Rule: strategy.duplicate-section ---
+# Two Strategy headings leave every consumer unable to say which one counts.
+check_strategy_section() {
+  [ "$1" = "docs/foundation.md" ] || return 0
+  strategy_load
+  [ "$STRATEGY_STATE" = "dup" ] || return 0
+  emit "strategy.duplicate-section" "$1" "" "P1" "More than one Strategy heading in docs/foundation.md" "Keep one ## Strategy section; merge or retitle the other"
+}
+
+# --- Rule: cross-link.broken-r / broken-st / broken-u / broken-fr / broken-td ---
 # Walks markdown bodies for citations like "(see R3)", "(see U5)", "FR07", "TD11"
 # and verifies they resolve. R-IDs resolve to lines/sections in foundation.md;
+# ST-IDs to a ### ST<N>. heading inside its marked Strategy section;
 # U-IDs resolve within the cited plan; FR-IDs resolve to a plan filename;
 # TD-IDs resolve to docs/plans/tech-debt-tracker.md.
 check_cross_links() {
@@ -470,6 +550,27 @@ check_cross_links() {
         emit "cross-link.broken-r" "$file" "" "P1" "Citation of $rid not found in docs/foundation.md" "Either add $rid to foundation.md §5 or remove the citation"
       fi
     done <<< "$r_ids"
+  fi
+
+  # ST-IDs: a plain-text citation must be declared inside the marked Strategy
+  # section. Fenced blocks and inline code spans are examples, never citations,
+  # so docs that explain the format do not trip it. P3 when the repo has no
+  # Strategy section yet, since the fix is authoring one, not editing the citer.
+  if [ -f docs/foundation.md ] && [ "$file" != "docs/foundation.md" ]; then
+    local st_ids
+    st_ids=$(strip_code "$file" | grep -oE '\bST[0-9]+\b' | sort -u || true)
+    if [ -n "$st_ids" ]; then
+      strategy_load
+      while IFS= read -r sid; do
+        [ -z "$sid" ] && continue
+        printf '%s\n' "$STRATEGY_IDS" | grep -qx "$sid" && continue
+        case "$STRATEGY_STATE" in
+          present) emit "cross-link.broken-st" "$file" "" "P1" "Citation of $sid not found in the foundation's Strategy section" "Either declare $sid in foundation.md §1 Strategy or remove the citation" ;;
+          dup)     emit "cross-link.broken-st" "$file" "" "P3" "Citation of $sid not checked: docs/foundation.md has two Strategy headings" "Resolve strategy.duplicate-section first" ;;
+          *)       emit "cross-link.broken-st" "$file" "" "P3" "Citation of $sid not found in the foundation's Strategy section" "This repo has no Strategy section; run /en-foundation --strategy, or remove the citation" ;;
+        esac
+      done <<< "$st_ids"
+    fi
   fi
 
   local plan_prefixes; plan_prefixes=$(get_plan_prefixes)
@@ -1138,6 +1239,7 @@ while IFS= read -r file; do
   check_plan_resolutions_schema "$file"
   check_td_enforce_layer "$file"
   check_cross_links "$file"
+  check_strategy_section "$file"
   check_architecture_freshness "$file"
   check_generated_marker "$file"
 done < <(collect_files)

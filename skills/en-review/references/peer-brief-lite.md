@@ -12,7 +12,7 @@ This is a lite review of a small, low-risk change. Read the diff once, carefully
 and report only what is wrong, not what could be nicer. Do not comment on test
 quality, maintainability or performance unless the diff plainly breaks a test or
 adds an obvious hot-path cost. An empty findings list with `coverage` naming the
-two dimensions below is a valid, expected result.
+dimensions below is a valid, expected result.
 
 ### correctness
 
@@ -31,6 +31,17 @@ two dimensions below is a valid, expected result.
 | **Naming and placement** | New identifier or file breaks the convention its neighbours follow |
 | **Commit message** | Not `<type>(<scope>): <subject>`, or the subject does not describe the change |
 | **Path conventions** | Absolute or machine-specific paths in artifacts |
+
+### strategy
+
+Present only when the project has a Strategy section, given below under `## Strategy (context: ...)`.
+
+| Category | Examples |
+|---|---|
+| **Resisted** | The change matches the strategy's "A change should be resisted when" test, or contradicts what an ST line states |
+| **Unamended** | The change alters what an ST line states, and the diff does not amend that line in `docs/foundation.md` |
+
+Title a finding `Strategy: ST<N> <what it crosses>`. A change that crosses a Scope non-goal or the "should be resisted when" line without contradicting a numbered principle is `Strategy: Scope <what it crosses>`. P1 when the change crosses an explicit refusal or non-goal, P2 otherwise. When a principle looks wrong for this change, say so in the finding rather than enforcing it.
 
 ## Where a finding points
 

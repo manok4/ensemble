@@ -13,7 +13,7 @@ Used by `/en-foundation` and `/en-setup` to seed the project-level `AGENTS.md` (
 | Variable | Source |
 |---|---|
 | `{{PROJECT_NAME}}` | `foundation.md` `project:` |
-| `{{ONE_LINE_PURPOSE}}` | `foundation.md` Section 1 (Executive Summary) — first sentence |
+| `{{ONE_LINE_PURPOSE}}` | `foundation.md` Section 1 (Strategy), first sentence of the identity opener |
 | `{{TODAY}}` | `YYYY-MM-DD` at generation time |
 | `{{BUILD_CMD}}` | Detected from project (e.g., `bun build`, `npm run build`); `<unset>` if not found |
 | `{{TEST_CMD}}` | Detected from project; `<unset>` if not found |
@@ -54,6 +54,7 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 | Topic | Source of truth |
 |---|---|
 | Product vision, requirements, decisions | [`docs/foundation.md`](./docs/foundation.md) |
+| Strategy: what the project owns, refuses, and how a change is judged | [`docs/foundation.md`](./docs/foundation.md) §1 (ST-IDs) |
 | Current architecture (components, layers, data flows) | [`docs/architecture.md`](./docs/architecture.md) |
 | In-flight feature plans | [`docs/plans/active/`](./docs/plans/active/) |
 | Shipped feature plans (living documentation) | [`docs/plans/completed/`](./docs/plans/completed/) |
@@ -66,7 +67,7 @@ This file is the **canonical project map**. Any agent (Codex, Claude Code, other
 ## Conventions
 
 - **Repo-relative paths only** in artifacts. No absolute paths (`/Users/...`, `C:\...`).
-- **Stable IDs:** `R<N>` for foundation requirements, `U<N>` for plan units (never renumbered), `FR<NN>` for plan filenames, `TD<N>` for tracked debt.
+- **Stable IDs:** `ST<N>` for strategy principles, `R<N>` for foundation requirements, `U<N>` for plan units (never renumbered), `FR<NN>` for plan filenames, `TD<N>` for tracked debt.
 - **Conventional commits:** `<type>(<scope>): <subject>` — types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`. Subject ≤ 50 chars, imperative.
 - **Doc-as-source-of-truth:** if a decision isn't in `docs/`, the agent can't see it. Capture it via `/en-learn capture` before moving on.
 

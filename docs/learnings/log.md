@@ -20,3 +20,4 @@ updated: 2026-11-03
 ## [2026-11-05] capture | EN27 build: gate wrote no learning, all three candidates are stated with their reasons in skill text and test comments | ddcd79c
 ## [2026-11-10] capture | A Codex child that mistypes its workdir looks like a sandbox limit; EN28's peer out-file gap filed as TD44 (L1), plan-index gap added to TD38 | 6b98809
 ## [2026-11-12] capture | EN31 build: gate wrote no learning, the ffmpeg idle-compression lesson lives in the script comment; the hostname leak in a plan example filed as TD46 (L2) | eee2fe5
+## [2026-11-24] capture | EN32 build: extended the git-listing gate learning with three narrower-than-the-batch listings from ensemble-doc-only-check; the nested-fence lesson stays in the reader's header and fixtures; the sweep runner's unverified merge filed as TD47 (L2) | cf5317f

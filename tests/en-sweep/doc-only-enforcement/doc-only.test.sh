@@ -139,4 +139,103 @@ assert_exit_code 0 "$rc" "empty stage exits 0"
 assert_contains "$output" "nothing staged" "empty-stage notes nothing-staged"
 rm -rf "$TMP"
 
+# --- Strategy section: sweep never edits it (EN32 U8) ---
+# The author owns docs/foundation.md's Strategy section; a staged change to it,
+# marker date included, is refused. A reader error on either revision fails
+# closed before any comparison.
+FX="$REPO_ROOT/tests/strategy/fixtures"
+strategy_repo() {  # $1 = fixture committed as docs/foundation.md
+  TMP=$(mktemp -d); setup_temp_repo "$TMP"; pushd "$TMP" >/dev/null
+  mkdir -p docs && cp "$1" docs/foundation.md && git add docs/foundation.md && git commit -qm foundation
+}
+staged_check() { git add docs/foundation.md; output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"; }
+
+strategy_repo "$FX/numbered.md"
+printf '\n- G2. Small.\n' >> docs/foundation.md
+staged_check
+assert_exit_code 0 "$rc" "an edit outside the Strategy section is accepted"
+
+strategy_repo "$FX/numbered.md"
+sed -i.bak 's/^Every command prints plain text\.$/Every command prints plain text, always./' docs/foundation.md && rm docs/foundation.md.bak
+staged_check
+assert_exit_code 1 "$rc" "an edit inside the Strategy section is refused"
+assert_contains "$output" "en-sweep never edits the Strategy section; file a strategy-drift TD instead" "the refusal says what to do instead"
+
+strategy_repo "$FX/numbered.md"
+sed -i.bak 's/author-approved 2026-11-01/author-approved 2026-11-02/' docs/foundation.md && rm docs/foundation.md.bak
+staged_check
+assert_exit_code 1 "$rc" "moving only the marker date is refused"
+
+strategy_repo "$FX/no-marker.md"
+printf '\nMore text.\n' >> docs/foundation.md
+staged_check
+assert_exit_code 0 "$rc" "with no Strategy section in HEAD or the index the check passes"
+
+strategy_repo "$FX/duplicate.md"
+sed -i.bak 's/^### ST2\. Also small$/### ST2. Also very small/' docs/foundation.md && rm docs/foundation.md.bak
+staged_check
+assert_exit_code 1 "$rc" "two Strategy headings fail closed"
+assert_contains "$output" "cannot read the Strategy section in base docs/foundation.md" "and name the revision the reader could not read"
+
+# A rename shows only its new path under git's default rename detection, so a
+# moved foundation would skip the Strategy comparison, and a source file moved
+# into docs/ would pass the allowlist with its deleted source unseen.
+strategy_repo "$FX/numbered.md"
+git mv docs/foundation.md docs/foundation-old.md
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "renaming the foundation away is refused as a Strategy edit"
+assert_contains "$output" "en-sweep never edits the Strategy section" "the rename refusal names the Strategy rule"
+
+TMP=$(mktemp -d); setup_temp_repo "$TMP"; pushd "$TMP" >/dev/null
+mkdir -p src docs && printf 'code\n' > src/x.js && git add src/x.js && git commit -qm code
+git mv src/x.js docs/x.js
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "moving a source file into docs/ is refused"
+assert_contains "$output" "src/x.js" "the refusal names the source path the move deleted"
+
+# A foundation the batch does not touch is never read, so a repo whose HEAD
+# already has two Strategy headings can still ship unrelated doc fixes.
+strategy_repo "$FX/duplicate.md"
+printf 'x\n' > docs/other.md && git add docs/other.md
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 0 "$rc" "an untouched foundation with two Strategy headings does not block other docs"
+
+# Run from a subdirectory: the repo-relative paths must still resolve.
+strategy_repo "$FX/numbered.md"
+sed -i.bak 's/author-approved 2026-11-01/author-approved 2026-11-02/' docs/foundation.md && rm docs/foundation.md.bak
+git add docs/foundation.md; mkdir -p sub
+output=$(cd sub && "$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "a Strategy edit is refused when the check runs from a subdirectory"
+
+TMP=$(mktemp -d)
+output=$(cd "$TMP" && "$CHECK" 2>&1); rc=$?; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "outside a git repository the check refuses"
+
+# The guard compares the index with where the branch left the default branch,
+# so an edit already committed on a sweep branch is caught with nothing staged.
+strategy_repo "$FX/numbered.md"
+git checkout -qb sweep-batch
+sed -i.bak 's/^Every command prints plain text\.$/Every command prints plain text, always./' docs/foundation.md && rm docs/foundation.md.bak
+git commit -qam "chore(docs): drift"
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "a Strategy edit committed on the branch is refused with nothing staged"
+assert_contains "$output" "en-sweep never edits the Strategy section" "the committed-edit refusal names the Strategy rule"
+
+strategy_repo "$FX/numbered.md"
+git checkout -qb sweep-batch
+mkdir -p src && printf 'x\n' > src/x.js && git add src/x.js && git commit -qm "code"
+output=$("$CHECK" 2>&1); rc=$?; popd >/dev/null; rm -rf "$TMP"
+assert_exit_code 1 "$rc" "a source file committed on the branch is refused"
+
+strategy_repo "$FX/numbered.md"
+printf '\n## 9. Strategy\n\n<!-- strategy: author-approved 2026-11-01 -->\n' >> docs/foundation.md
+staged_check
+assert_exit_code 1 "$rc" "staging a second Strategy heading fails closed"
+assert_contains "$output" "cannot read the Strategy section in staged docs/foundation.md" "and names the staged side"
+
+TMP=$(mktemp -d); setup_temp_repo "$TMP"; pushd "$TMP" >/dev/null
+mkdir -p docs && cp "$FX/numbered.md" docs/foundation.md
+staged_check
+assert_exit_code 1 "$rc" "adding a foundation with a Strategy section is refused"
+
 report
